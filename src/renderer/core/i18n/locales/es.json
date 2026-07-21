@@ -1,0 +1,255 @@
+{
+  "commandPalette": {
+    "placeholder": "Buscar comando...",
+    "empty": "Sin resultados.",
+    "groups": {
+      "general": "General",
+      "settings": "Configuración",
+      "menu": "Menú"
+    }
+  },
+  "commands": {
+    "workbench": {
+      "toggleSidebar": "Alternar barra lateral",
+      "showCommands": "Paleta de comandos",
+      "toggleMenubar": "Alternar barra de menú",
+      "toggleTabbar": "Alternar barra de pestañas"
+    },
+    "settings": {
+      "open": "Configuración",
+      "goGeneral": "Configuración: General",
+      "goAppearance": "Configuración: Apariencia",
+      "goWorkbench": "Configuración: Workbench",
+      "goKeybindings": "Configuración: Atajos de teclado"
+    },
+    "tabs": {
+      "closeActive": "Cerrar pestaña",
+      "nextTab": "Pestaña siguiente",
+      "prevTab": "Pestaña anterior",
+      "closeAll": "Cerrar todas las pestañas",
+      "pinActive": "Fijar pestaña",
+      "unpinActive": "Desfijar pestaña"
+    }
+  },
+  "app": {
+    "quit": "Salir"
+  },
+  "menu": {
+    "view": "Ver"
+  },
+  "prompt": {
+    "title": "Ingresá los datos"
+  },
+  "common": {
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "loading": "Cargando..."
+  },
+  "dataTable": {
+    "search": "Buscar...",
+    "emptyTitle": "Sin resultados",
+    "empty": "No hay datos para mostrar con los filtros actuales.",
+    "errorTitle": "No se pudieron cargar los datos",
+    "errorLoading": "Ocurrió un error al traer la información. Revisá la conexión e intentá de nuevo.",
+    "retry": "Reintentar",
+    "columns": "Columnas visibles",
+    "densityTitle": "Densidad de filas",
+    "density": {
+      "label": "Densidad",
+      "compact": "Compacto",
+      "normal": "Normal",
+      "comfortable": "Amplio"
+    },
+    "exportCsv": "Exportar CSV",
+    "reset": "Restablecer tabla",
+    "filters": "Filtros",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "perPage": "{{size}} / pág",
+    "rows": "{{count}} filas",
+    "first": "Primera",
+    "prev": "Anterior",
+    "next": "Siguiente",
+    "last": "Última"
+  },
+  "confirm": {
+    "title": "¿Estás seguro?",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar"
+  },
+  "productPicker": {
+    "title": "Seleccionar producto",
+    "add": "Agregar",
+    "code": "Código",
+    "product": "Producto",
+    "quantity": "Cantidad",
+    "hint": "Buscá y elegí un producto; ajustá la cantidad y agregalo. La ventana queda abierta.",
+    "multiHint": "Agregá o quitá productos (botón o doble-click). Se reflejan al instante en el detalle de la vista; la cantidad y el precio se ajustan ahí.",
+    "selected": "{{count}} en el detalle",
+    "done": "Listo",
+    "remove": "Quitar",
+    "searchPlaceholder": "Buscar por código o nombre…",
+    "empty": "No hay productos disponibles.",
+    "pickRow": "Elegí una fila…"
+  },
+  "lineItems": {
+    "remove": "Quitar",
+    "overLimit": "Máx. {max}"
+  },
+  "recordDetail": {
+    "loading": "Cargando…",
+    "empty": "Seleccioná un documento para ver su detalle.",
+    "back": "Volver"
+  },
+  "toolPermission": {
+    "title": "Un agente externo pide una tool",
+    "description": "Un agente externo quiere ejecutar esta tool:",
+    "plugin": "Plugin",
+    "allowOnce": "Permitir una vez",
+    "allowAlways": "Permitir siempre",
+    "deny": "Denegar"
+  },
+  "error": {
+    "title": "Algo salió mal",
+    "description": "Ocurrió un error inesperado en la aplicación.",
+    "retry": "Reintentar",
+    "permissionRequired": "No tienes permiso para «{{permission}}». Pídeselo a un administrador."
+  },
+  "tabs": {
+    "noTabsOpen": "Sin pestañas abiertas",
+    "closeTab": "Cerrar pestaña",
+    "pinTab": "Fijar pestaña",
+    "unpinTab": "Desfijar pestaña",
+    "closeOthers": "Cerrar las demás",
+    "closeAll": "Cerrar todas",
+    "closeToRight": "Cerrar a la derecha",
+    "openTabs": "Pestañas abiertas ({{count}})"
+  },
+  "sidebar": {
+    "settings": "Configuración"
+  },
+  "settings": {
+    "title": "Configuración",
+    "sections": {
+      "general": "General",
+      "appearance": "Apariencia",
+      "workbench": "Workbench",
+      "keybindings": "Atajos",
+      "plugins": "Plugins",
+      "pluginConfig": "Ajustes de plugins"
+    },
+    "general": {
+      "appearance": {
+        "title": "Apariencia",
+        "description": "Personaliza el aspecto visual de la aplicación."
+      },
+      "theme": {
+        "label": "Tema",
+        "description": "Claro, oscuro o según el sistema.",
+        "light": "Claro",
+        "dark": "Oscuro",
+        "system": "Sistema"
+      },
+      "menubar": {
+        "label": "Barra de menú",
+        "description": "Muestra u oculta el menú en el titlebar."
+      },
+      "tabbar": {
+        "label": "Barra de pestañas",
+        "description": "Muestra u oculta la barra de pestañas en el titlebar."
+      },
+      "language": {
+        "label": "Idioma",
+        "description": "Idioma de la interfaz.",
+        "es": "Español",
+        "en": "English"
+      }
+    },
+    "workbench": {
+      "title": "Workbench",
+      "description": "Configurá el comportamiento de las pestañas y el espacio de trabajo.",
+      "restoreTabs": {
+        "label": "Restaurar pestañas al iniciar",
+        "description": "Reabre las pestañas de la sesión anterior cuando inicia la aplicación."
+      },
+      "closeLastTab": {
+        "label": "Permitir cerrar la última pestaña",
+        "description": "Si está desactivado, la última pestaña no puede cerrarse."
+      },
+      "maxTabs": {
+        "label": "Máximo de pestañas abiertas",
+        "description": "Las pestañas más antiguas se cierran automáticamente al alcanzar el límite."
+      }
+    },
+    "appearance": {
+      "title": "Apariencia",
+      "description": "Ajustá el tamaño de fuentes e íconos en la interfaz.",
+      "fontSize": {
+        "label": "Tamaño de fuente",
+        "description": "Controla el tamaño base del texto en toda la aplicación."
+      },
+      "sidebarIconSize": {
+        "label": "Íconos del sidebar",
+        "description": "Tamaño de los íconos en la barra lateral de navegación."
+      },
+      "tabbarIconSize": {
+        "label": "Íconos del tab bar",
+        "description": "Tamaño de los íconos en la barra de pestañas abiertas."
+      }
+    },
+    "account": {
+      "title": "Cuenta",
+      "description": "Información de tu sesión activa.",
+      "roles": "Roles",
+      "logout": "Cerrar sesión"
+    },
+    "keybindings": {
+      "title": "Atajos de teclado",
+      "description": "Personalizá los atajos de teclado de la aplicación.",
+      "search": "Buscar comando...",
+      "pressKey": "Presioná una tecla...",
+      "clickToEdit": "Clic para editar",
+      "add": "Agregar atajo",
+      "reset": "Restablecer",
+      "resetAll": "Restablecer todo"
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Plugins registrados en el shell: estado, licencias y gestión de externos.",
+      "origin": {
+        "internal": "Interno",
+        "external": "Externo"
+      },
+      "state": {
+        "registered": "Dormido",
+        "activating": "Activando…",
+        "active": "Activo",
+        "failed": "Falló"
+      },
+      "locked": "Bloqueado",
+      "unavailable": "No disponible",
+      "requiresMissing": "Falta: {{deps}}",
+      "requiresUnentitled": "Sin licencia: {{deps}}",
+      "entitlement": "Requiere {{id}}",
+      "activate": "Activar",
+      "deactivate": "Desactivar",
+      "enabled": "Habilitado",
+      "disabled": "Deshabilitado",
+      "adminOnly": "Solo un administrador puede cambiar esto",
+      "deactivateBlocked": "No se puede deshabilitar \"{{id}}\": lo necesitan {{dependents}}.",
+      "activateError": "No se pudo activar \"{{id}}\": {{message}}",
+      "openFolder": "Abrir carpeta de plugins",
+      "reload": "Recargar externos",
+      "reloadDone": "{{count}} plugin(s) externo(s) cargados.",
+      "empty": "No hay plugins registrados.",
+      "addFeatures": "Agregar features ({{count}})"
+    }
+  },
+  "onboarding": {
+    "title": "Elegí tu tipo de negocio",
+    "description": "Activá el conjunto de módulos pensado para tu rubro. Podés ajustarlo cuando quieras en Configuración → Plugins.",
+    "recommended": "Recomendado",
+    "apply": "Aplicar",
+    "skip": "Omitir por ahora"
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "commandPalette": {
+    "placeholder": "Search commands...",
+    "empty": "No results found.",
+    "groups": {
+      "general": "General",
+      "settings": "Settings",
+      "menu": "Menu"
+    }
+  },
+  "commands": {
+    "workbench": {
+      "toggleSidebar": "Toggle Sidebar",
+      "showCommands": "Command Palette",
+      "toggleMenubar": "Toggle Menu Bar",
+      "toggleTabbar": "Toggle Tab Bar"
+    },
+    "settings": {
+      "open": "Settings",
+      "goGeneral": "Settings: General",
+      "goAppearance": "Settings: Appearance",
+      "goWorkbench": "Settings: Workbench",
+      "goKeybindings": "Settings: Keyboard Shortcuts"
+    },
+    "tabs": {
+      "closeActive": "Close Tab",
+      "nextTab": "Next Tab",
+      "prevTab": "Previous Tab",
+      "closeAll": "Close All Tabs",
+      "pinActive": "Pin Tab",
+      "unpinActive": "Unpin Tab"
+    }
+  },
+  "app": {
+    "quit": "Quit"
+  },
+  "menu": {
+    "view": "View"
+  },
+  "prompt": {
+    "title": "Enter details"
+  },
+  "common": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "loading": "Loading..."
+  },
+  "dataTable": {
+    "search": "Search...",
+    "emptyTitle": "No results",
+    "empty": "No data matches the current filters.",
+    "errorTitle": "Couldn't load the data",
+    "errorLoading": "Something went wrong while fetching the data. Check your connection and try again.",
+    "retry": "Retry",
+    "columns": "Visible columns",
+    "densityTitle": "Row density",
+    "density": {
+      "label": "Density",
+      "compact": "Compact",
+      "normal": "Normal",
+      "comfortable": "Comfortable"
+    },
+    "exportCsv": "Export CSV",
+    "reset": "Reset table",
+    "filters": "Filters",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "perPage": "{{size}} / page",
+    "rows": "{{count}} rows",
+    "first": "First",
+    "prev": "Previous",
+    "next": "Next",
+    "last": "Last"
+  },
+  "confirm": {
+    "title": "Are you sure?",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "productPicker": {
+    "title": "Select product",
+    "add": "Add",
+    "code": "Code",
+    "product": "Product",
+    "quantity": "Quantity",
+    "hint": "Search and pick a product, adjust the quantity and add it. The window stays open.",
+    "multiHint": "Add or remove products (button or double-click). They sync instantly into the view's detail; adjust quantity and price there.",
+    "selected": "{{count}} in detail",
+    "done": "Done",
+    "remove": "Remove",
+    "searchPlaceholder": "Search by code or name…",
+    "empty": "No products available.",
+    "pickRow": "Pick a row…"
+  },
+  "lineItems": {
+    "remove": "Remove",
+    "overLimit": "Max {max}"
+  },
+  "recordDetail": {
+    "loading": "Loading…",
+    "empty": "Select a document to see its detail.",
+    "back": "Back"
+  },
+  "toolPermission": {
+    "title": "External agent requests a tool",
+    "description": "An external agent wants to run this tool:",
+    "plugin": "Plugin",
+    "allowOnce": "Allow once",
+    "allowAlways": "Always allow",
+    "deny": "Deny"
+  },
+  "error": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred in the application.",
+    "retry": "Try again",
+    "permissionRequired": "You don't have permission to «{{permission}}». Ask an administrator."
+  },
+  "tabs": {
+    "noTabsOpen": "No tabs open",
+    "closeTab": "Close tab",
+    "pinTab": "Pin tab",
+    "unpinTab": "Unpin tab",
+    "closeOthers": "Close others",
+    "closeAll": "Close all",
+    "closeToRight": "Close to the right",
+    "openTabs": "Open tabs ({{count}})"
+  },
+  "sidebar": {
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "sections": {
+      "general": "General",
+      "appearance": "Appearance",
+      "workbench": "Workbench",
+      "keybindings": "Shortcuts",
+      "plugins": "Plugins",
+      "pluginConfig": "Plugin settings"
+    },
+    "workbench": {
+      "title": "Workbench",
+      "description": "Configure tab behavior and workspace preferences.",
+      "restoreTabs": {
+        "label": "Restore tabs on startup",
+        "description": "Re-open tabs from the previous session when the app starts."
+      },
+      "closeLastTab": {
+        "label": "Allow closing the last tab",
+        "description": "When disabled, the last tab cannot be closed."
+      },
+      "maxTabs": {
+        "label": "Maximum open tabs",
+        "description": "Oldest tabs are closed automatically when the limit is reached."
+      }
+    },
+    "general": {
+      "appearance": {
+        "title": "Appearance",
+        "description": "Customize the visual look of the application."
+      },
+      "theme": {
+        "label": "Theme",
+        "description": "Light, dark or follow the system.",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "menubar": {
+        "label": "Menu bar",
+        "description": "Show or hide the menu in the titlebar."
+      },
+      "tabbar": {
+        "label": "Tab bar",
+        "description": "Show or hide the tab bar in the titlebar."
+      },
+      "language": {
+        "label": "Language",
+        "description": "Interface language.",
+        "es": "Español",
+        "en": "English"
+      }
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Adjust font and icon sizes across the interface.",
+      "fontSize": {
+        "label": "Font size",
+        "description": "Controls the base text size for the entire application."
+      },
+      "sidebarIconSize": {
+        "label": "Sidebar icons",
+        "description": "Size of the icons in the navigation sidebar."
+      },
+      "tabbarIconSize": {
+        "label": "Tab bar icons",
+        "description": "Size of the icons shown in the open tab bar."
+      }
+    },
+    "account": {
+      "title": "Account",
+      "description": "Your active session information.",
+      "roles": "Roles",
+      "logout": "Sign out"
+    },
+    "keybindings": {
+      "title": "Keyboard shortcuts",
+      "description": "Customize the application's keyboard shortcuts.",
+      "search": "Search commands...",
+      "pressKey": "Press a key...",
+      "clickToEdit": "Click to edit",
+      "add": "Add shortcut",
+      "reset": "Reset",
+      "resetAll": "Reset all"
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Plugins registered in the shell: state, licensing and external management.",
+      "origin": {
+        "internal": "Built-in",
+        "external": "External"
+      },
+      "state": {
+        "registered": "Dormant",
+        "activating": "Activating…",
+        "active": "Active",
+        "failed": "Failed"
+      },
+      "locked": "Locked",
+      "unavailable": "Unavailable",
+      "requiresMissing": "Missing: {{deps}}",
+      "requiresUnentitled": "Unlicensed: {{deps}}",
+      "entitlement": "Requires {{id}}",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "adminOnly": "Only an admin can change this",
+      "deactivateBlocked": "Can't disable \"{{id}}\": still needed by {{dependents}}.",
+      "activateError": "Could not activate \"{{id}}\": {{message}}",
+      "openFolder": "Open plugins folder",
+      "reload": "Reload external",
+      "reloadDone": "{{count}} external plugin(s) loaded.",
+      "empty": "No plugins registered.",
+      "addFeatures": "Add features ({{count}})"
+    }
+  },
+  "onboarding": {
+    "title": "Choose your business type",
+    "description": "Enable the set of modules tailored to your industry. You can adjust it anytime in Settings → Plugins.",
+    "recommended": "Recommended",
+    "apply": "Apply",
+    "skip": "Skip for now"
+  }
+}

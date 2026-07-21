@@ -1,0 +1,66 @@
+// "Optimizador" de rutas del mockup — SIN API. Genera un trazado creíble por ruta conectando sus
+// paradas reales: parte del depósito y va al vecino más cercano (heurística nearest-neighbor), así
+// el recorrido se ve ordenado/óptimo (sin cruces locos) y termina volviendo al depósito. No calcula
+// calles reales; son segmentos rectos entre puntos, suficiente para "verse como si funcionara".
+import { DEPOSITO, RUTAS, type Parada } from '../mock-data'
+import type { LatLngTuple } from './geo/polyline'
+import type { OverlayMarker, OverlayPolyline } from './overlay-store'
+
+const dist = (a: LatLngTuple, b: LatLngTuple) => Math.hypot(a[0] - b[0], a[1] - b[1])
+
+/** Ordena las paradas por vecino más cercano arrancando desde `start`. */
+function nearestOrder(start: LatLngTuple, stops: Parada[]): Parada[] {
+  const rest = [...stops]
+  const order: Parada[] = []
+  let cur = start
+  while (rest.length > 0) {
+    let best = 0
+    let bestD = Infinity
+    for (let i = 0; i < rest.length; i++) {
+      const d = dist(cur, [rest[i].lat, rest[i].lng])
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    const [next] = rest.splice(best, 1)
+    order.push(next)
+    cur = [next.lat, next.lng]
+  }
+  return order
+}
+
+/**
+ * Arma el overlay (una polilínea por ruta + marcadores de secuencia) a partir de las paradas y su
+ * asignación de ruta actual. Depósito → paradas en orden vecino-más-cercano → depósito.
+ */
+export function buildRouteOverlay(
+  paradas: Parada[],
+  rutaIdOf: (paradaId: string) => string | undefined,
+): { polylines: OverlayPolyline[]; markers: OverlayMarker[] } {
+  const depot: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
+
+  const byRuta = new Map<string, Parada[]>()
+  for (const p of paradas) {
+    const rid = rutaIdOf(p.id)
+    if (!rid) continue
+    const arr = byRuta.get(rid) ?? []
+    arr.push(p)
+    byRuta.set(rid, arr)
+  }
+
+  const polylines: OverlayPolyline[] = []
+  const markers: OverlayMarker[] = []
+  for (const [rid, stops] of byRuta) {
+    const ruta = RUTAS.find((r) => r.id === rid)
+    if (!ruta) continue
+    const ordered = nearestOrder(depot, stops)
+    const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
+    polylines.push({ id: `route-${rid}`, path, color: ruta.color })
+    // Badge con el orden de visita de cada parada (secuencia optimizada).
+    ordered.forEach((s, i) => {
+      markers.push({ id: `seq-${rid}-${s.id}`, position: [s.lat, s.lng], color: ruta.color, label: `#${i + 1} · ${s.cliente}` })
+    })
+  }
+  return { polylines, markers }
+}
