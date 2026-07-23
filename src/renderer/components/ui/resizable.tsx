@@ -20,8 +20,19 @@ function ResizablePanelGroup({
   )
 }
 
-function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
-  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+function ResizablePanel({ className, ...props }: ResizablePrimitive.PanelProps) {
+  // El Panel de react-resizable-panels es un bloque con overflow:hidden: NO establece contexto
+  // flex, así que un hijo con `flex-1`/`min-h-0` (p. ej. DataTable fillHeight) no llena su altura y
+  // colapsa al alto del contenido — dejando el paginado pegado a las filas. Lo hacemos columna flex
+  // con min-h-0/min-w-0 para que el contenido pueda crecer, scrollear internamente y anclar su
+  // footer abajo, sin importar el tamaño del panel.
+  return (
+    <ResizablePrimitive.Panel
+      data-slot="resizable-panel"
+      className={cn("flex min-h-0 min-w-0 flex-col", className)}
+      {...props}
+    />
+  )
 }
 
 function ResizableHandle({

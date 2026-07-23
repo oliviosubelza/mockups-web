@@ -22,13 +22,13 @@ const TIPOS = ['Frío', 'Seco']
 const CLASES = ['Furgón', 'Camión']
 
 const columns = defineColumns<Camion>([
-  { id: 'placa', header: 'Placa', accessorKey: 'placa', size: 110, pin: 'left' },
-  { id: 'tipo', header: 'Tipo', accessorKey: 'tipo', size: 80 },
-  { id: 'clase', header: 'Clase', accessorKey: 'clase', size: 100 },
+  { id: 'placa', header: 'Placa', accessorKey: 'placa', size: 88, pin: 'left' },
+  { id: 'tipo', header: 'Tipo', accessorKey: 'tipo', size: 66 },
+  { id: 'clase', header: 'Clase', accessorKey: 'clase', size: 78 },
   {
     id: 'peso',
     header: 'Peso',
-    size: 110,
+    size: 68,
     meta: { align: 'right' },
     cell: (row) => (
       <span className="tabular-nums text-muted-foreground">
@@ -39,7 +39,7 @@ const columns = defineColumns<Camion>([
   {
     id: 'volumen',
     header: 'Volumen',
-    size: 110,
+    size: 78,
     meta: { align: 'right' },
     cell: (row) => (
       <span className="tabular-nums text-muted-foreground">

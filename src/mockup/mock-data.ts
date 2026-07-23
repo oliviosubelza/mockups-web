@@ -389,7 +389,11 @@ export const RUTAS: Ruta[] = CAMIONES.filter((c) => PARADAS.some((p) => p.camion
 )
 
 /** Ruta a la que pertenece una parada según el camión que le asignó la corrida. */
-export const rutaPorCamionId = (rutaId: string | null): Ruta | undefined =>
+export const rutaPorCamionId = (camionId: string | null): Ruta | undefined =>
+  camionId ? RUTAS.find((r) => r.camionId === camionId) : undefined
+
+/** Ruta por su propio id ('r1', 'r2', …). Para datos que ya guardan el id de ruta (ej. órdenes). */
+export const rutaPorId = (rutaId: string | null): Ruta | undefined =>
   rutaId ? RUTAS.find((r) => r.id === rutaId) : undefined
 
 // Camión (→ ruta) de cada pedido según la parada que lo contiene: los pedidos del mismo punto de
@@ -444,37 +448,128 @@ export interface OrdenDespacho {
   almacen: string
   estado: EstadoOrden
   salida: string
+  /** Ocupación del camión sobre su capacidad (0–100). */
+  cargaPct: number
+  /** Tiempo estimado de recorrido de la ruta, en minutos. */
+  duracionMin: number
 }
 
+// El chofer arranca VACÍO: la corrida genera la orden (una por camión/ruta) y el despachador asigna
+// el chofer después, en el detalle de la orden.
 export const ORDENES: OrdenDespacho[] = [
-  { id: 'do1', codigo: '2041', camionId: 'Truck-SAP1', rutaId: 'r1', conductor: 'M. Céspedes', almacen: 'Planta Santa Cruz', estado: 'despachada', salida: '06:30' },
-  { id: 'do2', codigo: '2042', camionId: 'Truck-SAP2', rutaId: 'r2', conductor: 'J. Rojas',    almacen: 'Planta Santa Cruz', estado: 'cargando',   salida: '06:45' },
-  { id: 'do3', codigo: '2043', camionId: 'Truck-SAP3', rutaId: 'r3', conductor: 'A. Peña',     almacen: 'CD Warnes',         estado: 'pendiente',  salida: '07:15' },
-  { id: 'do4', codigo: '2044', camionId: 'Truck-SAP4', rutaId: 'r4', conductor: 'R. Justiniano', almacen: 'CD Montero',      estado: 'pendiente',  salida: '08:00' },
+  { id: 'do1', codigo: '2041', camionId: 'Truck-SAP1', rutaId: 'r1', conductor: '', almacen: 'Planta Santa Cruz', estado: 'despachada', salida: '06:30', cargaPct: 20393, duracionMin: 210 },
+  { id: 'do2', codigo: '2042', camionId: 'Truck-SAP2', rutaId: 'r2', conductor: '', almacen: 'Planta Santa Cruz', estado: 'cargando',   salida: '06:45', cargaPct: 23000, duracionMin: 255 },
+  { id: 'do3', codigo: '2043', camionId: 'Truck-SAP3', rutaId: 'r3', conductor: '', almacen: 'CD Warnes',         estado: 'pendiente',  salida: '07:15', cargaPct: 10234, duracionMin: 165 },
+  { id: 'do4', codigo: '2044', camionId: 'Truck-SAP4', rutaId: 'r4', conductor: '', almacen: 'CD Montero',        estado: 'pendiente',  salida: '08:00', cargaPct: 23456, duracionMin: 300 },
+]
+
+// ── transport_orders para la vista de UNIFICACIÓN ──────────────────────────────────────────────
+// Varias órdenes del MISMO camión (mismo planning_truck vía route) coexisten y se quieren fusionar
+// en un solo viaje reoptimizado. Para que el mockup sea CONSISTENTE, cada orden "posee" un
+// subconjunto REAL de PARADAS (sus route_delivery_points): el conteo de paradas y el peso se DERIVAN
+// de ahí, y al unificar el optimizador recibe exactamente esas paradas (no números inventados).
+export interface OrdenTransporte {
+  /** transport_orders.id (interno). */
+  id: string
+  /** Número visible de la orden. */
+  codigo: string
+  /** Placa del planning_truck (clave de agrupación para unificar). */
+  camion: string
+  /** trip.driver_employee_id → nombre ('' = sin asignar todavía). */
+  chofer: string
+  /** transport_orders.status. */
+  estado: EstadoOrden
+  /** dispatch_delivery_point ids que cubre la ruta de esta orden. */
+  paradaIds: string[]
+}
+
+// Cada orden apunta a paradas REALES por su id (`stop-<deliveryPointId>`). Se eligen a propósito
+// para que 3421-ABC (cap. 28 t) muestre la validación de peso: sus 2 primeras órdenes ENTRAN
+// (24.000 kg) y la 3ra la EXCEDE (29.400 kg > 28.000). Los pesos salen del `pesoTotal` real de cada
+// parada, así el diálogo, la tabla y el mapa cuadran.
+export const ORDENES_TRANSPORTE: OrdenTransporte[] = [
+  // Camión 3421-ABC (cap. 28 t) — 3 órdenes; 2 entran, la 3ra excede.
+  { id: 'ot1', codigo: '2051', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-002', 'stop-DP-004', 'stop-DP-053'] }, // 12.800 kg
+  { id: 'ot2', codigo: '2052', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-054', 'stop-DP-055', 'stop-DP-056'] }, // 11.200 kg
+  { id: 'ot3', codigo: '2053', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-021', 'stop-DP-060', 'stop-DP-061'] }, //  5.400 kg
+  // Camión 2870-XKD (cap. 30 t) — 2 órdenes.
+  { id: 'ot4', codigo: '2054', camion: '2870-XKD', chofer: 'J. Rojas-3022',    estado: 'cargando',   paradaIds: ['stop-DP-011', 'stop-DP-014', 'stop-DP-058', 'stop-DP-023', 'stop-DP-027'] },
+  { id: 'ot5', codigo: '2055', camion: '2870-XKD', chofer: 'J. Rojas-3022',    estado: 'pendiente',  paradaIds: ['stop-DP-059', 'stop-DP-025', 'stop-DP-028'] },
+  // Camión 5530-QWE (cap. 22 t) — 2 órdenes (sin chofer asignado).
+  { id: 'ot6', codigo: '2056', camion: '5530-QWE', chofer: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-031', 'stop-DP-034', 'stop-DP-036'] },
+  { id: 'ot7', codigo: '2057', camion: '5530-QWE', chofer: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-050', 'stop-DP-051'] },
+  // Camión 4467-TYU (cap. 12 t) — 1 orden sola (no unificable por sí misma).
+  { id: 'ot8', codigo: '2058', camion: '4467-TYU', chofer: 'A. Peña-3023',     estado: 'despachada', paradaIds: ['stop-DP-052', 'stop-DP-062', 'stop-DP-063', 'stop-DP-064', 'stop-DP-065', 'stop-DP-066'] },
+]
+
+/** Paradas (dispatch_delivery_points) reales que cubre una orden de transporte. */
+export const paradasDeOrden = (o: OrdenTransporte): Parada[] =>
+  PARADAS.filter((p) => o.paradaIds.includes(p.id))
+
+/** Peso total (kg) de una orden = suma del peso de sus paradas. */
+export const pesoDeOrden = (o: OrdenTransporte): number =>
+  paradasDeOrden(o).reduce((acc, p) => acc + p.pesoTotal, 0)
+
+// Choferes disponibles para asignar a una orden de despacho (selector del detalle). El nombre va
+// concatenado con su código SAP de empleado (Nombre-SAP), así el buscador filtra por ambos.
+export const CHOFERES = [
+  'M. Céspedes-3021',
+  'J. Rojas-3022',
+  'A. Peña-3023',
+  'R. Justiniano-3024',
+  'D. Mamani-3025',
+  'L. Áñez-3026',
+  'C. Vaca-3027',
+  'P. Suárez-3028',
 ]
 
 // ── dispatch_plan ────────────────────────────────────────────────────────────────────────────
 
+// El listado se arma SOLO con columnas propias de `dispatch_plans` más el catálogo `plan_status`
+// (estado) y el maestro `distributors` (distribuidora) — dos lookups. Los conteos NO son agregados:
+// `dispatch_plans` ya los guarda desnormalizados (planned_order_count / planned_truck_count), así que
+// el listado no tiene que sumar sobre planning_truck ni dispatch_delivery_points.
 export type EstadoPlan = 'borrador' | 'optimizado' | 'aprobado'
 
 export interface Plan {
-  id: string
-  codigo: string
+  /** dispatch_plans.id — PK numérico. */
+  id: number
+  /** dispatch_plans.plan_date (YYYY-MM-DD). */
   fecha: string
-  almacen: string
-  tipo: string
+  /** plan_status.name (dispatch_plans.plan_status_id). */
   estado: EstadoPlan
+  /** distributors.name (dispatch_plans.distributor_id). */
+  distribuidora: string
+  /** dispatch_plans.planned_order_count — contador guardado en el plan. */
   pedidos: number
+  /** dispatch_plans.planned_truck_count — contador guardado en el plan. */
   camiones: number
+  /** Planificador del plan (dispatch_plans.employee_id / created_by). */
   creadoPor: string
 }
 
+/** YYYY-MM-DD de hoy + `dias` (negativo = pasado). Mantiene el listado fresco sin editar fechas a mano. */
+function fechaOffset(dias: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + dias)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Nombres de planificador de ejemplo (genéricos, no reales). */
+export const PLANIFICADORES = ['Pablo Méndez', 'Pedro Salinas', 'José Ortiz', 'Juana Ríos', 'Diego Torres']
+
 export const PLANES: Plan[] = [
-  { id: 'pl1', codigo: 'DP-0148', fecha: '13/07/2026', almacen: 'Planta Santa Cruz', tipo: 'Diario',    estado: 'borrador',   pedidos: 24, camiones: 5, creadoPor: 'O. Subelza' },
-  { id: 'pl2', codigo: 'DP-0147', fecha: '13/07/2026', almacen: 'CD Warnes',         tipo: 'Diario',    estado: 'optimizado', pedidos: 22, camiones: 6, creadoPor: 'O. Subelza' },
-  { id: 'pl3', codigo: 'DP-0146', fecha: '12/07/2026', almacen: 'Planta Santa Cruz', tipo: 'Diario',    estado: 'aprobado',   pedidos: 31, camiones: 8, creadoPor: 'M. Vargas' },
-  { id: 'pl4', codigo: 'DP-0145', fecha: '12/07/2026', almacen: 'CD Montero',        tipo: 'Refuerzo',  estado: 'aprobado',   pedidos: 12, camiones: 3, creadoPor: 'M. Vargas' },
-  { id: 'pl5', codigo: 'DP-0144', fecha: '11/07/2026', almacen: 'CD Warnes',         tipo: 'Diario',    estado: 'aprobado',   pedidos: 27, camiones: 7, creadoPor: 'L. Áñez' },
+  { id: 148, fecha: fechaOffset(0),  estado: 'borrador',   distribuidora: 'Distribuidora Santa Cruz', pedidos: 24, camiones: 5, creadoPor: 'Pablo Méndez' },
+  { id: 147, fecha: fechaOffset(0),  estado: 'optimizado', distribuidora: 'Distribuidora Warnes',     pedidos: 22, camiones: 6, creadoPor: 'Pedro Salinas' },
+  { id: 146, fecha: fechaOffset(-1), estado: 'aprobado',   distribuidora: 'Distribuidora Santa Cruz', pedidos: 31, camiones: 8, creadoPor: 'José Ortiz' },
+  { id: 145, fecha: fechaOffset(-1), estado: 'aprobado',   distribuidora: 'Distribuidora Montero',    pedidos: 12, camiones: 3, creadoPor: 'Juana Ríos' },
+  { id: 144, fecha: fechaOffset(-2), estado: 'aprobado',   distribuidora: 'Distribuidora Warnes',     pedidos: 27, camiones: 7, creadoPor: 'Diego Torres' },
+  { id: 143, fecha: fechaOffset(-3), estado: 'optimizado', distribuidora: 'Distribuidora Santa Cruz', pedidos: 18, camiones: 4, creadoPor: 'Pablo Méndez' },
+  { id: 142, fecha: fechaOffset(-4), estado: 'borrador',   distribuidora: 'Distribuidora Montero',    pedidos: 9,  camiones: 2, creadoPor: 'José Ortiz' },
+  { id: 141, fecha: fechaOffset(-6), estado: 'aprobado',   distribuidora: 'Distribuidora Warnes',     pedidos: 33, camiones: 9, creadoPor: 'Pedro Salinas' },
 ]
 
 // ── Transferencias entre sucursales + Devoluciones (logística inversa) ─────────────────────────

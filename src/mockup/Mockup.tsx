@@ -1,6 +1,6 @@
 // Pantalla de mockup: componentes REALES del workbench con datos falsos.
 // Sirve para exportar a Figma (html.to.design) y aprobar diseño sin cablear backend.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { LayoutGrid, Monitor } from 'lucide-react'
 import { PortalContainerContext } from '@/components/ui/portal-container'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,8 @@ import { resolveFrame, type Frame } from './frame'
 import { MockupShell, type MockTheme } from './MockupShell'
 import type { BoardState, Fase, PlanningTab, TransferTab } from './types'
 import { PlansView } from './views/PlansView'
+import { useActiveRouteValue } from '@/core/routing/active-route'
+import { getRouteComponent } from './routes'
 
 interface BoardDef {
   /** Nombre corto del tablero — el que se lee en la etiqueta y en Figma. */
@@ -65,6 +67,10 @@ function Board({
   fluid?: boolean
 }) {
   const [theme, setTheme] = useState<MockTheme>(initialTheme)
+  // El contenido y el título siguen a la RUTA ACTIVA (el sidebar navega abriendo tabs). Si no hay
+  // ruta activa se cae al tablero fijo — así el modo Figma sigue funcionando igual que antes.
+  const activeRoute = useActiveRouteValue()
+  const ActiveScreen = activeRoute ? getRouteComponent(activeRoute.routeId) : undefined
   // Los overlays (selects, popovers, dialogs) se portalizan al `document.body` por defecto, que
   // está FUERA del `.dark` de este tablero → salían en claro sobre tableros oscuros. Portalizándolos
   // DENTRO del tablero heredan su `.dark`. (En la app real el `.dark` vive en <html>, ancestro del
@@ -96,12 +102,14 @@ function Board({
     >
       <PortalContainerContext.Provider value={boardEl ?? undefined}>
         <MockupShell
-          title={board.title}
+          title={activeRoute?.title ?? board.title}
           breadcrumb={board.breadcrumb}
           theme={theme}
           onThemeChange={setTheme}
         >
-          {board.fase === undefined ? (
+          {ActiveScreen ? (
+            <ActiveScreen />
+          ) : board.fase === undefined ? (
             <PlansView state={board.state} />
           ) : (
             <DispatchFlow
@@ -125,12 +133,50 @@ type ViewMode = 'web' | 'mockup'
  */
 function ViewModeToggle({ mode, onToggle }: { mode: ViewMode; onToggle: () => void }) {
   const goingToWeb = mode === 'mockup'
+  const btnRef = useRef<HTMLButtonElement>(null)
+  // Posición libre (fixed). null = esquina inferior derecha por defecto.
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  // Estado del arrastre: offset del puntero dentro del botón + punto inicial + si ya se movió.
+  const drag = useRef<{ ox: number; oy: number; sx: number; sy: number; moved: boolean } | null>(null)
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    drag.current = { ox: e.clientX - rect.left, oy: e.clientY - rect.top, sx: e.clientX, sy: e.clientY, moved: false }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = drag.current
+    if (!d) return
+    // Umbral: hasta 4px es un click, no un arrastre (evita mover sin querer al tocar).
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 4) return
+    d.moved = true
+    const el = btnRef.current
+    const w = el?.offsetWidth ?? 0
+    const h = el?.offsetHeight ?? 0
+    setPos({
+      x: clamp(e.clientX - d.ox, 4, window.innerWidth - w - 4),
+      y: clamp(e.clientY - d.oy, 4, window.innerHeight - h - 4),
+    })
+  }
+  const onPointerUp = () => {
+    const d = drag.current
+    drag.current = null
+    // Si no se arrastró, fue un click → alterna el modo.
+    if (d && !d.moved) onToggle()
+  }
+
   return (
     <button
+      ref={btnRef}
       type="button"
-      onClick={onToggle}
-      title="Alternar modo de vista (temporal)"
-      className="fixed bottom-4 right-4 z-[99999] flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-lg transition hover:bg-neutral-100"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      title="Arrastrame para moverme · click para alternar el modo de vista"
+      style={pos ? { left: pos.x, top: pos.y } : { right: 16, bottom: 16 }}
+      className="fixed z-[99999] flex touch-none cursor-grab select-none items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-lg transition-colors hover:bg-neutral-100 active:cursor-grabbing"
     >
       {goingToWeb ? <Monitor size={15} /> : <LayoutGrid size={15} />}
       {goingToWeb ? 'Modo web' : 'Modo mockup'}

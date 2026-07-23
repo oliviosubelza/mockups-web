@@ -3,7 +3,7 @@
 // derecha. Cada panel se puede colapsar (pin/unpin) para ver solo mapa o solo lista.
 //
 // Arriba del mapa hay filtros (Canal / Tipo Frío·Seco / Ruta) que reducen los puntos mostrados.
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   Eye,
@@ -40,11 +40,10 @@ import {
   RUTAS,
   rutaPorCamionId,
   type CanalId,
+  type Parada,
   type ProductType,
 } from '../mock-data'
 import type { BoardState, PlanningTab } from '../types'
-
-const CANAL_IDS = Object.keys(CANAL_META) as CanalId[]
 
 /** Monto en Bs con separadores es-BO (igual que la tabla grande). */
 const bs = (n: number) => n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -185,11 +184,29 @@ function CollapsedRail({ title, side, onPin }: { title: string; side: 'left' | '
 export function PlanningView({
   state,
   onNext,
+  paradasScope,
+  scopeLabel,
+  singleRoute,
+  routeColor,
+  readOnly = false,
 }: {
   state: BoardState
   // Se mantiene por compatibilidad con el caller (DispatchFlow/Mockup); ya no hay tabs que elegir.
   initialTab?: PlanningTab
   onNext: () => void
+  /** Subconjunto de paradas a planificar (ej. las paradas unificadas de un camión). Sin esto, el plan completo. */
+  paradasScope?: Parada[]
+  /** Etiqueta que reemplaza "Plan" en la cabecera (ej. "Reoptimizando 3421-ABC · 9 paradas"). */
+  scopeLabel?: string
+  /** Unificación: al optimizar dibuja UNA sola ruta por todas las paradas (no las varias de ejemplo). */
+  singleRoute?: boolean
+  /** Color de esa ruta única (el del camión unificado). */
+  routeColor?: string
+  /**
+   * Solo-lectura (unificación): no se permite mover nada. Oculta la toolbar de dibujo del mapa, el
+   * filtro por Ruta y los toggles/select de rutas de la tabla. El flujo normal no lo pasa.
+   */
+  readOnly?: boolean
 }) {
   // Pin/unpin de cada panel. Al contraer (unpin) uno queda un RIEL fijo (~48px) con su botón para
   // volver a expandirlo; el otro se garantiza pineado (nunca ambos contraídos). El split se maneja
@@ -228,7 +245,7 @@ export function PlanningView({
 
   const usable = Math.max(0, width - DIVIDER_PX)
   const maxSplit = Math.max(MIN_MAP_PX, usable - MIN_LIST_PX)
-  const split = clampNum(splitPx ?? usable * 0.4, MIN_MAP_PX, maxSplit)
+  const split = clampNum(splitPx ?? usable * 0.6, MIN_MAP_PX, maxSplit)
 
   // flex-basis (px) de cada panel según pin/unpin. Suman `usable` → sin huecos; ambos con grow/shrink
   // en 0 para que el basis mande y la transición lo anime.
@@ -288,19 +305,29 @@ export function PlanningView({
     setMoverSelOpen(ids.length > 0)
   }
 
-  const paradas = state === 'empty' || state === 'error' ? [] : PARADAS
-  const pedidos = state === 'empty' || state === 'error' ? [] : PEDIDOS
+  // Base de datos del planner: el scope unificado si vino, o el plan completo. Los pedidos se
+  // DERIVAN de las paradas base (cada parada trae sus pedidos), así el mapa y la lista siempre cuadran.
+  const baseParadas = paradasScope ?? PARADAS
+  const paradas = state === 'empty' || state === 'error' ? [] : baseParadas
+  const pedidos =
+    state === 'empty' || state === 'error' ? [] : baseParadas.flatMap((p) => p.pedidos)
 
-  // Paradas que pasan los filtros activos (lo que se pinta en el mapa).
-  const filtradas = paradas.filter((p) => {
-    if (canales.size > 0 && !canales.has(p.canal)) return false
-    if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
-    if (rutas.size > 0) {
-      const ruta = rutaPorCamionId(p.camionId)
-      if (!ruta || !rutas.has(ruta.id)) return false
-    }
-    return true
-  })
+  // Paradas que pasan los filtros activos (lo que se pinta en el mapa). Memoizado: sin esto el
+  // `.filter` daría un array nuevo en cada render (ej. al arrastrar el divisor) y el efecto del
+  // overlay de ruta se re-dispararía y re-encuadraría el mapa.
+  const filtradas = useMemo(
+    () =>
+      paradas.filter((p) => {
+        if (canales.size > 0 && !canales.has(p.canal)) return false
+        if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
+        if (rutas.size > 0) {
+          const ruta = rutaPorCamionId(p.camionId)
+          if (!ruta || !rutas.has(ruta.id)) return false
+        }
+        return true
+      }),
+    [paradas, canales, tipos, rutas],
+  )
 
   const hayFiltros = canales.size > 0 || tipos.size > 0 || rutas.size > 0
   const limpiar = () => {
@@ -337,91 +364,104 @@ export function PlanningView({
     }, 2000)
   }
 
-  // Contenido del panel del mapa: filtros + mapa + leyenda (con el botón Optimizar a la derecha).
+  // Contenido del panel del mapa: mapa a pantalla completa con una toolbar flotante (filtros +
+  // acciones) DENTRO del mapa. `isolate` atrapa los z-index altos de Leaflet (paneles/controles,
+  // hasta ~1000) en su propio contexto de apilado; sin esto se filtran al contexto raíz y tapan
+  // los popovers de los filtros (portalizados al body con z-50).
   const mapContent = (
-    <>
-      {/* Filtros de puntos del mapa. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <span className="text-xs font-medium text-muted-foreground">Filtrar</span>
-        <FilterMenu label="Canal" options={canalOptions} selected={canales} onToggle={toggleInSet(setCanales)} />
-        <FilterMenu label="Tipo" options={tipoOptions} selected={tipos} onToggle={toggleInSet(setTipos)} />
-        {/* El filtro por Ruta recién tiene sentido una vez optimizado (antes no hay rutas). */}
-        {optimized && (
-          <>
-            <Separator orientation="vertical" className="h-5" />
+    <div className="relative isolate min-h-0 flex-1">
+      <OrdersMap
+        paradas={filtradas}
+        routeToolEnabled={optimized}
+        showRoute={showRoute}
+        onToggleRoute={() => setShowRoute((v) => !v)}
+        onSelectionChange={onMapSelection}
+        showDetails={showDetails}
+        singleRoute={singleRoute}
+        routeColor={routeColor}
+        hideTools={readOnly}
+      />
+
+      {/* Toolbar flotante de filtros + acciones, dentro del mapa (arriba-centro). El padding
+          horizontal deja libre el MapToolbar (top-left) y el control de capas (top-right). */}
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-[1100] flex justify-center px-14">
+        <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-lg border border-border bg-background/95 px-2 py-1.5 shadow-md backdrop-blur">
+          <FilterMenu label="Canal" options={canalOptions} selected={canales} onToggle={toggleInSet(setCanales)} />
+          <FilterMenu label="Tipo" options={tipoOptions} selected={tipos} onToggle={toggleInSet(setTipos)} />
+          {/* El filtro por Ruta recién tiene sentido una vez optimizado (antes no hay rutas). En
+              solo-lectura (unificación) es UNA sola ruta → no se ofrece filtrar por ruta. */}
+          {optimized && !readOnly && (
             <FilterMenu label="Ruta" options={rutaOptions} selected={rutas} onToggle={toggleInSet(setRutas)} />
-          </>
-        )}
-        {hayFiltros && (
-          <Button variant="ghost" size="sm" className="h-8" onClick={limpiar}>
-            Limpiar
+          )}
+          {hayFiltros && (
+            <Button variant="ghost" size="sm" className="h-8" onClick={limpiar}>
+              Limpiar
+            </Button>
+          )}
+
+          <Separator orientation="vertical" className="h-5" />
+          {/* Ver detalle: etiqueta permanente (nombre + ventana horaria) bajo cada punto. */}
+          <Button
+            variant={showDetails ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => setShowDetails((v) => !v)}
+            aria-pressed={showDetails}
+            title="Ver nombre y ventana horaria sobre los puntos"
+          >
+            <Eye size={13} /> Ver detalle
           </Button>
-        )}
 
-        <Separator orientation="vertical" className="h-5" />
-        {/* Ver detalle: etiqueta permanente (nombre + ventana horaria) bajo cada punto. */}
-        <Button
-          variant={showDetails ? 'default' : 'outline'}
-          size="sm"
-          className="h-8 gap-1.5"
-          onClick={() => setShowDetails((v) => !v)}
-          aria-pressed={showDetails}
-          title="Ver nombre y ventana horaria sobre los puntos"
-        >
-          <Eye size={13} /> Ver detalle
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ml-auto size-7 shrink-0"
-          onClick={() => setMapMaximized(true)}
-          title="Maximizar mapa"
-          aria-label="Maximizar mapa"
-        >
-          <Maximize2 size={14} />
-        </Button>
-        <UnpinButton label="Mapa" side="left" onClick={unpinMap} />
+          <Separator orientation="vertical" className="h-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            onClick={() => setMapMaximized(true)}
+            title="Maximizar mapa"
+            aria-label="Maximizar mapa"
+          >
+            <Maximize2 size={14} />
+          </Button>
+          <UnpinButton label="Mapa" side="left" onClick={unpinMap} />
+        </div>
       </div>
 
-      {/* `isolate` atrapa los z-index altos de Leaflet (paneles/controles, hasta ~1000) en su
-          propio contexto de apilado; sin esto se filtran al contexto raíz y tapan los popovers
-          de los filtros (portalizados al body con z-50). */}
-      <div className="relative isolate min-h-0 flex-1">
-        <OrdersMap
-          paradas={filtradas}
-          routeToolEnabled={optimized}
-          showRoute={showRoute}
-          onToggleRoute={() => setShowRoute((v) => !v)}
-          onSelectionChange={onMapSelection}
-          showDetails={showDetails}
-        />
-        {/* Overlay de "procesando" al Optimizar (z alto para tapar los controles de Leaflet). */}
-        {optimizing && (
-          <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-            <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
-              <Loader2 size={18} className="animate-spin text-primary" />
-              <span className="text-sm font-medium">Optimizando rutas…</span>
-            </div>
+      {/* Overlay de "procesando" al Optimizar (z alto para tapar los controles de Leaflet). */}
+      {optimizing && (
+        <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
+            <Loader2 size={18} className="animate-spin text-primary" />
+            <span className="text-sm font-medium">Optimizando rutas…</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+    </div>
+  )
 
-      {/* Leyenda de canales + botón Optimizar (alineado a la derecha). */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-4 py-2.5">
-        <span className="text-xs font-medium text-muted-foreground">Canal (ícono)</span>
-        {CANAL_IDS.map((canal) => {
-          const { label, icon: Icon } = CANAL_META[canal]
-          return (
-            <span key={canal} className="flex items-center gap-1.5 text-xs">
-              <span className="flex size-5 items-center justify-center rounded-full bg-muted text-foreground">
-                <Icon size={12} />
-              </span>
-              {label}
-            </span>
-          )
-        })}
-        <Button size="sm" className="ml-auto shrink-0 gap-1.5" onClick={optimizar} disabled={optimizing || optimized}>
+  const listContent = (
+    <div className="flex min-h-0 flex-1 flex-col p-3">
+      <SortablePedidosTable
+        pedidos={pedidos}
+        state={state}
+        optimized={optimized}
+        readOnly={readOnly}
+        headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
+      />
+    </div>
+  )
+
+  return (
+    <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-0">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+        <span className="text-sm font-semibold">{scopeLabel ?? 'Plan'}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto gap-1.5"
+          onClick={optimizar}
+          disabled={optimizing || optimized}
+        >
           {optimizing ? (
             <>
               <Loader2 size={14} className="animate-spin" />
@@ -433,31 +473,11 @@ export function PlanningView({
             'Optimizar'
           )}
         </Button>
-      </div>
-    </>
-  )
-
-  const listContent = (
-    <div className="min-h-0 flex-1 overflow-auto p-3">
-      <SortablePedidosTable
-        pedidos={pedidos}
-        state={state}
-        optimized={optimized}
-        headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
-      />
-    </div>
-  )
-
-  return (
-    <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-0">
-      <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
-        <span className="text-sm font-semibold">Plan</span>
         {/* Solo se habilita una vez optimizadas las rutas: sin optimización no hay órdenes que generar. */}
         <Button
           size="sm"
-          className="ml-auto"
           disabled={!optimized}
-          title={optimized ? 'Generar órdenes de despacho' : 'Primero optimizá las rutas'}
+          title={optimized ? 'Generar órdenes de transporte' : 'Primero optimizá las rutas'}
           onClick={onNext}
         >
           Generar órdenes
@@ -470,7 +490,7 @@ export function PlanningView({
       <div ref={wrapRef} className="flex min-h-0 flex-1">
         <div
           className={cn('flex min-h-0 flex-col overflow-hidden', panelTransition)}
-          style={{ flexGrow: 0, flexShrink: 0, flexBasis: width ? mapBasis : '40%' }}
+          style={{ flexGrow: 0, flexShrink: 0, flexBasis: width ? mapBasis : '60%' }}
         >
           {mapPinned ? mapContent : <CollapsedRail title="Mapa" side="left" onPin={pinMap} />}
         </div>
@@ -489,7 +509,7 @@ export function PlanningView({
 
         <div
           className={cn('flex min-h-0 flex-col overflow-hidden', panelTransition)}
-          style={{ flexGrow: 0, flexShrink: 0, flexBasis: width ? listBasis : '60%' }}
+          style={{ flexGrow: 0, flexShrink: 0, flexBasis: width ? listBasis : '40%' }}
         >
           {listPinned ? listContent : <CollapsedRail title="Tabla" side="right" onPin={pinList} />}
         </div>
@@ -505,6 +525,9 @@ export function PlanningView({
               showRoute={showRoute}
               onToggleRoute={() => setShowRoute((v) => !v)}
               showDetails={showDetails}
+              singleRoute={singleRoute}
+              routeColor={routeColor}
+              hideTools={readOnly}
             />
           </div>
         </DialogContent>

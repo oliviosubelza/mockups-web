@@ -1,16 +1,25 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, type ReactNode } from 'react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { OrdenEstadoBadge } from '../estado-badge'
-import { cn } from '@/lib/utils' // Asumiendo que tienes esta utilidad estándar
 import {
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Card } from '@/components/ui/card'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/combobox'
 import {
   Tooltip,
   TooltipContent,
@@ -27,16 +36,18 @@ import {
 
 import {
   CanalId,
+  CHOFERES,
   ORDENES,
   PARADAS,
   PEDIDOS,
   ProductType,
   rutaPorCamionId,
+  rutaPorId,
   type EstadoOrden,
   type OrdenDespacho,
 } from '../mock-data'
 import type { BoardState } from '../types'
-import { Truck, MapPin, User, ChevronLeft, ChevronRight, Eye, MoreVertical, BellOff, SquarePen } from 'lucide-react'
+import { Truck, User, ChevronLeft, ChevronRight, MoreVertical, BellOff, SquarePen, type LucideIcon } from 'lucide-react'
 import { OrdersMap } from '../OrdersMap'
 
 interface OrdenFilters extends Record<string, unknown> {
@@ -52,7 +63,7 @@ const ESTADO_OPCIONES = [
 
 const RUTA_OPCIONES = Array.from(
   new Map(
-    ORDENES.map((o) => rutaPorCamionId(o.camionId))
+    ORDENES.map((o) => rutaPorId(o.rutaId))
       .filter((r): r is NonNullable<typeof r> => !!r)
       .map((r) => [r.nombre, r]),
   ).values(),
@@ -62,6 +73,44 @@ const filterDefs = defineFilters<OrdenFilters>([
   { type: 'select', id: 'estado', label: 'Estado', options: ESTADO_OPCIONES },
   { type: 'select', id: 'ruta', label: 'Ruta', options: RUTA_OPCIONES },
 ])
+
+/** Estilo de un campo de solo-lectura del detalle (misma altura que el input del Combobox). */
+const readonlyFieldCls =
+  'flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm'
+
+/** Minutos → "3 h 30 min" (o "45 min"). */
+const fmtDuracion = (min: number) => {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return h > 0 ? `${h} h ${m.toString().padStart(2, '0')} min` : `${m} min`
+}
+
+/** Color de la barra de carga según ocupación del camión. */
+const cargaColor = (pct: number) =>
+  pct >= 90 ? 'bg-destructive' : pct >= 75 ? 'bg-amber-500' : 'bg-primary'
+
+/** Campo etiquetado del detalle: label muted con ícono + el control/valor debajo. */
+function InfoField({
+  label,
+  icon: Icon,
+  children,
+  className,
+}: {
+  label: string
+  icon: LucideIcon
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`flex flex-col gap-1.5${className ? ` ${className}` : ''}`}>
+      <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Icon className="size-3.5" />
+        {label}
+      </span>
+      {children}
+    </div>
+  )
+}
 
 // Generamos 15 puntos de entrega de prueba para el mockup
 const MOCK_ENTREGAS = Array.from({ length: 15 }).map((_, i) => ({
@@ -79,6 +128,11 @@ export function OrdersView({ state }: { state: BoardState }) {
   // Estado para el modal
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenDespacho | null>(null)
   const [mapMaximized, setMapMaximized] = useState(false)
+  // Chofer asignado por orden (override local del mockup; arranca vacío y se asigna en el detalle).
+  const [choferPorOrden, setChoferPorOrden] = useState<Record<string, string>>({})
+  const choferDe = (o: OrdenDespacho) => choferPorOrden[o.id] || o.conductor
+  const asignarChofer = (id: string, chofer: string) =>
+    setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
   // Estado para la paginación de la tablita interna de entregas
   const [entregasPage, setEntregasPage] = useState(1)
   const [canales, setCanales] = useState<Set<CanalId>>(new Set())
@@ -102,23 +156,34 @@ export function OrdersView({ state }: { state: BoardState }) {
   })
   const ENTREGAS_PER_PAGE = 10
 
-  // Reiniciar la página a 1 cada vez que se abre una nueva orden
+  // Reiniciar la página a 1 cada vez que se abre otra orden.
   useEffect(() => {
-    if (ordenSeleccionada) {
-      setEntregasPage(1)
-    }
+    setEntregasPage(1)
   }, [ordenSeleccionada])
 
   const columns = useMemo(() => defineColumns<OrdenDespacho>([
     { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
-    { id: 'conductor', header: 'Chofer', accessorKey: 'conductor', size: 180 },
+    {
+      id: 'conductor',
+      header: 'Chofer',
+      accessorKey: 'conductor',
+      size: 180,
+      cell: (row) => {
+        const chofer = choferDe(row)
+        return chofer ? (
+          <span className="truncate">{chofer}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Sin asignar</span>
+        )
+      },
+    },
     { id: 'camionId', header: 'Camión', accessorKey: 'camionId', size: 80 },
     {
       id: 'ruta',
       header: 'Ruta',
       size: 160,
       cell: (row) => {
-        const ruta = rutaPorCamionId(row.rutaId)
+        const ruta = rutaPorId(row.rutaId)
         return (
           <span className="flex items-center gap-2">
             {ruta && <span className="size-2 shrink-0 rounded-full" style={{ background: ruta.color }} />}
@@ -126,6 +191,31 @@ export function OrdersView({ state }: { state: BoardState }) {
           </span>
         )
       },
+    },
+    {
+      id: 'carga',
+      header: 'Carga est.',
+      accessorKey: 'cargaPct',
+      size: 140,
+      cell: (row) => (
+        <div className="flex items-center text-center gap-2">
+          {/* <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full ${cargaColor(row.cargaPct)}`}
+              style={{ width: `${row.cargaPct}%` }}
+            />
+          </div>
+          <span className="tabular-nums text-xs text-muted-foreground">{row.cargaPct}%</span> */}
+          <span className="tabular-nums text-xs text-muted-foreground shrink-0">{row.cargaPct} Kg</span>
+        </div>
+      ),
+    },
+    {
+      id: 'duracion',
+      header: 'Tiempo est.',
+      accessorKey: 'duracionMin',
+      size: 120,
+      cell: (row) => <span className="tabular-nums text-muted-foreground">{fmtDuracion(row.duracionMin)}</span>,
     },
     {
       id: 'estado',
@@ -136,8 +226,8 @@ export function OrdersView({ state }: { state: BoardState }) {
     },
     {
       id: 'acciones',
-      header: 'Opciones', // Lo dejamos vacío para que quede más limpio
-      size: 60, // Hacemos la columna un poco más estrecha
+      header: 'Acciones',
+      size: 90,
       cell: (row) => (
         <div className="flex justify-center">
           <DropdownMenu>
@@ -185,19 +275,17 @@ export function OrdersView({ state }: { state: BoardState }) {
         </div>
       )
     }
-  ]), [])
+  ]), [choferPorOrden])
 
   const filtrados = ORDENES.filter(
     (o) =>
       (!filters.estado || o.estado === filters.estado) &&
-      (!filters.ruta || rutaPorCamionId(o.camionId)?.nombre === filters.ruta),
+      (!filters.ruta || rutaPorId(o.rutaId)?.nombre === filters.ruta),
   )
   const data = state === 'empty' || state === 'error' ? [] : filtrados
 
-  const rutaSeleccionada = ordenSeleccionada ? rutaPorCamionId(ordenSeleccionada.camionId) : null
-
   // Cálculos de paginación
-  const totalPages = Math.ceil(MOCK_ENTREGAS.length / ENTREGAS_PER_PAGE)
+  const totalPages = Math.max(1, Math.ceil(MOCK_ENTREGAS.length / ENTREGAS_PER_PAGE))
   const paginatedEntregas = MOCK_ENTREGAS.slice(
     (entregasPage - 1) * ENTREGAS_PER_PAGE,
     entregasPage * ENTREGAS_PER_PAGE
@@ -205,15 +293,7 @@ export function OrdersView({ state }: { state: BoardState }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground tabular-nums">{data.length}</span> órdenes de
-          despacho · una por camión de la corrida seleccionada
-        </span>
-        <Button size="sm" className="ml-auto">
-          Emitir todas
-        </Button>
-      </div>
+      <h2 className="text-sm font-semibold text-foreground">Órdenes de Transporte</h2>
 
       <DataTable
         tableId="mockup-ordenes-despacho"
@@ -222,7 +302,7 @@ export function OrdersView({ state }: { state: BoardState }) {
         getRowId={(row) => row.id}
         isLoading={state === 'loading'}
         isError={state === 'error'}
-        errorMessage="No pudimos traer las órdenes de despacho desde el servidor."
+        errorMessage="No pudimos traer las órdenes de transporte desde el servidor."
         onRetry={() => { }}
         emptyTitle="Ninguna orden coincide"
         emptyMessage="Probá quitando el estado o la ruta para ver más órdenes."
@@ -248,141 +328,143 @@ export function OrdersView({ state }: { state: BoardState }) {
           if (!open) setOrdenSeleccionada(null)
         }}
       >
-        {/* Aumenté el ancho del modal a max-w-4xl para acomodar bien la tabla */}
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <div className="flex items-center justify-between pr-6">
-              <div>
-                <DialogTitle className="text-xl">Orden de Despacho: {ordenSeleccionada?.codigo}</DialogTitle>
-                <DialogDescription>
-                  Detalles de asignación y ruta generada.
-                </DialogDescription>
+        <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+            <div className="flex items-start gap-3 pr-8">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  Orden de Transporte
+                  <span className="font-mono text-sm text-muted-foreground">{ordenSeleccionada?.codigo}</span>
+                </DialogTitle>
+                <DialogDescription>Asigná un chofer</DialogDescription>
               </div>
               {ordenSeleccionada && <OrdenEstadoBadge estado={ordenSeleccionada.estado} />}
             </div>
           </DialogHeader>
 
-          {/* Hacemos el contenido scrolleable si la pantalla es pequeña */}
-          <div className="flex-1 overflow-y-auto pr-2 mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {/* Datos de la orden: chofer editable + camión/ruta/salida (read-only). */}
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+              <InfoField label="Chofer" icon={User}>
+                <Combobox
+                  items={CHOFERES}
+                  value={ordenSeleccionada ? choferDe(ordenSeleccionada) || null : null}
+                  onValueChange={(v) =>
+                    ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')
+                  }
+                >
+                  <ComboboxInput placeholder="Buscar por nombre o código SAP…" showClear />
+                  <ComboboxContent>
+                    <ComboboxEmpty>Sin resultados</ComboboxEmpty>
+                    <ComboboxList>
+                      {(item: string) => (
+                        <ComboboxItem key={item} value={item}>
+                          {item}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </InfoField>
 
-              <Card className="p-4 flex flex-col gap-2 shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <User className="size-4" />
-                  <span className="text-sm font-semibold uppercase tracking-wider">Personal Asignado</span>
+              <InfoField label="Camión" icon={Truck}>
+                <div className={readonlyFieldCls}>
+                  <span className="font-medium text-foreground">{ordenSeleccionada?.camionId}</span>
+                  <span className="text-muted-foreground">· 15.000 kg</span>
+                  {/* Carga del camión, compacta, junto a la info del camión (mismo dato que la tabla). */}
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
+                      <span
+                        className={`block h-full rounded-full ${cargaColor(ordenSeleccionada?.cargaPct ?? 0)}`}
+                        style={{ width: `${ordenSeleccionada?.cargaPct ?? 0}%` }}
+                      />
+                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {ordenSeleccionada?.cargaPct ?? 0}%
+                    </span>
+                  </span>
                 </div>
-                <div className="text-sm">
-                  <span className="font-medium text-foreground">Chofer:</span> {ordenSeleccionada?.conductor}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  <span className="font-medium">Ayudante:</span> M. Céspedes
-                </div>
-              </Card>
+              </InfoField>
+            </div>
 
-              <Card className="p-4 flex flex-col gap-2 shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Truck className="size-4" />
-                  <span className="text-sm font-semibold uppercase tracking-wider">Vehículo</span>
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium text-foreground">Placa/Camión:</span> {ordenSeleccionada?.camionId}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  <span className="font-medium">Capacidad:</span> 15,000 kg
-                </div>
-              </Card>
-
-              <Card className="p-4 flex flex-col gap-2 shadow-sm md:col-span-2 h-[520px]">
-                {/* Cabecera del Card (Fija) */}
-                <div className="flex items-center justify-between mb-2 shrink-0">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <MapPin className="size-4" />
-                    <span className="text-sm font-semibold uppercase tracking-wider">Ruta y Entregas</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    {rutaSeleccionada && <span className="size-3 rounded-full shadow-sm" style={{ background: rutaSeleccionada.color }} />}
-                    <span className="font-medium">{rutaSeleccionada?.nombre ?? 'Ruta no asignada'}</span>
-                  </div>
-                </div>
-
-                {/* Contenedor de la Tabla (Se expande para llenar el espacio) */}
-                {/* flex-1 hace que tome el espacio sobrante, manteniendo el paginador abajo */}
-                <div className="border rounded-md bg-background flex-1 overflow-auto">
-                  <table className="w-full text-sm text-left">
-                    {/* sticky top-0 mantiene el header visible si alguna vez hay scroll */}
-                    <thead className="bg-white border-b sticky top-0 z-10">
+            {/* Paradas de la ruta. */}
+            <div className="mt-6">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-medium">Paradas</span>
+                <span className="text-sm text-muted-foreground tabular-nums">({MOCK_ENTREGAS.length})</span>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <div className="max-h-[300px] overflow-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-muted/50 text-xs text-muted-foreground">
                       <tr>
-                        <th className="px-3 py-2 font-medium w-12 text-center">#</th>
-                        <th className="px-3 py-2 font-medium">Cliente</th>
-                        <th className="px-3 py-2 font-medium hidden sm:table-cell">Dirección</th>
-                        <th className="px-3 py-2 font-medium">Horario</th>
-                        <th className="px-3 py-2 font-medium text-center">Prioridad</th>
+                        <th className="w-10 px-3 py-2 text-center font-medium">#</th>
+                        <th className="px-3 py-2 text-left font-medium">Cliente</th>
+                        <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">Dirección</th>
+                        <th className="px-3 py-2 text-left font-medium">Horario</th>
+                        <th className="px-3 py-2 text-center font-medium">Prioridad</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y">
+                    <tbody>
                       {paginatedEntregas.map((entrega) => (
-                        <tr key={entrega.id} className="hover:bg-muted/30 transition-colors h-[41px]">
-                          {/* Forzar una altura mínima por fila (h-[41px]) ayuda a la consistencia visual */}
-                          <td className="px-3 py-2 text-center font-medium tabular-nums text-muted-foreground">
+                        <tr key={entrega.id} className="border-t border-border transition-colors hover:bg-muted/30">
+                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
                             {entrega.secuencia}
                           </td>
-                          <td className="px-3 py-2 truncate max-w-[150px] font-medium">
-                            {entrega.cliente}
-                          </td>
-                          <td className="px-3 py-2 truncate max-w-[200px] text-muted-foreground hidden sm:table-cell">
+                          <td className="max-w-[200px] truncate px-3 py-2 font-medium">{entrega.cliente}</td>
+                          <td className="hidden max-w-[220px] truncate px-3 py-2 text-muted-foreground sm:table-cell">
                             {entrega.direccion}
                           </td>
-                          <td className="px-3 py-2 tabular-nums">
-                            {entrega.ventana}
-                          </td>
+                          <td className="px-3 py-2 tabular-nums">{entrega.ventana}</td>
                           <td className="px-3 py-2 text-center">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider",
-                              entrega.prioridad === 'Alta'
-                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            )}>
+                            <Badge variant={entrega.prioridad === 'Alta' ? 'destructive' : 'secondary'}>
                               {entrega.prioridad}
-                            </span>
+                            </Badge>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              </div>
 
-                {/* Controles de Paginación (Fijos al fondo) */}
-                <div className="flex items-center justify-between mt-2 px-1 shrink-0">
-                  <span className="text-xs text-muted-foreground">
-                    Mostrando {(entregasPage - 1) * ENTREGAS_PER_PAGE + 1} - {Math.min(entregasPage * ENTREGAS_PER_PAGE, MOCK_ENTREGAS.length)} de {MOCK_ENTREGAS.length} paradas
+              {/* Paginación de paradas. */}
+              <div className="mt-2 flex items-center justify-between px-1">
+                <span className="text-xs text-muted-foreground">
+                  Mostrando {(entregasPage - 1) * ENTREGAS_PER_PAGE + 1}–
+                  {Math.min(entregasPage * ENTREGAS_PER_PAGE, MOCK_ENTREGAS.length)} de {MOCK_ENTREGAS.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="h-7 w-7"
+                    onClick={() => setEntregasPage((p) => Math.max(1, p - 1))}
+                    disabled={entregasPage === 1}
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="px-2 text-xs font-medium tabular-nums">
+                    {entregasPage} / {totalPages}
                   </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      className="h-7 w-7"
-                      onClick={() => setEntregasPage(p => Math.max(1, p - 1))}
-                      disabled={entregasPage === 1}
-                    >
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <span className="text-xs font-medium px-2 tabular-nums">
-                      {entregasPage} / {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      className="h-7 w-7"
-                      onClick={() => setEntregasPage(p => Math.min(totalPages, p + 1))}
-                      disabled={entregasPage === totalPages}
-                    >
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="h-7 w-7"
+                    onClick={() => setEntregasPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={entregasPage === totalPages}
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
                 </div>
-              </Card>
+              </div>
             </div>
           </div>
+
+          <DialogFooter className="shrink-0 border-t border-border px-5 py-5">
+            <DialogClose render={<Button variant="outline">Cancelar</Button>} />
+            <Button onClick={() => setOrdenSeleccionada(null)}>Guardar cambios</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

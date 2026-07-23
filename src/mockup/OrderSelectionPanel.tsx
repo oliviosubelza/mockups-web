@@ -10,14 +10,6 @@ import { Building2, Globe, MapPin, Store, User, X, type LucideIcon } from 'lucid
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Command,
   CommandEmpty,
@@ -26,14 +18,6 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import {
   CANAL_META,
@@ -154,70 +138,13 @@ const agregar = (items: Pedido[]): Agregado => ({
   totalWeight: Number(items.reduce((acc, p) => acc + p.peso, 0).toFixed(2)),
 })
 
-// Tabla del diálogo de detalles: una fila por valor de la dimensión. `cortColumn` agrega la hora
-// de corte (solo tiene sentido para Canal).
-interface ResumenRow {
-  key: string
-  label: string
-  glyph?: ReactNode
-  corte?: string
-  agg: Agregado
-}
-function ResumenTabla({ rows, cortColumn = false }: { rows: ResumenRow[]; cortColumn?: boolean }) {
+// Indicador compacto para la fila de resumen: rótulo chico arriba, número debajo. Sin card propia
+// (van todos dentro de una misma barra), para ocupar bien el espacio horizontal.
+function Kpi({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="mt-2 overflow-hidden rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="h-8 px-2 text-xs">Detalle</TableHead>
-            <TableHead className="h-8 px-2 text-right text-xs">Pedidos</TableHead>
-            <TableHead className="h-8 px-2 text-right text-xs">Clientes</TableHead>
-            <TableHead className="h-8 px-2 text-right text-xs">Monto (Bs)</TableHead>
-            <TableHead className="h-8 px-2 text-right text-xs">Peso (kg)</TableHead>
-            {cortColumn && <TableHead className="h-8 px-2 text-right text-xs">Corte</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={cortColumn ? 6 : 5}
-                className="px-2 py-6 text-center text-xs text-muted-foreground"
-              >
-                Nada seleccionado en esta dimensión.
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((r) => (
-              <TableRow key={r.key}>
-                <TableCell className="px-2 py-1.5 text-xs">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {r.glyph}
-                    <span className="truncate">{r.label}</span>
-                  </span>
-                </TableCell>
-                <TableCell className="px-2 py-1.5 text-right text-xs tabular-nums">
-                  {r.agg.countOrders}
-                </TableCell>
-                <TableCell className="px-2 py-1.5 text-right text-xs tabular-nums">
-                  {r.agg.countCustomers}
-                </TableCell>
-                <TableCell className="px-2 py-1.5 text-right text-xs font-medium tabular-nums">
-                  {fmtMoneda.format(r.agg.total)}
-                </TableCell>
-                <TableCell className="px-2 py-1.5 text-right text-xs tabular-nums">
-                  {fmtPeso.format(r.agg.totalWeight)}
-                </TableCell>
-                {cortColumn && (
-                  <TableCell className="px-2 py-1.5 text-right text-xs tabular-nums">
-                    {r.corte}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <div className="flex flex-col justify-center" title={title}>
+      <span className="text-[11px] leading-tight text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold leading-tight tabular-nums">{value}</span>
     </div>
   )
 }
@@ -304,6 +231,90 @@ const columns = defineColumns<Pedido>([
   },
 ])
 
+// Fila del resumen POR CANAL (una por canal activo). Se muestra en la vista Resumen usando el
+// mismo DataTable que la tabla de fuera de corte, pero acá NO se selecciona: solo se reordenan
+// filas (drag) y columnas.
+interface CanalResumenRow {
+  id: CanalId
+  canal: CanalId
+  countOrders: number
+  countCustomers: number
+  total: number
+  totalWeight: number
+  corte: string
+}
+
+const canalResumenColumns = defineColumns<CanalResumenRow>([
+  {
+    id: 'canal',
+    header: 'Canal',
+    accessorKey: 'canal',
+    size: 150,
+    cell: (row) => {
+      const meta = CANAL_META[row.canal]
+      return (
+        <span className="flex min-w-0 items-center gap-1.5" title={meta.label}>
+          <span className="shrink-0" style={{ color: meta.color }}>
+            <CanalGlyph canal={row.canal} size={15} />
+          </span>
+          <span className="truncate">{meta.label}</span>
+        </span>
+      )
+    },
+  },
+  {
+    id: 'countOrders',
+    header: 'Pedidos',
+    accessorKey: 'countOrders',
+    size: 90,
+    meta: { align: 'right' },
+    cell: (row) => <span className="tabular-nums">{row.countOrders}</span>,
+  },
+  {
+    id: 'countCustomers',
+    header: 'Clientes',
+    accessorKey: 'countCustomers',
+    size: 90,
+    meta: { align: 'right' },
+    cell: (row) => <span className="tabular-nums">{row.countCustomers}</span>,
+  },
+  {
+    id: 'total',
+    header: 'Monto (Bs)',
+    accessorKey: 'total',
+    size: 112,
+    meta: { align: 'right' },
+    cell: (row) => <span className="font-medium tabular-nums">{fmtMoneda.format(row.total)}</span>,
+  },
+  {
+    id: 'totalWeight',
+    header: 'Peso (kg)',
+    accessorKey: 'totalWeight',
+    size: 100,
+    meta: { align: 'right' },
+    cell: (row) => <span className="tabular-nums">{fmtPeso.format(row.totalWeight)}</span>,
+  },
+  {
+    id: 'corte',
+    header: 'Corte',
+    accessorKey: 'corte',
+    size: 80,
+    meta: { align: 'right' },
+    cell: (row) => <span className="tabular-nums">{row.corte}</span>,
+  },
+])
+
+// Mueve `activeId` a la posición de `overId` dentro de un array (para el drag de filas).
+function moveInArray<T>(arr: T[], activeId: T, overId: T): T[] {
+  const from = arr.indexOf(activeId)
+  const to = arr.indexOf(overId)
+  if (from === -1 || to === -1 || from === to) return arr
+  const copy = [...arr]
+  const [moved] = copy.splice(from, 1)
+  copy.splice(to, 0, moved)
+  return copy
+}
+
 export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const activeCanales = useDispatchPlanStore((s) => s.activeCanales)
   const activeCiudades = useDispatchPlanStore((s) => s.activeCiudades)
@@ -343,8 +354,11 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
 
   // El filtro de Entrega arranca por defecto en MAÑANA (inicio=fin=día siguiente).
   const [filters, setFilters] = useState<Partial<PedidoFilters>>(() => mananaRange())
-  // Abre/cierra el diálogo con el resumen por dimensión (antes tabla inline).
-  const [detallesOpen, setDetallesOpen] = useState(false)
+  // Vista del listado: 'resumen' (agregado de todo lo que entra al plan) es lo PRIMERO que se ve;
+  // 'tabla' muestra los pedidos fuera de corte, uno por fila, para tildarlos a mano.
+  const [viewMode, setViewMode] = useState<'resumen' | 'tabla'>('resumen')
+  // Orden de las filas del resumen por canal (drag-and-drop). Arranca en el orden natural de canales.
+  const [canalRowOrder, setCanalRowOrder] = useState<CanalId[]>(CANAL_IDS)
 
   // Ver nota en FleetCapacityPanel: el DataTable arranca su selección interna en `{}` al MONTAR;
   // se ignora ese primer aviso para no pisar `selectedFueraOrderIds` ya guardado en el store.
@@ -365,14 +379,6 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
     (activeZonas.length === 0 || activeZonas.includes(zonaDe(p))) &&
     (activeVendedores.length === 0 || activeVendedores.includes(p.vendedor))
 
-  // Total de selecciones (todas las dimensiones) → contador del botón "Ver detalles".
-  const totalSeleccionados =
-    activeCanales.length +
-    activeCiudades.length +
-    activeMercados.length +
-    activeZonas.length +
-    activeVendedores.length
-
   // Solo se listan los pedidos de canales ACTIVOS que además pasen los filtros de narrowing.
   const canalesActivos = CANAL_IDS.filter((c) => activeCanales.includes(c))
   const pedidos = PEDIDOS.filter(
@@ -387,6 +393,11 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const incluidos = pedidos.filter(
     (p) => dentroDelCorte(p, CANAL_META[p.canal].timeOff) || selectedFueraOrderIds.includes(p.id),
   )
+
+  // Agregado global de la vista Resumen: todo lo que entra al plan. Se separa cuántos vienen
+  // fuera del corte y cuántos de esos el usuario ya tildó a mano.
+  const totalIncluidos = agregar(incluidos)
+  const fueraSeleccionados = fuera.filter((p) => selectedFueraOrderIds.includes(p.id))
 
   // Resumen del card POR CANAL: cuenta lo que efectivamente entra al plan = las órdenes dentro del
   // corte (automáticas) + las de fuera del corte que el usuario tildó en la tabla.
@@ -405,10 +416,21 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
     }
   }
 
-  // Valores a mostrar por dimensión en el diálogo: si hay selección, esos; si no, los presentes en
-  // el conjunto incluido (así el detalle informa aunque el filtro no esté acotado).
-  const presentes = <T,>(sel: T[], all: T[], keyFn: (p: Pedido) => T): T[] =>
-    sel.length > 0 ? sel : all.filter((v) => incluidos.some((p) => keyFn(p) === v))
+  // Filas del resumen por canal, en el orden elegido por el usuario (drag). Solo canales activos.
+  const canalResumenRows: CanalResumenRow[] = canalRowOrder
+    .filter((c) => canalesActivos.includes(c))
+    .map((canal) => {
+      const resumen = resumenPorCanal(canal)
+      return {
+        id: canal,
+        canal,
+        countOrders: resumen.countOrders,
+        countCustomers: resumen.countCustomers,
+        total: resumen.total,
+        totalWeight: resumen.totalWeight,
+        corte: CANAL_META[canal].timeOff,
+      }
+    })
 
   const sinSeleccion = activeCanales.length === 0
 
@@ -473,24 +495,6 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           emptyText="Sin vendedores"
           options={VENDEDORES.map((v) => ({ value: v, label: v }))}
         />
-
-        <div className="flex-1" />
-
-        {/* "Ver detalles": resumen por dimensión (pestañas) de lo YA aplicado. Su contador suma las
-            selecciones aplicadas (no el draft). */}
-        {totalSeleccionados > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 gap-1.5"
-            onClick={() => setDetallesOpen(true)}
-          >
-            Ver detalles
-            <span className="flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
-              {totalSeleccionados}
-            </span>
-          </Button>
-        )}
       </div>
 
       {/* DISEÑO ANTERIOR (comentado, no borrado): buscador de canal único + chips horizontales
@@ -521,132 +525,120 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
       </div>
       */}
 
-      {/* Resumen por dimensión en un diálogo con pestañas: una fila por valor con lo que entra al
-          plan (pedidos/clientes/monto/peso). El canal suma su hora de corte. */}
-      <Dialog open={detallesOpen} onOpenChange={setDetallesOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Resumen de la selección</DialogTitle>
-          </DialogHeader>
-          {/* flex-col forzado: base-ui emite data-orientation (no data-horizontal), así que la
-              variante del componente no apila lista+contenido. Lo forzamos acá. */}
-          <Tabs defaultValue="ciudad" className="flex-col gap-3">
-            <TabsList>
-              <TabsTrigger value="ciudad">Ciudad</TabsTrigger>
-              <TabsTrigger value="canal">Canal</TabsTrigger>
-              <TabsTrigger value="mercado">Mercado</TabsTrigger>
-              <TabsTrigger value="zona">Zona</TabsTrigger>
-              <TabsTrigger value="vendedor">Vendedor</TabsTrigger>
-            </TabsList>
 
-            <TabsContent value="ciudad">
-              <ResumenTabla
-                rows={presentes<CiudadId>(activeCiudades, CIUDAD_IDS, ciudadDe).map((c) => ({
-                  key: c,
-                  label: CIUDAD_META[c].label,
-                  agg: agregar(incluidos.filter((p) => ciudadDe(p) === c)),
-                }))}
+      {/* Selector de vista: Resumen (agregado de todo lo que entra al plan) vs Tabla (pedidos
+          fuera de corte, uno por fila para tildar a mano). */}
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="inline-flex rounded-md border border-border/60 p-0.5">
+          {(['resumen', 'tabla'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              className={cn(
+                'rounded px-3 py-1 text-xs font-medium transition-colors',
+                viewMode === mode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {mode === 'resumen' ? 'Resumen' : 'Seleccionar fuera de corte'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {viewMode === 'resumen' ? (
+        // ── Vista RESUMEN: agregado global + desglose por canal ─────────────────────────────────
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+          {sinSeleccion ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center">
+              <p className="text-sm font-medium">Elegí un canal</p>
+              <p className="text-xs text-muted-foreground">
+                Seleccioná uno o más canales arriba para ver el resumen.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Todas las métricas en UNA barra compacta, separadas por divisores. La de fuera de
+                  corte seleccionados vive acá al lado y se suma con lo tildado en la tabla. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-2">
+                <Kpi label="Pedidos" value={String(totalIncluidos.countOrders)} />
+                <Kpi label="Clientes" value={String(totalIncluidos.countCustomers)} />
+                <Kpi label="Monto" value={fmtMoneda.format(totalIncluidos.total)} />
+                <Kpi label="Peso" value={`${fmtPeso.format(totalIncluidos.totalWeight)} kg`} />
+                <Kpi
+                  label="Fuera de corte"
+                  value={String(fueraSeleccionados.length)}
+                  title="Pedidos fuera de corte seleccionados"
+                />
+              </div>
+              <DataTable
+                tableId="mockup-resumen-canal"
+                columns={canalResumenColumns}
+                data={canalResumenRows}
+                getRowId={(row) => row.id}
+                emptyTitle="Sin canales"
+                emptyMessage="Seleccioná un canal para ver el desglose."
+                bodyMinHeight={160}
+                // Reordenar filas (drag) y columnas — no hay selección ni búsqueda acá.
+                enableRowReorder
+                onRowReorder={(activeId, overId) =>
+                  setCanalRowOrder((prev) =>
+                    moveInArray(prev, activeId as CanalId, overId as CanalId),
+                  )
+                }
               />
-            </TabsContent>
-
-            {/* Canal: incluye columna de corte y el glifo del canal. */}
-            <TabsContent value="canal">
-              <ResumenTabla
-                cortColumn
-                rows={canalesActivos.map((canal) => {
-                  const resumen = resumenPorCanal(canal)
-                  return {
-                    key: canal,
-                    label: CANAL_META[canal].label,
-                    glyph: (
-                      <span className="shrink-0" style={{ color: CANAL_META[canal].color }}>
-                        <CanalGlyph canal={canal} size={14} />
-                      </span>
-                    ),
-                    corte: CANAL_META[canal].timeOff,
-                    agg: {
-                      countOrders: resumen.countOrders,
-                      countCustomers: resumen.countCustomers,
-                      total: resumen.total,
-                      totalWeight: resumen.totalWeight,
-                    },
-                  }
-                })}
+            </>
+          )}
+        </div>
+      ) : (
+        // ── Vista TABLA: pedidos fuera de corte, uno por fila ───────────────────────────────────
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <span className="text-xs text-muted-foreground">
+            Seleccionar las órdenes que se desea que entren a planificación.
+          </span>
+          <DataTable
+            tableId={`mockup-canales-fuera-${state}`}
+            columns={columns}
+            data={fuera}
+            getRowId={(row) => row.id}
+            isLoading={state === 'loading'}
+            isError={state === 'error'}
+            errorMessage="No pudimos traer los pedidos pendientes."
+            onRetry={() => {}}
+            emptyTitle={sinSeleccion ? 'Elegí un canal' : 'Nada fuera del corte'}
+            emptyMessage={
+              sinSeleccion
+                ? 'Seleccioná uno o más canales arriba para traer sus pedidos.'
+                : 'Todos los pedidos de los canales elegidos entran dentro del corte.'
+            }
+            fillHeight
+            selectable
+            // Tinte MUY tenue (color del ícono de ecommerce, opacidad baja) para distinguir esas filas
+            // sin gritar. Subir la opacidad (/10, /15) si se quiere más marcado.
+            rowClassName={(p) => (p.canal === 'ecommerce' ? 'bg-[#db2777]/5' : '')}
+            onSelectionChange={(rows) => {
+              if (skipFirstSelection.current) {
+                skipFirstSelection.current = false
+                return
+              }
+              setSelectedFuera(rows.map((r) => r.id))
+            }}
+            searchable
+            searchPlaceholder="Buscar por cliente o pedido…"
+            clientPagination
+            defaultPageSize={8}
+            filterBar={
+              <FilterBar
+                defs={filterDefs}
+                values={filters}
+                onChange={(u) => setFilters((prev) => ({ ...prev, ...u }))}
               />
-            </TabsContent>
-
-            <TabsContent value="mercado">
-              <ResumenTabla
-                rows={presentes<MercadoId>(activeMercados, MERCADO_IDS, mercadoDe).map((m) => ({
-                  key: m,
-                  label: MERCADO_META[m].label,
-                  agg: agregar(incluidos.filter((p) => mercadoDe(p) === m)),
-                }))}
-              />
-            </TabsContent>
-
-            <TabsContent value="zona">
-              <ResumenTabla
-                rows={presentes<ZonaId>(activeZonas, ZONA_IDS, zonaDe).map((z) => ({
-                  key: z,
-                  label: ZONA_META[z].label,
-                  agg: agregar(incluidos.filter((p) => zonaDe(p) === z)),
-                }))}
-              />
-            </TabsContent>
-
-            <TabsContent value="vendedor">
-              <ResumenTabla
-                rows={presentes<string>(activeVendedores, VENDEDORES, (p) => p.vendedor).map((v) => ({
-                  key: v,
-                  label: v,
-                  agg: agregar(incluidos.filter((p) => p.vendedor === v)),
-                }))}
-              />
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
-      <DataTable
-        tableId={`mockup-canales-fuera-${state}`}
-        columns={columns}
-        data={fuera}
-        getRowId={(row) => row.id}
-        isLoading={state === 'loading'}
-        isError={state === 'error'}
-        errorMessage="No pudimos traer los pedidos pendientes."
-        onRetry={() => {}}
-        emptyTitle={sinSeleccion ? 'Elegí un canal' : 'Nada fuera del corte'}
-        emptyMessage={
-          sinSeleccion
-            ? 'Seleccioná uno o más canales arriba para traer sus pedidos.'
-            : 'Todos los pedidos de los canales elegidos entran dentro del corte.'
-        }
-        fillHeight
-        selectable
-        // Tinte MUY tenue (color del ícono de ecommerce, opacidad baja) para distinguir esas filas
-        // sin gritar. Subir la opacidad (/10, /15) si se quiere más marcado.
-        rowClassName={(p) => (p.canal === 'ecommerce' ? 'bg-[#db2777]/5' : '')}
-        onSelectionChange={(rows) => {
-          if (skipFirstSelection.current) {
-            skipFirstSelection.current = false
-            return
-          }
-          setSelectedFuera(rows.map((r) => r.id))
-        }}
-        searchable
-        searchPlaceholder="Buscar por cliente o pedido…"
-        clientPagination
-        defaultPageSize={8}
-        filterBar={
-          <FilterBar
-            defs={filterDefs}
-            values={filters}
-            onChange={(u) => setFilters((prev) => ({ ...prev, ...u }))}
+            }
           />
-        }
-      />
+        </div>
+      )}
     </div>
   )
 }

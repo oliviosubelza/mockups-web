@@ -64,3 +64,26 @@ export function buildRouteOverlay(
   }
   return { polylines, markers }
 }
+
+/**
+ * Overlay de UNA sola ruta por TODAS las paradas dadas (unificación): depósito → paradas en orden
+ * vecino-más-cercano → depósito, en un único trazo del color del camión. Es el caso "unifiqué varias
+ * órdenes en un camión": ya no hay 4 rutas, hay 1 con todos sus puntos de entrega.
+ */
+export function buildSingleRouteOverlay(
+  paradas: Parada[],
+  color: string,
+): { polylines: OverlayPolyline[]; markers: OverlayMarker[] } {
+  const depot: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
+  const ordered = nearestOrder(depot, paradas)
+  const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
+  return {
+    polylines: [{ id: 'route-unified', path, color }],
+    markers: ordered.map((s, i) => ({
+      id: `seq-unified-${s.id}`,
+      position: [s.lat, s.lng],
+      color,
+      label: `#${i + 1} · ${s.cliente}`,
+    })),
+  }
+}

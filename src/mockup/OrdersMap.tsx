@@ -22,6 +22,7 @@ import { SelectionLayer, type MapTool } from './map/SelectionLayer'
 import { useOverlayStore } from './map/overlay-store'
 import { parseRouteOptimization } from './map/geo/polyline'
 import { SAMPLE_ROUTE_OPTIMIZATION } from './map/sample-route'
+import { buildSingleRouteOverlay } from './map/route-optimizer'
 
 const SIN_CAMION = '#94a3b8'
 const SELECCION = '#2563eb'
@@ -111,6 +112,9 @@ export function OrdersMap({
   showRoute = false,
   onToggleRoute,
   showDetails = false,
+  singleRoute = false,
+  routeColor = SELECCION,
+  hideTools = false,
 }: {
   paradas: Parada[]
   onSelectionChange?: (ids: string[]) => void
@@ -121,6 +125,15 @@ export function OrdersMap({
   onToggleRoute?: () => void
   /** Muestra bajo cada punto el nombre + ventana horaria. Controlado desde la barra de filtros. */
   showDetails?: boolean
+  /**
+   * Modo UNIFICACIÓN: en vez de la ruta de ejemplo (varias polilíneas), dibuja UNA sola ruta por
+   * todas las paradas dadas (depósito → vecino-más-cercano → depósito). Es "unifiqué en un camión".
+   */
+  singleRoute?: boolean
+  /** Color de la ruta única (default: el azul de selección). */
+  routeColor?: string
+  /** Oculta la toolbar de herramientas (pan/selección/dibujo). Modo solo-lectura (ej. unificación). */
+  hideTools?: boolean
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -146,12 +159,15 @@ export function OrdersMap({
     onSelectionChange?.([])
   }, [onSelectionChange])
 
-  // Siembra (o limpia) el overlay de ruta de ejemplo según `showRoute` (controlado desde Optimizar).
-  // OverlayLayer lo encuadra con fitBounds. No calcula nada: usa la respuesta de ejemplo.
+  // Siembra (o limpia) el overlay de ruta según `showRoute` (controlado desde Optimizar). En modo
+  // unificación arma UNA ruta por las paradas reales; si no, usa la respuesta de EJEMPLO (varias).
   useEffect(() => {
-    if (showRoute) setOverlay(overlayDemo())
-    else clearOverlay()
-  }, [showRoute, setOverlay, clearOverlay])
+    if (!showRoute) {
+      clearOverlay()
+      return
+    }
+    setOverlay(singleRoute ? buildSingleRouteOverlay(paradas, routeColor) : overlayDemo())
+  }, [showRoute, singleRoute, paradas, routeColor, setOverlay, clearOverlay])
 
   return (
     <div className="relative h-full w-full">
@@ -211,16 +227,19 @@ export function OrdersMap({
       </MapContainer>
 
       {/* Hermano del MapContainer (no una capa de Leaflet): sus clics no llegan al mapa, y con
-          z-[1000] queda por encima de los tiles y de los controles internos. */}
-      <MapToolbar
-        activeTool={activeTool}
-        onToolChange={setActiveTool}
-        onClear={handleClear}
-        selectedCount={selectedIds.length}
-        showRouteTool={routeToolEnabled}
-        demoActive={showRoute}
-        onToggleDemo={onToggleRoute ?? (() => {})}
-      />
+          z-[1000] queda por encima de los tiles y de los controles internos. En modo solo-lectura
+          (unificación) no se muestra: no se permite mover/seleccionar nada. */}
+      {!hideTools && (
+        <MapToolbar
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          onClear={handleClear}
+          selectedCount={selectedIds.length}
+          showRouteTool={routeToolEnabled}
+          demoActive={showRoute}
+          onToggleDemo={onToggleRoute ?? (() => {})}
+        />
+      )}
     </div>
   )
 }

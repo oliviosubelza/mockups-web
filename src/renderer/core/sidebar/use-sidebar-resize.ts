@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { electronTabStorage } from '@/lib/storage/tab-storage'
 import { StorageKeys } from '@/lib/storage/keys'
 
-export const SIDEBAR_WIDTH_DEFAULT = 240
+export const SIDEBAR_WIDTH_DEFAULT = 158
 export const SIDEBAR_WIDTH_MIN = 48
 export const SIDEBAR_WIDTH_MAX = SIDEBAR_WIDTH_DEFAULT
 export const SIDEBAR_ICON_THRESHOLD = 72

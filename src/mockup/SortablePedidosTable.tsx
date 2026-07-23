@@ -41,6 +41,7 @@ export function SortablePedidosTable({
   optimized = false,
   onRetry = () => {},
   headerActions,
+  readOnly = false,
 }: {
   pedidos: Pedido[]
   state: BoardState
@@ -53,7 +54,15 @@ export function SortablePedidosTable({
   onRetry?: () => void
   /** Acciones a la derecha de la barra de filtros (ej. el botón de contraer el panel). */
   headerActions?: React.ReactNode
+  /**
+   * Flujo de UNIFICACIÓN: es UNA sola ruta, así que no se separa por rutas ni hay "Mover a ruta" ni
+   * "Seleccionar". SÍ se permite REORDENAR la secuencia (cambiar de posición). Solo se listan los
+   * puntos de entrega unificados.
+   */
+  readOnly?: boolean
 }) {
+  // Con solo-lectura NO se separa por rutas aunque esté optimizado (es una sola ruta unificada).
+  const showRoutes = optimized && !readOnly
   const [order, setOrder] = useState<string[]>(() => pedidos.map((p) => p.id))
   const [removed, setRemoved] = useState<Set<string>>(new Set()) // pedidos quitados del plan (mockup)
   const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map()) // override de "Mover a"
@@ -99,8 +108,8 @@ export function SortablePedidosTable({
   // Pedidos de la ruta activa (solo importa una vez optimizado).
   const rutaPedidos = planPedidos.filter((p) => efectivaRutaId(p.id) === rutaSel)
 
-  // Lo que ve la tabla: sin optimizar → TODOS los puntos de entrega; optimizado → los de la ruta activa.
-  const data = optimized ? rutaPedidos : planPedidos
+  // Lo que ve la tabla: sin rutas → TODOS los puntos de entrega; con rutas → los de la ruta activa.
+  const data = showRoutes ? rutaPedidos : planPedidos
 
   // ── Acciones ──
   // Reordenar por drag: el DataTable avisa qué fila se soltó sobre cuál; aplicamos el movimiento al
@@ -153,7 +162,7 @@ export function SortablePedidosTable({
           enableResizing: false,
           cell: (row, index) => {
             // El punto de color de ruta solo tiene sentido una vez optimizado (antes no hay rutas).
-            const color = optimized ? RUTAS.find((r) => r.id === efectivaRutaId(row.id))?.color : undefined
+            const color = showRoutes ? RUTAS.find((r) => r.id === efectivaRutaId(row.id))?.color : undefined
             return (
               <span className="inline-flex items-center gap-1.5">
                 {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />}
@@ -192,19 +201,19 @@ export function SortablePedidosTable({
         // { id: 'vendedor', header: 'Vendedor', accessorKey: 'vendedor', size: 150, enableSorting: false },
       ]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rutaPorPedido, optimized],
+    [rutaPorPedido, showRoutes],
   )
 
   // ── Acciones por fila (kebab): mover a ruta (solo optimizado) + quitar. Reordenar es por drag. ──
   const rowActions = (row: Pedido): RowAction<Pedido>[] => [
-    ...(optimized
+    ...(showRoutes
       ? RUTAS.filter((r) => r.id !== efectivaRutaId(row.id)).map((r) => ({
           label: `Mover a ${r.nombre}`,
           icon: Route,
           onClick: () => moverARuta([row.id], r.id),
         }))
       : []),
-    { label: 'Quitar', icon: Trash2, variant: 'destructive' as const, separator: optimized, onClick: () => quitar([row.id]) },
+    { label: 'Quitar', icon: Trash2, variant: 'destructive' as const, separator: showRoutes, onClick: () => quitar([row.id]) },
   ]
 
   // ── Acciones masivas (barra de selección): quitar del plan. ──
@@ -215,7 +224,7 @@ export function SortablePedidosTable({
   // Select de ruta + toggles (Seleccionar / Reordenar) + acciones del panel — en la barra de filtros.
   const filterBar = (
     <div className="flex flex-1 items-center gap-2">
-      {optimized ? (
+      {showRoutes ? (
         <>
       <span className="text-xs font-medium text-muted-foreground">Ruta</span>
       <Select value={rutaSel} onValueChange={(v) => v && setRutaSel(v)}>
@@ -263,17 +272,21 @@ export function SortablePedidosTable({
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        <Button
-          variant={selectMode ? 'default' : 'outline'}
-          size="sm"
-          className="h-8 gap-1.5"
-          onClick={toggleSelect}
-          aria-pressed={selectMode}
-          title="Seleccionar pedidos"
-        >
-          <ListChecks size={14} />
-          {selectMode ? 'Listo' : 'Seleccionar'}
-        </Button>
+        {/* Solo-lectura (unificación): se oculta "Seleccionar", pero SÍ se permite REORDENAR la
+            secuencia de paradas (cambiar de posición arrastrando). */}
+        {!readOnly && (
+          <Button
+            variant={selectMode ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={toggleSelect}
+            aria-pressed={selectMode}
+            title="Seleccionar pedidos"
+          >
+            <ListChecks size={14} />
+            {selectMode ? 'Listo' : 'Seleccionar'}
+          </Button>
+        )}
         <Button
           variant={editMode ? 'default' : 'outline'}
           size="sm"
@@ -302,14 +315,14 @@ export function SortablePedidosTable({
       onRetry={onRetry}
       emptyTitle="Sin puntos de entrega"
       emptyMessage={
-        optimized
+        showRoutes
           ? 'Esta ruta no tiene puntos de entrega.'
           : 'Todavía no hay puntos de entrega para planificar.'
       }
-      bodyMinHeight={320}
+      fillHeight
       clientPagination
       defaultPageSize={10}
-      selectable={selectMode}
+      selectable={!readOnly && selectMode}
       enableRowReorder={editMode}
       onRowReorder={onRowReorder}
       searchable

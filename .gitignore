@@ -5,3 +5,8 @@ dist
 .DS_Store
 .claude
 .atl
+*.sql
+*.puml
+format.*
+*.zip
+diagrams

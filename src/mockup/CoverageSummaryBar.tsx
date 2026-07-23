@@ -3,7 +3,7 @@
 // volumen y peso. Es de SOLO LECTURA — no calcula ni sugiere selección, solo informa si la
 // selección actual alcanza. Vive ARRIBA del split de paneles (no dentro de uno) para no sesgar su
 // visibilidad hacia un lado.
-import { AlertTriangle, ArrowLeft, CheckCircle2, Truck } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Truck } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,10 @@ import {
 } from './dispatch-plan-store'
 
 const fmt = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
+
+// Tiempo de recorrido estimado por camión. Placeholder VISUAL: el promedio real dependería del
+// canal, pero todavía no hay una fuente definida para ese dato, así que se fija en 8 h/camión.
+const HORAS_POR_CAMION = 8
 
 /**
  * Barra de cobertura de un recurso (volumen o peso). El relleno representa cuánto de la capacidad
@@ -101,15 +105,31 @@ export function CoverageSummaryBar({
   const eligibles = CAMIONES.filter((c) => c.estado === 'disponible').length
   const puedeAvanzar = selectedTruckIds.length > 0 && activeCanales.length > 0
   const neededPesoTon = kgToTons(needed.pesoKg)
+  const tiempoTotalHoras = selectedTruckIds.length * HORAS_POR_CAMION
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {/* Compacto: "2 / N camiones". El detalle (seleccionados / elegibles) vive en el tooltip
+          para dejar espacio a la métrica de tiempo. */}
+      <span
+        className="flex items-center gap-1 text-xs text-muted-foreground"
+        title={`${selectedTruckIds.length} seleccionados de ${eligibles} elegibles`}
+      >
         <Truck size={14} className="text-foreground" />
-        Camiones:{' '}
-        <span className="font-semibold text-foreground tabular-nums">{selectedTruckIds.length}</span>{' '}
-        seleccionados de{' '}
-        <span className="font-medium text-foreground tabular-nums">{eligibles}</span> elegibles
+        <span className="font-semibold text-foreground tabular-nums">{selectedTruckIds.length}</span>
+        <span className="text-muted-foreground/60">/</span>
+        <span className="tabular-nums">{eligibles}</span>
+        camiones
+      </span>
+
+      {/* Tiempo de recorrido estimado (placeholder visual, 8 h/camión). */}
+      <span
+        className="flex items-center gap-1 text-xs text-muted-foreground"
+        title={`Estimado a ${HORAS_POR_CAMION} h por camión (promedio pendiente de definir por canal)`}
+      >
+        <Clock size={14} className="text-foreground" />
+        <span className="font-semibold text-foreground tabular-nums">{tiempoTotalHoras} h</span>
+        <span className="text-[11px] text-muted-foreground/80">≈{HORAS_POR_CAMION} h/camión</span>
       </span>
 
       <CoverageBar

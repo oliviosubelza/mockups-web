@@ -34,7 +34,6 @@ import { useEntitled } from '@/core/entitlements'
 import { useIsEnabled } from '@/core/enablement'
 import { resolveContribLabel } from '@/core/i18n'
 import type { RouteConfig } from '@/core/routing/types'
-import logo from './logo.jpeg'
 
 type TFn = (key: string, opts?: Record<string, unknown>) => string
 
@@ -373,16 +372,10 @@ function IconMenuActionItem({ item }: { item: ResolvedMenuItem }) {
  * íconos alineados.
  */
 function SidebarBrand({ iconOnly }: { iconOnly: boolean }) {
+  if (iconOnly) return null
   return (
-    <div className={cn('flex items-center py-1', iconOnly ? 'justify-center px-0' : 'gap-2 px-1')}>
-      <img
-        src={logo}
-        alt="Logistics"
-        className={cn('shrink-0 rounded-sm object-contain', iconOnly ? 'h-8 w-8' : 'h-9 w-auto')}
-      />
-      {!iconOnly && (
-        <span className="truncate font-display text-base font-semibold tracking-tight">Logistics</span>
-      )}
+    <div className="flex items-center gap-2 px-1 py-1">
+      <span className="truncate font-display text-base font-semibold tracking-tight">Logistics</span>
     </div>
   )
 }
