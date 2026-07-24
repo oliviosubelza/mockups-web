@@ -164,6 +164,7 @@ function OrdenRow({
 export function OrdenesTransporteView() {
   const [ordenes, setOrdenes] = useState<OrdenTransporte[]>(ORDENES_TRANSPORTE)
   const [procesando, setProcesando] = useState<boolean>(false)
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
 
   const [filters, setFilters] = useState<Partial<OrdenFilters>>({})
   // Conjunto de trabajo de la unificación (todas las órdenes elegidas). null = diálogo cerrado.
@@ -190,22 +191,25 @@ export function OrdenesTransporteView() {
     [filters, ordenes],
   )
 
-  const processTransportOrder = useCallback(async (transportOrder: OrdenTransporte) => {
-    setProcesando(true)
-
-    // Simulamos los 2 segundos de proceso
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    setOrdenes((prevOrdenes) =>
-      prevOrdenes.map((orden) =>
-        orden.id === transportOrder.id
-          ? { ...orden, estado: 'procesado' } // Asegúrate de que este estado exista en tu EstadoOrden
-          : orden,
-      ),
-    )
-
-    setProcesando(false)
-  }, [])
+  const processTransportOrder = async (transportOrder: OrdenTransporte) => {
+    setProcessingIds((prev) => new Set(prev).add(transportOrder.id))
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      setOrdenes((prevOrdenes) =>
+        prevOrdenes.map((orden) =>
+          orden.id === transportOrder.id
+            ? { ...orden, estado: 'procesado' }
+            : orden,
+        ),
+      )
+    } finally {
+      setProcessingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(transportOrder.id)
+        return next
+      })
+    }
+  }
 
   const columns = useMemo(() => defineColumns<OrdenTransporte>([
     { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
@@ -353,6 +357,7 @@ export function OrdenesTransporteView() {
         columns={columns}
         data={data}
         getRowId={(row) => row.id}
+        isCellLoading={(orden) => processingIds.has(orden.id)}
         emptyTitle="Sin órdenes"
         emptyMessage="Ninguna orden de transporte coincide con los filtros."
         fillHeight
