@@ -218,6 +218,18 @@ export interface DataTableProps<T extends object> {
 	// Estado
 	isLoading?: boolean;
 	isError?: boolean;
+	/**
+	 * Skeleton por FILA: cuando devuelve true, TODAS las celdas de esa fila se pintan como skeleton
+	 * (mismo estilo que el skeleton global de `isLoading`, pero acotado a la fila). Útil para marcar
+	 * una fila "guardando/actualizando" sin bloquear ni recargar el resto de la tabla.
+	 */
+	isRowLoading?: (row: T) => boolean;
+	/**
+	 * Skeleton por CELDA: cuando devuelve true, esa celda puntual (fila + columna) se pinta como
+	 * skeleton. Se combina con `isRowLoading` (basta que UNA de las dos sea true). Ej.: cargar solo
+	 * la columna 'chofer' mientras se asigna, dejando el resto de la fila visible.
+	 */
+	isCellLoading?: (row: T, columnId: string) => boolean;
 	/** Título del estado de error (el `errorMessage` va debajo, como detalle). */
 	errorTitle?: string;
 	errorMessage?: string;

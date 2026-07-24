@@ -416,9 +416,12 @@ function pinnedStyle(col: {
 function DragAlongCell<T extends object>({
   cell,
   density,
+  loading,
 }: {
   cell: Cell<T, unknown>
   density: DensityMode
+  /** Pinta la celda como skeleton (fila o celda "cargando") en vez de su contenido real. */
+  loading?: boolean
 }) {
   const col = cell.column
   const isSpecial = SPECIAL.has(col.id)
@@ -452,7 +455,7 @@ function DragAlongCell<T extends object>({
         cMeta?.className,
       )}
     >
-      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      {loading ? <Skeleton className="h-3 w-full" /> : flexRender(cell.column.columnDef.cell, cell.getContext())}
     </td>
   )
 }
@@ -518,6 +521,8 @@ export function DataTable<T extends object>({
   getRowId,
 
   isLoading,
+  isRowLoading,
+  isCellLoading,
   isError,
   errorTitle: errorTitleProp,
   errorMessage: errorMessageProp,
@@ -809,10 +814,18 @@ export function DataTable<T extends object>({
       striped && rowIdx % 2 === 1 && 'bg-muted/20',
       rowClassName?.(row.original),
     )
+    // Skeleton por fila o por celda: la fila entera carga (isRowLoading) o solo columnas puntuales
+    // (isCellLoading). Basta que una de las dos dé true para esa celda.
+    const rowLoading = isRowLoading?.(row.original) ?? false
     const cells = (
       <SortableContext items={draggableIds} strategy={horizontalListSortingStrategy}>
         {row.getVisibleCells().map((cell) => (
-          <DragAlongCell key={cell.id} cell={cell} density={density} />
+          <DragAlongCell
+            key={cell.id}
+            cell={cell}
+            density={density}
+            loading={rowLoading || (isCellLoading?.(row.original, cell.column.id) ?? false)}
+          />
         ))}
       </SortableContext>
     )
