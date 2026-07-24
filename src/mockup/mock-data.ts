@@ -437,7 +437,7 @@ export const CORRIDAS: Corrida[] = [
 
 // ── dispatch_order ───────────────────────────────────────────────────────────────────────────
 
-export type EstadoOrden = 'pendiente' | 'cargando' | 'despachada'
+export type EstadoOrden = 'pendiente' | 'cargando' | 'despachada' | 'procesado'
 
 export interface OrdenDespacho {
   id: string

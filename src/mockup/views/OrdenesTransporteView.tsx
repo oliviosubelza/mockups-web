@@ -7,8 +7,8 @@
 // En el diálogo se puede JUGAR con la selección: cada orden se incluye/excluye con un toggle (no se
 // borra, se atenúa) para acomodar el peso bajo la capacidad del camión. La barra de capacidad (estilo
 // step 1) valida que el peso combinado de las INCLUIDAS no supere el límite del camión.
-import { useMemo, useState } from 'react'
-import { AlertTriangle, Check, CheckCircle2, Combine, MapPin, MoreVertical, SquarePen, Truck } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { AlertTriangle, Check, CheckCircle2, Combine, MapPin, MoreVertical, SquarePen, Truck, CloudBackup } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import type { BulkAction } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
@@ -162,6 +162,9 @@ function OrdenRow({
 }
 
 export function OrdenesTransporteView() {
+  const [ordenes, setOrdenes] = useState<OrdenTransporte[]>(ORDENES_TRANSPORTE)
+  const [procesando, setProcesando] = useState<boolean>(false)
+
   const [filters, setFilters] = useState<Partial<OrdenFilters>>({})
   // Conjunto de trabajo de la unificación (todas las órdenes elegidas). null = diálogo cerrado.
   const [unificar, setUnificar] = useState<OrdenTransporte[] | null>(null)
@@ -178,14 +181,31 @@ export function OrdenesTransporteView() {
 
   const data = useMemo(
     () =>
-      ORDENES_TRANSPORTE.filter(
+      ordenes.filter(
         (o) =>
           (!filters.camion || o.camion === filters.camion) &&
           (!filters.chofer || o.chofer === filters.chofer) &&
           (!filters.estado || o.estado === filters.estado),
       ),
-    [filters],
+    [filters, ordenes],
   )
+
+  const processTransportOrder = useCallback(async (transportOrder: OrdenTransporte) => {
+    setProcesando(true)
+
+    // Simulamos los 2 segundos de proceso
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+
+    setOrdenes((prevOrdenes) =>
+      prevOrdenes.map((orden) =>
+        orden.id === transportOrder.id
+          ? { ...orden, estado: 'procesado' } // Asegúrate de que este estado exista en tu EstadoOrden
+          : orden,
+      ),
+    )
+
+    setProcesando(false)
+  }, [])
 
   const columns = useMemo(() => defineColumns<OrdenTransporte>([
     { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
@@ -261,6 +281,14 @@ export function OrdenesTransporteView() {
                 <SquarePen />
                 <span>Asignar chofer</span>
               </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => processTransportOrder(row)}
+                className="cursor-pointer flex items-center gap-2"
+              >
+                <CloudBackup />
+                <span>Procesar Orden</span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -305,6 +333,10 @@ export function OrdenesTransporteView() {
     openRoute('reoptimizar-plan')
     setUnificar(null)
   }
+
+  const Skeleton = ({ className }: { className?: string }) => (
+    <div className={cn("animate-pulse rounded-md bg-muted", className)} />
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
