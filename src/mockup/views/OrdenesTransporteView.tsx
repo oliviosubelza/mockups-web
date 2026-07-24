@@ -8,7 +8,7 @@
 // borra, se atenúa) para acomodar el peso bajo la capacidad del camión. La barra de capacidad (estilo
 // step 1) valida que el peso combinado de las INCLUIDAS no supere el límite del camión.
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Check, CheckCircle2, Combine, MapPin, Truck } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Combine, MapPin, MoreVertical, SquarePen, Truck } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import type { BulkAction } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
@@ -22,17 +22,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/tabs'
 import { OrdenEstadoBadge } from '../estado-badge'
 import {
   CAMIONES,
+  CHOFERES,
   ORDENES_TRANSPORTE,
+  paradasDeOrden,
   pesoDeOrden,
   type EstadoOrden,
   type OrdenTransporte,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
+import { AsignarChoferDialog } from './AsignarChoferDialog'
 
 interface OrdenFilters extends Record<string, unknown> {
   camion?: string
@@ -65,55 +74,6 @@ const kg = (n: number) => `${n.toLocaleString('es')} kg`
 
 /** Capacidad del camión (planning_truck → truck.capacity_weight), en kg. */
 const capacidadKgDe = (placa: string) => (CAMIONES.find((c) => c.placa === placa)?.capacidadPeso ?? 0) * 1000
-
-const columns = defineColumns<OrdenTransporte>([
-  { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
-  {
-    id: 'camion',
-    header: 'Camión',
-    accessorKey: 'camion',
-    size: 140,
-    cell: (row) => (
-      <span className="flex items-center gap-2">
-        <Truck className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium">{row.camion}</span>
-      </span>
-    ),
-  },
-  {
-    id: 'chofer',
-    header: 'Chofer',
-    accessorKey: 'chofer',
-    size: 190,
-    cell: (row) =>
-      row.chofer ? (
-        <span className="truncate">{row.chofer}</span>
-      ) : (
-        <span className="text-xs text-muted-foreground">Sin asignar</span>
-      ),
-  },
-  {
-    id: 'paradas',
-    header: 'Paradas',
-    size: 100,
-    meta: { align: 'right' },
-    cell: (row) => <span className="tabular-nums">{row.paradaIds.length}</span>,
-  },
-  {
-    id: 'carga',
-    header: 'Carga',
-    size: 120,
-    meta: { align: 'right' },
-    cell: (row) => <span className="tabular-nums text-muted-foreground">{kg(pesoDeOrden(row))}</span>,
-  },
-  {
-    id: 'estado',
-    header: 'Estado',
-    accessorKey: 'estado',
-    size: 130,
-    cell: (row) => <OrdenEstadoBadge estado={row.estado} />,
-  },
-])
 
 /**
  * Barra de capacidad de peso del camión (mismo lenguaje visual que la barra de cobertura del step 1):
@@ -208,6 +168,13 @@ export function OrdenesTransporteView() {
   // Ids EXCLUIDOS del conjunto (siguen visibles, atenuados, fuera de la suma de peso).
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
+  // Orden cuyo detalle de "asignar chofer" está abierto (null = diálogo cerrado).
+  const [ordenDetalle, setOrdenDetalle] = useState<OrdenTransporte | null>(null)
+  // Chofer asignado por orden (override local del mockup).
+  const [choferPorOrden, setChoferPorOrden] = useState<Record<string, string>>({})
+  const choferDe = (o: OrdenTransporte) => choferPorOrden[o.id] || o.chofer
+  const asignarChofer = (id: string, chofer: string) =>
+    setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
 
   const data = useMemo(
     () =>
@@ -219,6 +186,87 @@ export function OrdenesTransporteView() {
       ),
     [filters],
   )
+
+  const columns = useMemo(() => defineColumns<OrdenTransporte>([
+    { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
+    {
+      id: 'camion',
+      header: 'Camión',
+      accessorKey: 'camion',
+      size: 140,
+      cell: (row) => (
+        <span className="flex items-center gap-2">
+          <Truck className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium">{row.camion}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'chofer',
+      header: 'Chofer',
+      accessorKey: 'chofer',
+      size: 190,
+      cell: (row) => {
+        const chofer = choferDe(row)
+        return chofer ? (
+          <span className="truncate">{chofer}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Sin asignar</span>
+        )
+      },
+    },
+    {
+      id: 'paradas',
+      header: 'Paradas',
+      size: 100,
+      meta: { align: 'right' },
+      cell: (row) => <span className="tabular-nums">{row.paradaIds.length}</span>,
+    },
+    {
+      id: 'carga',
+      header: 'Carga',
+      size: 120,
+      meta: { align: 'right' },
+      cell: (row) => <span className="tabular-nums text-muted-foreground">{kg(pesoDeOrden(row))}</span>,
+    },
+    {
+      id: 'estado',
+      header: 'Estado',
+      accessorKey: 'estado',
+      size: 130,
+      cell: (row) => <OrdenEstadoBadge estado={row.estado} />,
+    },
+    {
+      id: 'acciones',
+      header: 'Acciones',
+      size: 90,
+      cell: (row) => (
+        <div className="flex justify-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-8 w-8 p-0 mx-auto flex hover:bg-muted focus-visible:ring-1"
+              >
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                <span className="sr-only">Abrir menú de acciones</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 shadow-md">
+              <DropdownMenuItem
+                onClick={() => setOrdenDetalle(row)}
+                className="cursor-pointer flex items-center gap-2"
+              >
+                <SquarePen />
+                <span>Asignar chofer</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ]), [choferPorOrden])
 
   const bulkActions: BulkAction<OrdenTransporte>[] = [
     {
@@ -374,6 +422,21 @@ export function OrdenesTransporteView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AsignarChoferDialog
+        open={!!ordenDetalle}
+        onOpenChange={(o) => { if (!o) setOrdenDetalle(null) }}
+        codigo={ordenDetalle?.codigo}
+        estado={ordenDetalle?.estado}
+        camionLabel={ordenDetalle?.camion}
+        capacidadKg={ordenDetalle ? capacidadKgDe(ordenDetalle.camion) : undefined}
+        cargaPct={ordenDetalle ? Math.round((pesoDeOrden(ordenDetalle) / (capacidadKgDe(ordenDetalle.camion) || 1)) * 100) : undefined}
+        paradas={ordenDetalle ? paradasDeOrden(ordenDetalle).map((p, i) => ({ id: p.id, secuencia: p.secuencia ?? i + 1, cliente: p.cliente, direccion: p.puntoEntrega, ventana: p.ventana })) : []}
+        choferes={CHOFERES}
+        choferValue={ordenDetalle ? choferDe(ordenDetalle) || null : null}
+        onChoferChange={(v) => ordenDetalle && asignarChofer(ordenDetalle.id, v)}
+        onGuardar={() => setOrdenDetalle(null)}
+      />
     </div>
   )
 }

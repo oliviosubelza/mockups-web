@@ -1,25 +1,11 @@
-import { useState, useMemo, useEffect, type ReactNode } from 'react'
+import { useState, useMemo } from 'react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { OrdenEstadoBadge } from '../estado-badge'
 import {
   Dialog,
-  DialogClose,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
 } from '@/components/ui/dialog'
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from '@/components/ui/combobox'
 import {
   Tooltip,
   TooltipContent,
@@ -47,8 +33,9 @@ import {
   type OrdenDespacho,
 } from '../mock-data'
 import type { BoardState } from '../types'
-import { Truck, User, ChevronLeft, ChevronRight, MoreVertical, BellOff, SquarePen, type LucideIcon } from 'lucide-react'
+import { MoreVertical, BellOff, SquarePen } from 'lucide-react'
 import { OrdersMap } from '../OrdersMap'
+import { AsignarChoferDialog, type ParadaDetalle } from './AsignarChoferDialog'
 
 interface OrdenFilters extends Record<string, unknown> {
   estado?: EstadoOrden
@@ -74,10 +61,6 @@ const filterDefs = defineFilters<OrdenFilters>([
   { type: 'select', id: 'ruta', label: 'Ruta', options: RUTA_OPCIONES },
 ])
 
-/** Estilo de un campo de solo-lectura del detalle (misma altura que el input del Combobox). */
-const readonlyFieldCls =
-  'flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm'
-
 /** Minutos → "3 h 30 min" (o "45 min"). */
 const fmtDuracion = (min: number) => {
   const h = Math.floor(min / 60)
@@ -85,35 +68,8 @@ const fmtDuracion = (min: number) => {
   return h > 0 ? `${h} h ${m.toString().padStart(2, '0')} min` : `${m} min`
 }
 
-/** Color de la barra de carga según ocupación del camión. */
-const cargaColor = (pct: number) =>
-  pct >= 90 ? 'bg-destructive' : pct >= 75 ? 'bg-amber-500' : 'bg-primary'
-
-/** Campo etiquetado del detalle: label muted con ícono + el control/valor debajo. */
-function InfoField({
-  label,
-  icon: Icon,
-  children,
-  className,
-}: {
-  label: string
-  icon: LucideIcon
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <div className={`flex flex-col gap-1.5${className ? ` ${className}` : ''}`}>
-      <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <Icon className="size-3.5" />
-        {label}
-      </span>
-      {children}
-    </div>
-  )
-}
-
 // Generamos 15 puntos de entrega de prueba para el mockup
-const MOCK_ENTREGAS = Array.from({ length: 15 }).map((_, i) => ({
+const MOCK_ENTREGAS: ParadaDetalle[] = Array.from({ length: 15 }).map((_, i) => ({
   id: `del-${i + 1}`,
   secuencia: i + 1,
   cliente: `Comercializadora ${String.fromCharCode(65 + i)} SRL`,
@@ -133,8 +89,6 @@ export function OrdersView({ state }: { state: BoardState }) {
   const choferDe = (o: OrdenDespacho) => choferPorOrden[o.id] || o.conductor
   const asignarChofer = (id: string, chofer: string) =>
     setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
-  // Estado para la paginación de la tablita interna de entregas
-  const [entregasPage, setEntregasPage] = useState(1)
   const [canales, setCanales] = useState<Set<CanalId>>(new Set())
   const [tipos, setTipos] = useState<Set<ProductType>>(new Set())
   const [optimized, setOptimized] = useState(false)
@@ -154,12 +108,6 @@ export function OrdersView({ state }: { state: BoardState }) {
     }
     return true
   })
-  const ENTREGAS_PER_PAGE = 10
-
-  // Reiniciar la página a 1 cada vez que se abre otra orden.
-  useEffect(() => {
-    setEntregasPage(1)
-  }, [ordenSeleccionada])
 
   const columns = useMemo(() => defineColumns<OrdenDespacho>([
     { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
@@ -284,13 +232,6 @@ export function OrdersView({ state }: { state: BoardState }) {
   )
   const data = state === 'empty' || state === 'error' ? [] : filtrados
 
-  // Cálculos de paginación
-  const totalPages = Math.max(1, Math.ceil(MOCK_ENTREGAS.length / ENTREGAS_PER_PAGE))
-  const paginatedEntregas = MOCK_ENTREGAS.slice(
-    (entregasPage - 1) * ENTREGAS_PER_PAGE,
-    entregasPage * ENTREGAS_PER_PAGE
-  )
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <h2 className="text-sm font-semibold text-foreground">Órdenes de Transporte</h2>
@@ -322,151 +263,20 @@ export function OrdersView({ state }: { state: BoardState }) {
         }
       />
 
-      <Dialog
+      <AsignarChoferDialog
         open={!!ordenSeleccionada}
-        onOpenChange={(open) => {
-          if (!open) setOrdenSeleccionada(null)
-        }}
-      >
-        <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-            <div className="flex items-start gap-3 pr-8">
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="flex items-center gap-2 text-base">
-                  Orden de Transporte
-                  <span className="font-mono text-sm text-muted-foreground">{ordenSeleccionada?.codigo}</span>
-                </DialogTitle>
-                <DialogDescription>Asigná un chofer</DialogDescription>
-              </div>
-              {ordenSeleccionada && <OrdenEstadoBadge estado={ordenSeleccionada.estado} />}
-            </div>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            {/* Datos de la orden: chofer editable + camión/ruta/salida (read-only). */}
-            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-              <InfoField label="Chofer" icon={User}>
-                <Combobox
-                  items={CHOFERES}
-                  value={ordenSeleccionada ? choferDe(ordenSeleccionada) || null : null}
-                  onValueChange={(v) =>
-                    ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')
-                  }
-                >
-                  <ComboboxInput placeholder="Buscar por nombre o código SAP…" showClear />
-                  <ComboboxContent>
-                    <ComboboxEmpty>Sin resultados</ComboboxEmpty>
-                    <ComboboxList>
-                      {(item: string) => (
-                        <ComboboxItem key={item} value={item}>
-                          {item}
-                        </ComboboxItem>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-              </InfoField>
-
-              <InfoField label="Camión" icon={Truck}>
-                <div className={readonlyFieldCls}>
-                  <span className="font-medium text-foreground">{ordenSeleccionada?.camionId}</span>
-                  <span className="text-muted-foreground">· 15.000 kg</span>
-                  {/* Carga del camión, compacta, junto a la info del camión (mismo dato que la tabla). */}
-                  <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
-                      <span
-                        className={`block h-full rounded-full ${cargaColor(ordenSeleccionada?.cargaPct ?? 0)}`}
-                        style={{ width: `${ordenSeleccionada?.cargaPct ?? 0}%` }}
-                      />
-                    </span>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {ordenSeleccionada?.cargaPct ?? 0}%
-                    </span>
-                  </span>
-                </div>
-              </InfoField>
-            </div>
-
-            {/* Paradas de la ruta. */}
-            <div className="mt-6">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-sm font-medium">Paradas</span>
-                <span className="text-sm text-muted-foreground tabular-nums">({MOCK_ENTREGAS.length})</span>
-              </div>
-              <div className="overflow-hidden rounded-lg border border-border">
-                <div className="max-h-[300px] overflow-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="sticky top-0 z-10 bg-muted/50 text-xs text-muted-foreground">
-                      <tr>
-                        <th className="w-10 px-3 py-2 text-center font-medium">#</th>
-                        <th className="px-3 py-2 text-left font-medium">Cliente</th>
-                        <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">Dirección</th>
-                        <th className="px-3 py-2 text-left font-medium">Horario</th>
-                        <th className="px-3 py-2 text-center font-medium">Prioridad</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedEntregas.map((entrega) => (
-                        <tr key={entrega.id} className="border-t border-border transition-colors hover:bg-muted/30">
-                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">
-                            {entrega.secuencia}
-                          </td>
-                          <td className="max-w-[200px] truncate px-3 py-2 font-medium">{entrega.cliente}</td>
-                          <td className="hidden max-w-[220px] truncate px-3 py-2 text-muted-foreground sm:table-cell">
-                            {entrega.direccion}
-                          </td>
-                          <td className="px-3 py-2 tabular-nums">{entrega.ventana}</td>
-                          <td className="px-3 py-2 text-center">
-                            <Badge variant={entrega.prioridad === 'Alta' ? 'destructive' : 'secondary'}>
-                              {entrega.prioridad}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Paginación de paradas. */}
-              <div className="mt-2 flex items-center justify-between px-1">
-                <span className="text-xs text-muted-foreground">
-                  Mostrando {(entregasPage - 1) * ENTREGAS_PER_PAGE + 1}–
-                  {Math.min(entregasPage * ENTREGAS_PER_PAGE, MOCK_ENTREGAS.length)} de {MOCK_ENTREGAS.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    className="h-7 w-7"
-                    onClick={() => setEntregasPage((p) => Math.max(1, p - 1))}
-                    disabled={entregasPage === 1}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <span className="px-2 text-xs font-medium tabular-nums">
-                    {entregasPage} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    className="h-7 w-7"
-                    onClick={() => setEntregasPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={entregasPage === totalPages}
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="shrink-0 border-t border-border px-5 py-5">
-            <DialogClose render={<Button variant="outline">Cancelar</Button>} />
-            <Button onClick={() => setOrdenSeleccionada(null)}>Guardar cambios</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={(o) => { if (!o) setOrdenSeleccionada(null) }}
+        codigo={ordenSeleccionada?.codigo}
+        estado={ordenSeleccionada?.estado}
+        camionLabel={ordenSeleccionada?.camionId}
+        capacidadKg={15000}
+        cargaPct={ordenSeleccionada?.cargaPct}
+        paradas={MOCK_ENTREGAS}
+        choferes={CHOFERES}
+        choferValue={ordenSeleccionada ? choferDe(ordenSeleccionada) || null : null}
+        onChoferChange={(v) => ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')}
+        onGuardar={() => setOrdenSeleccionada(null)}
+      />
 
       <Dialog open={mapMaximized} onOpenChange={setMapMaximized}>
         <DialogContent className="h-[90vh] w-[95vw] max-w-[95vw] overflow-hidden p-0 sm:max-w-[95vw]">
