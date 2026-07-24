@@ -36,6 +36,7 @@ const ESTADO_ORDEN: Record<EstadoOrden, { label: string; className: string }> = 
   pendiente: { label: 'Pendiente', className: 'border-border bg-muted text-muted-foreground' },
   cargando: { label: 'Cargando', className: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
   despachada: { label: 'Despachada', className: 'border-primary/30 bg-primary/10 text-primary' },
+  procesado: { label: 'Procesado', className: 'border-primary/30 bg-primary/10 text-primary' },
 }
 
 export function OrdenEstadoBadge({ estado }: { estado: EstadoOrden }) {
