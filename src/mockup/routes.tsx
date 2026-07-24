@@ -5,13 +5,16 @@
 // mockup: `openRoute` solo abre/activa un tab (su navigate interno es no-op sin router).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardCheck, ClipboardList } from 'lucide-react'
+import { ClipboardList, Truck } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute, useTabStore } from '@/core/tabs'
 import type { RouteConfig } from '@/core/routing/types'
 import { DispatchFlow } from './DispatchFlow'
 import { PlansView } from './views/PlansView'
+// Listado de órdenes de transporte: reemplazado por el listado de CAMIONES (ver CamionesView). Se deja
+// el import comentado, no borrado, para poder revertir el flujo si hiciera falta.
 import { OrdenesTransporteView } from './views/OrdenesTransporteView'
+import { CamionesView } from './views/CamionesView'
 import { PlanningView } from './views/PlanningView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
@@ -47,8 +50,13 @@ function NuevaPlanificacionScreen() {
   return <DispatchFlow state="default" initialFase={0} />
 }
 
-function OrdenesTransporteScreen() {
-  return <OrdenesTransporteView />
+// Pantalla del listado de órdenes de transporte: comentada mientras el sidebar lista CAMIONES.
+// function OrdenesTransporteScreen() {
+//   return <OrdenesTransporteView />
+// }
+
+function CamionesScreen() {
+  return <CamionesView />
 }
 
 function ReoptimizarScreen() {
@@ -72,7 +80,7 @@ function ReoptimizarScreen() {
         singleRoute
         routeColor={target?.color}
         readOnly
-        onNext={() => navigateTo('ordenes-transporte')}
+        onNext={() => navigateTo('camiones')}
       />
     </div>
   )
@@ -89,11 +97,20 @@ export const routes: MockRoute[] = [
     order: 0,
   },
   {
+    id: 'camiones',
+    path: '/camiones',
+    label: 'Camiones',
+    icon: Truck,
+    component: CamionesScreen,
+    order: 1,
+  },
+  // Listado de órdenes de transporte: reemplazado por 'camiones'. Se deja comentado para revertir.
+  {
     id: 'ordenes-transporte',
     path: '/ordenes-transporte',
     label: 'Órdenes de transporte',
-    icon: ClipboardCheck,
-    component: OrdenesTransporteScreen,
+    // icon: ClipboardCheck,
+    component: OrdenesTransporteView,
     order: 1,
   },
   {

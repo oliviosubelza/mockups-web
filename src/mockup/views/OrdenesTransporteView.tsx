@@ -280,7 +280,7 @@ export function OrdenesTransporteView() {
         searchPlaceholder="Buscar por orden, camión o chofer…"
         clientPagination
         defaultPageSize={12}
-        selectable
+        // selectable
         bulkActions={bulkActions}
         exportable
         exportFilename="ordenes-transporte"
