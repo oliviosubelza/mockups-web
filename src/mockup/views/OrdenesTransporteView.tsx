@@ -202,7 +202,7 @@ export function OrdenesTransporteView() {
             : orden,
         ),
       )
-    } finally {
+    } finally { 
       setProcessingIds((prev) => {
         const next = new Set(prev)
         next.delete(transportOrder.id)

@@ -489,7 +489,7 @@ export function CamionesView() {
             <DialogClose render={<Button variant="outline">Cancelar</Button>} />
             <Button onClick={confirmar} disabled={!puedeFinalizar}>
               <Flag className="size-3.5" />
-              Finalizar
+              Continuar
             </Button>
           </DialogFooter>
         </DialogContent>
