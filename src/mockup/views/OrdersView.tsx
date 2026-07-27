@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import {
+  CAMIONES,
   CanalId,
   CHOFERES,
   ORDENES,
@@ -35,7 +36,7 @@ import {
 import type { BoardState } from '../types'
 import { MoreVertical, BellOff, SquarePen } from 'lucide-react'
 import { OrdersMap } from '../OrdersMap'
-import { AsignarChoferDialog, type ParadaDetalle } from './AsignarChoferDialog'
+import { EditarDetalleDialog, type ParadaDetalle } from './EditarDetalleDialog'
 
 interface OrdenFilters extends Record<string, unknown> {
   estado?: EstadoOrden
@@ -60,6 +61,20 @@ const filterDefs = defineFilters<OrdenFilters>([
   { type: 'select', id: 'estado', label: 'Estado', options: ESTADO_OPCIONES },
   { type: 'select', id: 'ruta', label: 'Ruta', options: RUTA_OPCIONES },
 ])
+
+/**
+ * Capacidad de un camión en kg (truck.capacity_weight viene en toneladas).
+ *
+ * Ojo con el dato del mockup: los `camionId` de ORDENES son placeholders SAP ('Truck-SAP1') y NO
+ * existen en CAMIONES, que se identifica por placa. Para esos valores no hay capacidad real, así que
+ * cae al mismo 15.000 kg que antes estaba hardcodeado en el diálogo. Los camiones ELEGIBLES sí salen
+ * de CAMIONES (placas reales con capacidad real), por eso reasignar sí muestra la capacidad correcta.
+ */
+const CAPACIDAD_FALLBACK_KG = 15000
+const capacidadKgDe = (placa: string) => {
+  const camion = CAMIONES.find((c) => c.placa === placa)
+  return camion ? camion.capacidadPeso * 1000 : CAPACIDAD_FALLBACK_KG
+}
 
 /** Minutos → "3 h 30 min" (o "45 min"). */
 const fmtDuracion = (min: number) => {
@@ -89,6 +104,31 @@ export function OrdersView({ state }: { state: BoardState }) {
   const choferDe = (o: OrdenDespacho) => choferPorOrden[o.id] || o.conductor
   const asignarChofer = (id: string, chofer: string) =>
     setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
+  // Camión reasignado por orden (mismo patrón que el chofer: override local, el dataset no se muta).
+  const [camionPorOrden, setCamionPorOrden] = useState<Record<string, string>>({})
+  const camionDe = (o: OrdenDespacho) => camionPorOrden[o.id] || o.camionId
+  const reasignarCamion = (id: string, camionId: string) =>
+    setCamionPorOrden((prev) => ({ ...prev, [id]: camionId }))
+
+  /**
+   * Camiones asignables a la orden abierta: capacidad >= peso de la orden.
+   *
+   * OJO con el peso: en OrdenDespacho el peso total de la orden es `cargaPct`, que a pesar del nombre
+   * guarda KILOS (20393, 23000, …) y la tabla lo renderiza como "… Kg". No se renombra acá porque es
+   * un cambio de dataset fuera de alcance.
+   *
+   * El camión ACTUAL se incluye siempre (acá encima nunca está en CAMIONES: es un 'Truck-SAPn'), si no
+   * el Combobox tendría un `value` que no está en `items` y quedaría inconsistente. Orden: capacidad
+   * ascendente, así el primero es el que "justo alcanza".
+   */
+  const camionesElegibles = useMemo(() => {
+    if (!ordenSeleccionada) return []
+    const pesoKg = ordenSeleccionada.cargaPct
+    const actual = camionDe(ordenSeleccionada)
+    const placas = CAMIONES.filter((c) => capacidadKgDe(c.placa) >= pesoKg).map((c) => c.placa)
+    if (!placas.includes(actual)) placas.push(actual)
+    return placas.sort((a, b) => capacidadKgDe(a) - capacidadKgDe(b))
+  }, [ordenSeleccionada, camionPorOrden])
   const [canales, setCanales] = useState<Set<CanalId>>(new Set())
   const [tipos, setTipos] = useState<Set<ProductType>>(new Set())
   const [optimized, setOptimized] = useState(false)
@@ -125,7 +165,14 @@ export function OrdersView({ state }: { state: BoardState }) {
         )
       },
     },
-    { id: 'camionId', header: 'Camión', accessorKey: 'camionId', size: 80 },
+    {
+      id: 'camionId',
+      header: 'Camión',
+      accessorKey: 'camionId',
+      size: 80,
+      // Muestra el camión reasignado para que la edición del detalle se vea en la tabla.
+      cell: (row) => <span className="truncate">{camionDe(row)}</span>,
+    },
     {
       id: 'ruta',
       header: 'Ruta',
@@ -223,7 +270,7 @@ export function OrdersView({ state }: { state: BoardState }) {
         </div>
       )
     }
-  ]), [choferPorOrden])
+  ]), [choferPorOrden, camionPorOrden])
 
   const filtrados = ORDENES.filter(
     (o) =>
@@ -263,18 +310,22 @@ export function OrdersView({ state }: { state: BoardState }) {
         }
       />
 
-      <AsignarChoferDialog
+      <EditarDetalleDialog
         open={!!ordenSeleccionada}
         onOpenChange={(o) => { if (!o) setOrdenSeleccionada(null) }}
         codigo={ordenSeleccionada?.codigo}
         estado={ordenSeleccionada?.estado}
-        camionLabel={ordenSeleccionada?.camionId}
-        capacidadKg={15000}
-        cargaPct={ordenSeleccionada?.cargaPct}
         paradas={MOCK_ENTREGAS}
         choferes={CHOFERES}
         choferValue={ordenSeleccionada ? choferDe(ordenSeleccionada) || null : null}
         onChoferChange={(v) => ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')}
+        camiones={camionesElegibles}
+        camionValue={ordenSeleccionada ? camionDe(ordenSeleccionada) || null : null}
+        // Igual que el chofer: limpiar el campo guarda '' y camionDe vuelve al camión del dataset.
+        onCamionChange={(v) => ordenSeleccionada && reasignarCamion(ordenSeleccionada.id, v ?? '')}
+        capacidadPorCamion={capacidadKgDe}
+        // El peso total de la orden es cargaPct: son kilos, no un porcentaje (ver comentario arriba).
+        pesoOrdenKg={ordenSeleccionada?.cargaPct}
         onGuardar={() => setOrdenSeleccionada(null)}
       />
 

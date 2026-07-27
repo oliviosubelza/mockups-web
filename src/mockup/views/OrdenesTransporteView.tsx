@@ -42,7 +42,7 @@ import {
   type OrdenTransporte,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
-import { AsignarChoferDialog } from './AsignarChoferDialog'
+import { EditarDetalleDialog } from './EditarDetalleDialog'
 
 interface OrdenFilters extends Record<string, unknown> {
   camion?: string
@@ -173,13 +173,33 @@ export function OrdenesTransporteView() {
   // Ids EXCLUIDOS del conjunto (siguen visibles, atenuados, fuera de la suma de peso).
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
-  // Orden cuyo detalle de "asignar chofer" está abierto (null = diálogo cerrado).
+  // Orden cuyo detalle ("Editar detalles") está abierto (null = diálogo cerrado).
   const [ordenDetalle, setOrdenDetalle] = useState<OrdenTransporte | null>(null)
   // Chofer asignado por orden (override local del mockup).
   const [choferPorOrden, setChoferPorOrden] = useState<Record<string, string>>({})
   const choferDe = (o: OrdenTransporte) => choferPorOrden[o.id] || o.chofer
   const asignarChofer = (id: string, chofer: string) =>
     setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
+  // Camión reasignado por orden (mismo patrón que el chofer: override local, el dataset no se muta).
+  const [camionPorOrden, setCamionPorOrden] = useState<Record<string, string>>({})
+  const camionDe = (o: OrdenTransporte) => camionPorOrden[o.id] || o.camion
+  const reasignarCamion = (id: string, placa: string) =>
+    setCamionPorOrden((prev) => ({ ...prev, [id]: placa }))
+
+  /**
+   * Camiones que se le pueden asignar a la orden abierta: capacidad >= peso de la orden. El camión
+   * ACTUAL se incluye siempre, incluso si no alcanza (una orden puede exceder su propio camión) —
+   * si no, el Combobox tendría un `value` que no está en `items` y quedaría inconsistente.
+   * Orden: capacidad ascendente, así el primero es el que "justo alcanza".
+   */
+  const camionesElegibles = useMemo(() => {
+    if (!ordenDetalle) return []
+    const pesoKg = pesoDeOrden(ordenDetalle)
+    const actual = camionDe(ordenDetalle)
+    const placas = CAMIONES.filter((c) => capacidadKgDe(c.placa) >= pesoKg).map((c) => c.placa)
+    if (!placas.includes(actual)) placas.push(actual)
+    return placas.sort((a, b) => capacidadKgDe(a) - capacidadKgDe(b))
+  }, [ordenDetalle, camionPorOrden])
 
   const data = useMemo(
     () =>
@@ -222,7 +242,7 @@ export function OrdenesTransporteView() {
       cell: (row) => (
         <span className="flex items-center gap-2">
           <Truck className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{row.camion}</span>
+          <span className="truncate font-medium">{camionDe(row)}</span>
         </span>
       ),
     },
@@ -284,7 +304,7 @@ export function OrdenesTransporteView() {
                 className="cursor-pointer flex items-center gap-2"
               >
                 <SquarePen />
-                <span>Asignar chofer</span>
+                <span>Editar detalles</span>
               </DropdownMenuItem>
 
               <DropdownMenuItem
@@ -299,7 +319,7 @@ export function OrdenesTransporteView() {
         </div>
       ),
     },
-  ]), [choferPorOrden])
+  ]), [choferPorOrden, camionPorOrden])
 
   const bulkActions: BulkAction<OrdenTransporte>[] = [
     {
@@ -321,7 +341,10 @@ export function OrdenesTransporteView() {
 
   // Solo las INCLUIDAS cuentan para la validación y la unificación.
   const incluidas = unificar?.filter((o) => !excluidas.has(o.id)) ?? []
-  const camiones = Array.from(new Set(incluidas.map((o) => o.camion)))
+  // La unificación mira el camión REASIGNADO (camionDe), no el del dataset: mismo criterio que ya se
+  // usaba con el chofer (choferDe) al armar el contexto. Si no, se validaría la capacidad de un camión
+  // que la orden ya no tiene y se mandaría al optimizador una placa vieja.
+  const camiones = Array.from(new Set(incluidas.map((o) => camionDe(o))))
   const mismoCamion = camiones.length === 1
   const suficientes = incluidas.length >= 2
   const capacidadKg = mismoCamion ? capacidadKgDe(camiones[0]) : 0
@@ -473,18 +496,21 @@ export function OrdenesTransporteView() {
         </DialogContent>
       </Dialog>
 
-      <AsignarChoferDialog
+      <EditarDetalleDialog
         open={!!ordenDetalle}
         onOpenChange={(o) => { if (!o) setOrdenDetalle(null) }}
         codigo={ordenDetalle?.codigo}
         estado={ordenDetalle?.estado}
-        camionLabel={ordenDetalle?.camion}
-        capacidadKg={ordenDetalle ? capacidadKgDe(ordenDetalle.camion) : undefined}
-        cargaPct={ordenDetalle ? Math.round((pesoDeOrden(ordenDetalle) / (capacidadKgDe(ordenDetalle.camion) || 1)) * 100) : undefined}
         paradas={ordenDetalle ? paradasDeOrden(ordenDetalle).map((p, i) => ({ id: p.id, secuencia: p.secuencia ?? i + 1, cliente: p.cliente, direccion: p.puntoEntrega, ventana: p.ventana })) : []}
         choferes={CHOFERES}
         choferValue={ordenDetalle ? choferDe(ordenDetalle) || null : null}
         onChoferChange={(v) => ordenDetalle && asignarChofer(ordenDetalle.id, v)}
+        camiones={camionesElegibles}
+        camionValue={ordenDetalle ? camionDe(ordenDetalle) || null : null}
+        // Igual que el chofer: limpiar el campo guarda '' y camionDe vuelve al camión del dataset.
+        onCamionChange={(v) => ordenDetalle && reasignarCamion(ordenDetalle.id, v)}
+        capacidadPorCamion={capacidadKgDe}
+        pesoOrdenKg={ordenDetalle ? pesoDeOrden(ordenDetalle) : undefined}
         onGuardar={() => setOrdenDetalle(null)}
       />
     </div>

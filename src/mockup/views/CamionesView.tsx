@@ -359,8 +359,10 @@ export function CamionesView() {
         },
         {
           id: 'ordenes',
-          header: 'Órdenes',
-          size: 100,
+          // "Órdenes" solo se leía como pedidos. Acá el conteo es de transport_orders (las órdenes de
+          // transporte del camión, las que después se unifican), así que el header lo dice completo.
+          header: 'Órdenes de transporte',
+          size: 170,
           meta: { align: 'right' },
           cell: (row) => (
             <span className="tabular-nums">

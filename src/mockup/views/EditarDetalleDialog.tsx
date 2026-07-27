@@ -22,10 +22,6 @@ import {
 import type { EstadoOrden } from '../mock-data'
 import { Truck, User, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
 
-/** Estilo de un campo de solo-lectura del detalle (misma altura que el input del Combobox). */
-const readonlyFieldCls =
-  'flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm'
-
 /** Color de la barra de carga según ocupación del camión. */
 const cargaColor = (pct: number) =>
   pct >= 90 ? 'bg-destructive' : pct >= 75 ? 'bg-amber-500' : 'bg-primary'
@@ -62,37 +58,52 @@ export interface ParadaDetalle {
   prioridad?: 'Alta' | 'Normal'
 }
 
-export interface AsignarChoferDialogProps {
+export interface EditarDetalleDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   codigo?: string
   estado?: EstadoOrden
-  camionLabel?: string
-  capacidadKg?: number
-  cargaPct?: number
   paradas: ParadaDetalle[]
   choferes: readonly string[]
   choferValue: string | null
   onChoferChange: (chofer: string) => void
+  /**
+   * Placas ELEGIBLES para esta orden, ya filtradas por la vista (capacidad >= peso de la orden) y en
+   * el orden en que se quieren mostrar. El diálogo no filtra: qué camión sirve es lógica de dominio
+   * (truck.capacity_weight vs. el peso de los pedidos), y vive en la vista que conoce el dataset.
+   */
+  camiones: readonly string[]
+  camionValue: string | null
+  onCamionChange: (placa: string) => void
+  /**
+   * Capacidad en kg de una placa (truck.capacity_weight). Se recibe como función en vez de pasar los
+   * camiones como objetos porque el Combobox de Base UI filtra solo si los `items` son strings planos:
+   * así "buscar camión" queda igual de simple que "buscar chofer", sin itemToStringLabel ni objetos.
+   */
+  capacidadPorCamion: (placa: string) => number
+  /** Peso total de la orden en kg (suma de los pedidos de sus paradas). */
+  pesoOrdenKg?: number
   onGuardar?: () => void
 }
 
 const ENTREGAS_PER_PAGE = 10
 
-export function AsignarChoferDialog({
+export function EditarDetalleDialog({
   open,
   onOpenChange,
   codigo,
   estado,
-  camionLabel,
-  capacidadKg,
-  cargaPct,
   paradas,
   choferes,
   choferValue,
   onChoferChange,
+  camiones,
+  camionValue,
+  onCamionChange,
+  capacidadPorCamion,
+  pesoOrdenKg,
   onGuardar,
-}: AsignarChoferDialogProps) {
+}: EditarDetalleDialogProps) {
   // Estado para la paginación de la tablita interna de paradas
   const [entregasPage, setEntregasPage] = useState(1)
 
@@ -109,6 +120,17 @@ export function AsignarChoferDialog({
 
   const guardar = onGuardar ?? (() => onOpenChange(false))
 
+  // Carga del camión SELECCIONADO: se calcula acá con peso/capacidad reales en vez de recibir un
+  // porcentaje ya cocinado. Motivo concreto: los consumidores no coinciden en qué es el "% de carga"
+  // (en OrdenesTransporteView el peso se deriva de las paradas, mientras que OrdenDespacho.cargaPct
+  // guarda KILOS a pesar del nombre), así que un pct recibido no era comparable entre vistas y hacía
+  // que la barra se dibujara con anchos absurdos. Derivándolo, al elegir un camión más grande baja.
+  const capacidadKg = camionValue ? capacidadPorCamion(camionValue) : 0
+  const pesoKg = pesoOrdenKg ?? 0
+  const cargaPct = capacidadKg > 0 ? Math.round((pesoKg / capacidadKg) * 100) : 0
+  // La barra nunca pasa del 100% de ancho, pero el número sí muestra el exceso real (>100% = excede).
+  const cargaBarraPct = Math.min(100, cargaPct)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
@@ -119,14 +141,14 @@ export function AsignarChoferDialog({
                 Orden de Transporte
                 <span className="font-mono text-sm text-muted-foreground">{codigo}</span>
               </DialogTitle>
-              <DialogDescription>Asigná un chofer</DialogDescription>
+              <DialogDescription>Editá el chofer y el camión asignados</DialogDescription>
             </div>
             {estado && <OrdenEstadoBadge estado={estado} />}
           </div>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* Datos de la orden: chofer editable + camión/ruta/salida (read-only). */}
+          {/* Datos editables de la orden: chofer (route.driver) y camión (planning_truck → truck). */}
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <InfoField label="Chofer" icon={User}>
               <Combobox
@@ -149,22 +171,42 @@ export function AsignarChoferDialog({
             </InfoField>
 
             <InfoField label="Camión" icon={Truck}>
-              <div className={readonlyFieldCls}>
-                <span className="font-medium text-foreground">{camionLabel}</span>
-                {capacidadKg !== undefined && (
-                  <span className="text-muted-foreground">· {capacidadKg.toLocaleString('es')} kg</span>
-                )}
-                {/* Carga del camión, compacta, junto a la info del camión (mismo dato que la tabla). */}
-                <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
-                    <span
-                      className={`block h-full rounded-full ${cargaColor(cargaPct ?? 0)}`}
-                      style={{ width: `${cargaPct ?? 0}%` }}
-                    />
-                  </span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {cargaPct ?? 0}%
-                  </span>
+              {/* Misma mecánica que chofer: items de strings planos (placas) → el filtrado nativo del
+                  Combobox matchea tipeando la placa, sin configurar nada. */}
+              <Combobox
+                items={camiones}
+                value={camionValue}
+                onValueChange={(v) => onCamionChange(v ?? '')}
+              >
+                <ComboboxInput placeholder="Buscar por placa…" showClear />
+                <ComboboxContent>
+                  <ComboboxEmpty>Sin resultados</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: string) => (
+                      <ComboboxItem key={item} value={item}>
+                        <span className="font-medium">{item}</span>
+                        {/* Capacidad como texto secundario: el usuario elige con criterio sin tener
+                            que abrir la ficha del camión. */}
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                          {capacidadPorCamion(item).toLocaleString('es')} kg
+                        </span>
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              {/* Carga del camión ELEGIDO: peso de la orden contra su capacidad, visibles los dos para
+                  que la comparación se entienda al cambiar de camión. */}
+              <div className="flex items-center gap-2 px-1">
+                <span className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className={`block h-full rounded-full ${cargaColor(cargaPct)}`}
+                    style={{ width: `${cargaBarraPct}%` }}
+                  />
+                </span>
+                <span className="text-xs tabular-nums text-muted-foreground">{cargaPct}%</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  · {pesoKg.toLocaleString('es')} kg de {capacidadKg.toLocaleString('es')} kg
                 </span>
               </div>
             </InfoField>
