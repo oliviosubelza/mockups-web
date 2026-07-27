@@ -477,6 +477,8 @@ export interface OrdenTransporte {
   camion: string
   /** trip.driver_employee_id → nombre ('' = sin asignar todavía). */
   chofer: string
+  /** trip.helper_employee_id → nombre ('' = sin asignar todavía). */
+  auxiliar: string
   /** transport_orders.status. */
   estado: EstadoOrden
   /** dispatch_delivery_point ids que cubre la ruta de esta orden. */
@@ -487,19 +489,23 @@ export interface OrdenTransporte {
 // para que 3421-ABC (cap. 28 t) muestre la validación de peso: sus 2 primeras órdenes ENTRAN
 // (24.000 kg) y la 3ra la EXCEDE (29.400 kg > 28.000). Los pesos salen del `pesoTotal` real de cada
 // parada, así el diálogo, la tabla y el mapa cuadran.
+//
+// chofer y auxiliar son CONSISTENTES por placa: la tripulación viaja con el camión, no con la orden,
+// así que todas las órdenes del mismo camión comparten la misma dupla. 5530-QWE queda sin tripulación
+// ('' en ambos) a propósito: es el caso "sin asignar" que ejercita el mockup.
 export const ORDENES_TRANSPORTE: OrdenTransporte[] = [
   // Camión 3421-ABC (cap. 28 t) — 3 órdenes; 2 entran, la 3ra excede.
-  { id: 'ot1', codigo: '2051', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-002', 'stop-DP-004', 'stop-DP-053'] }, // 12.800 kg
-  { id: 'ot2', codigo: '2052', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-054', 'stop-DP-055', 'stop-DP-056'] }, // 11.200 kg
-  { id: 'ot3', codigo: '2053', camion: '3421-ABC', chofer: 'M. Céspedes-3021', estado: 'pendiente',  paradaIds: ['stop-DP-021', 'stop-DP-060', 'stop-DP-061'] }, //  5.400 kg
+  { id: 'ot1', codigo: '2051', camion: '3421-ABC', chofer: 'M. Céspedes-3021', auxiliar: 'E. Quispe-4101',   estado: 'pendiente',  paradaIds: ['stop-DP-002', 'stop-DP-004', 'stop-DP-053'] }, // 12.800 kg
+  { id: 'ot2', codigo: '2052', camion: '3421-ABC', chofer: 'M. Céspedes-3021', auxiliar: 'E. Quispe-4101',   estado: 'pendiente',  paradaIds: ['stop-DP-054', 'stop-DP-055', 'stop-DP-056'] }, // 11.200 kg
+  { id: 'ot3', codigo: '2053', camion: '3421-ABC', chofer: 'M. Céspedes-3021', auxiliar: 'E. Quispe-4101',   estado: 'pendiente',  paradaIds: ['stop-DP-021', 'stop-DP-060', 'stop-DP-061'] }, //  5.400 kg
   // Camión 2870-XKD (cap. 30 t) — 2 órdenes.
-  { id: 'ot4', codigo: '2054', camion: '2870-XKD', chofer: 'J. Rojas-3022',    estado: 'cargando',   paradaIds: ['stop-DP-011', 'stop-DP-014', 'stop-DP-058', 'stop-DP-023', 'stop-DP-027'] },
-  { id: 'ot5', codigo: '2055', camion: '2870-XKD', chofer: 'J. Rojas-3022',    estado: 'pendiente',  paradaIds: ['stop-DP-059', 'stop-DP-025', 'stop-DP-028'] },
-  // Camión 5530-QWE (cap. 22 t) — 2 órdenes (sin chofer asignado).
-  { id: 'ot6', codigo: '2056', camion: '5530-QWE', chofer: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-031', 'stop-DP-034', 'stop-DP-036'] },
-  { id: 'ot7', codigo: '2057', camion: '5530-QWE', chofer: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-050', 'stop-DP-051'] },
+  { id: 'ot4', codigo: '2054', camion: '2870-XKD', chofer: 'J. Rojas-3022',    auxiliar: 'S. Choque-4102',   estado: 'cargando',   paradaIds: ['stop-DP-011', 'stop-DP-014', 'stop-DP-058', 'stop-DP-023', 'stop-DP-027'] },
+  { id: 'ot5', codigo: '2055', camion: '2870-XKD', chofer: 'J. Rojas-3022',    auxiliar: 'S. Choque-4102',   estado: 'pendiente',  paradaIds: ['stop-DP-059', 'stop-DP-025', 'stop-DP-028'] },
+  // Camión 5530-QWE (cap. 22 t) — 2 órdenes (sin chofer ni auxiliar asignados).
+  { id: 'ot6', codigo: '2056', camion: '5530-QWE', chofer: '',                 auxiliar: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-031', 'stop-DP-034', 'stop-DP-036'] },
+  { id: 'ot7', codigo: '2057', camion: '5530-QWE', chofer: '',                 auxiliar: '',                 estado: 'pendiente',  paradaIds: ['stop-DP-050', 'stop-DP-051'] },
   // Camión 4467-TYU (cap. 12 t) — 1 orden sola (no unificable por sí misma).
-  { id: 'ot8', codigo: '2058', camion: '4467-TYU', chofer: 'A. Peña-3023',     estado: 'despachada', paradaIds: ['stop-DP-052', 'stop-DP-062', 'stop-DP-063', 'stop-DP-064', 'stop-DP-065', 'stop-DP-066'] },
+  { id: 'ot8', codigo: '2058', camion: '4467-TYU', chofer: 'A. Peña-3023',     auxiliar: 'V. Terceros-4103', estado: 'despachada', paradaIds: ['stop-DP-052', 'stop-DP-062', 'stop-DP-063', 'stop-DP-064', 'stop-DP-065', 'stop-DP-066'] },
 ]
 
 /** Paradas (dispatch_delivery_points) reales que cubre una orden de transporte. */
@@ -509,6 +515,21 @@ export const paradasDeOrden = (o: OrdenTransporte): Parada[] =>
 /** Peso total (kg) de una orden = suma del peso de sus paradas. */
 export const pesoDeOrden = (o: OrdenTransporte): number =>
   paradasDeOrden(o).reduce((acc, p) => acc + p.pesoTotal, 0)
+
+/**
+ * Cantidad de pedidos (candidate_order) de una orden = suma de los pedidos de sus paradas. Los
+ * pedidos que comparten delivery_point ya colapsaron en la parada, así que contar por parada NO
+ * duplica: es el mismo total que ve el chofer al cargar.
+ */
+export const pedidosDeOrden = (o: OrdenTransporte): number =>
+  paradasDeOrden(o).reduce((acc, p) => acc + p.pedidos.length, 0)
+
+/**
+ * Techo de pedidos por camión. La regla del negocio es que un camión "se llena por capacidad o por
+ * cantidad de pedidos": llegar a 50 pedidos lo cierra igual que llegar a su capacidad en kg, porque
+ * cada pedido cuesta una descarga y un comprobante, no solo peso. Superarlo es ALERTA, no bloqueo.
+ */
+export const MAX_PEDIDOS_POR_CAMION = 50
 
 // Choferes disponibles para asignar a una orden de despacho (selector del detalle). El nombre va
 // concatenado con su código SAP de empleado (Nombre-SAP), así el buscador filtra por ambos.
@@ -521,6 +542,20 @@ export const CHOFERES = [
   'L. Áñez-3026',
   'C. Vaca-3027',
   'P. Suárez-3028',
+]
+
+// Auxiliares (ayudantes de reparto) disponibles para asignar a una orden. Mismo formato Nombre-SAP
+// que CHOFERES —es el mismo maestro de empleados—, con su propio rango de códigos (41xx) para que no
+// se confundan al leer un legajo suelto.
+export const AUXILIARES = [
+  'E. Quispe-4101',
+  'S. Choque-4102',
+  'V. Terceros-4103',
+  'G. Cuéllar-4104',
+  'N. Flores-4105',
+  'H. Ledezma-4106',
+  'F. Sandoval-4107',
+  'O. Chávez-4108',
 ]
 
 // ── dispatch_plan ────────────────────────────────────────────────────────────────────────────

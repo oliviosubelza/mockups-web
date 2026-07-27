@@ -36,6 +36,7 @@ import {
   CHOFERES,
   ORDENES_TRANSPORTE,
   paradasDeOrden,
+  pedidosDeOrden,
   pesoDeOrden,
   type EstadoOrden,
   type OrdenTransporte,
@@ -333,7 +334,19 @@ export function OrdenesTransporteView() {
     if (!puedeContinuar) return
     // Unión real de paradas de las INCLUIDAS → lo que recibe el optimizador.
     const paradaIds = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
-    setUnifyCtx({ camion: camiones[0], paradaIds, ordenes: incluidas.map((o) => o.codigo) })
+    // La tripulación sale de la primera orden incluida: acá ya se validó mismoCamion, y chofer/auxiliar
+    // son consistentes por camión. El chofer respeta la asignación local del mockup (choferDe).
+    const primera = incluidas[0]
+    setUnifyCtx({
+      camion: camiones[0],
+      paradaIds,
+      ordenes: incluidas.map((o) => o.codigo),
+      chofer: choferDe(primera),
+      auxiliar: primera.auxiliar,
+      pedidos: incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0),
+      cargaKg: usadoKg,
+      capacidadKg,
+    })
     openRoute('reoptimizar-plan')
     setUnificar(null)
   }

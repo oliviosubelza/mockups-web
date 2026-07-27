@@ -30,6 +30,7 @@ import {
   CAMIONES,
   ORDENES_TRANSPORTE,
   paradasDeOrden,
+  pedidosDeOrden,
   pesoDeOrden,
   type Camion,
   type OrdenTransporte,
@@ -47,6 +48,7 @@ const volumenDeOrden = (o: OrdenTransporte): number =>
  * Fila del listado: un camión con el agregado de SUS órdenes de transporte.
  * capacidadKg = trucks.capacity_weight (en el mock, capacidadPeso en toneladas → *1000).
  * cargaKg     = Σ del peso de las paradas de todas sus órdenes (assigned_weight_kg agregado).
+ * pedidos     = Σ de los pedidos de esas paradas (el otro techo del camión, junto al peso).
  */
 interface CamionResumen {
   id: string
@@ -59,7 +61,22 @@ interface CamionResumen {
   orderCount: number
   cargaKg: number
   cargaVolM3: number
+  pedidos: number
+  chofer: string
+  auxiliar: string
   ocupacionPct: number
+}
+
+/**
+ * Tripulación del camión a partir de sus órdenes. La dupla chofer/auxiliar viaja con el CAMIÓN, así
+ * que lo normal es que todas sus órdenes coincidan → se muestra ese nombre. Si el dataset trae más de
+ * uno (una orden reasignada, por ejemplo) se muestra el primero con "+N": la fila del listado no es el
+ * lugar para desambiguar tripulaciones, alcanza con avisar que hay más de una. '' = sin asignar.
+ */
+const tripulacionDe = (ordenes: OrdenTransporte[], campo: 'chofer' | 'auxiliar'): string => {
+  const nombres = Array.from(new Set(ordenes.map((o) => o[campo]).filter((n) => n !== '')))
+  if (nombres.length === 0) return ''
+  return nombres.length === 1 ? nombres[0] : `${nombres[0]} +${nombres.length - 1}`
 }
 
 // Se arma UNA sola vez desde el dataset: solo camiones que tienen órdenes de transporte. El resto de
@@ -73,6 +90,9 @@ const CAMIONES_RESUMEN: CamionResumen[] = Array.from(
   const capacidadVolM3 = camion?.capacidadVolumen ?? 0
   const cargaKg = ordenes.reduce((acc, o) => acc + pesoDeOrden(o), 0)
   const cargaVolM3 = ordenes.reduce((acc, o) => acc + volumenDeOrden(o), 0)
+  // Σ por orden, igual que cargaKg: las órdenes de un camión cubren paradas disjuntas, así que sumar
+  // por orden y sumar sobre la unión de paradas dan lo mismo. Se mantiene el mismo criterio que peso.
+  const pedidos = ordenes.reduce((acc, o) => acc + pedidosDeOrden(o), 0)
   return {
     id: placa,
     placa,
@@ -84,6 +104,9 @@ const CAMIONES_RESUMEN: CamionResumen[] = Array.from(
     orderCount: ordenes.length,
     cargaKg,
     cargaVolM3,
+    pedidos,
+    chofer: tripulacionDe(ordenes, 'chofer'),
+    auxiliar: tripulacionDe(ordenes, 'auxiliar'),
     ocupacionPct: capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0,
   }
 })
@@ -273,6 +296,7 @@ export function CamionesView() {
   const incluidas = seleccion?.ordenes.filter((o) => !excluidas.has(o.id)) ?? []
   const usadoKg = incluidas.reduce((acc, o) => acc + pesoDeOrden(o), 0)
   const usadoVolM3 = incluidas.reduce((acc, o) => acc + volumenDeOrden(o), 0)
+  const usadoPedidos = incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0)
   const capacidadKg = seleccion?.capacidadKg ?? 0
   const capacidadVolM3 = seleccion?.capacidadVolM3 ?? 0
   // Exceder capacidad (peso o volumen) es una ALERTA, no un bloqueo: el planificador la observa y
@@ -284,10 +308,21 @@ export function CamionesView() {
 
   // Confirma la finalización: junta las paradas de las órdenes INCLUIDAS y va al mapa (mismo destino
   // que disparaba "unificar"). El planner scopea el mapa a esas paradas y dibuja UNA sola ruta.
+  // El resumen que viaja al mapa se calcula sobre las INCLUIDAS (no sobre todo el camión): las
+  // tarjetas sobre el mapa tienen que mostrar el viaje que el usuario acaba de armar acá.
   const confirmar = () => {
     if (!seleccion || !puedeFinalizar) return
     const paradaIds = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
-    setUnifyCtx({ camion: seleccion.placa, paradaIds, ordenes: incluidas.map((o) => o.codigo) })
+    setUnifyCtx({
+      camion: seleccion.placa,
+      paradaIds,
+      ordenes: incluidas.map((o) => o.codigo),
+      chofer: tripulacionDe(incluidas, 'chofer'),
+      auxiliar: tripulacionDe(incluidas, 'auxiliar'),
+      pedidos: usadoPedidos,
+      cargaKg: usadoKg,
+      capacidadKg,
+    })
     openRoute('reoptimizar-plan')
     setSeleccion(null)
   }

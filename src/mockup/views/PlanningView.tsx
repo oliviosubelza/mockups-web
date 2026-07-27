@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { OrdersMap } from '../OrdersMap'
+import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
 import {
   CANAL_META,
@@ -368,74 +369,88 @@ export function PlanningView({
   // acciones) DENTRO del mapa. `isolate` atrapa los z-index altos de Leaflet (paneles/controles,
   // hasta ~1000) en su propio contexto de apilado; sin esto se filtran al contexto raíz y tapan
   // los popovers de los filtros (portalizados al body con z-50).
+  //
+  // El panel es una columna: arriba la franja del viaje unificado (cuando corresponde) y debajo el
+  // mapa, que se queda con el resto (`flex-1`). La franja NO va dentro del mapa: es información del
+  // viaje, no del mapa, así que no tiene por qué taparlo ni pelear con sus controles.
   const mapContent = (
-    <div className="relative isolate min-h-0 flex-1">
-      <OrdersMap
-        paradas={filtradas}
-        routeToolEnabled={optimized}
-        showRoute={showRoute}
-        onToggleRoute={() => setShowRoute((v) => !v)}
-        onSelectionChange={onMapSelection}
-        showDetails={showDetails}
-        singleRoute={singleRoute}
-        routeColor={routeColor}
-        hideTools={readOnly}
-      />
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Resumen del viaje unificado (chofer, auxiliar, pedidos, peso). El componente ya se apaga solo
+          si no hay unificación en curso, pero el contexto NO se limpia al salir del flujo: sin el gate
+          por readOnly, la franja seguiría apareciendo en la planificación normal después de haber
+          unificado una vez. readOnly es justo la marca del flujo de unificación (mismo criterio que
+          usa el filtro por Ruta más abajo). */}
+      {readOnly && <UnifyMapStats />}
 
-      {/* Toolbar flotante de filtros + acciones, dentro del mapa (arriba-centro). El padding
-          horizontal deja libre el MapToolbar (top-left) y el control de capas (top-right). */}
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-[1100] flex justify-center px-14">
-        <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-lg border border-border bg-background/95 px-2 py-1.5 shadow-md backdrop-blur">
-          <FilterMenu label="Canal" options={canalOptions} selected={canales} onToggle={toggleInSet(setCanales)} />
-          <FilterMenu label="Tipo" options={tipoOptions} selected={tipos} onToggle={toggleInSet(setTipos)} />
-          {/* El filtro por Ruta recién tiene sentido una vez optimizado (antes no hay rutas). En
-              solo-lectura (unificación) es UNA sola ruta → no se ofrece filtrar por ruta. */}
-          {optimized && !readOnly && (
-            <FilterMenu label="Ruta" options={rutaOptions} selected={rutas} onToggle={toggleInSet(setRutas)} />
-          )}
-          {hayFiltros && (
-            <Button variant="ghost" size="sm" className="h-8" onClick={limpiar}>
-              Limpiar
+      <div className="relative isolate min-h-0 flex-1">
+        <OrdersMap
+          paradas={filtradas}
+          routeToolEnabled={optimized}
+          showRoute={showRoute}
+          onToggleRoute={() => setShowRoute((v) => !v)}
+          onSelectionChange={onMapSelection}
+          showDetails={showDetails}
+          singleRoute={singleRoute}
+          routeColor={routeColor}
+          hideTools={readOnly}
+        />
+
+        {/* Toolbar flotante de filtros + acciones, dentro del mapa (arriba-centro). El padding
+            horizontal deja libre el MapToolbar (top-left) y el control de capas (top-right). */}
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-[1100] flex justify-center px-14">
+          <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-lg border border-border bg-background/95 px-2 py-1.5 shadow-md backdrop-blur">
+            <FilterMenu label="Canal" options={canalOptions} selected={canales} onToggle={toggleInSet(setCanales)} />
+            <FilterMenu label="Tipo" options={tipoOptions} selected={tipos} onToggle={toggleInSet(setTipos)} />
+            {/* El filtro por Ruta recién tiene sentido una vez optimizado (antes no hay rutas). En
+                solo-lectura (unificación) es UNA sola ruta → no se ofrece filtrar por ruta. */}
+            {optimized && !readOnly && (
+              <FilterMenu label="Ruta" options={rutaOptions} selected={rutas} onToggle={toggleInSet(setRutas)} />
+            )}
+            {hayFiltros && (
+              <Button variant="ghost" size="sm" className="h-8" onClick={limpiar}>
+                Limpiar
+              </Button>
+            )}
+
+            <Separator orientation="vertical" className="h-5" />
+            {/* Ver detalle: etiqueta permanente (nombre + ventana horaria) bajo cada punto. */}
+            <Button
+              variant={showDetails ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setShowDetails((v) => !v)}
+              aria-pressed={showDetails}
+              title="Ver nombre y ventana horaria sobre los puntos"
+            >
+              <Eye size={13} /> Ver detalle
             </Button>
-          )}
 
-          <Separator orientation="vertical" className="h-5" />
-          {/* Ver detalle: etiqueta permanente (nombre + ventana horaria) bajo cada punto. */}
-          <Button
-            variant={showDetails ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 gap-1.5"
-            onClick={() => setShowDetails((v) => !v)}
-            aria-pressed={showDetails}
-            title="Ver nombre y ventana horaria sobre los puntos"
-          >
-            <Eye size={13} /> Ver detalle
-          </Button>
-
-          <Separator orientation="vertical" className="h-5" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
-            onClick={() => setMapMaximized(true)}
-            title="Maximizar mapa"
-            aria-label="Maximizar mapa"
-          >
-            <Maximize2 size={14} />
-          </Button>
-          <UnpinButton label="Mapa" side="left" onClick={unpinMap} />
-        </div>
-      </div>
-
-      {/* Overlay de "procesando" al Optimizar (z alto para tapar los controles de Leaflet). */}
-      {optimizing && (
-        <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-          <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
-            <Loader2 size={18} className="animate-spin text-primary" />
-            <span className="text-sm font-medium">Optimizando rutas…</span>
+            <Separator orientation="vertical" className="h-5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0"
+              onClick={() => setMapMaximized(true)}
+              title="Maximizar mapa"
+              aria-label="Maximizar mapa"
+            >
+              <Maximize2 size={14} />
+            </Button>
+            <UnpinButton label="Mapa" side="left" onClick={unpinMap} />
           </div>
         </div>
-      )}
+
+        {/* Overlay de "procesando" al Optimizar (z alto para tapar los controles de Leaflet). Cubre
+            solo el mapa: la franja del viaje queda afuera porque no es contenido que se re-optimice. */}
+        {optimizing && (
+          <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
+              <Loader2 size={18} className="animate-spin text-primary" />
+              <span className="text-sm font-medium">Optimizando rutas…</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 
@@ -518,17 +533,22 @@ export function PlanningView({
       {/* Mapa maximizado en un diálogo grande. */}
       <Dialog open={mapMaximized} onOpenChange={setMapMaximized}>
         <DialogContent className="h-[90vh] w-[95vw] max-w-[95vw] overflow-hidden p-0 sm:max-w-[95vw]">
-          <div className="isolate h-full w-full overflow-hidden rounded-lg">
-            <OrdersMap
-              paradas={filtradas}
-              routeToolEnabled={optimized}
-              showRoute={showRoute}
-              onToggleRoute={() => setShowRoute((v) => !v)}
-              showDetails={showDetails}
-              singleRoute={singleRoute}
-              routeColor={routeColor}
-              hideTools={readOnly}
-            />
+          {/* Misma columna que el panel: franja del viaje arriba, mapa abajo con el resto del alto.
+              Maximizar el mapa no debería hacer desaparecer el resumen del viaje. */}
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-lg">
+            {readOnly && <UnifyMapStats />}
+            <div className="relative isolate min-h-0 flex-1">
+              <OrdersMap
+                paradas={filtradas}
+                routeToolEnabled={optimized}
+                showRoute={showRoute}
+                onToggleRoute={() => setShowRoute((v) => !v)}
+                showDetails={showDetails}
+                singleRoute={singleRoute}
+                routeColor={routeColor}
+                hideTools={readOnly}
+              />
+            </div>
           </div>
         </DialogContent>
       </Dialog>
