@@ -1,29 +1,27 @@
-import { useTabStore } from '@/core/tabs'
+import { useCallback } from 'react'
+import { useActiveRouteValue } from './active-route'
 import type { RouteConfig } from './types'
 
 /**
- * Estado de "qué está activo" para las superficies de navegación (sidebar). La verdad es el
- * TAB enfocado (su `routeId`), no el `pathname`: con keep-alive hay varias vistas montadas y el
- * resaltado debe seguir al tab activo. Resolver por `routeId` da exact-match y evita que rutas
- * hermanas con prefijo común (`/caja` y `/caja/history`) se iluminen las dos a la vez.
+ * Estado de "qué está activo" para las superficies de navegación (sidebar). La verdad es la URL:
+ * `useActiveRouteValue()` resuelve el pathname contra el RouteRegistry con el matcher de
+ * react-router, así que el resaltado es exact-match y rutas hermanas con prefijo común
+ * (`/caja` y `/caja/history`) no se iluminan las dos a la vez.
  */
 export function useActiveRoute() {
-  const activeTabId = useTabStore((s) => s.activeTabId)
-  const tabs = useTabStore((s) => s.tabs)
+  const activeRoute = useActiveRouteValue()
+  const activeRouteId = activeRoute?.routeId ?? null
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null
-  const activeRouteId = activeTab?.routeId ?? null
+  const isRouteActive = useCallback(
+    (route: RouteConfig): boolean => route.id === activeRouteId,
+    [activeRouteId]
+  )
 
-  const isRouteActive = (route: RouteConfig): boolean => route.id === activeRouteId
+  const isChildActive = useCallback(
+    (route: RouteConfig): boolean =>
+      (route.children ?? []).some((child) => child.id === activeRouteId),
+    [activeRouteId]
+  )
 
-  const isChildActive = (route: RouteConfig): boolean =>
-    (route.children ?? []).some((child) => child.id === activeRouteId)
-
-  const isRouteOpen = (routeId: string): boolean =>
-    tabs.some((t) => t.routeId === routeId)
-
-  const isRouteTabActive = (routeId: string): boolean =>
-    activeRouteId === routeId
-
-  return { activeTab, activeTabId, isRouteActive, isChildActive, isRouteOpen, isRouteTabActive }
+  return { activeRoute, activeRouteId, isRouteActive, isChildActive }
 }

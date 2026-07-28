@@ -10,7 +10,9 @@ import {
   CAMIONES,
   CANAL_META,
   PEDIDOS,
+  aMinutos,
   ciudadDe,
+  finVentana,
   mercadoDe,
   zonaDe,
   type Camion,
@@ -24,14 +26,32 @@ import {
 // ── Corte de hora (dentro/fuera) — regla de negocio preservada VERBATIM desde ChannelsView.tsx ──
 // Los pedidos cuya ventana TERMINA a más tardar a la hora de corte de su canal entran directo
 // (dentro); los que cierran después quedan fuera del corte (opcionales, requieren selección manual).
-export const aMinutos = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number)
-  return h * 60 + m
-}
-/** "13:00–17:00" → "17:00" (fin de la ventana de entrega). */
-export const finVentana = (ventana: string) => ventana.split('–')[1]?.trim() ?? ventana
+//
+// `aMinutos` y `finVentana` se movieron a mock-data porque la GENERACIÓN del dataset los necesita
+// (garantizar pedidos dentro Y fuera del corte en cada canal). Se re-exportan acá para no cambiarle
+// el import a nadie: al revés habría ciclo, porque este store importa mock-data.
+export { aMinutos, finVentana }
+
 export const dentroDelCorte = (p: Pedido, corte: string) =>
   aMinutos(finVentana(p.ventana)) <= aMinutos(corte)
+
+/** ¿El pedido entra al plan POR DEFECTO? (o sea, sin que el usuario haya decidido nada todavía). */
+export const incluidoPorDefecto = (p: Pedido) => dentroDelCorte(p, CANAL_META[p.canal].timeOff)
+
+/**
+ * ¿El pedido entra al plan? Gana la decisión EXPLÍCITA del usuario si existe; si no, la regla de
+ * corte. Un único predicado para todas las superficies (resumen, tabla de fuera de corte, diálogo
+ * por canal), así no puede haber dos definiciones de "incluido" que se contradigan.
+ */
+export const estaIncluido = (p: Pedido, overrides: OrderOverrides): boolean =>
+  overrides[p.id] ?? incluidoPorDefecto(p)
+
+/**
+ * Decisiones MANUALES del usuario, por id de pedido: `true` = lo mete al plan, `false` = lo saca.
+ * Solo se guardan las DESVIACIONES del default — si el usuario vuelve a la decisión que ya tomaba
+ * la regla de corte, la entrada se borra. Así "sin overrides" siempre significa "todo por defecto".
+ */
+export type OrderOverrides = Record<string, boolean>
 
 interface DispatchPlanState {
   selectedTruckIds: string[]
@@ -42,7 +62,7 @@ interface DispatchPlanState {
   activeMercados: MercadoId[]
   activeZonas: ZonaId[]
   activeVendedores: string[]
-  selectedFueraOrderIds: string[]
+  orderOverrides: OrderOverrides
   toggleTruck: (id: string) => void
   setSelectedTrucks: (ids: string[]) => void
   /**
@@ -57,7 +77,14 @@ interface DispatchPlanState {
     zonas: ZonaId[]
     vendedores: string[]
   }) => void
-  setSelectedFuera: (ids: string[]) => void
+  /**
+   * Registra la decisión de una tabla con selección: `scopeIds` son TODOS los pedidos que esa tabla
+   * mostraba e `includedIds` los que quedaron tildados. Lo de afuera del scope no se toca — así el
+   * diálogo de un canal no pisa las decisiones de otro canal.
+   */
+  setOrdersIncluded: (scopeIds: string[], includedIds: string[]) => void
+  /** Vuelve todos los pedidos a la regla de corte (borra las decisiones manuales). */
+  resetOrderOverrides: () => void
   reset: () => void
 }
 
@@ -68,7 +95,7 @@ const INITIAL_STATE = {
   activeMercados: [] as MercadoId[],
   activeZonas: [] as ZonaId[],
   activeVendedores: [] as string[],
-  selectedFueraOrderIds: [] as string[],
+  orderOverrides: {} as OrderOverrides,
 }
 
 export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
@@ -92,7 +119,22 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
       activeVendedores: sel.vendedores,
     }),
 
-  setSelectedFuera: (ids) => set({ selectedFueraOrderIds: ids }),
+  setOrdersIncluded: (scopeIds, includedIds) =>
+    set((state) => {
+      const incluidos = new Set(includedIds)
+      const next = { ...state.orderOverrides }
+      for (const id of scopeIds) {
+        const pedido = PEDIDOS.find((p) => p.id === id)
+        if (!pedido) continue
+        // Solo se persiste la desviación: si la decisión del usuario coincide con lo que ya hacía la
+        // regla de corte, se borra el override en vez de guardar una redundancia.
+        if (incluidos.has(id) === incluidoPorDefecto(pedido)) delete next[id]
+        else next[id] = incluidos.has(id)
+      }
+      return { orderOverrides: next }
+    }),
+
+  resetOrderOverrides: () => set({ orderOverrides: {} }),
 
   reset: () => set({ ...INITIAL_STATE }),
 }))
@@ -128,30 +170,17 @@ export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean =>
   (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
   (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))
 
-/** Pedidos DENTRO del corte de los canales activos — entran solos, sin selección manual. */
-export const selectDentroOrders = (s: DispatchPlanState): Pedido[] =>
-  PEDIDOS.filter(
-    (p) =>
-      s.activeCanales.includes(p.canal) &&
-      matchesNarrowing(p, s) &&
-      dentroDelCorte(p, CANAL_META[p.canal].timeOff)
-  )
+/** Pedidos de los canales activos que pasan el narrowing — el universo sobre el que se decide. */
+export const selectScopedOrders = (s: DispatchPlanState): Pedido[] =>
+  PEDIDOS.filter((p) => s.activeCanales.includes(p.canal) && matchesNarrowing(p, s))
 
-/** Pedidos FUERA del corte que el usuario tildó a mano en la tabla. */
-export const selectFueraSeleccionados = (s: DispatchPlanState): Pedido[] =>
-  PEDIDOS.filter(
-    (p) =>
-      s.activeCanales.includes(p.canal) &&
-      matchesNarrowing(p, s) &&
-      !dentroDelCorte(p, CANAL_META[p.canal].timeOff) &&
-      s.selectedFueraOrderIds.includes(p.id)
-  )
-
-/** Todo lo que efectivamente entra al plan: dentro (automático) + fuera (manual). */
-export const selectIncludedOrders = (s: DispatchPlanState): Pedido[] => [
-  ...selectDentroOrders(s),
-  ...selectFueraSeleccionados(s),
-]
+/**
+ * Todo lo que efectivamente entra al plan. Un solo filtro con `estaIncluido`: la regla de corte da
+ * el default y el override manual lo pisa. Antes eran dos listas concatenadas (dentro + fuera
+ * tildados), lo que no podía representar "saqué a mano un pedido que estaba dentro del corte".
+ */
+export const selectIncludedOrders = (s: DispatchPlanState): Pedido[] =>
+  selectScopedOrders(s).filter((p) => estaIncluido(p, s.orderOverrides))
 
 export interface NeededTotals {
   pesoKg: number

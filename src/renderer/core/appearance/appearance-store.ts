@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { electronTabStorage } from '@/lib/storage/tab-storage'
+import { persistedStorage } from '@/lib/storage/zustand-storage'
 import { StorageKeys } from '@/lib/storage/keys'
 
 export const FONT_SIZE = { MIN: 12, MAX: 18, DEFAULT: 14, OPTIONS: [12, 13, 14, 15, 16, 17, 18] } as const
@@ -28,7 +28,7 @@ export const useAppearanceStore = create<AppearanceState>()(
     }),
     {
       name: StorageKeys.appearance,
-      storage: createJSONStorage(() => electronTabStorage),
+      storage: createJSONStorage(() => persistedStorage),
       version: 2,
       migrate: () => ({
         fontSize: FONT_SIZE.DEFAULT,

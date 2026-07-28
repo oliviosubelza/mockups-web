@@ -1,7 +1,6 @@
 export const StorageKeys = {
   titlebar: {
     showMenubar: 'titlebar:show-menubar',
-    showTabbar:  'titlebar:show-tabbar',
   },
   sidebar: {
     width: 'sidebar:width',
@@ -10,8 +9,6 @@ export const StorageKeys = {
   toolPermissions: 'tools:allow-always',
   language: 'app:language',
   keybindings: 'app:keybindings',
-  tabs: 'app:tabs',
-  tabsSettings: 'app:tabs-settings',
   auth: {
     tenantSlug: 'auth:tenant-slug',
   },

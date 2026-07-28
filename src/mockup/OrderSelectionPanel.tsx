@@ -5,7 +5,7 @@
 // Nota de modelo: hoy el canal NO existe en la BD (ni en candidate_order ni en delivery_point).
 // Este mockup asume `channel_id` en candidate_order y una tabla dispatch_plan_channel para
 // persistir la selección; sin eso, este paso no es reproducible ni auditable.
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Building2, Globe, MapPin, Store, User, X, type LucideIcon } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -44,7 +44,8 @@ import {
   type ZonaId,
 } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
-import { dentroDelCorte, useDispatchPlanStore } from './dispatch-plan-store'
+import { CanalPedidosDialog } from './CanalPedidosDialog'
+import { estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
 import type { BoardState } from './types'
 
 const CANAL_IDS = Object.keys(CANAL_META) as CanalId[]
@@ -321,9 +322,9 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const activeMercados = useDispatchPlanStore((s) => s.activeMercados)
   const activeZonas = useDispatchPlanStore((s) => s.activeZonas)
   const activeVendedores = useDispatchPlanStore((s) => s.activeVendedores)
-  const selectedFueraOrderIds = useDispatchPlanStore((s) => s.selectedFueraOrderIds)
+  const orderOverrides = useDispatchPlanStore((s) => s.orderOverrides)
   const applySelection = useDispatchPlanStore((s) => s.applySelection)
-  const setSelectedFuera = useDispatchPlanStore((s) => s.setSelectedFuera)
+  const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
 
   // DRAFT de filtros: lo que el usuario va tildando en los popovers vive acá (local), NO en el
   // store. Un DEBOUNCE (abajo) commitea el draft al store recién ~450ms después del último toggle,
@@ -359,10 +360,8 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const [viewMode, setViewMode] = useState<'resumen' | 'tabla'>('resumen')
   // Orden de las filas del resumen por canal (drag-and-drop). Arranca en el orden natural de canales.
   const [canalRowOrder, setCanalRowOrder] = useState<CanalId[]>(CANAL_IDS)
-
-  // Ver nota en FleetCapacityPanel: el DataTable arranca su selección interna en `{}` al MONTAR;
-  // se ignora ese primer aviso para no pisar `selectedFueraOrderIds` ya guardado en el store.
-  const skipFirstSelection = useRef(true)
+  // Canal cuyo detalle está abierto en el diálogo (null = cerrado). Se abre clickeando su fila.
+  const [canalDetalle, setCanalDetalle] = useState<CanalId | null>(null)
 
   // Filtros del DTO aplicados en memoria (el daterange guarda ISO; comparo contra la fecha del pedido).
   const coincideFiltros = (p: Pedido) =>
@@ -385,19 +384,21 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
     (p) => activeCanales.includes(p.canal) && coincideFiltros(p) && coincideNarrowing(p),
   )
   const base = state === 'empty' || state === 'error' ? [] : pedidos
-  // Dos grupos por corte de hora, evaluado con el corte (del backend) del canal de cada pedido.
-  const fuera = base.filter((p) => !dentroDelCorte(p, CANAL_META[p.canal].timeOff))
+  // Los que la regla de corte deja afuera: son los que se tildan a mano en la vista tabla.
+  const fuera = base.filter((p) => !incluidoPorDefecto(p))
 
-  // Conjunto que efectivamente entra al plan: dentro del corte (automático) + fuera tildado a mano,
-  // ya filtrado por canal + narrowing. Base de TODOS los agregados del diálogo de detalles.
-  const incluidos = pedidos.filter(
-    (p) => dentroDelCorte(p, CANAL_META[p.canal].timeOff) || selectedFueraOrderIds.includes(p.id),
-  )
+  // Conjunto que efectivamente entra al plan. `estaIncluido` = decisión manual del usuario si la
+  // hay, y si no la regla de corte — el MISMO predicado que usa el diálogo por canal, así el
+  // resumen no puede contar distinto de lo que se ve al abrir el detalle.
+  // Sobre `base` y no sobre `pedidos`: en los board states empty/error `base` es [], así que los KPIs
+  // quedan en 0 en vez de contar pedidos que la tabla no está mostrando.
+  const incluidos = base.filter((p) => estaIncluido(p, orderOverrides))
 
-  // Agregado global de la vista Resumen: todo lo que entra al plan. Se separa cuántos vienen
-  // fuera del corte y cuántos de esos el usuario ya tildó a mano.
+  // Agregado global de la vista Resumen: todo lo que entra al plan. Se separa cuántos entran
+  // viniendo de fuera del corte y cuántos se quitaron a mano de los que entraban solos.
   const totalIncluidos = agregar(incluidos)
-  const fueraSeleccionados = fuera.filter((p) => selectedFueraOrderIds.includes(p.id))
+  const fueraSeleccionados = fuera.filter((p) => estaIncluido(p, orderOverrides))
+  const quitadosAMano = base.filter((p) => incluidoPorDefecto(p) && !estaIncluido(p, orderOverrides))
 
   // Resumen del card POR CANAL: cuenta lo que efectivamente entra al plan = las órdenes dentro del
   // corte (automáticas) + las de fuera del corte que el usuario tildó en la tabla.
@@ -572,7 +573,15 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
                   value={String(fueraSeleccionados.length)}
                   title="Pedidos fuera de corte seleccionados"
                 />
+                <Kpi
+                  label="Quitados"
+                  value={String(quitadosAMano.length)}
+                  title="Pedidos que entraban por corte y se quitaron a mano"
+                />
               </div>
+              <span className="text-xs text-muted-foreground">
+                Click en un canal para ver sus pedidos y quitar los que no deban entrar.
+              </span>
               <DataTable
                 tableId="mockup-resumen-canal"
                 columns={canalResumenColumns}
@@ -588,6 +597,10 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
                     moveInArray(prev, activeId as CanalId, overId as CanalId),
                   )
                 }
+                // Click en la fila → detalle del canal, para decidir pedido por pedido. El drag de
+                // filas va por su propia manija, así que no compite con el click.
+                onRowClick={(row) => setCanalDetalle(row.canal)}
+                rowClassName={() => 'cursor-pointer'}
               />
             </>
           )}
@@ -618,15 +631,19 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
             // Tinte MUY tenue (color del ícono de ecommerce, opacidad baja) para distinguir esas filas
             // sin gritar. Subir la opacidad (/10, /15) si se quiere más marcado.
             rowClassName={(p) => (p.canal === 'ecommerce' ? 'bg-[#db2777]/5' : '')}
-            onSelectionChange={(rows) => {
-              if (skipFirstSelection.current) {
-                skipFirstSelection.current = false
-                return
-              }
-              setSelectedFuera(rows.map((r) => r.id))
-            }}
+            // Arranca tildando lo que ya estaba decidido: sin esto la tabla nacía vacía y su primer
+            // aviso de selección borraba las decisiones guardadas (antes se tapaba con un ref que
+            // ignoraba ese primer aviso — ya no hace falta).
+            defaultSelectedIds={fuera.filter((p) => estaIncluido(p, orderOverrides)).map((p) => p.id)}
+            onSelectionChange={(rows) =>
+              setOrdersIncluded(
+                fuera.map((p) => p.id),
+                rows.map((r) => r.id),
+              )
+            }
             searchable
-            searchPlaceholder="Buscar por cliente o pedido…"
+            searchPlaceholder="Buscar por código, cliente, vendedor…"
+            searchKeys={['salesOrder', 'cliente', 'vendedor', 'puntoEntrega', 'company']}
             clientPagination
             defaultPageSize={8}
             filterBar={
@@ -639,6 +656,14 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           />
         </div>
       )}
+
+      {/* Detalle del canal clickeado: mismo universo de pedidos que ve el resumen (canal + narrowing
+          + filtros), para decidir uno por uno. */}
+      <CanalPedidosDialog
+        canal={canalDetalle}
+        pedidos={canalDetalle ? base.filter((p) => p.canal === canalDetalle) : []}
+        onClose={() => setCanalDetalle(null)}
+      />
     </div>
   )
 }

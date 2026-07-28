@@ -1,21 +1,6 @@
 import type { ComponentType, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
-export interface TabConfig {
-  singleton?: boolean
-  closable?: boolean
-  /**
-   * Keep-alive (§7, patrón retainContextWhenHidden de VSCode): la vista NO se desmonta al
-   * cambiar de tab — forms, scroll e inputs se preservan. Default TRUE; poner false para
-   * vistas pesadas que conviene reconstruir (su estado puede sobrevivir igual vía memento).
-   * Sujeto al cap LRU de TABS_CONFIG.MAX_MOUNTED_TABS.
-   */
-  keepAlive?: boolean
-  /** @deprecated alias histórico de keepAlive */
-  keepMounted?: boolean
-  maxInstances?: number
-}
-
 export interface RouteConfig {
   id: string
   path: string
@@ -36,7 +21,6 @@ export interface RouteConfig {
   /** Dibuja un separador antes de este nodo en el sidebar (no si es el primero). */
   separatorBefore?: boolean
   children?: RouteConfig[]
-  tabConfig?: TabConfig
   /**
    * Entitlement del plugin dueño de la ruta (§9). Sin él en la sesión, el item se muestra
    * LOCKED (visible con candado, nivel 1 de gating) y la vista ofrece el CTA de upsell —

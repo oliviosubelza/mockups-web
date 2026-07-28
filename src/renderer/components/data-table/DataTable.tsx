@@ -542,6 +542,7 @@ export function DataTable<T extends object>({
   selectable,
   onSelectionChange,
   isRowSelectable,
+  defaultSelectedIds,
 
   enableRowReorder,
   onRowReorder,
@@ -560,6 +561,7 @@ export function DataTable<T extends object>({
   searchPlaceholder: searchPlaceholderProp,
   defaultSearch = '',
   onSearchChange,
+  searchKeys,
 
   exportable,
   exportFilename,
@@ -579,7 +581,11 @@ export function DataTable<T extends object>({
   const searchPlaceholder = searchPlaceholderProp ?? t('dataTable.search')
   const { state: ts, persist, reset, isLoaded } = useTableState(tableId, defaultDensity, defaultPageSize)
 
-  const [rowSelection,      setRowSelection]      = useState<RowSelectionState>({})
+  // Selección inicial desde `defaultSelectedIds` (initializer perezoso: se evalúa solo al montar,
+  // así una prop nueva NO re-siembra — para eso, remontar la tabla con otra `key`).
+  const [rowSelection,      setRowSelection]      = useState<RowSelectionState>(() =>
+    Object.fromEntries((defaultSelectedIds ?? []).map((id) => [id, true]))
+  )
   const [globalFilter,      setGlobalFilter]      = useState(defaultSearch)
   const [expanded,          setExpanded]          = useState<ExpandedState>({})
   // Orden por defecto = initialSort (hasta que el usuario ordene otra columna, que se persiste).
@@ -719,6 +725,21 @@ export function DataTable<T extends object>({
     onColumnPinningChange:    (u) => setColumnPinning(u instanceof Function ? u(columnPinning) : u),
     onRowSelectionChange:     (u) => setRowSelection(u instanceof Function ? u(rowSelection) : u),
     onGlobalFilterChange:     setGlobalFilter,
+    // Con `searchKeys` la búsqueda global mira los CAMPOS de la fila y no las columnas. TanStack
+    // invoca esta fn una vez por columna filtrable y hace OR de los resultados, así que se ignora
+    // `columnId` y se responde por fila: el primer true corta el recorrido.
+    ...(searchKeys?.length
+      ? {
+          globalFilterFn: (row: Row<T>, _columnId: string, filterValue: unknown) => {
+            const needle = String(filterValue ?? '').trim().toLowerCase()
+            if (!needle) return true
+            const data = row.original as Record<string, unknown>
+            return searchKeys.some((key) =>
+              String(data[key] ?? '').toLowerCase().includes(needle)
+            )
+          },
+        }
+      : {}),
     onExpandedChange:         (u) => setExpanded(u instanceof Function ? u(expanded) : u),
     ...(useClientPagination ? {
       onPaginationChange: (u) => {

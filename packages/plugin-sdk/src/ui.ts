@@ -272,6 +272,14 @@ export interface DataTableProps<T extends object> {
 	 * seleccionables cuando `selectable` está activo.
 	 */
 	isRowSelectable?: (row: T) => boolean;
+	/**
+	 * Filas tildadas al MONTAR (ids según `getRowId`). Es un valor inicial, no controlado: cambiarlo
+	 * después no re-siembra la selección — para re-sembrar, remontar la tabla (ej. `key` distinta).
+	 *
+	 * Sin esto, una tabla que edita una selección ya existente arranca vacía y su primer
+	 * `onSelectionChange` reporta `[]`, pisando el estado que venía de afuera.
+	 */
+	defaultSelectedIds?: string[];
 
 	// Reordenamiento de FILAS por drag-and-drop (opt-in). El DataTable no reordena los datos por sí
 	// mismo: al soltar avisa qué fila se movió sobre cuál y el consumidor actualiza su propio orden.
@@ -298,6 +306,15 @@ export interface DataTableProps<T extends object> {
 	searchable?: boolean;
 	searchPlaceholder?: string;
 	defaultSearch?: string;
+	/**
+	 * Campos de la fila donde busca el buscador global. Sin esto, la búsqueda cubre solo las
+	 * COLUMNAS declaradas cuyo valor sea string o número (default de TanStack), así que no se puede
+	 * buscar por un dato que no se muestra (ej. vendedor, punto de entrega).
+	 *
+	 * Con `searchKeys` la búsqueda es independiente de las columnas: match parcial, sin distinguir
+	 * mayúsculas, contra cualquiera de los campos listados.
+	 */
+	searchKeys?: (keyof T & string)[];
 	onSearchChange?: (value: string) => void;
 
 	// Exportar

@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 import { commandRegistry } from '@/core/commands/command-registry'
 import { useMenuItems, type ResolvedMenuItem } from '@/core/menus/use-menu-items'
 import { MenuIcon } from '@/core/menus/menu-icon'
-import { openRoute } from '@/core/tabs'
+import { openRoute } from '@/core/routing/open-route'
 import { useActiveRoute } from '@/core/routing/use-active-route'
 import { useRoutes } from '@/core/routing/route-registry'
 import { SIDEBAR_ICON_THRESHOLD, useSidebarWidthStore } from '@/core/sidebar/use-sidebar-resize'
@@ -128,24 +128,9 @@ function canAccess(route: RouteConfig, userRole: string | undefined): boolean {
 
 // ─── Full mode ───────────────────────────────────────────────────────────────
 
-// Indicador de "tab abierta pero no enfocada". Se reserva SIEMPRE su ancho (invisible cuando no
-// aplica) para que el espacio disponible del label sea idéntico activo/inactivo → un nombre largo
-// envuelve a 2 líneas igual en ambos estados, sin saltar entre 1 y 2 filas al cambiar de ruta.
-function TabDot({ visible }: { visible: boolean }) {
-  return (
-    <span
-      className={cn(
-        'ml-auto h-1.5 w-1.5 shrink-0 self-center rounded-full bg-primary/50',
-        !visible && 'invisible'
-      )}
-    />
-  )
-}
-
 // Label de un item de navegación: ocupa el ancho disponible y, si el nombre no entra, envuelve a
-// DOS líneas (line-clamp-2) — independiente de qué adorno (dot/lock/chevron) quede al final. Antes
-// el truncado dependía del `span:last-child`: si aparecía el TabDot el label perdía el truncate y
-// saltaba a 2 líneas recortadas (scroll raro). Ahora el wrap es estable lo seleccione o no.
+// DOS líneas (line-clamp-2) — independiente de qué adorno (lock/chevron) quede al final. El
+// truncado NO depende del `span:last-child`: así el wrap es estable aparezca o no un adorno.
 const navLabelClass = 'min-w-0 flex-1 text-left leading-tight break-words line-clamp-2'
 
 // Fondo de las cabeceras de grupo/sección (menú padre) — color de marca, para diferenciarlas de
@@ -157,7 +142,7 @@ const GROUP_HEADER_FG = 'hsl(var(--primary-foreground))'
 
 function NavItem({ route }: { route: RouteConfig }) {
   const { t } = useTranslation()
-  const { isRouteActive, isChildActive, isRouteOpen, isRouteTabActive } = useActiveRoute()
+  const { isRouteActive, isChildActive } = useActiveRoute()
   const iconSize = useAppearanceStore((s) => s.sidebarIconSize)
   const userRole = useAuthStore((s) => s.user?.role)
   // Gating declarativo (§9 nivel 1): el item gated se ve LOCKED, no se oculta (upsell).
@@ -197,31 +182,22 @@ function NavItem({ route }: { route: RouteConfig }) {
         </SidebarMenuButton>
         {expanded && (
           <SidebarMenuSub>
-            {children.map((child) => {
-              const childIsActive = isRouteActive(child)
-              const childIsOpen = isRouteOpen(child.id)
-              const childIsTabActive = isRouteTabActive(child.id)
-              return (
-                <SidebarMenuSubItem key={child.id}>
-                  <SidebarMenuSubButton
-                    isActive={childIsActive}
-                    onClick={() => openRoute(child.id)}
-                  >
-                    <RouteIcon route={child} size={Math.max(12, iconSize - 2)} />
-                    <span className={navLabelClass}>{routeLabel(t, child)}</span>
-                    <TabDot visible={childIsOpen && !childIsTabActive} />
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              )
-            })}
+            {children.map((child) => (
+              <SidebarMenuSubItem key={child.id}>
+                <SidebarMenuSubButton
+                  isActive={isRouteActive(child)}
+                  onClick={() => openRoute(child.id)}
+                >
+                  <RouteIcon route={child} size={Math.max(12, iconSize - 2)} />
+                  <span className={navLabelClass}>{routeLabel(t, child)}</span>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
           </SidebarMenuSub>
         )}
       </SidebarMenuItem>
     )
   }
-
-  const isOpen = isRouteOpen(route.id)
-  const isTabActive = isRouteTabActive(route.id)
 
   return (
     <SidebarMenuItem>
@@ -232,10 +208,8 @@ function NavItem({ route }: { route: RouteConfig }) {
       >
         <RouteIcon route={route} size={iconSize} />
         <span className={navLabelClass}>{routeLabel(t, route)}</span>
-        {!entitled ? (
+        {!entitled && (
           <Lock className="ml-auto shrink-0 self-center" style={{ width: 12, height: 12 }} />
-        ) : (
-          <TabDot visible={isOpen && !isTabActive} />
         )}
       </SidebarMenuButton>
     </SidebarMenuItem>

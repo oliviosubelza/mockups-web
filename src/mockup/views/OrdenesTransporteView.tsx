@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { openRoute } from '@/core/tabs'
+import { openRoute } from '@/core/routing/open-route'
 import { OrdenEstadoBadge } from '../estado-badge'
 import {
   CAMIONES,

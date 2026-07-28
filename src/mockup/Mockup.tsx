@@ -1,6 +1,7 @@
 // Pantalla de mockup: componentes REALES del workbench con datos falsos.
 // Sirve para exportar a Figma (html.to.design) y aprobar diseño sin cablear backend.
 import { useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { LayoutGrid, Monitor } from 'lucide-react'
 import { PortalContainerContext } from '@/components/ui/portal-container'
 import { cn } from '@/lib/utils'
@@ -12,6 +13,7 @@ import type { BoardState, Fase, PlanningTab, TransferTab } from './types'
 import { PlansView } from './views/PlansView'
 import { useActiveRouteValue } from '@/core/routing/active-route'
 import { getRouteComponent } from './routes'
+import { useViewModeStore, type ViewMode } from './view-mode-store'
 
 interface BoardDef {
   /** Nombre corto del tablero — el que se lee en la etiqueta y en Figma. */
@@ -124,8 +126,6 @@ function Board({
   )
 }
 
-type ViewMode = 'web' | 'mockup'
-
 /**
  * Botón flotante TEMPORAL para alternar entre modo mockup (tableros para Figma) y modo web (pantalla
  * completa). Fixed con z-index altísimo para flotar sobre todo, incluso sobre el board fullscreen y
@@ -190,23 +190,18 @@ function ViewModeToggle({ mode, onToggle }: { mode: ViewMode; onToggle: () => vo
 // el ancho excedente se recorta.
 // ?board=planificacion-paradas&theme=dark aísla un tablero (sin gastar otro import).
 export function Mockup() {
-  const params = new URLSearchParams(location.search)
-  const slug = params.get('board')
-  const theme = (params.get('theme') as MockTheme | null) ?? 'light'
-  const frame = resolveFrame()
+  // Los knobs del tablero (?board, ?theme, ?w, ?h) siguen viniendo de la URL: son parámetros de
+  // CAPTURA, uno por export a Figma. `useSearchParams` y no `location.search` para que se relean
+  // cuando el router navega (`openRoute` los arrastra vía sticky search params).
+  const [searchParams] = useSearchParams()
+  const slug = searchParams.get('board')
+  const theme = (searchParams.get('theme') as MockTheme | null) ?? 'light'
+  const frame = resolveFrame(searchParams.toString())
 
-  // El modo de vista arranca del ?view=web pero vive en estado: el botón flotante lo alterna en
-  // caliente (y refleja el cambio en la URL para que sobreviva a un reload). Es temporal.
-  const [view, setView] = useState<ViewMode>(params.get('view') === 'web' ? 'web' : 'mockup')
-  const toggleView = () =>
-    setView((prev) => {
-      const next: ViewMode = prev === 'web' ? 'mockup' : 'web'
-      const p = new URLSearchParams(location.search)
-      next === 'web' ? p.set('view', 'web') : p.delete('view')
-      const qs = p.toString()
-      window.history.replaceState(null, '', qs ? `?${qs}` : location.pathname)
-      return next
-    })
+  // El modo de vista vive en su propio store (localStorage), NO en la URL: así sobrevive el reload
+  // y no se pierde al navegar. Ver view-mode-store.ts.
+  const view = useViewModeStore((s) => s.mode)
+  const toggleView = useViewModeStore((s) => s.toggle)
 
   const toggle = <ViewModeToggle mode={view} onToggle={toggleView} />
 
@@ -224,7 +219,7 @@ export function Mockup() {
   }
 
   if (slug) {
-    const state = (params.get('state') as BoardState | null) ?? 'default'
+    const state = (searchParams.get('state') as BoardState | null) ?? 'default'
     const board = BOARDS.find((b) => b.slug === slug && b.state === state)
     if (board) {
       return (

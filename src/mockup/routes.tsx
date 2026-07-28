@@ -1,13 +1,15 @@
-// Navegación del mockup como DATO (mismo patrón que mockup-native/src/navigation): cada destino se
-// declara acá con su `component`, y un método (`navigateTo`) lo abre. El AppSidebar real se alimenta
-// del RouteRegistry, así que registramos estas rutas ahí (`registerMockRoutes`) y el shell renderiza
-// el `component` de la ruta ACTIVA (ver ActiveRouteView en Mockup.tsx). No hay React Router en el
-// mockup: `openRoute` solo abre/activa un tab (su navigate interno es no-op sin router).
+// Navegación como DATO (mismo patrón que mockup-native/src/navigation): cada destino se declara acá
+// con su `path` y su `component`. El AppSidebar real se alimenta del RouteRegistry, así que
+// registramos estas rutas ahí (`registerMockRoutes`) y el shell renderiza el `component` de la ruta
+// que matchea la URL (ver active-route.ts + Mockup.tsx).
+//
+// Hay React Router: el `path` es una URL REAL. Cada pantalla es deep-linkeable, sobrevive un F5 y
+// entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ClipboardList, Truck } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
-import { openRoute, useTabStore } from '@/core/tabs'
+import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
 import { DispatchFlow } from './DispatchFlow'
 import { PlansView } from './views/PlansView'
@@ -20,13 +22,13 @@ import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 
 /**
- * Un destino navegable del mockup. Espejo reducido del `RouteInterface` de mockup-native: la ruta se
- * define como dato (id, path, label, icon, component) y el registro/navegación la consumen.
+ * Un destino navegable. Espejo reducido del `RouteInterface` de mockup-native: la ruta se define
+ * como dato (id, path, label, icon, component) y el registro/navegación la consumen.
  */
 export interface MockRoute {
-  /** Id estable: clave del tab, resaltado del sidebar y lookup del component. */
+  /** Id estable: resaltado del sidebar, `openRoute(id)` y lookup del component. */
   id: string
-  /** Path del tab (dedupe del tab store). No hay router: es identidad, no URL real. */
+  /** URL real de la pantalla. Es lo que se ve en la barra de direcciones y lo que se puede compartir. */
   path: string
   label: string
   icon?: LucideIcon
@@ -156,17 +158,22 @@ function toRouteConfig(route: MockRoute): RouteConfig {
   }
 }
 
+/** Id de la ruta de entrada: a dónde va `/`. */
+export const ENTRY_ROUTE_ID = 'planificaciones'
+
+/** Path de la ruta de entrada. Lo usa el entry para reescribir `/` antes de montar el router. */
+export const ENTRY_ROUTE_PATH = findRoute(ENTRY_ROUTE_ID)?.path ?? '/'
+
 /**
- * Registra las rutas en el RouteRegistry y deja abierta la de entrada (Planificaciones). Se limpian
- * los tabs primero para que el mockup arranque siempre igual (el tab store persiste en localStorage).
+ * Registra las rutas en el RouteRegistry (punto de inyección: de ahí leen el sidebar y el
+ * resolvedor de ruta activa). NO navega: la URL es la fuente de verdad, y forzar un destino acá
+ * era justamente lo que rompía el F5 y los deep links.
  */
-export function registerMockRoutes(entryId = 'planificaciones'): void {
+export function registerMockRoutes(): void {
   RouteRegistry.register(routes.map(toRouteConfig))
-  useTabStore.setState({ tabs: [], activeTabId: null })
-  navigateTo(entryId)
 }
 
-/** Navega a una ruta por id: abre (o reactiva) su tab. Este es "el método" al que se le pasa la ruta. */
+/** Navega a una ruta por id. Este es "el método" al que se le pasa la ruta. */
 export function navigateTo(routeId: string): void {
   openRoute(routeId)
 }

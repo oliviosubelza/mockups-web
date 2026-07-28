@@ -1,16 +1,23 @@
-import { useSyncExternalStore } from 'react'
-import { useTabStore } from '@/core/tabs'
+import { useMemo, useSyncExternalStore } from 'react'
+import { matchRoutes, useLocation } from 'react-router'
+import { LocationMirror } from './location-mirror'
 import { RouteRegistry } from './route-registry'
 import type { RouteConfig } from './types'
 
 /**
- * Ruta ACTIVA del workbench (fuente de verdad única). Con tabs keep-alive hay varias vistas
- * montadas a la vez; la "activa" es la del tab enfocado — NO el `pathname` (que es derivado, lo
- * sincroniza `openRoute`/click de tab). Resolver por `routeId` del tab activo da exact-match y
- * elimina la ambigüedad de prefijos entre rutas hermanas (ej. `/caja` vs `/caja/history`).
+ * Ruta ACTIVA (fuente de verdad única) = la que matchea el PATHNAME contra el RouteRegistry.
  *
- * Superficie compartida: la consume el sidebar (resaltado), el SDK (`api.navigation`) y la tool
- * core `workbench.getActiveView` (catálogo MCP) — misma verdad para interno, externo y agentes.
+ * Antes la verdad era el tab enfocado (modelo workbench con keep-alive). En web eso no aplica: hay
+ * una sola vista viva a la vez y la URL manda — recargar, compartir un link o usar back/forward
+ * tienen que caer en la misma pantalla. El registry sigue siendo el punto de inyección de rutas
+ * (`RouteRegistry.register`); lo único que cambió es quién decide cuál está activa.
+ *
+ * El match lo hace `matchRoutes` de react-router y NO una comparación de strings a mano: rankea por
+ * especificidad, así que rutas hermanas con prefijo común (`/caja` vs `/caja/history`) no se
+ * iluminan las dos, y soporta params dinámicos (`/planes/:id`) cuando aparezcan.
+ *
+ * Superficie compartida: la consume el sidebar (resaltado), el shell (qué pinta) y el SDK
+ * (`api.navigation`) — misma verdad para interno, externo y agentes.
  */
 export interface ActiveRoute {
   readonly routeId: string
@@ -18,31 +25,45 @@ export interface ActiveRoute {
   readonly title: string
 }
 
-function snapshot(): ActiveRoute | null {
-  const { activeTabId, tabs } = useTabStore.getState()
-  const tab = tabs.find((t) => t.id === activeTabId)
-  if (!tab) return null
-  return { routeId: tab.routeId, path: tab.path, title: tab.title }
+/** Resolución PURA pathname -> ruta registrada. Testeable en aislamiento, sin router ni DOM. */
+export function resolveActiveRoute(pathname: string): ActiveRoute | null {
+  // Los nodos sin `path` (encabezados de sección) no son navegables: no entran al match.
+  const candidates = RouteRegistry.getAllRoutes()
+    .filter((route) => route.path)
+    .map((route) => ({ id: route.id, path: route.path }))
+
+  const matches = matchRoutes(candidates, pathname)
+  if (!matches || matches.length === 0) return null
+
+  // El último match es el más profundo, o sea el más específico.
+  const matchedId = matches[matches.length - 1].route.id
+  const config = matchedId ? RouteRegistry.getRoute(matchedId) : undefined
+  if (!config) return null
+
+  return { routeId: config.id, path: config.path, title: config.label }
 }
 
-// Cache del snapshot: useSyncExternalStore exige identidad estable mientras no cambie el valor.
-let _cache: ActiveRoute | null = snapshot()
+// Cache del snapshot no-React: los consumidores con useSyncExternalStore exigen identidad estable
+// mientras el valor no cambie.
+let _cache: ActiveRoute | null = null
+let _cachedPathname: string | null = null
+let _cachedRoutes: RouteConfig[] | null = null
 
 function _recompute(): ActiveRoute | null {
-  const next = snapshot()
-  const same =
-    (_cache === null && next === null) ||
-    (_cache !== null &&
-      next !== null &&
-      _cache.routeId === next.routeId &&
-      _cache.path === next.path &&
-      _cache.title === next.title)
-  if (!same) _cache = next
+  const pathname = LocationMirror.get()
+  // El snapshot del registry entra por IDENTIDAD y no por longitud: desregistrar y registrar la
+  // misma cantidad de rutas cambia el match sin cambiar ni el pathname ni el largo.
+  const routes = RouteRegistry.getAllRoutes()
+  if (pathname !== _cachedPathname || routes !== _cachedRoutes) {
+    _cachedPathname = pathname
+    _cachedRoutes = routes
+    _cache = resolveActiveRoute(pathname)
+  }
   return _cache
 }
 
 export const ActiveRouteService = {
-  /** Ruta del tab enfocado, o null si no hay tabs. */
+  /** Ruta que matchea la URL actual, o null si el pathname no corresponde a ninguna registrada. */
   get(): ActiveRoute | null {
     return _recompute()
   },
@@ -53,28 +74,33 @@ export const ActiveRouteService = {
     return active ? RouteRegistry.getRoute(active.routeId) : undefined
   },
 
-  /** Notifica cada vez que cambia el tab activo (o su routeId/path/title). */
+  /** Notifica en cada navegación y en cada cambio del registry. */
   subscribe(listener: (route: ActiveRoute | null) => void): () => void {
-    return useTabStore.subscribe((state, prev) => {
-      if (state.activeTabId !== prev.activeTabId || state.tabs !== prev.tabs) {
-        const prevCache = _cache
-        const next = _recompute()
-        if (next !== prevCache) listener(next)
-      }
-    })
+    const emit = () => {
+      const prev = _cache
+      const next = _recompute()
+      if (next !== prev) listener(next)
+    }
+    const unsubscribeLocation = LocationMirror.subscribe(emit)
+    const unsubscribeRoutes = RouteRegistry.subscribe(emit)
+    return () => {
+      unsubscribeLocation()
+      unsubscribeRoutes()
+    }
   },
 }
 
-function _subscribeForReact(onChange: () => void): () => void {
-  return useTabStore.subscribe((state, prev) => {
-    if (state.activeTabId !== prev.activeTabId || state.tabs !== prev.tabs) {
-      _recompute()
-      onChange()
-    }
-  })
+/** Identidad del snapshot de rutas: re-resuelve el match si se registran o quitan rutas. */
+function useRoutesSnapshot(): RouteConfig[] {
+  return useSyncExternalStore(RouteRegistry.subscribe, RouteRegistry.getAllRoutes)
 }
 
-/** Hook reactivo: la ruta activa del workbench. */
+/**
+ * Hook reactivo: la ruta activa. Lee `useLocation()` directo y no el espejo, para no quedar un
+ * frame atrás del render.
+ */
 export function useActiveRouteValue(): ActiveRoute | null {
-  return useSyncExternalStore(_subscribeForReact, ActiveRouteService.get)
+  const { pathname } = useLocation()
+  const routes = useRoutesSnapshot()
+  return useMemo(() => resolveActiveRoute(pathname), [pathname, routes])
 }

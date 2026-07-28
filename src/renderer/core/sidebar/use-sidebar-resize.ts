@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { electronTabStorage } from '@/lib/storage/tab-storage'
+import { persistedStorage } from '@/lib/storage/zustand-storage'
 import { StorageKeys } from '@/lib/storage/keys'
 
 export const SIDEBAR_WIDTH_DEFAULT = 158
@@ -36,7 +36,7 @@ export const useSidebarWidthStore = create<SidebarWidthState>()(
     }),
     {
       name: StorageKeys.sidebar.width,
-      storage: createJSONStorage(() => electronTabStorage),
+      storage: createJSONStorage(() => persistedStorage),
     }
   )
 )
