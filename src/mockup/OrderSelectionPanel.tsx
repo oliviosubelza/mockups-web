@@ -139,6 +139,33 @@ const agregar = (items: Pedido[]): Agregado => ({
   totalWeight: Number(items.reduce((acc, p) => acc + p.peso, 0).toFixed(2)),
 })
 
+/**
+ * Contador de pedidos fuera de corte, sobre la pestaña que los lista.
+ *
+ * Por qué existe: los pedidos fuera de corte NO entran solos, hay que elegirlos a mano. Con la
+ * pestaña pelada nadie se enteraba de que había algo pendiente ahí y se planificaba de menos.
+ *
+ * Ámbar y no el color de marca: es una advertencia ("hay pedidos que se van a quedar afuera"), no
+ * una acción. Parpadea SOLO hasta que se entra a la pestaña — un parpadeo eterno se vuelve ruido y
+ * el ojo lo aprende a ignorar, que es justo lo que se quiere evitar.
+ *
+ * En 0 no se muestra nada: un badge con "0" es ruido, no información.
+ */
+function FueraDeCorteBadge({ cantidad, parpadea }: { cantidad: number; parpadea: boolean }) {
+  if (cantidad === 0) return null
+  return (
+    <span
+      title={`${cantidad} ${cantidad === 1 ? 'pedido queda' : 'pedidos quedan'} fuera del corte y no entran salvo que los selecciones`}
+      className={cn(
+        'flex min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white tabular-nums',
+        parpadea && 'animate-pulse ring-2 ring-amber-500/40',
+      )}
+    >
+      {cantidad}
+    </span>
+  )
+}
+
 // Indicador compacto para la fila de resumen: rótulo chico arriba, número debajo. Sin card propia
 // (van todos dentro de una misma barra), para ocupar bien el espacio horizontal.
 function Kpi({ label, value, title }: { label: string; value: string; title?: string }) {
@@ -362,6 +389,9 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const [canalRowOrder, setCanalRowOrder] = useState<CanalId[]>(CANAL_IDS)
   // Canal cuyo detalle está abierto en el diálogo (null = cerrado). Se abre clickeando su fila.
   const [canalDetalle, setCanalDetalle] = useState<CanalId | null>(null)
+  // Si el usuario ya entró a la pestaña de fuera de corte. Mientras no lo haya hecho, su badge
+  // parpadea. Es estado de UI (no del plan), así que vive acá y no en el store.
+  const [fueraRevisado, setFueraRevisado] = useState(false)
 
   // Filtros del DTO aplicados en memoria (el daterange guarda ISO; comparo contra la fecha del pedido).
   const coincideFiltros = (p: Pedido) =>
@@ -535,15 +565,20 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
             <button
               key={mode}
               type="button"
-              onClick={() => setViewMode(mode)}
+              onClick={() => {
+                setViewMode(mode)
+                // Entrar a la pestaña YA cuenta como haberlos visto: el badge deja de parpadear.
+                if (mode === 'tabla') setFueraRevisado(true)
+              }}
               className={cn(
-                'rounded px-3 py-1 text-xs font-medium transition-colors',
+                'flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors',
                 viewMode === mode
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {mode === 'resumen' ? 'Resumen' : 'Seleccionar fuera de corte'}
+              {mode === 'tabla' && <FueraDeCorteBadge cantidad={fuera.length} parpadea={!fueraRevisado} />}
             </button>
           ))}
         </div>

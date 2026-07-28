@@ -895,18 +895,32 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
   const chofer = rand.cycler(CHOFERES)
   const auxiliar = rand.cycler(AUXILIARES)
   const estados: EstadoOrden[] = ['pendiente', 'cargando', 'despachada']
-  // Factor de llenado por camión: uno de cada tres se pasa de capacidad (>1).
-  const factores = [0.55, 0.85, 1.15]
+  // Llenado de los camiones que NO exceden: la mayoría de las unificaciones tiene que entrar bien.
+  const factoresNormales = [0.55, 0.85]
   const out: OrdenTransporte[] = []
 
-  const candidatos = RUTAS.map((r) => ({
-    camion: camionPorId(r.camionId)!,
-    paradas: paradasDeCamion(r.camionId),
-  })).filter((x) => x.paradas.length >= 2)
+  const candidatos = RUTAS.map((r) => {
+    const camion = camionPorId(r.camionId)!
+    const paradas = paradasDeCamion(r.camionId)
+    return {
+      camion,
+      paradas,
+      disponibleKg: paradas.reduce((acc, p) => acc + p.pesoTotal, 0),
+      capacidadKg: camion.capacidadPeso * 1000,
+    }
+  }).filter((x) => x.paradas.length >= 2)
 
   for (let i = 0; i < candidatos.length && out.length < VOLUMEN.ordenesTransporte; i++) {
-    const { camion, paradas } = candidatos[i]
-    const objetivoKg = camion.capacidadPeso * 1000 * factores[i % factores.length]
+    const { camion, paradas, disponibleKg, capacidadKg } = candidatos[i]
+
+    // Quién exceden se decide POR LOS DATOS: los camiones cuyas paradas asignadas ya pesan más que
+    // su capacidad reciben TODAS sus paradas, y al unificar salta la alerta de peso. Antes el factor
+    // se asignaba por posición en la lista, sin correlación con qué camión podía realmente pasarse
+    // — y entonces el escenario no aparecía en el dataset.
+    const objetivoKg =
+      disponibleKg > capacidadKg
+        ? disponibleKg
+        : capacidadKg * factoresNormales[i % factoresNormales.length]
 
     // Se toman paradas hasta pasar el objetivo de peso (o agotarlas).
     const elegidas: Parada[] = []
