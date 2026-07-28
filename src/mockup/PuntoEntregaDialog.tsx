@@ -237,12 +237,12 @@ export function PuntoEntregaDialog({
           </div>
 
           {/* Solo si está clavada: mostrar "no forzada" en todas sería ruido en la mayoría de casos. */}
-          {parada.camionForzadoId && (
+          {/* {parada.camionForzadoId && (
             <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-500">
               <Pin className="size-3.5 shrink-0" />
               Parada clavada a este camión a mano — la optimización no la va a mover.
             </div>
-          )}
+          )} */}
 
           {/* Los pedidos del punto. Es lo que hace útil el modal cuando la parada está UNIFICADA:
               varios pedidos que el camión descarga en una sola visita. */}
