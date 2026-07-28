@@ -5,8 +5,8 @@
 // son la confirmación. Al revés habría que scrollear para ver lo que más se mira.
 //
 // Se compone con los componentes de `components/ui`, pero eligiendo el primitivo por lo que ES cada
-// cosa: `Field` para los pares rótulo/valor (no dibuja caja), `Badge` para los chips, `Alert` para el
-// aviso, `AspectRatio`, `ScrollArea` y `Carousel` para la estructura. Los datos NO van en `Item`:
+// cosa: `Field` para los pares rótulo/valor (no dibuja caja), `Badge` para los chips, y
+// `AspectRatio`, `ScrollArea` y `Carousel` para la estructura. Los datos NO van en `Item`:
 // `Item` es una fila de lista con borde y relleno, y usarlo por dato convierte el grid en una rejilla
 // de cajas — pesado y con el doble de aire del necesario. Un par rótulo/valor es tipografía.
 //
@@ -19,12 +19,10 @@ import {
   MapPin,
   Navigation,
   Package,
-  Pin,
   Truck,
   Weight,
   type LucideIcon,
 } from 'lucide-react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AspectRatio } from '@/components/ui/aspect-ratio'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -259,15 +257,11 @@ export function PuntoEntregaDialog({
             </Dato>
           </div>
 
-          {/* Solo si está clavada: mostrar "no forzada" en todas sería ruido en la mayoría. */}
-          {parada.camionForzadoId && (
-            <Alert className="py-1.5">
-              <Pin />
-              <AlertDescription className="text-xs">
-                Parada clavada a este camión — la optimización no la va a mover.
-              </AlertDescription>
-            </Alert>
-          )}
+          {/*
+            Aviso de "parada clavada" (camionForzadoId): RETIRADO a pedido — no aporta al flujo.
+            Si alguna vez hace falta, va acá dentro del bloque fijo y hay que reponer los imports de
+            `Alert`, `AlertDescription` y el ícono `Pin`, que se sacaron por quedar sin uso.
+          */}
         </div>
 
         <Separator />

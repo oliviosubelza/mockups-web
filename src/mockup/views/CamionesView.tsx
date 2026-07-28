@@ -358,10 +358,10 @@ export function CamionesView() {
           ),
         },
         {
-          id: 'ordenes',
+          id: 'rutas',
           // "Órdenes" solo se leía como pedidos. Acá el conteo es de transport_orders (las órdenes de
           // transporte del camión, las que después se unifican), así que el header lo dice completo.
-          header: 'Órdenes de transporte',
+          header: 'Rutas',
           size: 170,
           meta: { align: 'right' },
           cell: (row) => (
@@ -476,7 +476,7 @@ export function CamionesView() {
               <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <span className="text-muted-foreground">
-                    {incluidas.length} {incluidas.length === 1 ? 'orden' : 'órdenes'} incluidas
+                    {incluidas.length} {incluidas.length === 1 ? 'ruta' : 'rutas'} incluidas
                   </span>
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <MapPin className="size-3.5" /> {totalParadas} paradas
@@ -503,7 +503,7 @@ export function CamionesView() {
 
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-3 text-xs text-muted-foreground">
-                  <span>Órdenes del camión</span>
+                  <span>Rutas del camión</span>
                   <span className="tabular-nums">
                     {incluidas.length} incluidas de {seleccion.ordenes.length}
                   </span>

@@ -492,10 +492,10 @@ export function PlanningView({
         <Button
           size="sm"
           disabled={!optimized}
-          title={optimized ? 'Generar órdenes de transporte' : 'Primero optimizá las rutas'}
+          title={optimized ? 'Generar órdenes de transporte' : 'Primero optimizar las rutas'}
           onClick={onNext}
         >
-          Generar órdenes
+          Crear {(scopeLabel?.includes('Reoptimizando')) ? 'órdenes de Transporte' : 'Rutas '}
         </Button>
       </div>
 
