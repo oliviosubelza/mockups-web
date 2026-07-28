@@ -140,39 +140,76 @@ const agregar = (items: Pedido[]): Agregado => ({
 })
 
 /**
- * Contador de pedidos fuera de corte, sobre la pestaña que los lista.
+ * Progreso de selección de los pedidos fuera de corte, sobre la pestaña que los lista: "3/25".
  *
  * Por qué existe: los pedidos fuera de corte NO entran solos, hay que elegirlos a mano. Con la
  * pestaña pelada nadie se enteraba de que había algo pendiente ahí y se planificaba de menos.
  *
- * Ámbar y no el color de marca: es una advertencia ("hay pedidos que se van a quedar afuera"), no
- * una acción. Parpadea SOLO hasta que se entra a la pestaña — un parpadeo eterno se vuelve ruido y
- * el ojo lo aprende a ignorar, que es justo lo que se quiere evitar.
+ * Es una FRACCIÓN y no un total, porque las dos mitades del dato importan: cuántos hay para revisar
+ * y cuántos ya se decidieron. Con solo el total no se distingue "no lo miré" de "lo miré y elegí 0".
  *
- * En 0 no se muestra nada: un badge con "0" es ruido, no información.
+ * Ámbar y no el color de marca: es una advertencia ("hay pedidos que se van a quedar afuera"), no
+ * una acción. Parpadea SOLO mientras no se entró a la pestaña Y no hay ninguno elegido — un parpadeo
+ * eterno se vuelve ruido y el ojo lo aprende a ignorar, que es justo lo que se quiere evitar.
+ *
+ * En 0 no se muestra nada: un badge con "0/0" es ruido, no información.
  */
-function FueraDeCorteBadge({ cantidad, parpadea }: { cantidad: number; parpadea: boolean }) {
-  if (cantidad === 0) return null
+function FueraDeCorteBadge({
+  seleccionados,
+  total,
+  parpadea,
+}: {
+  seleccionados: number
+  total: number
+  parpadea: boolean
+}) {
+  if (total === 0) return null
   return (
     <span
-      title={`${cantidad} ${cantidad === 1 ? 'pedido queda' : 'pedidos quedan'} fuera del corte y no entran salvo que los selecciones`}
+      title={`${seleccionados} de ${total} pedidos fuera del corte seleccionados. Los no seleccionados NO entran a la planificación.`}
       className={cn(
-        'flex min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white tabular-nums',
+        'flex items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white tabular-nums',
         parpadea && 'animate-pulse ring-2 ring-amber-500/40',
       )}
     >
-      {cantidad}
+      {seleccionados}/{total}
     </span>
   )
 }
 
 // Indicador compacto para la fila de resumen: rótulo chico arriba, número debajo. Sin card propia
 // (van todos dentro de una misma barra), para ocupar bien el espacio horizontal.
-function Kpi({ label, value, title }: { label: string; value: string; title?: string }) {
+// `tone='warning'` lo pinta en ámbar: mismo código de color que el badge de la pestaña, para que se
+// lea como el MISMO concepto en los dos lugares y no como dos métricas sueltas.
+function Kpi({
+  label,
+  value,
+  title,
+  tone = 'default',
+}: {
+  label: string
+  value: string
+  title?: string
+  tone?: 'default' | 'warning'
+}) {
   return (
     <div className="flex flex-col justify-center" title={title}>
-      <span className="text-[11px] leading-tight text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold leading-tight tabular-nums">{value}</span>
+      <span
+        className={cn(
+          'text-[11px] leading-tight',
+          tone === 'warning' ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground',
+        )}
+      >
+        {label}
+      </span>
+      <span
+        className={cn(
+          'text-sm font-semibold leading-tight tabular-nums',
+          tone === 'warning' && 'text-amber-600 dark:text-amber-500',
+        )}
+      >
+        {value}
+      </span>
     </div>
   )
 }
@@ -578,7 +615,13 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
               )}
             >
               {mode === 'resumen' ? 'Resumen' : 'Seleccionar fuera de corte'}
-              {mode === 'tabla' && <FueraDeCorteBadge cantidad={fuera.length} parpadea={!fueraRevisado} />}
+              {mode === 'tabla' && (
+                <FueraDeCorteBadge
+                  seleccionados={fueraSeleccionados.length}
+                  total={fuera.length}
+                  parpadea={!fueraRevisado && fueraSeleccionados.length === 0}
+                />
+              )}
             </button>
           ))}
         </div>
@@ -603,10 +646,13 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
                 <Kpi label="Clientes" value={String(totalIncluidos.countCustomers)} />
                 <Kpi label="Monto" value={fmtMoneda.format(totalIncluidos.total)} />
                 <Kpi label="Peso" value={`${fmtPeso.format(totalIncluidos.totalWeight)} kg`} />
+                {/* Fracción, igual que el badge de la pestaña: el total es el contexto que le da
+                    sentido al número (3 de 25 no es lo mismo que 3 de 3). */}
                 <Kpi
                   label="Fuera de corte"
-                  value={String(fueraSeleccionados.length)}
-                  title="Pedidos fuera de corte seleccionados"
+                  value={`${fueraSeleccionados.length} de ${fuera.length}`}
+                  title="Pedidos fuera de corte seleccionados — los demás no entran a la planificación"
+                  tone={fueraSeleccionados.length > 0 ? 'warning' : 'default'}
                 />
                 <Kpi
                   label="Quitados"

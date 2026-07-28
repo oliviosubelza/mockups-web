@@ -508,10 +508,19 @@ export const PEDIDOS: Pedido[] = (() => {
 
     // Puntos de entrega ya creados en ESTE canal, para poder compartirlos: varios pedidos del mismo
     // delivery_point se unifican en UNA parada, y sin puntos repetidos esa lógica no se ejercita.
-    const puntosDelCanal: { id: string; nombre: string; lat: number; lng: number }[] = []
+    // El punto LLEVA su cliente: un delivery_point pertenece a UN cliente, así que compartir punto
+    // implica compartir cliente (es el caso "el mismo local hizo dos pedidos"). Sin esto una parada
+    // unificada mostraba un cliente mientras sus pedidos pertenecían a otros distintos.
+    const puntosDelCanal: {
+      id: string
+      nombre: string
+      lat: number
+      lng: number
+      cliente: string
+    }[] = []
 
     for (let i = 0; i < cantidad; i++) {
-      const cliente = deProvincia ? deProvincia[i].cliente : nombres![i]
+      const clientePropio = deProvincia ? deProvincia[i].cliente : nombres![i]
 
       // Ciudad y coordenada se eligen JUNTAS, para que el pin y el filtro no se contradigan.
       let ciudad: CiudadId
@@ -547,8 +556,12 @@ export const PEDIDOS: Pedido[] = (() => {
             nombre: `${lugar}, ${rand.pick(VIAS)} ${rand.int(2, 48)}`,
             lat,
             lng,
+            cliente: clientePropio,
           }
       if (!compartir) puntosDelCanal.push(punto)
+      // Al compartir punto, el pedido es del cliente DUEÑO del punto (su nombre propio queda sin
+      // usar, que es correcto: hay menos clientes distintos que pedidos, como en la realidad).
+      const cliente = punto.cliente
 
       // Un tercio queda FUERA del corte: la pestaña de selección manual necesita carga y el diálogo
       // del canal necesita algo que quitar. Los dos grupos quedan siempre no vacíos.

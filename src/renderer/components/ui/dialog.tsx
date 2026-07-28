@@ -43,15 +43,23 @@ function DialogOverlay({
 
 function DialogContent({
   className,
+  overlayClassName,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /**
+   * Clases para el backdrop. Existe para poder subir su `z-index` junto con el del popup: sobre
+   * superficies que ya usan z-index altos (el mapa Leaflet y su toolbar llegan a 1100+), el `z-50`
+   * por defecto deja controles pintándose ENCIMA del velo. Sin esta prop había que elegir entre un
+   * popup tapado o un backdrop que no tapa nada.
+   */
+  overlayClassName?: string
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

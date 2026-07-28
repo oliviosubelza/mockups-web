@@ -23,6 +23,7 @@ import { useOverlayStore } from './map/overlay-store'
 import { parseRouteOptimization } from './map/geo/polyline'
 import { SAMPLE_ROUTE_OPTIMIZATION } from './map/sample-route'
 import { buildSingleRouteOverlay } from './map/route-optimizer'
+import { PuntoEntregaDialog } from './PuntoEntregaDialog'
 
 const SIN_CAMION = '#94a3b8'
 const SELECCION = '#2563eb'
@@ -136,6 +137,8 @@ export function OrdersMap({
   hideTools?: boolean
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
+  // Parada cuyo detalle está abierto (null = cerrado). Se abre clickeando su pin con la mano activa.
+  const [paradaDetalle, setParadaDetalle] = useState<Parada | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   // Etiquetas de detalle: activadas por la tool Y con zoom suficiente (para no solaparse).
@@ -200,6 +203,13 @@ export function OrdersMap({
               key={parada.id}
               position={[parada.lat, parada.lng]}
               icon={pinParada(parada, selectedSet.has(parada.id))}
+              eventHandlers={{
+                // Solo con la mano ('pan'): con rect/lazo activos el click es parte del gesto de
+                // seleccionar, y abrir un modal ahí interrumpiría la selección a medio hacer.
+                click: () => {
+                  if (activeTool === 'pan') setParadaDetalle(parada)
+                },
+              }}
             >
               {/* Con la tool "Ver detalles" activa: etiqueta permanente y chica DEBAJO del pin
                   (nombre + ventana). Si no, el tooltip completo al hover, arriba. */}
@@ -240,6 +250,10 @@ export function OrdersMap({
           onToggleDemo={onToggleRoute ?? (() => {})}
         />
       )}
+
+      {/* Detalle del punto de entrega (galería + datos). Hermano del MapContainer, no una capa de
+          Leaflet: se portaliza al tablero y no compite con los panes del mapa. */}
+      <PuntoEntregaDialog parada={paradaDetalle} onClose={() => setParadaDetalle(null)} />
     </div>
   )
 }
