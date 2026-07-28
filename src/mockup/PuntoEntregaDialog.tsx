@@ -4,9 +4,14 @@
 // que resuelve la pregunta del planificador ("¿a qué lugar estoy mandando el camión?") y los datos
 // son la confirmación. Al revés habría que scrollear para ver lo que más se mira.
 //
-// Todo lo que muestra ya existía en el modelo (Parada + sus Pedidos + el camión/ruta asignados); lo
-// único nuevo son las fotos, que son ilustraciones generadas (ver mock-fotos.ts).
-import { useEffect, useState } from 'react'
+// Se compone con los componentes de `components/ui`, pero eligiendo el primitivo por lo que ES cada
+// cosa: `Field` para los pares rótulo/valor (no dibuja caja), `Badge` para los chips, `Alert` para el
+// aviso, `AspectRatio`, `ScrollArea` y `Carousel` para la estructura. Los datos NO van en `Item`:
+// `Item` es una fila de lista con borde y relleno, y usarlo por dato convierte el grid en una rejilla
+// de cajas — pesado y con el doble de aire del necesario. Un par rótulo/valor es tipografía.
+//
+// Denso a propósito: es un panel de consulta rápida sobre el mapa, no una ficha para leer de corrido.
+import { useCallback, useEffect, useState } from 'react'
 import {
   Boxes,
   Clock,
@@ -19,6 +24,9 @@ import {
   Weight,
   type LucideIcon,
 } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AspectRatio } from '@/components/ui/aspect-ratio'
+import { Badge } from '@/components/ui/badge'
 import {
   Carousel,
   CarouselContent,
@@ -34,6 +42,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Field, FieldDescription, FieldTitle } from '@/components/ui/field'
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/components/ui/item'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { CANAL_META, camionPorId, rutaPorCamionId, type Parada } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
@@ -42,8 +54,11 @@ import { fotosDePunto, ilustracionDePunto } from './mock-fotos'
 const fmtMoneda = new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' })
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 
-/** Campo del bloque de detalles: ícono + rótulo chico y el valor debajo. */
-function Campo({
+/**
+ * Un dato del punto: rótulo chico arriba, valor debajo. `Field` con `gap-0` — el primitivo de pares
+ * rótulo/valor del sistema, que aporta la semántica (role="group") sin dibujar ninguna caja.
+ */
+function Dato({
   icon: Icon,
   label,
   children,
@@ -55,20 +70,29 @@ function Campo({
   className?: string
 }) {
   return (
-    <div className={cn('flex min-w-0 flex-col gap-0.5', className)}>
-      <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <Icon className="size-3.5 shrink-0" />
+    // `gap-0` pisa el `gap-2` de Field por tailwind-merge: el rótulo va pegado a su valor, si no el
+    // par se lee como dos cosas sueltas.
+    <Field className={cn('gap-0', className)}>
+      <FieldDescription className="flex items-center gap-1 text-[11px] leading-tight">
+        <Icon className="size-3 shrink-0" />
         {label}
-      </span>
-      <span className="min-w-0 truncate text-sm">{children}</span>
-    </div>
+      </FieldDescription>
+      <FieldTitle className="truncate text-[13px] leading-tight tabular-nums">{children}</FieldTitle>
+    </Field>
   )
 }
 
 /**
- * Galería del punto. El contador y los puntitos van juntos: los puntitos dicen "hay más" de un
- * vistazo, el contador dice cuántas exactamente cuando son varias. Con UNA sola foto no se dibujan
- * flechas ni indicadores — serían controles muertos.
+ * Galería del punto.
+ *
+ * `loop` NO es un capricho de UX: `CarouselPrevious`/`CarouselNext` se deshabilitan solos con
+ * `canScrollPrev`/`canScrollNext`, y esos flags los calcula Embla midiendo los slides AL MONTAR.
+ * Dentro de un diálogo que entra con `zoom-in-95` la medida inicial no es la final, Embla concluye
+ * que hay un solo slide y los dos botones quedan inertes para siempre. Con `loop` siempre se puede
+ * ir a la anterior y a la siguiente, así que dejan de depender de esa medición.
+ *
+ * El `reInit` al cargar cada foto arregla la otra mitad: aunque los botones respondan, con anchos
+ * mal medidos el scroll no cae en el slide correcto.
  */
 function Galeria({
   fotos,
@@ -93,58 +117,58 @@ function Galeria({
     }
   }, [api])
 
-  const varias = fotos.length > 1
+  // Re-medir cuando el diálogo terminó de animar: el primer render mide el popup en escala.
+  useEffect(() => {
+    if (!api) return
+    const t = setTimeout(() => api.reInit(), 180)
+    return () => clearTimeout(t)
+  }, [api])
+
+  const remedir = useCallback(() => api?.reInit(), [api])
 
   return (
-    <Carousel setApi={setApi} className="relative overflow-hidden rounded-lg border border-border/60">
+    <Carousel setApi={setApi} opts={{ loop: true }} className="overflow-hidden rounded-md border">
       <CarouselContent className="ml-0">
         {fotos.map((foto, i) => (
           <CarouselItem key={i} className="pl-0">
-            {/* aspect-video: mismo encuadre para todas, así el diálogo no salta de alto al pasar.
-                bg-muted evita el flash blanco mientras la foto del CDN todavía no llegó. */}
-            <img
-              src={foto}
-              alt={`${epigrafe} — foto ${i + 1} de ${fotos.length}`}
-              // La primera se carga ya (es la que se ve); las demás recién al pasar el carrousel.
-              loading={i === 0 ? 'eager' : 'lazy'}
-              onError={(e) => {
-                // El guard es imprescindible: si el fallback también fallara, sin él el onError se
-                // volvería a disparar sobre sí mismo en bucle.
-                const img = e.currentTarget
-                if (img.dataset.fallback === 'listo') return
-                img.dataset.fallback = 'listo'
-                img.src = fallback
-              }}
-              className="aspect-video w-full bg-muted object-cover"
-            />
+            {/* AspectRatio y no una clase suelta: mismo encuadre para todas, así el diálogo no salta
+                de alto al pasar de una foto a otra. */}
+            <AspectRatio ratio={16 / 9} className="bg-muted">
+              <img
+                src={foto}
+                alt={`${epigrafe} — foto ${i + 1} de ${fotos.length}`}
+                // La primera se carga ya (es la que se ve); las demás al pasar el carrousel.
+                loading={i === 0 ? 'eager' : 'lazy'}
+                onLoad={remedir}
+                onError={(e) => {
+                  // El guard es imprescindible: si el fallback también fallara, sin él el onError se
+                  // dispararía sobre sí mismo en bucle.
+                  const img = e.currentTarget
+                  if (img.dataset.fallback === 'listo') return
+                  img.dataset.fallback = 'listo'
+                  img.src = fallback
+                }}
+                className="size-full object-cover"
+              />
+            </AspectRatio>
           </CarouselItem>
         ))}
       </CarouselContent>
 
-      {/* Epígrafe sobre un degradado, no sobre la imagen pelada: garantiza contraste sin importar
-          qué haya debajo. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8">
-        <span className="line-clamp-1 text-xs font-medium text-white">{epigrafe}</span>
+      {/* Epígrafe sobre un degradado, no sobre la imagen pelada: garantiza contraste sin importar qué
+          haya debajo. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-1.5 pt-6">
+        <span className="line-clamp-1 text-[11px] font-medium text-white">{epigrafe}</span>
       </div>
 
-      {varias && (
+      {/* Con una sola foto no se dibujan controles: serían botones muertos. */}
+      {fotos.length > 1 && (
         <>
-          <CarouselPrevious className="left-2" />
-          <CarouselNext className="right-2" />
-          <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+          <CarouselPrevious className="left-1.5 size-7" />
+          <CarouselNext className="right-1.5 size-7" />
+          <Badge variant="secondary" className="absolute right-1.5 top-1.5 tabular-nums">
             {actual + 1}/{fotos.length}
-          </span>
-          <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center gap-1.5">
-            {fotos.map((_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  'h-1.5 rounded-full transition-all',
-                  i === actual ? 'w-4 bg-white' : 'w-1.5 bg-white/50',
-                )}
-              />
-            ))}
-          </div>
+          </Badge>
         </>
       )}
     </Carousel>
@@ -170,103 +194,131 @@ export function PuntoEntregaDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       {/* z-[1300]: por encima de la escalera del mapa (Leaflet ≤1000 → MapToolbar 1000 → tarjetas
-          1100 → scrim 1200). Con el z-50 por defecto el modal quedaba DEBAJO de la toolbar. */}
+          1100 → scrim 1200). Con el z-50 por defecto el modal quedaba DEBAJO de la toolbar.
+          max-w-md: es una consulta rápida sobre el mapa, no una pantalla — ancho de panel. */}
       <DialogContent
-        className="z-[1300] flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        className="z-[1300] flex max-h-[82vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
         overlayClassName="z-[1300]"
       >
-        {/* La galería va FUERA del área con padding y pegada al borde: una foto con margen alrededor
-            se lee como thumbnail, a sangre se lee como galería. */}
-        <div className="shrink-0 p-4 pb-0">
+        {/* La galería va pegada al borde: una foto con margen alrededor se lee como thumbnail, a
+            sangre se lee como galería. */}
+        <div className="shrink-0 p-3 pb-0">
           <Galeria fotos={fotos} fallback={fallback} epigrafe={parada.puntoEntrega} />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        {/* Bloque FIJO: identidad y agregados del punto. No scrollea — es lo que se consulta de un
+            vistazo, y perderlo mientras se recorre la lista de pedidos sería perder el contexto. */}
+        <div className="flex shrink-0 flex-col gap-3 p-3 pb-2">
           <DialogHeader className="gap-1">
-            <DialogTitle className="flex items-center gap-2 pr-8">
+            <DialogTitle className="flex items-center gap-1.5 pr-7 text-sm">
               <span className="shrink-0" style={{ color: meta.color }}>
-                <CanalGlyph canal={parada.canal} size={17} />
+                <CanalGlyph canal={parada.canal} size={15} />
               </span>
               <span className="min-w-0 truncate">{parada.cliente}</span>
             </DialogTitle>
-            <DialogDescription>
-              {meta.label} · Punto {parada.puntoEntregaId}
+            {/* Las clases van en el propio DialogDescription (que es un <p>) y no en un div
+                anidado: base-ui compone con `render`, no con `asChild`, y los Badge son <span>,
+                así que anidarlos en el párrafo es HTML válido. */}
+            <DialogDescription className="flex flex-wrap items-center gap-1">
+              <Badge variant="outline">{meta.label}</Badge>
+              <Badge variant="outline" className="font-mono">
+                {parada.puntoEntregaId}
+              </Badge>
               {ruta && (
-                <>
-                  {' · '}
-                  <span
-                    className="inline-block size-2 rounded-full align-middle"
-                    style={{ backgroundColor: ruta.color }}
-                  />{' '}
+                <Badge variant="outline">
+                  {/* El color es DATO: es el mismo con el que se pinta la ruta en el mapa. */}
+                  <span className="size-2 rounded-full" style={{ backgroundColor: ruta.color }} />
                   {ruta.nombre}
-                </>
+                </Badge>
               )}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-            <Campo icon={MapPin} label="Dirección" className="col-span-2 sm:col-span-3">
+          {/* Grid denso de datos: sin cajas ni separadores, el aire lo da el gap. */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <Dato icon={MapPin} label="Dirección" className="col-span-2">
               {parada.puntoEntrega}
-            </Campo>
-            <Campo icon={Clock} label="Ventana de entrega">
-              <span className="tabular-nums">{parada.ventana}</span>
-            </Campo>
-            <Campo icon={Weight} label="Peso total">
-              <span className="tabular-nums">{fmtPeso.format(parada.pesoTotal)} kg</span>
-            </Campo>
-            <Campo icon={Boxes} label="Volumen total">
-              <span className="tabular-nums">{parada.volumenTotal} m³</span>
-            </Campo>
-            <Campo icon={Truck} label="Camión">
-              {camion ? (
-                <span className="tabular-nums">
-                  {camion.placa} · {camion.tipo}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Sin asignar</span>
-              )}
-            </Campo>
-            <Campo icon={Hash} label="Secuencia">
-              <span className="tabular-nums">#{parada.secuencia}</span>
-            </Campo>
-            <Campo icon={Navigation} label="Coordenadas">
-              <span className="tabular-nums text-xs">
-                {parada.lat.toFixed(4)}, {parada.lng.toFixed(4)}
-              </span>
-            </Campo>
+            </Dato>
+            <Dato icon={Clock} label="Ventana">
+              {parada.ventana}
+            </Dato>
+            <Dato icon={Truck} label="Camión">
+              {camion ? `${camion.placa} · ${camion.tipo}` : 'Sin asignar'}
+            </Dato>
+            <Dato icon={Weight} label="Peso total">
+              {fmtPeso.format(parada.pesoTotal)} kg
+            </Dato>
+            <Dato icon={Boxes} label="Volumen total">
+              {parada.volumenTotal} m³
+            </Dato>
+            <Dato icon={Hash} label="Secuencia">
+              #{parada.secuencia}
+            </Dato>
+            <Dato icon={Navigation} label="Coordenadas">
+              {parada.lat.toFixed(4)}, {parada.lng.toFixed(4)}
+            </Dato>
           </div>
 
-          {/* Solo si está clavada: mostrar "no forzada" en todas sería ruido en la mayoría de casos. */}
+          {/* Solo si está clavada: mostrar "no forzada" en todas sería ruido en la mayoría. */}
           {parada.camionForzadoId && (
-            <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-500">
-              <Pin className="size-3.5 shrink-0" />
-              Parada clavada a este camión a mano — la optimización no la va a mover.
-            </div>
+            <Alert className="py-1.5">
+              <Pin />
+              <AlertDescription className="text-xs">
+                Parada clavada a este camión — la optimización no la va a mover.
+              </AlertDescription>
+            </Alert>
           )}
+        </div>
 
-          {/* Los pedidos del punto. Es lo que hace útil el modal cuando la parada está UNIFICADA:
-              varios pedidos que el camión descarga en una sola visita. */}
-          <div className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <Package className="size-3.5" />
-              {parada.pedidos.length} pedido{parada.pedidos.length !== 1 ? 's' : ''} en esta parada
-            </span>
-            <div className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
+        <Separator />
+
+        {/* Encabezado de la lista, TAMBIÉN fijo: el contador es la referencia de cuánto hay, así que
+            no puede irse de pantalla apenas se scrollea. */}
+        <div className="flex shrink-0 items-center gap-1.5 px-3 pb-1.5 pt-2 text-xs font-medium text-muted-foreground">
+          <Package className="size-3.5" />
+          {parada.pedidos.length} pedido{parada.pedidos.length !== 1 ? 's' : ''} en esta parada
+        </div>
+
+        {/*
+          La ÚNICA región que scrollea es la lista. Antes scrolleaba todo el cuerpo, y eso tenía dos
+          problemas al crecer la cantidad de pedidos: el alto del modal dependía de N (impredecible), y
+          al bajar se perdían de vista la foto, los totales y el propio contador.
+          Con la lista acotada, el modal mide lo mismo con 1 pedido que con 40.
+
+          NO se pasó a dos columnas (lista al costado) a propósito: el 94% de las paradas tiene 1 o 2
+          pedidos, así que una columna dedicada estaría vacía casi siempre y obligaría a un modal
+          ancho que taparía el mapa que se está consultando.
+
+          Si algún día una parada tuviera cientos de pedidos, la respuesta NO es agrandar este modal
+          hasta volverlo una grilla: es mandar al listado de pedidos filtrado por este punto de
+          entrega. Un modal que se convierte en tabla es una tabla mal ubicada.
+        */}
+        <ScrollArea className="min-h-[84px] flex-1">
+          <div className="px-3 pb-3">
+            {/* UN borde para toda la lista y filas divididas, en vez de una caja por fila: se lee
+                como tabla compacta y no como pila de tarjetas. */}
+            <ItemGroup className="gap-0 divide-y overflow-hidden rounded-md border">
               {parada.pedidos.map((pedido) => (
-                <div key={pedido.id} className="flex items-center gap-3 px-2.5 py-1.5 text-xs">
-                  <span className="w-14 shrink-0 font-mono tabular-nums">{pedido.salesOrder}</span>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                    {pedido.productType} · {pedido.paymentType} · {pedido.vendedor}
+                <Item key={pedido.id} size="xs" className="rounded-none">
+                  <ItemContent className="gap-0">
+                    <ItemTitle className="font-mono text-xs tabular-nums">
+                      {pedido.salesOrder}
+                    </ItemTitle>
+                    <ItemDescription className="text-[11px] leading-tight">
+                      {pedido.productType} · {pedido.paymentType} · {pedido.vendedor}
+                    </ItemDescription>
+                  </ItemContent>
+                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    {fmtPeso.format(pedido.peso)} kg
                   </span>
-                  <span className="shrink-0 tabular-nums">{fmtPeso.format(pedido.peso)} kg</span>
-                  <span className="w-20 shrink-0 text-right font-medium tabular-nums">
+                  <span className="shrink-0 text-xs font-medium tabular-nums">
                     {fmtMoneda.format(pedido.total)}
                   </span>
-                </div>
+                </Item>
               ))}
-            </div>
+            </ItemGroup>
           </div>
-        </div>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   )
