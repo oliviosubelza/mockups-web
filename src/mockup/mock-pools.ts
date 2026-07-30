@@ -138,3 +138,25 @@ export const LETRAS_PLACA = [
 
 /** Color de los camiones fuera de ruteo (mantenimiento, sin chofer): gris, no compiten en el mapa. */
 export const COLOR_CAMION_INACTIVO = '#64748b'
+
+/**
+ * Catálogo de productos (`delivery_order_items.product_id`). Existe solo para el detalle de entrega
+ * del monitoreo: sin nombre de producto, la pestaña "Pedido" no puede mostrar planificado vs
+ * entregado vs devuelto. `unidad` es lo que se cuenta, no un dato del esquema.
+ */
+export const PRODUCTOS = [
+  { nombre: 'Aceite girasol 900 ml', unidad: 'cajas' },
+  { nombre: 'Arroz grano largo 5 kg', unidad: 'bolsas' },
+  { nombre: 'Azúcar blanca 1 kg', unidad: 'bolsas' },
+  { nombre: 'Fideo spaghetti 400 g', unidad: 'cajas' },
+  { nombre: 'Gaseosa cola 2 L', unidad: 'packs' },
+  { nombre: 'Agua sin gas 2 L', unidad: 'packs' },
+  { nombre: 'Leche entera 1 L', unidad: 'cajas' },
+  { nombre: 'Yogur bebible 1 L', unidad: 'cajas' },
+  { nombre: 'Harina 000 1 kg', unidad: 'bolsas' },
+  { nombre: 'Margarina 250 g', unidad: 'cajas' },
+  { nombre: 'Atún lomito 170 g', unidad: 'cajas' },
+  { nombre: 'Galleta surtida 300 g', unidad: 'cajas' },
+  { nombre: 'Jabón en polvo 800 g', unidad: 'bolsas' },
+  { nombre: 'Papel higiénico x4', unidad: 'packs' },
+] as const

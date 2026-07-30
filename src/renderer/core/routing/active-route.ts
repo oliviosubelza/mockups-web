@@ -23,6 +23,15 @@ export interface ActiveRoute {
   readonly routeId: string
   readonly path: string
   readonly title: string
+  /**
+   * Params dinámicos ya resueltos (`/monitoreo/seguimiento/:ordenId` → `{ ordenId: 'ot4' }`).
+   *
+   * Viven acá y NO se leen con `useParams()` de react-router porque el shell renderiza la pantalla a
+   * mano (`getRouteComponent(activeRoute.routeId)`), fuera de un `<Route element>`. Sin ese contexto
+   * `useParams()` devuelve `{}` siempre y la pantalla se queda sin su id. `matchRoutes` ya los
+   * calcula acá abajo; antes se descartaban.
+   */
+  readonly params: Readonly<Record<string, string | undefined>>
 }
 
 /** Resolución PURA pathname -> ruta registrada. Testeable en aislamiento, sin router ni DOM. */
@@ -36,11 +45,12 @@ export function resolveActiveRoute(pathname: string): ActiveRoute | null {
   if (!matches || matches.length === 0) return null
 
   // El último match es el más profundo, o sea el más específico.
-  const matchedId = matches[matches.length - 1].route.id
+  const match = matches[matches.length - 1]
+  const matchedId = match.route.id
   const config = matchedId ? RouteRegistry.getRoute(matchedId) : undefined
   if (!config) return null
 
-  return { routeId: config.id, path: config.path, title: config.label }
+  return { routeId: config.id, path: config.path, title: config.label, params: match.params }
 }
 
 // Cache del snapshot no-React: los consumidores con useSyncExternalStore exigen identidad estable
@@ -103,4 +113,14 @@ export function useActiveRouteValue(): ActiveRoute | null {
   const { pathname } = useLocation()
   const routes = useRoutesSnapshot()
   return useMemo(() => resolveActiveRoute(pathname), [pathname, routes])
+}
+
+/**
+ * Params dinámicos de la ruta activa. Es el reemplazo de `useParams()` para las pantallas del shell,
+ * que se renderizan fuera de un `<Route element>` (ver la nota en `ActiveRoute.params`).
+ *
+ * Devuelve `{}` cuando no hay ruta activa, así el llamador desestructura sin guardas.
+ */
+export function useRouteParams(): Readonly<Record<string, string | undefined>> {
+  return useActiveRouteValue()?.params ?? {}
 }

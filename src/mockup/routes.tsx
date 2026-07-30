@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardList, Truck } from 'lucide-react'
+import { ClipboardList, Radar, Truck } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -17,6 +17,8 @@ import { PlansView } from './views/PlansView'
 // el import comentado, no borrado, para poder revertir el flujo si hiciera falta.
 import { OrdenesTransporteView } from './views/OrdenesTransporteView'
 import { CamionesView } from './views/CamionesView'
+import { MonitoreoView } from './monitoreo/MonitoreoView'
+import { MonitoreoDetalleView } from './monitoreo/MonitoreoDetalleView'
 import { PlanningView } from './views/PlanningView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
@@ -96,7 +98,7 @@ export const routes: MockRoute[] = [
     label: 'Planificaciones',
     icon: ClipboardList,
     component: PlanificacionesScreen,
-    order: 0,
+    order: 1,
   },
   {
     id: 'camiones',
@@ -114,6 +116,28 @@ export const routes: MockRoute[] = [
     // icon: ClipboardCheck,
     component: OrdenesTransporteView,
     order: 1,
+  },
+  {
+    id: 'monitoreo',
+    path: '/monitoreo',
+    label: 'Monitoreo',
+    icon: Radar,
+    component: MonitoreoView,
+    order: 0,
+  },
+  {
+    // Detalle de seguimiento (mapa + paradas). Se llega desde una fila del listado, no del sidebar:
+    // sin una orden elegida no hay nada que seguir. Mismo patrón que 'reoptimizar-plan'.
+    //
+    // La orden va EN LA URL, no en un store. Antes vivía en zustand y un F5 dejaba la pantalla en
+    // "No hay ninguna orden en seguimiento": el estado moría con el refresh. Con el id en el path la
+    // URL es compartible, el back/forward funciona y recargar reconstruye el contexto solo.
+    id: 'monitoreo-detalle',
+    path: '/monitoreo/seguimiento/:ordenId',
+    label: 'Seguimiento',
+    component: MonitoreoDetalleView,
+    order: 3,
+    showInSidebar: false,
   },
   {
     id: 'nueva-planificacion',

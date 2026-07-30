@@ -8,8 +8,12 @@ import type { OverlayMarker, OverlayPolyline } from './overlay-store'
 
 const dist = (a: LatLngTuple, b: LatLngTuple) => Math.hypot(a[0] - b[0], a[1] - b[1])
 
-/** Ordena las paradas por vecino más cercano arrancando desde `start`. */
-function nearestOrder(start: LatLngTuple, stops: Parada[]): Parada[] {
+/**
+ * Ordena las paradas por vecino más cercano arrancando desde `start`.
+ * Exportada porque el monitoreo necesita EL MISMO orden de visita que se dibujó al planificar:
+ * si cada pantalla reordenara por su cuenta, la secuencia del panel no coincidiría con el trazo.
+ */
+export function nearestOrder(start: LatLngTuple, stops: Parada[]): Parada[] {
   const rest = [...stops]
   const order: Parada[] = []
   let cur = start

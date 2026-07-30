@@ -27,6 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { StepItem } from '@/components/ui/steps'
+import { ordenarPorCercania } from './map/geo/hilbert'
 import { createRand, uniqueNames } from './mock-random'
 import {
   ANCLAS_ZONA,
@@ -715,9 +716,12 @@ function construirParadas(pedidos: Pedido[]): Parada[] {
   })
 
   const enRuteo = CAMIONES.filter((c) => c.enRuteo)
-  // Orden geográfico barato: por longitud y después latitud. Alcanza para que los tramos queden
-  // agrupados; el orden FINO dentro de cada ruta lo hace el nearest-neighbour del mapa.
-  const porCercania = [...paradas].sort((a, b) => a.lng - b.lng || a.lat - b.lat)
+  // Orden geográfico por curva de Hilbert: agrupa por VECINDAD REAL, no por franja.
+  // Antes acá había un `sort` por longitud y después latitud. Un sort es unidimensional y la cercanía
+  // no lo es: cada camión terminaba con una franja vertical del mapa, angosta en longitud pero de
+  // todo el rango norte-sur — paradas del mismo viaje separadas ~95 km. El orden FINO dentro de cada
+  // ruta lo sigue haciendo el nearest-neighbour del mapa.
+  const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
   const porCamion = Math.ceil(porCercania.length / Math.max(enRuteo.length, 1))
 
   porCercania.forEach((parada, i) => {

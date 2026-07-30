@@ -9,11 +9,11 @@
 // herramienta y de la selección vive acá como useState — el proyecto de referencia usaba un command
 // bus + vrp-store que en keel no existe.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import L from 'leaflet'
 import { Warehouse } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MapContainer, Marker, Tooltip, ZoomControl, useMapEvents } from 'react-leaflet'
 import { CANAL_META, DEPOSITO, camionPorId, type Parada } from './mock-data'
+import { divIcon } from './map/div-icon'
 import { InvalidateOnResize } from './map/InvalidateOnResize'
 import { MapLayersControl } from './map/MapLayersControl'
 import { MapToolbar } from './map/MapToolbar'
@@ -38,11 +38,6 @@ const DETAIL_ZOOM = INITIAL_ZOOM
 function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
   const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
   return null
-}
-
-function divIcon(html: string, size: number) {
-  // `className: ''` saca el fondo y el borde blancos que Leaflet le pone por defecto al divIcon.
-  return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
 }
 
 function pinParada(parada: Parada, seleccionado: boolean) {
