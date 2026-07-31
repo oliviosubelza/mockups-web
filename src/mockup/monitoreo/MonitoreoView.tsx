@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/routing/open-route'
 import { EstadoViajeBadge } from './EstadoEntregaBadge'
 import { Frescura, ProgresoEntregas } from './ProgresoEntregas'
+import { Destello, useFilasVivas } from './destello'
 import { useFlotaViva, type FilaMonitoreo } from './use-flota-viva'
 import { UMBRAL_SENAL_VIEJA_MIN, minutosSinSenal, type ItemActual } from './tracking-dynamo'
 import type { EstadoViaje } from './monitoreo-estado'
@@ -60,7 +61,14 @@ function UltimaSenal({ tracking }: { tracking: ItemActual | null }) {
         vieja ? 'font-medium text-destructive' : 'text-muted-foreground',
       )}
     >
-      {vieja ? <AlertTriangle className="size-3" /> : <Radio className="size-3" />}
+      {/* El ícono LATE mientras la señal está fresca: es el equivalente de tabla a las ondas del
+          camión en el mapa. Con señal vieja se queda quieto y cambia de forma — un equipo que dejó
+          de reportar no puede verse igual de vivo que uno que reporta. */}
+      {vieja ? (
+        <AlertTriangle className="size-3" />
+      ) : (
+        <Radio className="senal-viva size-3 text-primary" />
+      )}
       hace {minutos} min
     </span>
   )
@@ -83,6 +91,19 @@ export function MonitoreoView() {
           (!filters.estadoViaje || f.estadoViaje === filters.estadoViaje),
       ),
     [filas, filters],
+  )
+
+  /**
+   * Qué filas acaban de cambiar. La FIRMA es lo que decide si hubo cambio, y por eso lleva justo los
+   * cuatro datos que el stream puede mover: estado del viaje, progreso, incidencias y el último ping.
+   * Meter el objeto entero haría destellar todo en cada tick —los objetos se reconstruyen igual—, y
+   * meter menos dejaría cambios sin avisar.
+   */
+  const vivas = useFilasVivas(
+    filas,
+    (f) => f.id,
+    (f) =>
+      [f.estadoViaje, f.resumen.progresoPct, f.resumen.incidencias, f.tracking?.trackedAt ?? '-'].join('|'),
   )
 
   // La orden viaja en la URL, no en un store: así el detalle sobrevive un F5 y el link se puede pasar.
@@ -126,14 +147,24 @@ export function MonitoreoView() {
           header: 'Viaje',
           accessorKey: 'estadoViaje',
           size: 120,
-          cell: (row) => <EstadoViajeBadge estado={row.estadoViaje} />,
+          // Cambia con el evento `transport_status`: el camión salió o volvió.
+          cell: (row) => (
+            <Destello firma={row.estadoViaje}>
+              <EstadoViajeBadge estado={row.estadoViaje} />
+            </Destello>
+          ),
         },
         {
           id: 'progreso',
           header: 'Progreso',
           size: 190,
           enableSorting: false,
-          cell: (row) => <ProgresoEntregas resumen={row.resumen} />,
+          // Cambia con `order_progress`: una entrega cerró. Es el dato que más se mira de la fila.
+          cell: (row) => (
+            <Destello firma={row.resumen.progresoPct}>
+              <ProgresoEntregas resumen={row.resumen} />
+            </Destello>
+          ),
         },
         {
           id: 'paradas',
@@ -148,22 +179,30 @@ export function MonitoreoView() {
           header: 'Incid.',
           size: 90,
           meta: { align: 'right' },
-          cell: (row) =>
-            row.resumen.incidencias > 0 ? (
-              <span className="flex items-center justify-end gap-1 font-medium tabular-nums text-destructive">
-                <AlertTriangle className="size-3.5" />
-                {row.resumen.incidencias}
-              </span>
-            ) : (
-              <span className="text-xs text-muted-foreground">—</span>
-            ),
+          cell: (row) => (
+            <Destello firma={row.resumen.incidencias} className="justify-end">
+              {row.resumen.incidencias > 0 ? (
+                <span className="flex items-center justify-end gap-1 font-medium tabular-nums text-destructive">
+                  <AlertTriangle className="size-3.5" />
+                  {row.resumen.incidencias}
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </Destello>
+          ),
         },
         {
           id: 'senal',
           header: 'Última señal',
           size: 130,
           meta: { align: 'right' },
-          cell: (row) => <UltimaSenal tracking={row.tracking} />,
+          // Destella con cada ping que entra (agrupado por el stream de flota).
+          cell: (row) => (
+            <Destello firma={row.tracking?.trackedAt ?? '-'} className="justify-end">
+              <UltimaSenal tracking={row.tracking} />
+            </Destello>
+          ),
         },
         {
           id: 'salida',
@@ -214,6 +253,9 @@ export function MonitoreoView() {
         columns={columns}
         data={data}
         getRowId={(row) => row.id}
+        // Barra de acento a la izquierda de la fila que cambió. Es el canal de VISIÓN PERIFÉRICA: la
+        // celda dice qué cambió, esto dice DÓNDE mirar.
+        rowClassName={(row) => (vivas.has(row.id) ? 'fila-viva' : '')}
         onRowDoubleClick={abrir}
         emptyTitle="Sin órdenes en monitoreo"
         emptyMessage="Ninguna orden de transporte coincide con los filtros."

@@ -280,8 +280,6 @@ export function useSeguimientoVivo(
         estado === 'entregado'
           ? construirComprobante({
               entregaId: activa.id,
-              receptor: activa.cliente.split(' ').slice(-2).join(' '),
-              documento: `${3_000_000 + (activa.secuencia * 137_911) % 6_999_999}`,
               puntoEntregaId: activa.puntoEntregaId,
               canal: activa.canal,
               lat: activa.lat,
@@ -298,7 +296,7 @@ export function useSeguimientoVivo(
         receptor: comprobante?.receptor ?? '',
         comprobante,
         // El cobro se RECALCULA al cerrar: es lo que convierte "pendiente" en "cobrado" en la pestaña.
-        cobro: construirCobro(activa.pedidos, estado, hora),
+        cobro: construirCobro(activa.pedidos, activa.items, activa.id, estado, hora),
         // Misma regla que el generador del dataset: la cabecera y la pestaña Pedido no pueden
         // contradecirse.
         items: repartirItems(activa.items, estado),

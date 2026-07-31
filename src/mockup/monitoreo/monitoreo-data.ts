@@ -42,7 +42,7 @@ import {
   fotosDeComprobante,
   type EvidenciaFoto,
 } from '../mock-fotos'
-import { PRODUCTOS } from '../mock-pools'
+import { APELLIDOS, NOMBRES_PILA, PRODUCTOS } from '../mock-pools'
 import { nearestOrder } from '../map/route-optimizer'
 import type { LatLngTuple } from '../map/geo/polyline'
 import type { EstadoEntrega, EstadoViaje } from './monitoreo-estado'
@@ -106,6 +106,12 @@ export interface ComprobanteEntrega {
   receptor: string
   /** receiver_document */
   documento: string
+  /**
+   * `delivery_orders.receiver_relationship` (`:390`) — el CARGO de quien firmó. Es lo que convierte
+   * un nombre suelto en una prueba: "Rodrigo Vaca" no dice nada, "Rodrigo Vaca, encargado de almacén"
+   * sí. Ojo: la columna está en `delivery_orders`, no en `proof_of_deliveries` como dice el § 29.
+   */
+  relacion: string
   /** `signature_url` — data URI de la firma. `null` si el chofer no la capturó. */
   firmaUrl: string | null
   /** `photo_url` — fotos de la entrega. Vacío si no hay ninguna. */
@@ -132,17 +138,23 @@ export interface ComprobanteEntrega {
  * `collected_at`), más un monto en `candidate_orders` o el pedido de SAP resuelto por servicio.
  */
 export interface CobroEntrega {
-  /** Suma de los pedidos de la parada, en Bs. Viene de SAP. */
-  montoTotal: number
-  /** Lo que el chofer debería traer de vuelta: contado + transferencia. El crédito no se cobra acá. */
-  montoCobrable: number
-  /** Cobrado de hecho. `0` mientras la parada no cierre entregada. */
-  montoCobrado: number
-  estado: 'cobrado' | 'parcial' | 'pendiente' | 'no_corresponde'
-  /** `receipt_number` — número de recibo. `null` si todavía no se cobró. */
-  recibo: string | null
-  /** `collected_at` */
-  cobradoAt: string | null
+  /** Lo FACTURADO: `Σ planned_qty × unit_price_snapshot`. Es lo que decía la nota de entrega. */
+  facturado: number
+  /**
+   * Lo que hay que cobrar DE VERDAD: `Σ delivered_qty × unit_price_snapshot`, y solo la parte que no
+   * va a crédito. Es distinto de `facturado` en cuanto el cliente rechaza algo, y es la diferencia que
+   * hace que la caja del chofer cuadre o no.
+   */
+  aCobrar: number
+  /** Suma de los pagos CONFIRMADOS. */
+  cobrado: number
+  /** Suma de los QR que el banco todavía no confirmó. Ni cobrado ni perdido: en el aire. */
+  enProceso: number
+  /** `aCobrar − cobrado − enProceso`. Lo que el cliente quedó debiendo. */
+  saldo: number
+  estado: 'cobrado' | 'parcial' | 'en_proceso' | 'pendiente' | 'no_corresponde'
+  /** Los cobros, en orden de registro. Puede haber varios y de métodos distintos. */
+  pagos: PagoEntrega[]
 }
 
 /**
@@ -179,6 +191,51 @@ export interface ItemEntrega {
   entregado: number
   /** returned_qty */
   devuelto: number
+  /**
+   * `unit_price_snapshot` — precio unitario congelado al despachar.
+   *
+   * **Esta columna existe desde el esquema nuevo, y cambia el cobro de raíz.** Antes el monto a
+   * cobrar no tenía origen en ninguna tabla y había que traerlo de SAP; ahora sale de acá, y sale
+   * MEJOR: lo que se cobra es `delivered_qty × unit_price_snapshot`, o sea **lo que el cliente
+   * realmente recibió**. Si rechazó tres cajas, esas tres no se cobran — y eso, con el total de la
+   * factura, no se podía calcular.
+   */
+  precioUnitario: number
+}
+
+/**
+ * Métodos de cobro. Son los cuatro de la app del chofer (`PaymentMethodType` en el mockup móvil):
+ * efectivo, transferencia, QR y cheque.
+ */
+export type MetodoPago = 'efectivo' | 'transferencia' | 'qr' | 'cheque'
+
+/**
+ * UN cobro de la entrega. Son VARIOS por parada: el cliente puede pagar 200 en QR, 300 en efectivo y
+ * dejar 500 a deber. Por eso es una lista y no tres campos sueltos — con `montoCobrado` a secas no hay
+ * forma de contestar "¿con qué pagó?", que es justo lo que se le pregunta al chofer cuando la caja no
+ * cuadra.
+ *
+ * **Solo el QR tiene tabla hoy**: `delivery_payment_references` (`delivery_order_id`,
+ * `collection_payment_id`, `id_qr`, `amount`, `currency`, `status`). Efectivo, transferencia y cheque
+ * se registran en la app y **no tienen dónde guardarse** — ver el aviso de la pestaña *Cobro*.
+ */
+export interface PagoEntrega {
+  id: string
+  metodo: MetodoPago
+  /** `delivery_payment_references.amount` para el QR; sin columna para el resto. */
+  monto: number
+  /** Nº de recibo, de operación, de cheque, o el `id_qr` del banco. */
+  referencia: string
+  /** Banco, cuando aplica. `null` en efectivo. */
+  banco: string | null
+  /**
+   * `delivery_payment_references.status`. El QR nace `pendiente` —el banco todavía no confirmó— y
+   * pasa a `confirmado`. Los otros tres métodos nacen confirmados: el chofer tiene la plata en la mano.
+   */
+  estado: 'pendiente' | 'confirmado' | 'expirado'
+  hora: string
+  /** `delivery_payment_references.collection_payment_id`. Solo QR: es el id de Ms Cobranzas. */
+  collectionPaymentId: number | null
 }
 
 /** Una fila de `delivery_orders`, ya cruzada con su parada para poder pintarla. */
@@ -406,6 +463,42 @@ function construirIncidencias(
 }
 
 /**
+ * Cargos posibles de quien recibe. Es `delivery_orders.receiver_relationship` (`:390`), y el catálogo
+ * sale de la app del chofer (§ 29 del doc oficial: `ENCARGADO_ALMACEN`).
+ */
+const RELACIONES = ['Encargado de almacén', 'Administrador', 'Cajero', 'Propietario', 'Jefe de tienda']
+
+/**
+ * QUIÉN RECIBIÓ Y FIRMÓ. Es una PERSONA, no el cliente.
+ *
+ * Esto estaba mal en el mock y la confusión era razonable: el receptor se derivaba del nombre del
+ * cliente (`parada.cliente.split(' ').slice(-2)`), así que en "Casa La Ramada" el comprobante decía
+ * que había firmado "La Ramada" — un local, no alguien. En el esquema son dos cosas distintas y
+ * viven en tablas distintas:
+ *
+ *   · el CLIENTE  → `dispatch_delivery_points.customer_name` (la cabecera del panel)
+ *   · quien FIRMA → `proof_of_deliveries.receiver_name` + `receiver_document` (la pestaña Comprobante)
+ *
+ * Y la diferencia importa justo cuando el comprobante se usa: si el cliente reclama que no recibió,
+ * "firmó Casa La Ramada" no prueba nada, y "firmó Rodrigo Vaca, encargado de almacén, CI 4829102" sí.
+ *
+ * Se deriva por HASH del id de la entrega y no del PRNG por dos razones: la simulación en vivo tiene
+ * que producir el MISMO receptor cuando cierra esa parada (no tiene acceso al PRNG del generador), y
+ * consumir el PRNG acá correría todo el dataset de abajo.
+ */
+export function receptorDe(entregaId: string): { nombre: string; relacion: string; documento: string } {
+  // `>>>` y no `>>`: el hash es un entero SIN signo de 32 bits, y el corrimiento con signo lo vuelve
+  // negativo arriba de 2^31 — con un índice negativo, el apellido salía `undefined` en ~la mitad de
+  // las entregas ("Patricia undefined"). Es el clásico de mezclar `>>>` con `>>` sobre el mismo hash.
+  const h = hashTexto(entregaId)
+  return {
+    nombre: `${NOMBRES_PILA[h % NOMBRES_PILA.length]} ${APELLIDOS[(h >>> 5) % APELLIDOS.length]}`,
+    relacion: RELACIONES[(h >>> 11) % RELACIONES.length],
+    documento: `${3_000_000 + (h % 6_999_999)}`,
+  }
+}
+
+/**
  * `proof_of_deliveries` de una entrega efectiva.
  *
  * Exportada por la misma razón que `repartirItems`: la usan el generador del dataset Y la simulación
@@ -417,8 +510,6 @@ function construirIncidencias(
  */
 export function construirComprobante(args: {
   entregaId: string
-  receptor: string
-  documento: string
   puntoEntregaId: string
   canal: CanalId
   lat: number
@@ -428,11 +519,13 @@ export function construirComprobante(args: {
   conFoto?: boolean
 }): ComprobanteEntrega {
   const desvio = (n: number) => (((hashTexto(args.entregaId + n) % 60) - 30) / 100_000) // ±30 m aprox.
+  const quien = receptorDe(args.entregaId)
   return {
     id: `pod-${args.entregaId}`,
-    receptor: args.receptor,
-    documento: args.documento,
-    firmaUrl: firmaDeComprobante(args.receptor),
+    receptor: quien.nombre,
+    documento: quien.documento,
+    relacion: quien.relacion,
+    firmaUrl: firmaDeComprobante(quien.nombre),
     fotoUrls: args.conFoto === false ? [] : fotosDeComprobante(args.puntoEntregaId, args.canal),
     gpsLat: Number((args.lat + desvio(1)).toFixed(6)),
     gpsLon: Number((args.lng + desvio(2)).toFixed(6)),
@@ -447,44 +540,123 @@ function hashTexto(texto: string): number {
   return h
 }
 
+/** Bancos de plaza, para la referencia de transferencias, cheques y QR. */
+const BANCOS = ['BNB', 'Banco Unión', 'BCP', 'Banco Ganadero', 'Banco Fassil']
+
+/** Cómo se reparte un cobro entre métodos. Los pesos son a ojo, pero el orden importa: el efectivo
+ *  sigue siendo lo más común en reparto, y el cheque lo más raro. */
+const METODOS: MetodoPago[] = ['efectivo', 'qr', 'transferencia', 'efectivo', 'qr', 'cheque']
+
 /**
- * Cobro de la parada, DERIVADO de sus pedidos y de cómo cerró. Exportada por lo mismo que las dos de
- * arriba: la simulación en vivo tiene que poder recalcularlo al cerrar una parada.
+ * Cobro de la parada, DERIVADO de los ítems entregados y de cómo cerró.
  *
- * La regla es del negocio, no del esquema (que no tiene tabla de cobros): contado y transferencia se
- * cobran EN EL PUNTO, el crédito no. Una parada entregada cobra todo lo cobrable; una fallida o
- * devuelta no cobra nada, y si no había nada que cobrar el estado es `no_corresponde` — que es distinto
- * de "pendiente" y es justo lo que evita que el panel muestre deuda donde no hay.
+ * **Qué cambió con el esquema nuevo:** el monto ya no hay que inventarlo ni traerlo de SAP. Sale de
+ * `delivered_qty × unit_price_snapshot`, o sea de lo que el cliente REALMENTE recibió. Un pedido de
+ * 12 cajas del que rechazaron 3 se cobra por 9, y eso es exactamente lo que el chofer tiene que
+ * llevar de vuelta.
+ *
+ * **Los pagos son VARIOS y pueden ser parciales.** El cliente paga 200 en QR, 300 en efectivo y deja
+ * 500 a deber; eso son dos filas y un saldo, no un booleano. El QR además nace `pendiente`: el banco
+ * confirma después, y hasta que confirme la plata no está ni cobrada ni perdida.
+ *
+ * Todo se deriva por HASH del id de la entrega y no del PRNG, por lo mismo que el receptor: la
+ * simulación en vivo tiene que producir los MISMOS cobros cuando cierra esa parada.
  */
 export function construirCobro(
   pedidos: PedidoEntrega[],
+  items: ItemEntrega[],
+  entregaId: string,
   estado: EstadoEntrega,
   horaCierre: string | null,
 ): CobroEntrega {
   const redondear = (n: number) => Number(n.toFixed(2))
-  const montoTotal = redondear(pedidos.reduce((acc, p) => acc + p.total, 0))
-  const montoCobrable = redondear(
-    pedidos.filter((p) => p.formaPago !== 'Crédito').reduce((acc, p) => acc + p.total, 0),
-  )
-  const entregada = estado === 'entregado'
-  const montoCobrado = entregada ? montoCobrable : 0
+  const h = hashTexto(entregaId)
 
-  const estadoCobro: CobroEntrega['estado'] =
-    montoCobrable === 0
-      ? 'no_corresponde'
-      : entregada
-        ? montoCobrado >= montoCobrable
-          ? 'cobrado'
-          : 'parcial'
-        : 'pendiente'
+  // Qué parte de la parada se cobra en el punto. El crédito viaja en el camión pero se cobra en
+  // oficina, así que se descuenta en proporción a lo que pesa dentro del total de la parada. En el
+  // esquema nuevo esto se podría atribuir ítem por ítem —`delivery_order_items.sales_order_id` ya
+  // existe—; el mock lo aproxima porque sus ítems son el consolidado por producto.
+  const totalPedidos = pedidos.reduce((acc, p) => acc + p.total, 0)
+  const contado = pedidos.filter((p) => p.formaPago !== 'Crédito').reduce((acc, p) => acc + p.total, 0)
+  const porcionCobrable = totalPedidos > 0 ? contado / totalPedidos : 0
+
+  const facturado = redondear(items.reduce((acc, i) => acc + i.planificado * i.precioUnitario, 0))
+  const cerrada = estado === 'entregado' || estado === 'devuelto'
+
+  // Antes de cerrar, lo que se ESPERA cobrar sale de lo planificado; después, de lo que el cliente
+  // realmente recibió. Usar `entregado` en las dos puntas daba cero en toda parada abierta, y el panel
+  // decía "no corresponde" en 54 de 87 entregas — o sea, ocultaba la deuda justo antes de cobrarla.
+  const base = items.reduce(
+    (acc, i) => acc + (cerrada ? i.entregado : i.planificado) * i.precioUnitario,
+    0,
+  )
+  const aCobrar = redondear(base * porcionCobrable)
+
+  // "No corresponde" es UNA sola cosa: no hay nada que cobrar en el punto porque todo va a crédito.
+  // No es lo mismo que "todavía no cobró", y confundirlos borra la deuda de la pantalla.
+  if (porcionCobrable === 0) {
+    return { facturado, aCobrar: 0, cobrado: 0, enProceso: 0, saldo: 0, estado: 'no_corresponde', pagos: [] }
+  }
+  if (!cerrada) {
+    return { facturado, aCobrar, cobrado: 0, enProceso: 0, saldo: aCobrar, estado: 'pendiente', pagos: [] }
+  }
+
+  // Uno, dos o tres pagos. Con dos o tres, el reparto es desparejo a propósito: un cliente que paga
+  // en dos veces casi nunca parte por la mitad exacta.
+  const cuantos = 1 + (h % 3)
+  const proporciones = cuantos === 1 ? [1] : cuantos === 2 ? [0.6, 0.4] : [0.45, 0.35, 0.2]
+  // Uno de cada cuatro queda debiendo: el último tramo no se paga. Es el caso que hace que el panel
+  // tenga que mostrar SALDO y no solo "cobrado".
+  const quedaDebiendo = cuantos > 1 && h % 4 === 0
+
+  const registradas = proporciones.slice(0, quedaDebiendo ? proporciones.length - 1 : proporciones.length)
+  const ultimo = registradas.length - 1
+
+  const pagos: PagoEntrega[] = registradas
+    .map((porcion, i) => {
+      const metodo = METODOS[(h >>> (i * 3 + 2)) % METODOS.length]
+      const esQr = metodo === 'qr'
+      const banco = metodo === 'efectivo' ? null : BANCOS[(h >>> (i * 4 + 5)) % BANCOS.length]
+      const id = `pay-${entregaId}-${i + 1}`
+      // La referencia se deriva del id del PAGO y no del de la entrega: con el hash de la entrega
+      // corrido por el índice, dos pagos de paradas distintas salían con el mismo número de recibo.
+      const r = hashTexto(id)
+      return {
+        id,
+        metodo,
+        monto: redondear(aCobrar * porcion),
+        // El QR se referencia con el `id_qr` del banco; el resto con su comprobante.
+        referencia: esQr
+          ? `${25_051_501_009_100_000_000n + BigInt(r % 900_000_000)}`
+          : metodo === 'cheque'
+            ? `CHQ-${100_000 + (r % 899_999)}`
+            : metodo === 'transferencia'
+              ? `OP-${1_000_000 + (r % 8_999_999)}`
+              : `REC-${100_000 + (r % 899_999)}`,
+        banco,
+        // Solo el QR puede quedar esperando al banco, y solo el ÚLTIMO registrado: los anteriores ya
+        // se confirmaron mientras el chofer seguía cobrando. `ultimo` es el índice de la lista que se
+        // emite de verdad — usar el del arreglo original hacía que este caso no ocurriera nunca,
+        // porque cuando el cliente queda debiendo ese índice se recorta.
+        estado: esQr && i === ultimo && h % 3 === 0 ? 'pendiente' : 'confirmado',
+        hora: horaCierre ?? '',
+        collectionPaymentId: esQr ? 1_000 + (r % 8_999) : null,
+      } satisfies PagoEntrega
+    })
+
+  const cobrado = redondear(pagos.filter((p) => p.estado === 'confirmado').reduce((a, p) => a + p.monto, 0))
+  const enProceso = redondear(pagos.filter((p) => p.estado === 'pendiente').reduce((a, p) => a + p.monto, 0))
+  const saldo = redondear(Math.max(0, aCobrar - cobrado - enProceso))
 
   return {
-    montoTotal,
-    montoCobrable,
-    montoCobrado,
-    estado: estadoCobro,
-    recibo: montoCobrado > 0 ? `REC-${String(hashTexto(pedidos[0]?.id ?? 'x') % 900_000 + 100_000)}` : null,
-    cobradoAt: montoCobrado > 0 ? horaCierre : null,
+    facturado,
+    aCobrar,
+    cobrado,
+    enProceso,
+    saldo,
+    estado:
+      saldo > 0 ? (cobrado > 0 || enProceso > 0 ? 'parcial' : 'pendiente') : enProceso > 0 ? 'en_proceso' : 'cobrado',
+    pagos,
   }
 }
 
@@ -525,6 +697,9 @@ function construirItems(entregaId: string, estado: EstadoEntrega): ItemEntrega[]
         cargado,
         entregado: 0,
         devuelto: 0,
+        // `unit_price_snapshot`: el precio CONGELADO al despachar, no el vigente. Por eso es un
+        // snapshot: si mañana sube la lista, la entrega de ayer se sigue cobrando a lo de ayer.
+        precioUnitario: rand.int(1_200, 48_000) / 100,
       }
     })
   return repartirItems(base, estado)
@@ -668,7 +843,12 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
           const motivo =
             estado === 'fallido' ? rand.pick(MOTIVOS_FALLO) : estado === 'devuelto' ? rand.pick(MOTIVOS_DEVOLUCION) : ''
           const entregaId = `do-${orden.id}-${parada.id}`
-          const receptor = estado === 'entregado' ? parada.cliente.split(' ').slice(-2).join(' ') : ''
+          // Los ítems se arman ANTES del objeto porque el cobro se calcula sobre ellos:
+          // `delivered_qty × unit_price_snapshot`.
+          const itemsEntrega = construirItems(entregaId, estado)
+          // `delivery_orders.receiver_name`: la PERSONA que recibió, no el cliente (que es
+          // `parada.cliente` y ya viaja en la fila). Ver `receptorDe`.
+          const receptor = estado === 'entregado' ? receptorDe(entregaId).nombre : ''
           const pedidos: PedidoEntrega[] = parada.pedidos.map((p) => ({
             id: p.id,
             salesOrder: p.salesOrder,
@@ -706,8 +886,6 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
               estado === 'entregado'
                 ? construirComprobante({
                     entregaId,
-                    receptor,
-                    documento: `${rand.int(3_000_000, 9_999_999)}`,
                     puntoEntregaId: parada.puntoEntregaId,
                     canal: parada.canal,
                     lat: parada.lat,
@@ -717,8 +895,8 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
                     conFoto: rand.chance(0.7),
                   })
                 : null,
-            cobro: construirCobro(pedidos, estado, cerrada ? hhmm(entrega) : null),
-            items: construirItems(entregaId, estado),
+            items: itemsEntrega,
+            cobro: construirCobro(pedidos, itemsEntrega, entregaId, estado, cerrada ? hhmm(entrega) : null),
             fueraDeVentana: cerrada && entrega > aMinutos(finVentana(parada.ventana)),
             historial: construirHistorial(estado, salidaMin, llegada, entrega, motivo),
           }

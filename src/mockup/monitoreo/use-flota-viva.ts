@@ -72,9 +72,16 @@ const PING_MS = 12_000
 
 /**
  * Ventana de agrupación del stream de flota. Los pings se escriben a su cadencia real pero se ENTREGAN
- * a la pantalla cada 30 s, que es exactamente lo que hace el servidor.
+ * a la pantalla agrupados, que es exactamente lo que hace el servidor.
+ *
+ * **El contrato dice ~30 s; acá van 8 s, y es una decisión de MOCKUP, no un cambio de contrato.** Con
+ * 30 s, quien abre la pantalla para ver cómo se comporta se queda medio minuto mirando una tabla
+ * quieta y concluye que no funciona. Lo que el mock tiene que probar es el MECANISMO —que el ping
+ * llega agrupado y que la fila se parchea sola—, y eso se demuestra igual a 8 s.
+ *
+ * Es un solo número: subirlo a 30_000 devuelve la cadencia documentada sin tocar nada más.
  */
-const COALESCENCIA_MS = 30_000
+const COALESCENCIA_MS = 8_000
 
 /**
  * Cada cuánto la simulación cierra una entrega en algún viaje. No pretende ser una cadencia real —

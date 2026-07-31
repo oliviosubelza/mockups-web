@@ -88,6 +88,78 @@ body[data-resizing] * {
     100% { transform: scale(1); }
   }
 
+  /* Pulso del camión: ondas que salen del pin al ritmo del ping.
+     Va en CSS y no en el componente porque el marcador se serializa a HTML con
+     `renderToStaticMarkup`, y ahí un @keyframes inline no existe. El color y el período llegan por
+     custom properties desde el marcador, así el ritmo puede seguir a la cadencia real del reporte
+     (hoy 5 s en el mock; mañana 30 s o 1 min) sin tocar esta hoja.
+     Dos anillos con el segundo desfasado un tercio: uno solo se lee como un parpadeo, dos se leen
+     como una onda que se propaga. */
+  .truck-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 2px solid var(--pulso-color, #2563eb);
+    opacity: 0;
+    pointer-events: none;
+    animation: truck-pulse var(--pulso-ms, 5000ms) cubic-bezier(0.15, 0.6, 0.35, 1) infinite;
+  }
+  .truck-pulse-2 {
+    animation-delay: calc(var(--pulso-ms, 5000ms) / 3);
+  }
+  @keyframes truck-pulse {
+    0% { transform: scale(1); opacity: 0.6; }
+    70% { transform: scale(2.8); opacity: 0; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+
+  /* ── El listado también tiene que verse VIVO ──────────────────────────────────────────────
+     Una pantalla de vigilancia que cambia sin avisar es peor que una quieta: el dato se actualiza
+     mientras mirás otra fila y nunca te enterás. Dos canales, la misma duración:
+
+     1. `.celda-viva` — destella la CELDA que cambió. Dice QUÉ cambió.
+     2. `.fila-viva`  — barra de acento a la izquierda de la fila. Se ve con visión periférica, que
+        es la que te hace girar la vista hacia la fila correcta.
+
+     1,2 s: alcanza para registrarlo sin que la tabla parezca un semáforo. */
+  .celda-viva {
+    animation: celda-viva 1200ms ease-out;
+    border-radius: 4px;
+  }
+  @keyframes celda-viva {
+    0% { background: hsl(var(--primary) / 0.22); }
+    100% { background: transparent; }
+  }
+
+  .fila-viva {
+    animation: fila-viva 1200ms ease-out;
+  }
+  @keyframes fila-viva {
+    0% { box-shadow: inset 3px 0 0 hsl(var(--primary)); background: hsl(var(--primary) / 0.07); }
+    100% { box-shadow: inset 3px 0 0 transparent; background: transparent; }
+  }
+
+  /* Punto que late en la columna "Última señal": el equivalente de tabla a las ondas del camión.
+     Corre siempre que la señal esté fresca, así la fila se lee viva aunque no haya cambiado nada. */
+  .senal-viva {
+    animation: senal-viva 2s ease-in-out infinite;
+  }
+  @keyframes senal-viva {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+
+  /* Sin señal el pulso NO corre: un camión que dejó de reportar no puede verse igual de vivo que uno
+     que reporta. Es la misma información que el tooltip da en texto, pero visible sin hover. */
+  @media (prefers-reduced-motion: reduce) {
+    .truck-pulse,
+    .celda-viva,
+    .fila-viva,
+    .senal-viva {
+      animation: none;
+    }
+  }
+
   /* Styled scrollbars — Chromium/Electron only */
   ::-webkit-scrollbar {
     width: 8px;

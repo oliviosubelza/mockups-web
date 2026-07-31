@@ -6,7 +6,7 @@
 // Meter los dos en un solo componente obliga a un prop `modo` y a ramificar cada pin, cada tooltip y
 // cada capa. Eso es exactamente cómo un archivo de 250 líneas termina en 1000. Lo que SÍ se comparte
 // son las primitivas: `divIcon`, el control de capas y el invalidate por resize.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Truck, Warehouse } from 'lucide-react'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { LatLngTuple } from '../map/geo/polyline'
@@ -199,33 +199,61 @@ const pinDeposito = reactIcon(
 )
 
 /**
+ * Cada cuánto sale una onda del camión. Es el LATIDO del reporte, no un adorno: la onda dice "este
+ * equipo acaba de reportar".
+ *
+ * Hoy 5 s para que la demo se lea; en producción la cadencia real del ping es 10-15 s en movimiento y
+ * puede subir a 30 s o 1 min. Cuando el ping sea real, este número sale del intervalo del dispositivo
+ * y no de acá — por eso es UNA constante y no un valor repartido por el archivo.
+ */
+const PULSO_MS = 5000
+
+/**
  * El camión. Círculo pleno, no chapa: no es un LUGAR, es un objeto en movimiento — la misma
  * distinción que hace Google entre un pin y el punto azul.
  *
  * Antes llevaba `animate-pulse` sobre TODO el marcador más un `box-shadow` de 5px de color y otro
  * negro encima. Eran tres efectos peleando: el pulse desvanecía el ícono entero (parecía que el
- * camión titilaba, no que la señal estuviera viva) y los dos halos se mezclaban en una mancha. Ahora
- * hay un solo aro fino y una sombra limpia; la señal en vivo ya la comunica el indicador de frescura.
+ * camión titilaba, no que la señal estuviera viva) y los dos halos se mezclaban en una mancha.
+ *
+ * Ahora el ícono queda quieto y lo que se mueve son DOS ONDAS que salen de él (`.truck-pulse`, en
+ * `index.css`). La diferencia no es estética: el pulse viejo atenuaba el camión —lo hacía menos
+ * visible justo cuando reportaba— y estas ondas se expanden hacia afuera dejando el pin intacto.
+ *
+ * **Sin señal no hay ondas.** Un camión que dejó de reportar se pinta gris y quieto. Es la misma
+ * información que el tooltip da en texto ("Sin señal hace 37 min"), pero visible de un vistazo y a
+ * cualquier zoom: en una pantalla de vigilancia, lo que hay que poder barrer con la vista es
+ * justamente cuál dejó de latir.
  */
 function pinCamion(color: string, senalVieja: boolean) {
   const tono = senalVieja ? '#64748b' : color
 
   return reactIcon(
-    <div
-      style={{
-        width: 36,
-        height: 36,
-        borderRadius: 999,
-        background: tono,
-        border: '3px solid #fff',
-        boxShadow: `0 0 0 1px ${tono}55, 0 2px 6px rgb(0 0 0 / 0.35)`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#fff',
-      }}
-    >
-      <Truck size={18} strokeWidth={2.5} />
+    <div style={{ position: 'relative', width: 36, height: 36 }}>
+      {/* Las ondas van DEBAJO del cuerpo en el DOM para que el ícono nunca quede tapado por ellas. */}
+      {!senalVieja && (
+        <>
+          <span className="truck-pulse" style={{ '--pulso-color': tono, '--pulso-ms': `${PULSO_MS}ms` } as React.CSSProperties} />
+          <span className="truck-pulse truck-pulse-2" style={{ '--pulso-color': tono, '--pulso-ms': `${PULSO_MS}ms` } as React.CSSProperties} />
+        </>
+      )}
+      <div
+        style={{
+          position: 'relative',
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          background: tono,
+          border: '3px solid #fff',
+          boxShadow: `0 0 0 1px ${tono}55, 0 2px 6px rgb(0 0 0 / 0.35)`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+        }}
+      >
+        <Truck size={18} strokeWidth={2.5} />
+      </div>
     </div>,
     36,
   )
@@ -254,6 +282,7 @@ function AjustarVista({
   focoLng,
   margenIzq,
   margenDer,
+  marcarProgramatico,
 }: {
   tripId: number
   recorrido: LatLngTuple[]
@@ -262,6 +291,8 @@ function AjustarVista({
   focoLng: number | null
   margenIzq: number
   margenDer: number
+  /** Avisa que el movimiento que viene lo hace el código, no el usuario. Ver `SeguirCamion`. */
+  marcarProgramatico: () => void
 }) {
   const map = useMap()
 
@@ -271,6 +302,7 @@ function AjustarVista({
   margenes.current = { margenIzq, margenDer }
 
   useEffect(() => {
+    marcarProgramatico()
     if (posicionInicial) encuadrar(map, [posicionInicial], { ...margenes.current, zoomMax: ZOOM_CAMION })
     else encuadrar(map, recorrido, margenes.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,9 +310,98 @@ function AjustarVista({
 
   useEffect(() => {
     if (focoLat === null || focoLng === null) return
+    marcarProgramatico()
     encuadrar(map, [[focoLat, focoLng]], { ...margenes.current, zoomMax: ZOOM_PARADA })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focoLat, focoLng])
+
+  return null
+}
+
+/** Respiro contra el borde de la zona visible antes de considerar que el camión "se fue de cuadro". */
+const MARGEN_SEGURO = 48
+
+/**
+ * SEGUIR AL CAMIÓN — el encuadre que corre solo mientras el usuario no toca el mapa.
+ *
+ * El problema real que resuelve: el encuadre automático de `AjustarVista` ocurre UNA vez al abrir el
+ * viaje, y a los pocos minutos el camión se fue de cuadro —o peor, quedó detrás de un panel, que es
+ * peor que estar afuera porque el mapa parece estar bien y el camión no está—. Hasta ahora había que
+ * apretar "Centrar en el camión" cada tanto, en la pantalla que existe justamente para NO tener que
+ * hacer nada.
+ *
+ * Tres reglas, y las tres importan:
+ *
+ * 1. **Solo si el usuario no tomó el control.** Cualquier arrastre o zoom manual apaga el seguimiento
+ *    al instante: si alguien se fue a mirar otra zona, moverle la vista es lo más molesto que puede
+ *    hacer una pantalla. Se vuelve a encender con el botón de la barra.
+ * 2. **Solo si el camión NO está visible.** No se reencuadra en cada ping: mientras el camión esté
+ *    dentro de la zona útil, el mapa no se mueve. Reencuadrar cada 5 s sería un temblor constante.
+ * 3. **La zona útil descuenta los paneles.** Es lo que hace que "detrás del panel de paradas" cuente
+ *    como fuera de cuadro. Sin esto, el camión puede estar dentro del `<div>` del mapa y aun así ser
+ *    invisible.
+ *
+ * La bandera `programatico` es la parte fina, y es COMPARTIDA con `AjustarVista`: nuestros propios
+ * vuelos disparan `zoomstart` igual que un zoom del usuario. Sin ella pasan dos cosas, las dos malas:
+ * el encuadre inicial apagaría el seguimiento antes de que la pantalla termine de abrir, y cada
+ * reencuadre automático se apagaría a sí mismo.
+ */
+function SeguirCamion({
+  posicion,
+  activo,
+  margenIzq,
+  margenDer,
+  programatico,
+  marcarProgramatico,
+  onUsuarioTomaControl,
+}: {
+  posicion: LatLngTuple | null
+  activo: boolean
+  margenIzq: number
+  margenDer: number
+  programatico: React.RefObject<boolean>
+  marcarProgramatico: () => void
+  onUsuarioTomaControl: () => void
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    const marcar = () => {
+      if (!programatico.current) onUsuarioTomaControl()
+    }
+    map.on('dragstart', marcar)
+    map.on('zoomstart', marcar)
+    return () => {
+      map.off('dragstart', marcar)
+      map.off('zoomstart', marcar)
+    }
+  }, [map, programatico, onUsuarioTomaControl])
+
+  useEffect(() => {
+    if (!activo || !posicion) return
+    // Mientras un vuelo nuestro está en curso no se evalúa nada: a mitad de camino el camión todavía
+    // puede estar fuera de cuadro, y volver a llamar cortaría la animación en cada ping.
+    if (programatico.current) return
+
+    // ¿Está el camión dentro de la zona que NO tapan los paneles? Se pregunta en píxeles de pantalla
+    // y no en coordenadas, porque "detrás de un panel" es una condición de layout, no de geografía.
+    const punto = map.latLngToContainerPoint(posicion)
+    const { x: ancho, y: alto } = map.getSize()
+    const visible =
+      punto.x > margenIzq + MARGEN_SEGURO &&
+      punto.x < ancho - margenDer - MARGEN_SEGURO &&
+      punto.y > MARGEN_SEGURO &&
+      punto.y < alto - MARGEN_SEGURO
+
+    if (visible) return
+
+    // Mismo helper que usan el botón y el encuadre inicial: una sola regla de centrado en todo el
+    // mapa. `zoomMax` es el zoom ACTUAL a propósito — seguir al camión no debe cambiar la escala que
+    // el usuario venía mirando, solo traerlo de vuelta al cuadro.
+    marcarProgramatico()
+    encuadrar(map, [posicion], { margenIzq, margenDer, zoomMax: map.getZoom() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posicion, activo, margenIzq, margenDer])
 
   return null
 }
@@ -336,11 +457,70 @@ export function SeguimientoMapa({
 
   const [capa, setCapa] = useState<CapaBase>('calles')
 
+  /**
+   * Seguimiento automático. Arranca ENCENDIDO: quien abre esta pantalla quiere mirar el camión, no
+   * administrar la cámara. Se apaga solo en cuanto el usuario arrastra o hace zoom (ver
+   * `SeguirCamion`) y se vuelve a encender con su botón o con "Centrar en el camión".
+   */
+  const [seguir, setSeguir] = useState(true)
+
+  /**
+   * Vista de TRAMO SIGUIENTE: en vez del recorrido completo, solo el trecho que el camión está
+   * haciendo ahora — de donde está a su próxima parada.
+   *
+   * Por qué es una vista aparte y no el modo por defecto: el recorrido completo responde "¿cuánto le
+   * falta?" y el tramo responde "¿qué está haciendo AHORA?". Son dos preguntas distintas y ninguna
+   * gana siempre; con quince paradas dibujadas, la segunda se pierde entre las líneas de las otras
+   * trece.
+   */
+  const [soloTramo, setSoloTramo] = useState(false)
+
   // Coordenadas de la parada en foco como PRIMITIVAS y no como objeto: `entregas` se reconstruye en
   // cada tick de la simulación, así que un `{lat, lng}` nuevo haría refirar el centrado sin parar.
   const enFoco = entregas.find((e) => e.paradaId === paradaFoco)
   const focoLat = enFoco?.lat ?? null
   const focoLng = enFoco?.lng ?? null
+
+  /**
+   * La próxima parada es la del cursor: las anteriores están cerradas. El tramo se dibuja desde la
+   * posición REAL del camión y no desde la parada anterior, que es lo que lo hace útil — la línea
+   * sale de donde está el camión ahora mismo.
+   */
+  const siguiente = entregas[cursor]
+  const tramo = useMemo<LatLngTuple[] | null>(
+    () => (posicion && siguiente ? [posicion, [siguiente.lat, siguiente.lng]] : null),
+    [posicion, siguiente],
+  )
+
+  // El ícono se memoiza porque Leaflet RECREA el marcador cuando cambia la prop `icon`, y eso
+  // reinicia la animación del pulso. Sin esto, con un ping cada 1,2 s la onda no llegaría a salir
+  // nunca: se cortaría a la mitad en cada tick.
+  const iconoCamion = useMemo(() => pinCamion(viaje.color, senalVieja), [viaje.color, senalVieja])
+
+  /**
+   * Bandera compartida: "el movimiento que viene lo hace el código". La leen los dos componentes que
+   * mueven el mapa (`AjustarVista` y `SeguirCamion`) y el detector de gestos del usuario.
+   *
+   * Se suelta por TIEMPO y no por `moveend`: si el usuario arrastra a mitad de un vuelo, el evento
+   * puede no llegar y la bandera quedaría trabada en `true`, dejando el seguimiento sordo a los
+   * gestos para siempre. 1,2 s cubre el vuelo de 0,9 s con margen.
+   */
+  const programatico = useRef(false)
+  const marcarProgramatico = useCallback(() => {
+    programatico.current = true
+    setTimeout(() => {
+      programatico.current = false
+    }, 1200)
+  }, [])
+
+  /**
+   * Elegir una parada APAGA el seguimiento, y es a propósito: el usuario pidió mirar ESE punto. Sin
+   * esto, el mapa volaría a la parada y el siguiente ping lo traería de vuelta al camión — la vista
+   * se le escaparía de las manos justo después de pedirla.
+   */
+  useEffect(() => {
+    if (paradaFoco) setSeguir(false)
+  }, [paradaFoco])
 
   return (
     <MapContainer
@@ -358,9 +538,25 @@ export function SeguimientoMapa({
         posicionCamion={posicion}
         capa={capa}
         onCapa={setCapa}
+        seguir={seguir}
+        // Centrar a mano vuelve a ENCENDER el seguimiento: pedir el camión es, justamente, decir
+        // "quiero mirarlo a él". Obligar a apretar dos botones para eso sería trámite.
+        onSeguir={setSeguir}
+        soloTramo={soloTramo}
+        onSoloTramo={setSoloTramo}
+        hayTramo={tramo !== null}
         ancla={anclaHerramientas}
         margenIzq={margenIzq}
         margenDer={margenDer}
+      />
+      <SeguirCamion
+        posicion={posicion}
+        activo={seguir}
+        margenIzq={margenIzq}
+        margenDer={margenDer}
+        programatico={programatico}
+        marcarProgramatico={marcarProgramatico}
+        onUsuarioTomaControl={() => setSeguir(false)}
       />
       <AjustarVista
         tripId={viaje.tripId}
@@ -372,15 +568,33 @@ export function SeguimientoMapa({
         focoLng={focoLng}
         margenIzq={margenIzq}
         margenDer={margenDer}
+        marcarProgramatico={marcarProgramatico}
       />
 
+      {/* Con la vista de tramo, el recorrido completo no se OCULTA: se atenúa. Sigue siendo el
+          contexto —de dónde viene, cuánto le falta— y borrarlo dejaría una línea suelta en el vacío,
+          imposible de ubicar. Lo que cambia es cuál de las dos líneas manda la vista. */}
       {recorrido.length > 1 && (
-        <Polyline positions={recorrido} pathOptions={{ color: viaje.color, weight: 4, opacity: 0.35 }} />
+        <Polyline
+          positions={recorrido}
+          pathOptions={{ color: viaje.color, weight: 4, opacity: soloTramo ? 0.12 : 0.35 }}
+        />
       )}
       {pendiente.length > 1 && (
         <Polyline
           positions={pendiente}
-          pathOptions={{ color: viaje.color, weight: 3, opacity: 0.9, dashArray: '6 8' }}
+          pathOptions={{
+            color: viaje.color,
+            weight: 3,
+            opacity: soloTramo ? 0.15 : 0.9,
+            dashArray: '6 8',
+          }}
+        />
+      )}
+      {soloTramo && tramo && (
+        <Polyline
+          positions={tramo}
+          pathOptions={{ color: viaje.color, weight: 5, opacity: 1, dashArray: '2 9', lineCap: 'round' }}
         />
       )}
 
@@ -414,7 +628,7 @@ export function SeguimientoMapa({
       })}
 
       {posicion && (
-        <Marker position={posicion} icon={pinCamion(viaje.color, senalVieja)} zIndexOffset={1000}>
+        <Marker position={posicion} icon={iconoCamion} zIndexOffset={1000}>
           <Tooltip direction="top" offset={[0, -22]}>
             <span className="font-medium">{viaje.camion}</span>
             {` · ${viaje.chofer}`}

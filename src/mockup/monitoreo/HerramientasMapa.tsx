@@ -12,7 +12,7 @@
 //
 // Vive DENTRO del MapContainer para poder usar `useMap()`. No compite con los paneles porque nunca se
 // superpone con ellos: su posición se calcula desde el mismo margen que usa `fitBounds`.
-import { Layers, Maximize2, Minus, Plus, Truck } from 'lucide-react'
+import { Layers, LocateFixed, Maximize2, Minus, Navigation, Plus, Truck } from 'lucide-react'
 import { useMap } from 'react-leaflet'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -21,27 +21,36 @@ import type { LatLngTuple } from '../map/geo/polyline'
 
 export type CapaBase = 'calles' | 'satelite'
 
-/** Botón de la barra. Chico y cuadrado: es una herramienta, no una acción de la pantalla. */
+/**
+ * Botón de la barra. Chico y cuadrado: es una herramienta, no una acción de la pantalla.
+ *
+ * `activo` es para las que son INTERRUPTOR y no disparador (seguir al camión, ver solo el tramo). Un
+ * interruptor tiene que decir en qué estado está sin que haya que probarlo: se marca con fondo y
+ * color, no solo con el ícono, porque a 15px la diferencia entre dos íconos parecidos no se ve.
+ */
 function Herramienta({
   etiqueta,
   onClick,
   disabled,
+  activo,
   children,
 }: {
   etiqueta: string
   onClick: () => void
   disabled?: boolean
+  activo?: boolean
   children: React.ReactNode
 }) {
   return (
     <Button
       variant="ghost"
       size="icon"
-      className="size-8 rounded-lg"
+      className={cn('size-8 rounded-lg', activo && 'bg-primary/10 text-primary hover:bg-primary/15')}
       onClick={onClick}
       disabled={disabled}
       title={etiqueta}
       aria-label={etiqueta}
+      aria-pressed={activo}
     >
       {children}
     </Button>
@@ -59,6 +68,14 @@ export function HerramientasMapa({
    * paneles y cuánto miden. El mapa no tiene por qué enterarse del layout que lo rodea.
    */
   ancla,
+  /** Seguimiento automático encendido. Lo apaga el propio mapa cuando el usuario arrastra. */
+  seguir,
+  onSeguir,
+  /** Vista de tramo: solo el trecho del camión a su próxima parada. */
+  soloTramo,
+  onSoloTramo,
+  /** `false` cuando no hay camión o no queda parada por delante: la vista de tramo no aplica. */
+  hayTramo,
   /** Mismos márgenes que usa `fitBounds`, para que "Encuadrar" no meta paradas debajo de un panel. */
   margenDer,
   margenIzq,
@@ -68,6 +85,11 @@ export function HerramientasMapa({
   capa: CapaBase
   onCapa: (capa: CapaBase) => void
   ancla: { top: number; left: number }
+  seguir: boolean
+  onSeguir: (seguir: boolean) => void
+  soloTramo: boolean
+  onSoloTramo: (solo: boolean) => void
+  hayTramo: boolean
   margenDer: number
   margenIzq: number
 }) {
@@ -95,20 +117,55 @@ export function HerramientasMapa({
 
       <span className="mx-1.5 h-px bg-border" aria-hidden />
 
-      {/* Volver AL CAMIÓN. Es la herramienta más usada de una pantalla de vigilancia y la que el
-          encuadre automático no puede cubrir: ese corre una sola vez al abrir el viaje, y el camión
-          se va del cuadro a los pocos minutos. */}
+      {/* Volver AL CAMIÓN. Es la herramienta más usada de una pantalla de vigilancia. Además vuelve a
+          ENCENDER el seguimiento: pedir el camión es decir "quiero mirarlo a él", y obligar a apretar
+          dos botones para eso sería trámite. */}
       <Herramienta
         etiqueta={posicionCamion ? 'Centrar en el camión' : 'El camión no está en ruta'}
-        onClick={() => posicionCamion && encuadrar(map, [posicionCamion], { ...margenes, zoomMax: 15 })}
+        onClick={() => {
+          if (!posicionCamion) return
+          encuadrar(map, [posicionCamion], { ...margenes, zoomMax: 15 })
+          onSeguir(true)
+        }}
         disabled={!posicionCamion}
       >
         <Truck size={15} />
       </Herramienta>
 
+      {/* SEGUIR. Es un interruptor y no una acción: dice si el mapa se va a mover solo cuando el
+          camión se salga de cuadro. Se apaga solo en cuanto el usuario arrastra el mapa —el mapa
+          nunca le pelea la vista a quien la está manejando—, y este botón es cómo se vuelve a
+          encender. Sin él, el apagado automático sería una función invisible que no se puede deshacer. */}
+      <Herramienta
+        etiqueta={seguir ? 'Dejar de seguir al camión' : 'Seguir al camión automáticamente'}
+        onClick={() => onSeguir(!seguir)}
+        disabled={!posicionCamion}
+        activo={seguir && !!posicionCamion}
+      >
+        <LocateFixed size={15} />
+      </Herramienta>
+
       {/* Volver al recorrido completo: la vista de conjunto, para saber cuánto le falta. */}
       <Herramienta etiqueta="Encuadrar el recorrido" onClick={() => encuadrar(map, recorrido, margenes)}>
         <Maximize2 size={14} />
+      </Herramienta>
+
+      {/* TRAMO SIGUIENTE. El recorrido completo contesta "¿cuánto le falta?"; el tramo contesta "¿qué
+          está haciendo ahora?". Con quince paradas dibujadas, la segunda pregunta se pierde entre las
+          líneas de las otras trece. */}
+      <Herramienta
+        etiqueta={
+          !hayTramo
+            ? 'No hay próxima parada que resaltar'
+            : soloTramo
+              ? 'Ver el recorrido completo'
+              : 'Ver solo el tramo a la próxima parada'
+        }
+        onClick={() => onSoloTramo(!soloTramo)}
+        disabled={!hayTramo}
+        activo={soloTramo && hayTramo}
+      >
+        <Navigation size={14} />
       </Herramienta>
 
       <span className="mx-1.5 h-px bg-border" aria-hidden />
