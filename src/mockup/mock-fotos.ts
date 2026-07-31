@@ -62,6 +62,11 @@ const FOTOS_POR_CANAL: Record<CanalId, readonly string[]> = {
 // el mismo encuadre (si no, el carrousel salta de alto al pasar de una a otra).
 const PARAMS = 'w=900&h=506&fit=crop&crop=entropy&q=75&fm=jpg'
 
+/** Mismo encuadre, más chico: la evidencia se muestra en un panel de 380 px, no a sangre. */
+const PARAMS_EVIDENCIA = 'w=600&h=338&fit=crop&crop=entropy&q=70&fm=jpg'
+
+const urlUnsplash = (id: string, params = PARAMS) => `https://images.unsplash.com/${id}?${params}`
+
 /** Hash estable de un string → entero. Misma entrada, misma selección de fotos, siempre. */
 function hash(texto: string): number {
   let h = 2166136261
@@ -84,10 +89,81 @@ export function fotosDePunto(puntoEntregaId: string, canal: CanalId): string[] {
   const semilla = hash(puntoEntregaId)
   const cantidad = Math.min(pool.length, 2 + (semilla % 3))
   const offset = semilla % pool.length
-  return Array.from(
-    { length: cantidad },
-    (_, i) => `https://images.unsplash.com/${pool[(offset + i) % pool.length]}?${PARAMS}`,
-  )
+  return Array.from({ length: cantidad }, (_, i) => urlUnsplash(pool[(offset + i) % pool.length]))
+}
+
+// ── Evidencia de la entrega ───────────────────────────────────────────────────────────────────
+// `proof_of_deliveries.photo_url` / `signature_url` y `delivery_incidents.photo_url`
+// (UltimaVersion.sql:436-437 y :464) son TEXT: el esquema guarda la URL, no el archivo. Acá se
+// produce una URL que resuelve de verdad, para que el panel muestre la evidencia y no un badge que
+// diga "hay foto".
+//
+// NO se inventan ids nuevos de Unsplash: los ids de este archivo están verificados (200 image/jpeg) y
+// su CONTENIDO fue mirado uno por uno. Un id inventado devuelve 200 con cualquier cosa, y una foto de
+// contenido desconocido en una pantalla de evidencia es peor que ninguna.
+
+/** Verificada a ojo: dos cajas de cartón sobre fondo claro. Sirve de mercadería/paquete. */
+const FOTO_PAQUETE = 'photo-1595246140625-573b715d11dc'
+
+/** Qué retrata la foto de una incidencia: la MERCADERÍA o el LUGAR donde pasó. */
+export type EvidenciaFoto = 'mercaderia' | 'lugar'
+
+/**
+ * Foto de la incidencia. Las de producto se ilustran con la mercadería; las de acceso, demora o
+ * rechazo, con el propio punto de entrega — que es lo que el chofer tiene delante cuando reporta.
+ * Reusar la foto del punto no es un atajo: es la misma que ya está en su galería, así que la evidencia
+ * y el lugar se leen como el mismo sitio.
+ */
+export function fotoDeIncidencia(retrata: EvidenciaFoto, puntoEntregaId: string, canal: CanalId): string {
+  if (retrata === 'mercaderia') return urlUnsplash(FOTO_PAQUETE, PARAMS_EVIDENCIA)
+  return fotosDePunto(puntoEntregaId, canal)[0]
+}
+
+/**
+ * Fotos del comprobante: la carga descargada y el punto donde se entregó. Son DOS y no cuatro a
+ * propósito — el panel prueba que la evidencia existe y se puede abrir, no es una galería.
+ */
+export function fotosDeComprobante(puntoEntregaId: string, canal: CanalId): string[] {
+  return [urlUnsplash(FOTO_PAQUETE, PARAMS_EVIDENCIA), fotosDePunto(puntoEntregaId, canal)[0]]
+}
+
+/**
+ * `signature_url`: la firma del receptor, generada como SVG y no traída de un banco de imágenes.
+ *
+ * Una firma capturada en el celular es un trazo sobre un canvas, así que un SVG la retrata MEJOR que
+ * una foto de stock — y además va inline como data URI, así que existe sin red y sobrevive a la
+ * exportación a Figma. El trazo se deriva del nombre: el mismo receptor firma siempre igual, que es la
+ * propiedad que haría sospechar si no se cumpliera.
+ *
+ * Fondo blanco explícito: es papel. Sin él, en tema oscuro la tinta quedaría invisible.
+ */
+export function firmaDeComprobante(receptor: string): string {
+  const h = hash(receptor || 'sin receptor')
+  /** Jitter determinista por punto de control: da una firma distinta por persona. */
+  const j = (i: number, amplitud = 22) => ((h >> (i * 3)) % (amplitud * 2)) - amplitud
+  const W = 320
+  const H = 120
+
+  // Un lazo de arranque (la "mayúscula") y después tramos cortos y alternados. Con tramos largos el
+  // trazo salía como una onda suave, que se lee más como un gráfico que como una firma: lo que la hace
+  // parecer escritura es que los picos sean angostos y desiguales.
+  const trazo =
+    `M 20 ${86 + j(0, 8)} C ${30 + j(1, 6)} ${34 + j(2, 12)}, ${58 + j(3, 8)} ${28 + j(4, 10)}, ${52 + j(5, 6)} ${74 + j(6, 10)}` +
+    ` C ${70 + j(7, 6)} ${30 + j(8, 12)}, ${86 + j(1, 6)} ${88 + j(2, 8)}, ${104 + j(3, 6)} ${52 + j(4, 12)}` +
+    ` S ${132 + j(5, 8)} ${22 + j(6, 10)}, ${146 + j(7, 6)} ${76 + j(8, 10)}` +
+    ` S ${178 + j(2, 8)} ${30 + j(3, 12)}, ${196 + j(4, 6)} ${58 + j(5, 10)}` +
+    ` S ${228 + j(6, 8)} ${94 + j(7, 8)}, ${244 + j(8, 6)} ${46 + j(1, 12)}` +
+    ` S ${282 + j(3, 8)} ${20 + j(4, 10)}, ${302 + j(5, 6)} ${62 + j(6, 10)}`
+  const rubrica = `M ${30 + j(4, 10)} 102 C 118 ${110 + j(5, 6)}, 202 ${92 + j(6, 8)}, 296 ${104 + j(7, 5)}`
+
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<rect width="${W}" height="${H}" fill="#ffffff"/>` +
+    `<path d="${trazo}" fill="none" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>` +
+    `<path d="${rubrica}" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>` +
+    `</svg>`
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
 // ── Fallback offline ──────────────────────────────────────────────────────────────────────────

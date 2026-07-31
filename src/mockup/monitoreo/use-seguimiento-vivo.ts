@@ -66,6 +66,8 @@ import type { LatLngTuple } from '../map/geo/polyline'
 import {
   MOTIVOS_DEVOLUCION,
   MOTIVOS_FALLO,
+  construirCobro,
+  construirComprobante,
   horaEntregaPlanificada,
   horaLlegadaPlanificada,
   repartirItems,
@@ -271,16 +273,21 @@ export function useSeguimientoVivo(
       const estado = resultadoDe(activa.id)
       const motivo = motivoDe(activa.id, estado)
       const hora = horaEntregaPlanificada(viaje.salida, activa.secuencia)
+      // Mismos constructores que el dataset (`construirComprobante`, `construirCobro`) y no una copia
+      // local: una parada cerrada en vivo tiene que quedar indistinguible de las que ya venían cerradas.
+      // Con dos implementaciones, la firma, el GPS o el recibo saldrían distintos según CUÁNDO cerró.
       const comprobante: ComprobanteEntrega | null =
         estado === 'entregado'
-          ? {
-              id: `pod-${activa.id}`,
+          ? construirComprobante({
+              entregaId: activa.id,
               receptor: activa.cliente.split(' ').slice(-2).join(' '),
               documento: `${3_000_000 + (activa.secuencia * 137_911) % 6_999_999}`,
-              tieneFirma: true,
-              tieneFoto: true,
-              capturadoAt: hora,
-            }
+              puntoEntregaId: activa.puntoEntregaId,
+              canal: activa.canal,
+              lat: activa.lat,
+              lng: activa.lng,
+              hora,
+            })
           : null
 
       overrides.set(activa.id, {
@@ -290,6 +297,8 @@ export function useSeguimientoVivo(
         motivo,
         receptor: comprobante?.receptor ?? '',
         comprobante,
+        // El cobro se RECALCULA al cerrar: es lo que convierte "pendiente" en "cobrado" en la pestaña.
+        cobro: construirCobro(activa.pedidos, estado, hora),
         // Misma regla que el generador del dataset: la cabecera y la pestaña Pedido no pueden
         // contradecirse.
         items: repartirItems(activa.items, estado),

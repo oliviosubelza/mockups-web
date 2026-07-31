@@ -915,6 +915,13 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
   // Llenado de los camiones que NO exceden: la mayoría de las unificaciones tiene que entrar bien.
   const factoresNormales = [0.55, 0.85]
   const out: OrdenTransporte[] = []
+  /**
+   * Cuántas cargas concentran TODAS sus paradas en una sola orden, en vez de repartirlas entre 2-3.
+   * Son las que el monitoreo usa para mostrar un viaje largo: con el reparto normal, un viaje queda con
+   * 1-3 paradas y la simulación en vivo dura menos de un minuto.
+   */
+  const CARGAS_CONCENTRADAS = 5
+  let concentradas = 0
 
   const candidatos = RUTAS.map((r) => {
     const camion = camionPorId(r.camionId)!
@@ -951,7 +958,22 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
 
     // Se reparten en 2-3 órdenes: unificar necesita VARIAS órdenes del mismo camión para tener algo
     // que fusionar (con una sola, la acción no aplica).
-    const cantidadOrdenes = Math.min(elegidas.length, rand.int(2, 3))
+    //
+    // EXCEPCIÓN — las primeras `CARGAS_CONCENTRADAS` con tripulación NO se reparten. El monitoreo emite
+    // un viaje por orden, así que repartir 6 paradas en 3 órdenes daba viajes de 2 paradas y la
+    // simulación en vivo de esa carga se terminaba en menos de un minuto. Concentrándolas, esas cargas
+    // salen con 4-6 paradas y el seguimiento tiene algo que mostrar. No cambia ningún peso ni ninguna
+    // asignación de parada: es el MISMO conjunto, agrupado distinto — así que el mapa del planificador
+    // y las alertas de capacidad quedan igual. El costo es que esos camiones no sirven para ensayar
+    // "unificar"; los otros diez sí.
+    // El `rand.int` se consume IGUAL cuando la carga se concentra, para no correr el PRNG: si se
+    // saltara, todo el dataset de abajo (estados, incidencias, telemetría) cambiaría de golpe.
+    const reparto = Math.min(elegidas.length, rand.int(2, 3))
+    // El camión `i === 0` es el que queda sin tripulación a propósito, así que nunca sale al monitoreo:
+    // concentrarle las paradas no serviría de nada.
+    const cargaConcentrada = i !== 0 && concentradas < CARGAS_CONCENTRADAS
+    if (cargaConcentrada) concentradas++
+    const cantidadOrdenes = cargaConcentrada ? 1 : reparto
     const porOrden = Math.ceil(elegidas.length / cantidadOrdenes)
     const tripulacion = i === 0 ? { chofer: '', auxiliar: '' } : { chofer: chofer(), auxiliar: auxiliar() }
 

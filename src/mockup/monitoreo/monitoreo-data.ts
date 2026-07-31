@@ -32,8 +32,16 @@ import {
   finVentana,
   paradasDeOrden,
   rutaPorCamionId,
+  type CanalId,
   type Parada,
+  type PaymentType,
 } from '../mock-data'
+import {
+  firmaDeComprobante,
+  fotoDeIncidencia,
+  fotosDeComprobante,
+  type EvidenciaFoto,
+} from '../mock-fotos'
 import { PRODUCTOS } from '../mock-pools'
 import { nearestOrder } from '../map/route-optimizer'
 import type { LatLngTuple } from '../map/geo/polyline'
@@ -48,6 +56,13 @@ const SALIDA_MIN = 8 * 60
 const MIN_POR_PARADA = 25
 /** Minutos en el almacén entre una carga y la siguiente: descargar devoluciones, chequear y cargar. */
 const MIN_RECARGA = 45
+/**
+ * Desde cuántas paradas una carga cuenta como LARGA. Las largas arrancan la simulación en el primer
+ * tercio del recorrido para que el seguimiento en vivo tenga varias paradas por delante — ver `cursor`.
+ * Las produce `CARGAS_CONCENTRADAS` en `mock-data`: los primeros camiones con tripulación no reparten
+ * sus paradas entre 2-3 órdenes, las concentran en una.
+ */
+const PARADAS_CARGA_LARGA = 5
 
 const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
 
@@ -73,11 +88,17 @@ export interface IncidenciaEntrega {
   requiereDevolucion: boolean
   /** created_at */
   hora: string
+  /** `photo_url` (`UltimaVersion.sql:464`) — TEXT. Una incidencia sin foto es una afirmación sin prueba. */
+  fotoUrl: string
 }
 
 /**
- * Una fila de `proof_of_deliveries`. `signature_url` y `photo_url` son TEXT en el esquema; acá solo
- * interesa si existen, porque el panel muestra presencia de evidencia, no la evidencia misma.
+ * Una fila de `proof_of_deliveries`. `signature_url` y `photo_url` son TEXT en el esquema, o sea la
+ * URL y no el archivo: acá se produce una URL que resuelve, para que el panel muestre la evidencia.
+ *
+ * Antes esto eran dos booleanos (`tieneFirma`, `tieneFoto`) y el panel mostraba un badge que decía
+ * "hay foto". Un comprobante que no se puede ABRIR no prueba nada, y es justo lo que se le pide a
+ * este panel cuando el cliente reclama que no recibió la mercadería.
  */
 export interface ComprobanteEntrega {
   id: string
@@ -85,12 +106,43 @@ export interface ComprobanteEntrega {
   receptor: string
   /** receiver_document */
   documento: string
-  /** signature_url != null */
-  tieneFirma: boolean
-  /** photo_url != null */
-  tieneFoto: boolean
+  /** `signature_url` — data URI de la firma. `null` si el chofer no la capturó. */
+  firmaUrl: string | null
+  /** `photo_url` — fotos de la entrega. Vacío si no hay ninguna. */
+  fotoUrls: string[]
+  /** `gps_lat` / `gps_lon` (`:438-439`) — dónde se capturó el comprobante, no dónde está el camión. */
+  gpsLat: number
+  gpsLon: number
   /** captured_at */
   capturadoAt: string
+}
+
+/**
+ * Información de COBRO de la parada.
+ *
+ * ⚠️ **NO TIENE TABLA EN `UltimaVersion.sql`.** Se agrega al mockup para poder discutirla, y está
+ * marcada como propuesta en la pantalla. Lo que sí tiene origen hoy:
+ *   · `montoTotal` y `formaPago` salen del PEDIDO DE SAP (`Pedido.total`, `Pedido.paymentType`), que
+ *     entra por el snapshot de ventas. En nuestro esquema `candidate_orders` (`:176-203`) guarda peso
+ *     y volumen, y **ningún monto**.
+ *   · El resto —estado del cobro, monto cobrado, recibo, quién cobró— **no existe en ninguna tabla**.
+ *
+ * Lo que haría falta para que esto sea real: una tabla de cobros por entrega (`delivery_payments`:
+ * `delivery_order_id`, `method`, `amount`, `currency`, `receipt_number`, `collected_by`,
+ * `collected_at`), más un monto en `candidate_orders` o el pedido de SAP resuelto por servicio.
+ */
+export interface CobroEntrega {
+  /** Suma de los pedidos de la parada, en Bs. Viene de SAP. */
+  montoTotal: number
+  /** Lo que el chofer debería traer de vuelta: contado + transferencia. El crédito no se cobra acá. */
+  montoCobrable: number
+  /** Cobrado de hecho. `0` mientras la parada no cierre entregada. */
+  montoCobrado: number
+  estado: 'cobrado' | 'parcial' | 'pendiente' | 'no_corresponde'
+  /** `receipt_number` — número de recibo. `null` si todavía no se cobró. */
+  recibo: string | null
+  /** `collected_at` */
+  cobradoAt: string | null
 }
 
 /**
@@ -107,6 +159,10 @@ export interface PedidoEntrega {
   canal: string
   pesoKg: number
   volumenM3: number
+  /** Monto del pedido en Bs. Viene de SAP: `candidate_orders` NO tiene columna de monto. */
+  total: number
+  /** `payment_type` del pedido de SAP. Decide si este pedido se cobra en el punto o va a crédito. */
+  formaPago: PaymentType
 }
 
 /** Una fila de `delivery_order_items`. Consolidado POR PRODUCTO de la parada. */
@@ -137,6 +193,14 @@ export interface EntregaMonitoreo {
   secuencia: number
   cliente: string
   puntoEntrega: string
+  /**
+   * `dispatch_delivery_points.delivery_point_id` — el puntero al maestro EXTERNO de puntos de entrega.
+   * Está acá porque la evidencia (foto del comprobante y de la incidencia) se resuelve por punto, igual
+   * que la galería del planificador: la misma parada se ve como el mismo lugar en las dos pantallas.
+   */
+  puntoEntregaId: string
+  /** Canal del cliente. Elige QUÉ tipo de local ilustra la evidencia. */
+  canal: CanalId
   ventana: string
   pesoKg: number
   volumenM3: number
@@ -157,6 +221,8 @@ export interface EntregaMonitoreo {
   incidencias: IncidenciaEntrega[]
   /** proof_of_deliveries — solo existe si el chofer capturó evidencia. */
   comprobante: ComprobanteEntrega | null
+  /** Cobro de la parada. **Sin tabla en el esquema** — ver `CobroEntrega`. */
+  cobro: CobroEntrega
   /** delivery_order_items */
   items: ItemEntrega[]
   /** Se calcula al vuelo: `delivered_at` cayó fuera de la ventana horaria del punto. */
@@ -295,20 +361,35 @@ function construirHistorial(
 export const MOTIVOS_FALLO = ['Cliente ausente', 'Local cerrado', 'Rechazo por faltante', 'Dirección no encontrada']
 export const MOTIVOS_DEVOLUCION = ['Producto observado', 'Pedido anulado en puerta']
 
-/** Catálogo de incidencias. En producción esto es `incident_code` + `incident_type` + `severity`. */
-const TIPOS_INCIDENCIA: { tipo: string; severidad: IncidenciaEntrega['severidad']; requiereDevolucion: boolean }[] = [
-  { tipo: 'Producto dañado', severidad: 'alta', requiereDevolucion: true },
-  { tipo: 'Faltante en la carga', severidad: 'media', requiereDevolucion: false },
-  { tipo: 'Acceso bloqueado', severidad: 'baja', requiereDevolucion: false },
-  { tipo: 'Demora en la descarga', severidad: 'baja', requiereDevolucion: false },
-  { tipo: 'Rechazo del cliente', severidad: 'alta', requiereDevolucion: true },
+/**
+ * Catálogo de incidencias. En producción esto es `incident_code` + `incident_type` + `severity`.
+ * `foto` no es una columna: es QUÉ retrata la evidencia, y decide de dónde sale la imagen (ver
+ * `fotoDeIncidencia`). Una incidencia de producto se prueba con la mercadería; una de acceso, con el
+ * lugar.
+ */
+const TIPOS_INCIDENCIA: {
+  tipo: string
+  severidad: IncidenciaEntrega['severidad']
+  requiereDevolucion: boolean
+  foto: EvidenciaFoto
+}[] = [
+  { tipo: 'Producto dañado', severidad: 'alta', requiereDevolucion: true, foto: 'mercaderia' },
+  { tipo: 'Faltante en la carga', severidad: 'media', requiereDevolucion: false, foto: 'mercaderia' },
+  { tipo: 'Acceso bloqueado', severidad: 'baja', requiereDevolucion: false, foto: 'lugar' },
+  { tipo: 'Demora en la descarga', severidad: 'baja', requiereDevolucion: false, foto: 'lugar' },
+  { tipo: 'Rechazo del cliente', severidad: 'alta', requiereDevolucion: true, foto: 'lugar' },
 ]
 
 /**
  * Incidencias de la entrega. Una parada que falló SIEMPRE deja rastro — si no, el planificador ve un
  * "no entregado" sin explicación y tiene que llamar por teléfono. El resto es la excepción real.
  */
-function construirIncidencias(estado: EstadoEntrega, entregaId: string, llegada: number): IncidenciaEntrega[] {
+function construirIncidencias(
+  estado: EstadoEntrega,
+  entregaId: string,
+  llegada: number,
+  parada: Parada,
+): IncidenciaEntrega[] {
   const cuantas = estado === 'fallido' ? 1 : estado === 'devuelto' ? (rand.chance(0.5) ? 1 : 0) : rand.chance(0.06) ? 1 : 0
   return Array.from({ length: cuantas }, (_, i) => {
     const tipo = rand.pick(TIPOS_INCIDENCIA)
@@ -319,8 +400,92 @@ function construirIncidencias(estado: EstadoEntrega, entregaId: string, llegada:
       descripcion: `${tipo.tipo} reportado por el chofer en el punto.`,
       requiereDevolucion: tipo.requiereDevolucion,
       hora: hhmm(llegada + rand.int(1, 10)),
+      fotoUrl: fotoDeIncidencia(tipo.foto, parada.puntoEntregaId, parada.canal),
     }
   })
+}
+
+/**
+ * `proof_of_deliveries` de una entrega efectiva.
+ *
+ * Exportada por la misma razón que `repartirItems`: la usan el generador del dataset Y la simulación
+ * en vivo cuando cierra una parada. Con dos implementaciones, una entrega cerrada en pantalla mostraría
+ * un comprobante distinto al de las que ya venían cerradas.
+ *
+ * El GPS del comprobante NO es la posición del camión: es dónde se capturó la firma, o sea el punto,
+ * con un desvío de pocos metros —el chofer firma en la puerta, no clavado en la coordenada del maestro—.
+ */
+export function construirComprobante(args: {
+  entregaId: string
+  receptor: string
+  documento: string
+  puntoEntregaId: string
+  canal: CanalId
+  lat: number
+  lng: number
+  hora: string
+  /** El chofer puede cerrar sin foto: es la excepción, y el panel tiene que poder retratarla. */
+  conFoto?: boolean
+}): ComprobanteEntrega {
+  const desvio = (n: number) => (((hashTexto(args.entregaId + n) % 60) - 30) / 100_000) // ±30 m aprox.
+  return {
+    id: `pod-${args.entregaId}`,
+    receptor: args.receptor,
+    documento: args.documento,
+    firmaUrl: firmaDeComprobante(args.receptor),
+    fotoUrls: args.conFoto === false ? [] : fotosDeComprobante(args.puntoEntregaId, args.canal),
+    gpsLat: Number((args.lat + desvio(1)).toFixed(6)),
+    gpsLon: Number((args.lng + desvio(2)).toFixed(6)),
+    capturadoAt: args.hora,
+  }
+}
+
+/** Hash estable de un string. Se usa para desviar el GPS del comprobante sin consumir el PRNG. */
+function hashTexto(texto: string): number {
+  let h = 0
+  for (let i = 0; i < texto.length; i++) h = (h * 31 + texto.charCodeAt(i)) >>> 0
+  return h
+}
+
+/**
+ * Cobro de la parada, DERIVADO de sus pedidos y de cómo cerró. Exportada por lo mismo que las dos de
+ * arriba: la simulación en vivo tiene que poder recalcularlo al cerrar una parada.
+ *
+ * La regla es del negocio, no del esquema (que no tiene tabla de cobros): contado y transferencia se
+ * cobran EN EL PUNTO, el crédito no. Una parada entregada cobra todo lo cobrable; una fallida o
+ * devuelta no cobra nada, y si no había nada que cobrar el estado es `no_corresponde` — que es distinto
+ * de "pendiente" y es justo lo que evita que el panel muestre deuda donde no hay.
+ */
+export function construirCobro(
+  pedidos: PedidoEntrega[],
+  estado: EstadoEntrega,
+  horaCierre: string | null,
+): CobroEntrega {
+  const redondear = (n: number) => Number(n.toFixed(2))
+  const montoTotal = redondear(pedidos.reduce((acc, p) => acc + p.total, 0))
+  const montoCobrable = redondear(
+    pedidos.filter((p) => p.formaPago !== 'Crédito').reduce((acc, p) => acc + p.total, 0),
+  )
+  const entregada = estado === 'entregado'
+  const montoCobrado = entregada ? montoCobrable : 0
+
+  const estadoCobro: CobroEntrega['estado'] =
+    montoCobrable === 0
+      ? 'no_corresponde'
+      : entregada
+        ? montoCobrado >= montoCobrable
+          ? 'cobrado'
+          : 'parcial'
+        : 'pendiente'
+
+  return {
+    montoTotal,
+    montoCobrable,
+    montoCobrado,
+    estado: estadoCobro,
+    recibo: montoCobrado > 0 ? `REC-${String(hashTexto(pedidos[0]?.id ?? 'x') % 900_000 + 100_000)}` : null,
+    cobradoAt: montoCobrado > 0 ? horaCierre : null,
+  }
 }
 
 /**
@@ -480,8 +645,16 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
     const enCurso = enCursoPorCamion.get(orden.camion) ?? -1
     const estadoViaje: EstadoViaje =
       indiceCarga < enCurso ? 'finalizado' : indiceCarga === enCurso ? 'en_ruta' : 'pendiente'
-    const cursor =
-      estadoViaje === 'pendiente' ? 0 : estadoViaje === 'finalizado' ? total : rand.int(1, Math.max(1, total - 1))
+    // Dónde está el camión dentro de su recorrido. En un viaje EN RUTA el cursor decide cuántas
+    // paradas le quedan por delante, y eso es exactamente lo que dura la simulación en vivo (~17 s por
+    // parada). Con `rand.int(1, total - 1)` una carga larga podía arrancar en la penúltima parada y la
+    // pantalla de seguimiento se terminaba en 20 segundos. Las cargas de 5+ paradas arrancan en el
+    // PRIMER TERCIO, así que siempre quedan 4 o más por recorrer.
+    const cursorEnRuta =
+      total >= PARADAS_CARGA_LARGA
+        ? rand.int(1, Math.max(1, Math.ceil(total / 3)))
+        : rand.int(1, Math.max(1, total - 1))
+    const cursor = estadoViaje === 'pendiente' ? 0 : estadoViaje === 'finalizado' ? total : cursorEnRuta
 
     const estados = paradas.map((_, idx) => estadoDeParada(idx, cursor, estadoViaje))
 
@@ -496,6 +669,16 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
             estado === 'fallido' ? rand.pick(MOTIVOS_FALLO) : estado === 'devuelto' ? rand.pick(MOTIVOS_DEVOLUCION) : ''
           const entregaId = `do-${orden.id}-${parada.id}`
           const receptor = estado === 'entregado' ? parada.cliente.split(' ').slice(-2).join(' ') : ''
+          const pedidos: PedidoEntrega[] = parada.pedidos.map((p) => ({
+            id: p.id,
+            salesOrder: p.salesOrder,
+            documento: p.id.replace(/^\D+/, ''),
+            canal: p.canal,
+            pesoKg: p.peso,
+            volumenM3: p.volumen,
+            total: p.total,
+            formaPago: p.paymentType,
+          }))
 
           return {
             id: entregaId,
@@ -504,17 +687,12 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
             secuencia: idx + 1,
             cliente: parada.cliente,
             puntoEntrega: parada.puntoEntrega,
+            puntoEntregaId: parada.puntoEntregaId,
+            canal: parada.canal,
             ventana: parada.ventana,
             pesoKg: parada.pesoTotal,
             volumenM3: parada.volumenTotal,
-            pedidos: parada.pedidos.map((p) => ({
-              id: p.id,
-              salesOrder: p.salesOrder,
-              documento: p.id.replace(/^\D+/, ''),
-              canal: p.canal,
-              pesoKg: p.peso,
-              volumenM3: p.volumen,
-            })),
+            pedidos,
             lat: parada.lat,
             lng: parada.lng,
             estado,
@@ -522,19 +700,24 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
             entregaAt: cerrada ? hhmm(entrega) : null,
             receptor,
             motivo,
-            incidencias: construirIncidencias(estado, entregaId, llegada),
+            incidencias: construirIncidencias(estado, entregaId, llegada, parada),
             // Solo la entrega efectiva deja comprobante: un "no entregado" no tiene firma ni receptor.
             comprobante:
               estado === 'entregado'
-                ? {
-                    id: `pod-${entregaId}`,
+                ? construirComprobante({
+                    entregaId,
                     receptor,
                     documento: `${rand.int(3_000_000, 9_999_999)}`,
-                    tieneFirma: true,
-                    tieneFoto: rand.chance(0.7),
-                    capturadoAt: hhmm(entrega),
-                  }
+                    puntoEntregaId: parada.puntoEntregaId,
+                    canal: parada.canal,
+                    lat: parada.lat,
+                    lng: parada.lng,
+                    hora: hhmm(entrega),
+                    // 3 de cada 10 entregas cierran sin foto: el panel tiene que retratar el caso.
+                    conFoto: rand.chance(0.7),
+                  })
                 : null,
+            cobro: construirCobro(pedidos, estado, cerrada ? hhmm(entrega) : null),
             items: construirItems(entregaId, estado),
             fueraDeVentana: cerrada && entrega > aMinutos(finVentana(parada.ventana)),
             historial: construirHistorial(estado, salidaMin, llegada, entrega, motivo),
