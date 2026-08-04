@@ -52,8 +52,23 @@ const rand = createRand(90210)
 
 /** Hora de salida del turno. Todo el timeline del viaje se cuenta desde acá. */
 const SALIDA_MIN = 8 * 60
-/** Minutos que se le imputan a cada parada (viaje + descarga). Alcanza para un timeline creíble. */
-const MIN_POR_PARADA = 25
+/**
+ * Minutos que se le imputan a cada parada (viaje + descarga). Alcanza para un timeline creíble.
+ *
+ * Se EXPORTA porque el listado de flota lo necesita: cuando un `order_progress` cierra una parada más,
+ * el listado tiene que mover sus tiempos con la misma cadencia con la que este generador los armó. Si
+ * usara un número propio, la misma orden contaría una historia en la tabla y otra en el detalle.
+ */
+export const MIN_POR_PARADA = 25
+/**
+ * De esos minutos, cuántos son de DESCARGA (el resto es tránsito). Es el promedio de atención que la
+ * planificación imputa, y por eso es también el que usa la simulación en vivo para fechar un cierre.
+ *
+ * Estaba escrito como un `+ 9` suelto dentro de `horaEntregaPlanificada`. Con los tiempos derivados
+ * ese 9 pasó a ser el pivote de tres cuentas —hora de cierre, atención promedio y tránsito promedio—,
+ * y un número mágico repetido en tres lugares se desincroniza en el primer ajuste.
+ */
+export const MIN_DESCARGA_PLANIFICADA = 9
 /** Minutos en el almacén entre una carga y la siguiente: descargar devoluciones, chequear y cargar. */
 const MIN_RECARGA = 45
 /**
@@ -999,6 +1014,90 @@ export const entregasDeViaje = (tripId: number): EntregaMonitoreo[] =>
     .flatMap((o) => o.entregas)
     .sort((a, b) => a.secuencia - b.secuencia)
 
+// ── Tiempos ──────────────────────────────────────────────────────────────────────────────────
+// Las duraciones se DERIVAN de `arrived_at` y `delivered_at`. NO hay ninguna columna de duración en
+// el esquema y no debería haberla: una duración guardada es un derivado que se desincroniza en cuanto
+// el chofer corrige una hora al sincronizar offline, y el backend ya tiene las dos puntas del
+// intervalo. El mismo criterio que se usó con la telemetría (ver la nota de arriba): se guarda el
+// dato crudo, la pantalla calcula.
+//
+// El viaje se descompone en dos tiempos que NO son lo mismo y que se accionan distinto:
+//   ATENCIÓN — el camión parado en el cliente (`delivered_at - arrived_at`). Sube por descarga lenta,
+//              cobro, o un cliente que hace esperar. Se corrige en el punto.
+//   TRÁNSITO — el camión moviéndose entre dos clientes (cierre de la anterior → llegada a esta). Sube
+//              por tráfico o por una secuencia mal armada. Se corrige en el ruteo.
+// Un solo "tiempo en ruta" promedio mezcla las dos y no dice dónde está el problema. Por eso se
+// exponen separadas, y el total (salida → último cierre) es la suma que las contiene.
+
+/**
+ * Minutos entre dos horas "HH:MM" del MISMO viaje.
+ *
+ * Suma un día cuando el resultado sale negativo: `hhmm` envuelve en 24 h, así que un camión con
+ * varias cargas que cruza la medianoche cierra a "00:15" después de haber llegado a las "23:50". Sin
+ * esto, esa parada reportaría −1415 min y hundiría el promedio del viaje. Es correcto para cualquier
+ * intervalo menor a 24 h, y todos estos lo son.
+ */
+const minutosEntre = (desde: string, hasta: string): number => {
+  const d = aMinutos(hasta) - aMinutos(desde)
+  return d < 0 ? d + 24 * 60 : d
+}
+
+/**
+ * Cuánto duró la entrega EN LA PARADA: `delivered_at - arrived_at`.
+ *
+ * `null` cuando falta una de las dos puntas, que es el caso de toda parada no cerrada — y es `null` y
+ * no `0` a propósito: "todavía no se sabe" y "entró y salió en el mismo minuto" son dos lecturas
+ * distintas, y un 0 en el promedio miente.
+ */
+export const atencionMin = (entrega: EntregaMonitoreo): number | null =>
+  entrega.llegadaAt && entrega.entregaAt ? minutosEntre(entrega.llegadaAt, entrega.entregaAt) : null
+
+/**
+ * Promedio de los valores medibles, redondeado al minuto. `null` si no hay ninguno.
+ *
+ * Ignora los `null` en vez de contarlos como 0: el promedio es "de lo que se pudo medir". Con un viaje
+ * de 12 paradas y 3 cerradas, contar las 9 abiertas como 0 daría 2 min de atención promedio cuando el
+ * dato real son 9.
+ */
+export const promedioMin = (valores: (number | null)[]): number | null => {
+  const medibles = valores.filter((v): v is number => v !== null)
+  if (medibles.length === 0) return null
+  return Math.round(medibles.reduce((a, b) => a + b, 0) / medibles.length)
+}
+
+/**
+ * Minutos de TRÁNSITO hacia cada parada: cierre de la anterior → llegada a esta. El primer tramo se
+ * mide desde `salida` (el camión sale del depósito, no de una parada).
+ *
+ * Ordena por secuencia antes de encadenar: el tramo se define entre parada N y N−1, así que una lista
+ * desordenada no da un error — da números plausibles y equivocados, que es mucho peor. Son ≤20
+ * elementos, la copia no se nota.
+ *
+ * Sin `salida` el primer tramo queda `null` y el promedio se calcula con los demás.
+ */
+export function transitosMin(entregas: EntregaMonitoreo[], salida?: string): (number | null)[] {
+  const enOrden = [...entregas].sort((a, b) => a.secuencia - b.secuencia)
+  return enOrden.map((entrega, i) => {
+    const desde = i === 0 ? salida : enOrden[i - 1].entregaAt
+    if (!desde || !entrega.llegadaAt) return null
+    return minutosEntre(desde, entrega.llegadaAt)
+  })
+}
+
+/**
+ * Duración en texto corto: minutos pelados abajo de una hora, "2 h 15 min" arriba.
+ *
+ * El guion del `null` se decide ACÁ y no en cada vista: cinco pantallas escribiendo su propio '—' es
+ * cinco formas de que "sin dato" se vea distinto según dónde lo mires.
+ */
+export const duracionTexto = (min: number | null): string => {
+  if (min === null) return '—'
+  if (min < 60) return `${min} min`
+  const horas = Math.floor(min / 60)
+  const resto = min % 60
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`
+}
+
 export interface ResumenEntregas {
   total: number
   entregadas: number
@@ -1009,15 +1108,47 @@ export interface ResumenEntregas {
   progresoPct: number
   incidencias: number
   fueraDeVentana: number
+  /** Promedio de `atencionMin` sobre las paradas cerradas. `null` mientras ninguna cerró. */
+  atencionPromedioMin: number | null
+  /** Promedio del tránsito entre paradas. `null` si no hay ningún tramo medible. */
+  transitoPromedioMin: number | null
+  /**
+   * Salida del depósito → cierre de la última parada cerrada. Es el tiempo que el camión lleva EN LA
+   * CALLE, no un promedio: en un viaje en curso crece, y al finalizar queda fijo.
+   *
+   * `null` sin `salida` o sin ninguna parada cerrada.
+   */
+  enRutaMin: number | null
 }
 
-/** Conteos por estado. Lo usan la barra de progreso, la columna del listado y el encabezado. */
-export function resumenEntregas(entregas: EntregaMonitoreo[]): ResumenEntregas {
+/**
+ * Conteos por estado y tiempos del viaje. Lo usan la barra de progreso, la columna del listado y el
+ * encabezado del detalle.
+ *
+ * `salida` es opcional porque los conteos no la necesitan; sin ella, el primer tramo de tránsito y el
+ * total en ruta quedan en `null` en vez de inventarse un origen.
+ */
+export function resumenEntregas(entregas: EntregaMonitoreo[], salida?: string): ResumenEntregas {
   const cuenta = (e: EstadoEntrega) => entregas.filter((x) => x.estado === e).length
   const entregadas = cuenta('entregado')
   const fallidas = cuenta('fallido')
   const devueltas = cuenta('devuelto')
   const cerradas = entregadas + fallidas + devueltas
+
+  // Total en ruta = el cierre MÁS LEJANO de la salida. Se mide cada cierre contra `salida` y se toma el
+  // máximo, en vez de buscar primero "la última hora" y restarla:
+  //   · resuelve la medianoche solo — comparar "00:15" contra "23:50" en crudo elige la equivocada,
+  //     porque `hhmm` envuelve en 24 h y 15 < 1430;
+  //   · no depende de la secuencia — si el chofer se salteó la parada 6 y cerró la 7, el máximo la
+  //     encuentra igual sin asumir que la última cerrada es la de mayor número.
+  const enRutaMin = salida
+    ? entregas.reduce<number | null>((max, e) => {
+        if (!e.entregaAt) return max
+        const desdeSalida = minutosEntre(salida, e.entregaAt)
+        return max === null || desdeSalida > max ? desdeSalida : max
+      }, null)
+    : null
+
   return {
     total: entregas.length,
     entregadas,
@@ -1027,6 +1158,57 @@ export function resumenEntregas(entregas: EntregaMonitoreo[]): ResumenEntregas {
     progresoPct: entregas.length > 0 ? Math.round((cerradas / entregas.length) * 100) : 0,
     incidencias: entregas.reduce((acc, e) => acc + e.incidencias.length, 0),
     fueraDeVentana: entregas.filter((e) => e.fueraDeVentana).length,
+    atencionPromedioMin: promedioMin(entregas.map(atencionMin)),
+    transitoPromedioMin: promedioMin(transitosMin(entregas, salida)),
+    enRutaMin,
+  }
+}
+
+/** Los tres tiempos de `ResumenEntregas`. Es el sub-DTO `times` del payload de `order_progress`. */
+export type TiemposResumen = Pick<
+  ResumenEntregas,
+  'atencionPromedioMin' | 'transitoPromedioMin' | 'enRutaMin'
+>
+
+/**
+ * Dobla una muestra nueva dentro de un promedio ya calculado: `(prom × n + muestra) / (n + 1)`.
+ *
+ * Incremental y no recalculado desde cero porque el listado NO tiene las paradas — tiene el promedio y
+ * cuántas lo formaron, que es exactamente lo que el evento le da. Con `n <= 0` la muestra ES el
+ * promedio: es la primera medición.
+ */
+const doblarPromedio = (promedio: number | null, n: number, muestra: number): number =>
+  promedio === null || n <= 0 ? muestra : Math.round((promedio * n + muestra) / (n + 1))
+
+/**
+ * Los tiempos de la orden después de que UNA parada más cerró — el `times` del payload extendido de
+ * `order_progress` (§26.7).
+ *
+ * El backend los recalcula consultando `arrived_at`/`delivered_at` de las filas reales, que para él ya
+ * existen. Acá no: este evento FABRICA el cierre, así que no hay dos puntas que restar. La muestra sale
+ * de la duración PLANIFICADA —la misma `MIN_DESCARGA_PLANIFICADA` con la que el detalle en vivo fecha
+ * sus cierres— y no de un azar propio, porque la tabla y el detalle tienen que poder abrirse uno al
+ * lado del otro sin contradecirse.
+ *
+ * `cerradasAntes` es el `n` del promedio: cuántas paradas ya estaban medidas antes de este cierre.
+ *
+ * El tránsito de la PRIMERA parada se mide desde el depósito, así que vale la parada entera; los demás
+ * tramos valen la parada menos su descarga. Es la misma aritmética que `transitosMin` saca de las horas
+ * reales, expresada sobre el plan.
+ */
+export function tiemposConUnaMas(resumen: ResumenEntregas, cerradasAntes: number): TiemposResumen {
+  const transito = cerradasAntes === 0 ? MIN_POR_PARADA : MIN_POR_PARADA - MIN_DESCARGA_PLANIFICADA
+  return {
+    atencionPromedioMin: doblarPromedio(
+      resumen.atencionPromedioMin,
+      cerradasAntes,
+      MIN_DESCARGA_PLANIFICADA,
+    ),
+    transitoPromedioMin: doblarPromedio(resumen.transitoPromedioMin, cerradasAntes, transito),
+    // El total en ruta NO es un promedio: es la hora del último cierre contada desde la salida, o sea
+    // exactamente lo que da `horaEntregaPlanificada` para la parada que acaba de cerrar. Se recalcula
+    // en vez de acumularse para que no derive del snapshot original tras 20 eventos.
+    enRutaMin: (cerradasAntes + 1) * MIN_POR_PARADA + MIN_DESCARGA_PLANIFICADA,
   }
 }
 
@@ -1045,4 +1227,4 @@ export const horaLlegadaPlanificada = (salida: string, secuencia: number): strin
 
 /** Hora planificada de cierre de esa parada. El promedio de descarga del dataset. */
 export const horaEntregaPlanificada = (salida: string, secuencia: number): string =>
-  hhmm(aMinutos(salida) + secuencia * MIN_POR_PARADA + 9)
+  hhmm(aMinutos(salida) + secuencia * MIN_POR_PARADA + MIN_DESCARGA_PLANIFICADA)

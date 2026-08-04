@@ -48,6 +48,7 @@ import type { LatLngTuple } from '../map/geo/polyline'
 import {
   ORDENES_MONITOREO,
   resumenEntregas,
+  tiemposConUnaMas,
   viajePorTripId,
   type ResumenEntregas,
 } from './monitoreo-data'
@@ -146,15 +147,27 @@ function snapshotFlota(distributorId: number): FilaMonitoreo[] {
       estadoViaje: viaje?.estado ?? 'pendiente',
       salida: viaje?.salida ?? '',
       paradas: orden.entregas.length,
-      resumen: resumenEntregas(orden.entregas),
+      // La salida del viaje entra en el resumen: sin ella los tiempos (tránsito del primer tramo y
+      // total en ruta) no se pueden medir. Un viaje sin ficha en `VIAJES_MONITOREO` los deja en `null`.
+      resumen: resumenEntregas(orden.entregas, viaje?.salida),
       tracking: porTripId.get(orden.tripId) ?? null,
     }
   })
 }
 
-/** Cierra una entrega más en el contador de la orden. Es el payload de un `order_progress`. */
+/**
+ * Cierra una entrega más en el contador de la orden. Es el payload de un `order_progress`.
+ *
+ * Mueve los CONTADORES y los TIEMPOS, porque el evento lleva las dos cosas: `progress` (los ocho
+ * contadores) y `times` (atención promedio, tránsito promedio y total en ruta). Los tiempos no pueden
+ * quedar afuera: son promedios, y un promedio que no se actualiza cuando entra una muestra queda
+ * clavado en el snapshot mientras el resto de la fila avanza — la falla más difícil de ver, porque el
+ * número se ve plausible.
+ */
 function progresoConUnaMas(resumen: ResumenEntregas): ResumenEntregas {
   if (resumen.pendientes === 0) return resumen
+  // Cuántas paradas ya estaban medidas: es el `n` con el que se dobla el promedio.
+  const cerradasAntes = resumen.entregadas + resumen.fallidas + resumen.devueltas
   // Cómo cerró: la mayoría bien, el fallo y la devolución son la excepción — la misma proporción que
   // usa el generador del dataset, para que el listado y el detalle no cuenten historias distintas.
   const suerte = rand.next()
@@ -172,6 +185,8 @@ function progresoConUnaMas(resumen: ResumenEntregas): ResumenEntregas {
     // Una parada que falla SIEMPRE deja rastro: si no, el planificador ve un "no entregado" sin
     // explicación y tiene que llamar por teléfono.
     incidencias: resumen.incidencias + (suerte >= 0.87 ? 1 : 0),
+    // El sub-DTO `times`: se dobla la muestra de la parada que acaba de cerrar dentro de los promedios.
+    ...tiemposConUnaMas(resumen, cerradasAntes),
   }
 }
 

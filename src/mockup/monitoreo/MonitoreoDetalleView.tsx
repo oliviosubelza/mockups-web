@@ -27,7 +27,14 @@ import { DetalleParadaPanel } from './DetalleParadaPanel'
 import { BateriaChofer, Frescura, LeyendaColapsable, ProgresoEntregas } from './ProgresoEntregas'
 import { ParadasPanel } from './ParadasPanel'
 import { SeguimientoMapa } from './SeguimientoMapa'
-import { entregasDeViaje, ordenPorId, resumenEntregas, viajePorTripId, type EntregaMonitoreo } from './monitoreo-data'
+import {
+  duracionTexto,
+  entregasDeViaje,
+  ordenPorId,
+  resumenEntregas,
+  viajePorTripId,
+  type EntregaMonitoreo,
+} from './monitoreo-data'
 import { ESTADO_ENTREGA, ESTADO_VIAJE } from './monitoreo-estado'
 import { useSeguimientoVivo } from './use-seguimiento-vivo'
 
@@ -122,7 +129,12 @@ export function MonitoreoDetalleView() {
 
   // El resumen se calcula sobre las entregas VIVAS de la orden abierta, no sobre el dataset: así la
   // barra de progreso avanza sola cuando la simulación cierra una parada.
-  const resumen = useMemo(() => resumenEntregas(entregas), [entregas])
+  //
+  // La SALIDA del viaje entra acá porque los tiempos la necesitan y los conteos no: el primer tramo de
+  // tránsito va del depósito a la parada 1, y el total en ruta se mide desde que el camión arrancó. Sin
+  // ella los dos quedarían en `null` — un viaje "sin tiempos" en vez de un viaje con tiempos mal
+  // medidos, que es la falla correcta.
+  const resumen = useMemo(() => resumenEntregas(entregas, viaje?.salida), [entregas, viaje?.salida])
 
   const seleccionada = useMemo(
     () => entregas.find((e) => e.paradaId === paradaFoco) ?? null,
@@ -282,6 +294,33 @@ export function MonitoreoDetalleView() {
 
           <div className="mt-2 flex items-center gap-2">
             <ProgresoEntregas resumen={resumen} />
+          </div>
+
+          {/* ── Tiempos del viaje ──
+              Van DEBAJO del progreso y no arriba: el progreso contesta "cómo va" (¿llego?), esto
+              contesta "por qué va así" (¿dónde se pierde el tiempo?). El orden importa porque el
+              segundo solo se pregunta después del primero.
+
+              Son TRES y no uno porque separan la causa: si la atención promedio está en 9 min y el
+              tránsito en 30, el problema es el ruteo, no el chofer descargando. Un único "tiempo en
+              ruta" promedio los suma y no permite decidir nada. El total va a la derecha y con la
+              etiqueta más corta porque es el que contiene a los otros dos. */}
+          <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-0.5 rounded-lg bg-muted/50 px-2.5 py-2">
+            <Campo label="Atención prom.">
+              <span className="tabular-nums" title="Promedio de tiempo parado en el punto de entrega">
+                {duracionTexto(resumen.atencionPromedioMin)}
+              </span>
+            </Campo>
+            <Campo label="Tránsito prom.">
+              <span className="tabular-nums" title="Promedio de tiempo entre una parada y la siguiente">
+                {duracionTexto(resumen.transitoPromedioMin)}
+              </span>
+            </Campo>
+            <Campo label="En ruta" alineado="right">
+              <span className="tabular-nums" title="Desde la salida del depósito hasta la última parada cerrada">
+                {duracionTexto(resumen.enRutaMin)}
+              </span>
+            </Campo>
           </div>
 
           {/* Frescura de la PANTALLA. Va acá abajo y no junto al estado del viaje a propósito: no es

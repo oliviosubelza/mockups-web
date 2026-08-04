@@ -11,7 +11,7 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { EntregaMonitoreo } from './monitoreo-data'
+import { atencionMin, duracionTexto, type EntregaMonitoreo } from './monitoreo-data'
 import { ESTADO_ENTREGA } from './monitoreo-estado'
 
 /**
@@ -74,6 +74,11 @@ export function ParadasPanel({
         const anteriorCerrada = i > 0 && ESTADO_ENTREGA[entregas[i - 1].estado].cerrada
         const rail = (hecho: boolean) => cn('w-0 border-l', hecho ? 'border-solid' : 'border-dashed', 'border-border')
 
+        // Cuánto duró la entrega en ESTA parada. Es la única cuenta que la tarjeta corta hace por el
+        // usuario, y se justifica: "10:25 → 10:37" obliga a restar de cabeza en cada fila, y con 20
+        // paradas la pregunta "¿en cuál se colgó?" no se contesta escaneando pares de horas.
+        const atencion = atencionMin(entrega)
+
         return (
           <li key={entrega.id}>
             <button
@@ -125,6 +130,13 @@ export function ParadasPanel({
                     <span className="text-muted-foreground">
                       {entrega.llegadaAt}
                       {entrega.entregaAt ? ` → ${entrega.entregaAt}` : ''}
+                    </span>
+                  )}
+                  {/* La duración va con peso propio y no en gris como las horas: las horas ubican en
+                      el día, esto mide desempeño. Es el dato que se compara entre filas. */}
+                  {atencion !== null && (
+                    <span className="shrink-0 font-medium text-foreground" title="Tiempo de atención en el punto">
+                      {duracionTexto(atencion)}
                     </span>
                   )}
                   {!entrega.llegadaAt && <span className="text-muted-foreground">Ventana {entrega.ventana}</span>}

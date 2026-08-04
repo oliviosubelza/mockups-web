@@ -41,6 +41,7 @@ import { fotosDePunto, ilustracionDePunto } from '../mock-fotos'
 import { PuntoEntregaDialog } from '../PuntoEntregaDialog'
 import { FotoAmpliable, SinFoto } from '../VisorFoto'
 import { EstadoEntregaBadge } from './EstadoEntregaBadge'
+import { atencionMin, duracionTexto } from './monitoreo-data'
 import type { CobroEntrega, EntregaMonitoreo, IncidenciaEntrega, MetodoPago } from './monitoreo-data'
 import { ESTADO_ENTREGA } from './monitoreo-estado'
 
@@ -174,10 +175,17 @@ export function DetalleParadaPanel({ entrega, onCerrar }: { entrega: EntregaMoni
           )}
         </div>
 
+        {/* Llegada y cierre van en UNA celda y no en dos: son las puntas de un intervalo, y separarlas
+            en columnas hermanas obligaba a leer dos etiquetas para reconstruir uno solo. La columna que
+            se gana la usa la DURACIÓN, que es la pregunta real — "¿cuánto estuvo acá?" — y que antes
+            había que restar de cabeza. */}
         <div className="mt-2.5 grid grid-cols-3 gap-2">
           <Dato label="Ventana">{entrega.ventana}</Dato>
-          <Dato label="Llegada">{entrega.llegadaAt ?? '—'}</Dato>
-          <Dato label="Cierre">{entrega.entregaAt ?? '—'}</Dato>
+          <Dato label="Llegada → Cierre">
+            {entrega.llegadaAt ?? '—'}
+            {entrega.entregaAt ? ` → ${entrega.entregaAt}` : ''}
+          </Dato>
+          <Dato label="Duración">{duracionTexto(atencionMin(entrega))}</Dato>
         </div>
 
         {/* La carga de la parada. Va en la CABECERA y no en una pestaña porque responde la pregunta

@@ -23,6 +23,7 @@ import { Frescura, ProgresoEntregas } from './ProgresoEntregas'
 import { Destello, useFilasVivas } from './destello'
 import { useFlotaViva, type FilaMonitoreo } from './use-flota-viva'
 import { UMBRAL_SENAL_VIEJA_MIN, minutosSinSenal, type ItemActual } from './tracking-dynamo'
+import { duracionTexto, promedioMin } from './monitoreo-data'
 import type { EstadoViaje } from './monitoreo-estado'
 
 const ESTADO_OPCIONES: { label: string; value: EstadoViaje }[] = [
@@ -40,6 +41,22 @@ const filterDefs = defineFilters<MonitoreoFilters>([
   { type: 'text', id: 'camion', label: 'Camión' },
   { type: 'select', id: 'estadoViaje', label: 'Estado del viaje', options: ESTADO_OPCIONES },
 ])
+
+/**
+ * Un promedio de la flota en el encabezado: etiqueta chica al lado del número.
+ *
+ * En LÍNEA y no en tarjeta: dos tarjetas de KPI arriba de una tabla de vigilancia le roban alto a lo
+ * único que se mira de verdad, que son las filas. El número va con peso y la etiqueta atenuada, así se
+ * lee de un vistazo sin ocupar una franja propia.
+ */
+function PromedioFlota({ label, valor, ayuda }: { label: string; valor: string; ayuda: string }) {
+  return (
+    <span className="flex items-baseline gap-1.5 text-xs" title={ayuda}>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold tabular-nums text-foreground">{valor}</span>
+    </span>
+  )
+}
 
 /**
  * Última señal del GPS. Recibe el ÍTEM CRUDO y deriva los minutos acá: `now() - trackedAt`. Antes
@@ -91,6 +108,24 @@ export function MonitoreoView() {
           (!filters.estadoViaje || f.estadoViaje === filters.estadoViaje),
       ),
     [filas, filters],
+  )
+
+  /**
+   * Los promedios de LA FLOTA, sobre las filas VISIBLES y no sobre el dataset: si el usuario filtró
+   * "En ruta", el número tiene que hablar de los camiones que está mirando. Un promedio que ignora el
+   * filtro contradice la tabla que tiene justo debajo.
+   *
+   * Es el promedio de los promedios de cada viaje y NO el de todas las paradas juntas. La diferencia
+   * importa: por paradas, un viaje de 20 pesa diez veces más que uno de 2 y el número termina
+   * describiendo al camión más cargado en vez de a la flota. Acá cada viaje cuenta uno, que es lo que
+   * se pregunta cuando se mira una operación completa.
+   */
+  const flota = useMemo(
+    () => ({
+      atencion: promedioMin(data.map((f) => f.resumen.atencionPromedioMin)),
+      enRuta: promedioMin(data.map((f) => f.resumen.enRutaMin)),
+    }),
+    [data],
   )
 
   /**
@@ -213,6 +248,33 @@ export function MonitoreoView() {
           cell: (row) => <span className="tabular-nums text-muted-foreground">{row.salida}</span>,
         },
         {
+          id: 'atencion',
+          header: 'Atención prom.',
+          size: 120,
+          enableSorting: false,
+          meta: { align: 'right' },
+          // Ordenar por esta columna se deshabilitó a propósito: el promedio de un viaje con 2 paradas
+          // cerradas y el de uno con 18 no son comparables, y un sort los pondría uno al lado del otro
+          // como si lo fueran. Para comparar desempeño está el promedio de la flota del encabezado.
+          cell: (row) => (
+            <span className="tabular-nums text-muted-foreground" title="Promedio de tiempo parado en el punto de entrega">
+              {duracionTexto(row.resumen.atencionPromedioMin)}
+            </span>
+          ),
+        },
+        {
+          id: 'enRuta',
+          header: 'En ruta',
+          size: 100,
+          enableSorting: false,
+          meta: { align: 'right' },
+          cell: (row) => (
+            <span className="tabular-nums text-muted-foreground" title="Desde la salida del depósito hasta la última parada cerrada">
+              {duracionTexto(row.resumen.enRutaMin)}
+            </span>
+          ),
+        },
+        {
           id: 'acciones',
           header: '',
           size: 130,
@@ -243,9 +305,25 @@ export function MonitoreoView() {
               abierta es obligatorio: sin él, un stream caído se ve idéntico a una flota detenida. */}
           <Frescura desde={actualizadoAt} />
         </div>
-        <p className="text-sm text-muted-foreground">
-          Órdenes de transporte despachadas. Abrí una para ver su recorrido y el avance parada por parada.
-        </p>
+        {/* Los promedios comparten la línea del subtítulo en vez de tener franja propia: en una tabla
+            de vigilancia el alto es del contenido, y estos dos números son contexto, no el tema. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-sm text-muted-foreground">
+            Órdenes de transporte despachadas. Abrí una para ver su recorrido y el avance parada por parada.
+          </p>
+          <div className="flex shrink-0 items-baseline gap-4">
+            <PromedioFlota
+              label="Atención prom."
+              valor={duracionTexto(flota.atencion)}
+              ayuda="Promedio de tiempo parado en el punto de entrega, sobre los viajes visibles"
+            />
+            <PromedioFlota
+              label="En ruta prom."
+              valor={duracionTexto(flota.enRuta)}
+              ayuda="Promedio de tiempo en la calle por viaje, desde la salida del depósito hasta la última parada cerrada"
+            />
+          </div>
+        </div>
       </div>
 
       <DataTable

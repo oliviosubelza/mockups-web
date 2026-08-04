@@ -425,7 +425,7 @@ export function CamionesView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold text-foreground">Camiones</h2>
+        <h2 className="text-sm font-semibold text-foreground">Finalizar camión</h2>
         {/* <p className="text-sm text-muted-foreground">
           Camiones con órdenes de transporte de la distribuidora. Cada fila muestra su capacidad y la
           carga acumulada de todas sus órdenes. Finalizá un camión para reoptimizar su ruta en el mapa.

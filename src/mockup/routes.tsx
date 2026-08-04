@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardList, Radar, Truck } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Flag, Radar } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -103,8 +103,12 @@ export const routes: MockRoute[] = [
   {
     id: 'camiones',
     path: '/camiones',
-    label: 'Camiones',
-    icon: Truck,
+    // No es el dato maestro "Camiones": es la acción de FINALIZAR un camión (botón de la fila →
+    // selección de órdenes → reoptimizar). El label nombra la acción, no la entidad.
+    // "Finalizar" es el verbo de dominio en toda la vista (botón, título del diálogo,
+    // `puedeFinalizar`); "confirmar" queda reservado al OK del modal.
+    label: 'Confirmar rutas',
+    icon: Flag,
     component: CamionesScreen,
     order: 1,
   },
@@ -113,7 +117,7 @@ export const routes: MockRoute[] = [
     id: 'ordenes-transporte',
     path: '/ordenes-transporte',
     label: 'Órdenes de transporte',
-    // icon: ClipboardCheck,
+    icon: ClipboardCheck,
     component: OrdenesTransporteView,
     order: 1,
   },
