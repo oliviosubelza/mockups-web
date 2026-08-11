@@ -13,12 +13,16 @@ import { Warehouse } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MapContainer, Marker, Tooltip, ZoomControl, useMapEvents } from 'react-leaflet'
 import { CANAL_META, DEPOSITO, camionPorId, type Parada } from './mock-data'
+import { CapasControl, type CapaMapa } from './map/CapasControl'
 import { divIcon } from './map/div-icon'
 import { InvalidateOnResize } from './map/InvalidateOnResize'
 import { MapLayersControl } from './map/MapLayersControl'
 import { MapToolbar } from './map/MapToolbar'
 import { OverlayLayer } from './map/OverlayLayer'
 import { SelectionLayer, type MapTool } from './map/SelectionLayer'
+import { EncuadrarConMercados } from './map/mercados/EncuadrarConMercados'
+import { MercadosLayer } from './map/mercados/MercadosLayer'
+import { useCityIdsDelMapa, useMercadosMapa } from './map/mercados/use-mercados-mapa'
 import { useOverlayStore } from './map/overlay-store'
 import { parseRouteOptimization } from './map/geo/polyline'
 import { SAMPLE_ROUTE_OPTIMIZATION } from './map/sample-route'
@@ -111,6 +115,7 @@ export function OrdersMap({
   singleRoute = false,
   routeColor = SELECCION,
   hideTools = false,
+  capaMercados = 'oculta',
 }: {
   paradas: Parada[]
   onSelectionChange?: (ids: string[]) => void
@@ -130,6 +135,20 @@ export function OrdersMap({
   routeColor?: string
   /** Oculta la toolbar de herramientas (pan/selección/dibujo). Modo solo-lectura (ej. unificación). */
   hideTools?: boolean
+  /**
+   * Capa de MERCADOS (los polígonos de zona de venta que expone Ventas).
+   *
+   * - `'oculta'` (default): el mapa no tiene la capa. No se pide el endpoint y no aparece el control —
+   *   es lo que corresponde en un mapa de una sola entrega o en la hoja de ruta del conductor, donde un
+   *   polígono no aporta nada y solo tapa.
+   * - `'on'` / `'off'`: la capa existe y se puede prender/apagar; el valor es su estado INICIAL. Solo la
+   *   planificación arranca en `'on'`: es la pantalla donde saber a qué mercado pertenece cada pedido
+   *   cambia cómo se agrupan las rutas. La revisión/optimización arranca apagada para no cargar el mapa
+   *   cuando lo que se mira son las rutas.
+   *
+   * El default es `'oculta'` a propósito: una pantalla nueva no hereda la capa sin decidirlo.
+   */
+  capaMercados?: 'oculta' | 'on' | 'off'
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
   // Parada cuyo detalle está abierto (null = cerrado). Se abre clickeando su pin con la mano activa.
@@ -138,6 +157,23 @@ export function OrdersMap({
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   // Etiquetas de detalle: activadas por la tool Y con zoom suficiente (para no solaparse).
   const showLabels = showDetails && zoom >= DETAIL_ZOOM
+
+  // ── Capas visuales ──────────────────────────────────────────────────────────────────────────
+  // Son SOLO visibilidad: no filtran ni reasignan nada. La lista de paradas que llega por props es la
+  // misma con la capa prendida o apagada.
+  const hayCapaMercados = capaMercados !== 'oculta'
+  const [verMercados, setVerMercados] = useState(capaMercados === 'on')
+  // Opción de la capa de mercados, no una capa propia: sin polígonos no hay nombres que mostrar.
+  const [verNombresMercados, setVerNombresMercados] = useState(true)
+  const [verPedidos, setVerPedidos] = useState(true)
+  // Mercado con el borde resaltado. Se elige clickeando su polígono; volver a clickearlo lo suelta.
+  const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
+
+  const cityIds = useCityIdsDelMapa(paradas)
+  const { mercados, cargando: cargandoMercados, error: errorMercados } = useMercadosMapa(
+    cityIds,
+    hayCapaMercados && verMercados,
+  )
 
   const setOverlay = useOverlayStore((s) => s.setOverlay)
   const clearOverlay = useOverlayStore((s) => s.clearOverlay)
@@ -167,6 +203,39 @@ export function OrdersMap({
     setOverlay(singleRoute ? buildSingleRouteOverlay(paradas, routeColor) : overlayDemo())
   }, [showRoute, singleRoute, paradas, routeColor, setOverlay, clearOverlay])
 
+  // Nota al pie de la capa de mercados: por qué no se ve nada aunque esté tildada. Sin esto, una ciudad
+  // sin mercados y un endpoint caído se ven exactamente igual (el mapa vacío) y no hay forma de saber
+  // cuál de las dos cosas pasó.
+  const notaMercados = !verMercados
+    ? undefined
+    : errorMercados
+      ? 'no se pudieron cargar'
+      : cityIds.length === 0
+        ? 'sin ciudad'
+        : mercados.length === 0
+          ? 'sin mercados'
+          : undefined
+
+  const capas: CapaMapa[] = [
+    {
+      id: 'mercados',
+      label: 'Mercados',
+      activa: verMercados,
+      onToggle: setVerMercados,
+      cargando: cargandoMercados,
+      nota: notaMercados,
+      subcapas: [
+        {
+          id: 'mercados-nombres',
+          label: 'Nombres',
+          activa: verNombresMercados,
+          onToggle: setVerNombresMercados,
+        },
+      ],
+    },
+    { id: 'pedidos', label: 'Pedidos', activa: verPedidos, onToggle: setVerPedidos },
+  ]
+
   return (
     <div className="relative h-full w-full">
       <MapContainer
@@ -182,6 +251,22 @@ export function OrdersMap({
         <InvalidateOnResize />
         <ZoomWatcher onZoom={setZoom} />
         <SelectionLayer activeTool={activeTool} paradas={paradas} onSelect={handleSelect} />
+
+        {/* Mercados: capa de FONDO. Va en su propio pane (z 350), así que queda debajo de las rutas y de
+            los pines sin importar el orden en que se monte. */}
+        {hayCapaMercados && verMercados && (
+          <>
+            <MercadosLayer
+              mercados={mercados}
+              seleccionadoId={mercadoSelId}
+              onSeleccionar={setMercadoSelId}
+              interactivo={activeTool === 'pan'}
+              mostrarNombres={verNombresMercados}
+            />
+            <EncuadrarConMercados paradas={paradas} mercados={mercados} activo />
+          </>
+        )}
+
         <OverlayLayer />
 
         {/* De acá sale todo: sin el almacén el mapa no explica de dónde arrancan las rutas. */}
@@ -191,7 +276,9 @@ export function OrdersMap({
           </Tooltip>
         </Marker>
 
-        {paradas.map((parada) => {
+        {/* Los pedidos son una capa apagable (`[x] Pedidos`), pero apagarla es SOLO dejar de dibujarlos:
+            la lista que llega por props no se toca, así que nada de lo que la pantalla calcula cambia. */}
+        {verPedidos && paradas.map((parada) => {
           const [desde, hasta] = parada.ventana.split('–').map((s) => s.trim())
           return (
             <Marker
@@ -245,6 +332,11 @@ export function OrdersMap({
           onToggleDemo={onToggleRoute ?? (() => {})}
         />
       )}
+
+      {/* Control de capas (abajo-izquierda, la esquina que no usan ni la toolbar ni el zoom). Solo
+          existe donde la capa de mercados existe: en un mapa sin mercados quedaría un panel con una
+          sola casilla que no resuelve nada. */}
+      {hayCapaMercados && <CapasControl capas={capas} />}
 
       {/* Detalle del punto de entrega (galería + datos). Hermano del MapContainer, no una capa de
           Leaflet: se portaliza al tablero y no compite con los panes del mapa. */}

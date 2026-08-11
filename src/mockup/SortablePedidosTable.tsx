@@ -22,17 +22,26 @@ import {
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RUTAS, rutaPorPedidoId, type Pedido } from './mock-data'
+import { RUTAS, rutaPorPedidoId, type Pedido, type Ruta as RouteDef } from './mock-data'
 import type { BoardState } from './types'
 
 /** Formatea un monto en Bs con separadores es-BO (1.240,50). */
 const bs = (n: number) => n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const SIN_RUTA = 'sin'
+const rutaGlobalPorPedido = (pedidoId: string) => rutaPorPedidoId(pedidoId)
 
 /** Primera ruta con pedidos (default del select); cae a la primera ruta o "Sin ruta". */
-function primeraRutaConPedidos(pedidos: Pedido[]): string {
-  return RUTAS.find((r) => pedidos.some((p) => rutaPorPedidoId(p.id)?.id === r.id))?.id ?? RUTAS[0]?.id ?? SIN_RUTA
+function primeraRutaConPedidos(
+  pedidos: Pedido[],
+  routes: RouteDef[],
+  getRouteByPedidoId: (pedidoId: string) => RouteDef | undefined,
+): string {
+  return (
+    routes.find((ruta) => pedidos.some((pedido) => getRouteByPedidoId(pedido.id)?.id === ruta.id))?.id ??
+    routes[0]?.id ??
+    SIN_RUTA
+  )
 }
 
 export function SortablePedidosTable({
@@ -42,6 +51,8 @@ export function SortablePedidosTable({
   onRetry = () => {},
   headerActions,
   readOnly = false,
+  routes = RUTAS,
+  getRouteByPedidoId = rutaGlobalPorPedido,
 }: {
   pedidos: Pedido[]
   state: BoardState
@@ -60,13 +71,17 @@ export function SortablePedidosTable({
    * puntos de entrega unificados.
    */
   readOnly?: boolean
+  /** Rutas visibles del scope actual (fallback: dataset global). */
+  routes?: RouteDef[]
+  /** Ruta efectiva de cada pedido según el scope actual (fallback: dataset global). */
+  getRouteByPedidoId?: (pedidoId: string) => RouteDef | undefined
 }) {
   // Con solo-lectura NO se separa por rutas aunque esté optimizado (es una sola ruta unificada).
   const showRoutes = optimized && !readOnly
   const [order, setOrder] = useState<string[]>(() => pedidos.map((p) => p.id))
   const [removed, setRemoved] = useState<Set<string>>(new Set()) // pedidos quitados del plan (mockup)
   const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map()) // override de "Mover a"
-  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos)) // ruta activa (select)
+  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos, routes, getRouteByPedidoId)) // ruta activa (select)
   // Modos excluyentes (toggles): seleccionar (checks) y reordenar (drag de filas).
   const [selectMode, setSelectMode] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -76,16 +91,16 @@ export function SortablePedidosTable({
     setOrder(pedidos.map((p) => p.id))
     setRemoved(new Set())
     setRutaPorPedido(new Map())
-    setRutaSel(primeraRutaConPedidos(pedidos))
+    setRutaSel(primeraRutaConPedidos(pedidos, routes, getRouteByPedidoId))
     setSelectMode(false)
     setEditMode(false)
-  }, [pedidos])
+  }, [pedidos, routes, getRouteByPedidoId])
 
   const byId = useMemo(() => new Map(pedidos.map((p) => [p.id, p])), [pedidos])
 
   // Ruta EFECTIVA de un pedido: gana el override de "Mover a"; si no, la que asignó la corrida.
   const efectivaRutaId = (id: string): string =>
-    rutaPorPedido.get(id) ?? rutaPorPedidoId(id)?.id ?? SIN_RUTA
+    rutaPorPedido.get(id) ?? getRouteByPedidoId(id)?.id ?? SIN_RUTA
 
   // Orden actual del plan (sin los quitados).
   const planPedidos = order
@@ -98,7 +113,7 @@ export function SortablePedidosTable({
     const rid = efectivaRutaId(p.id)
     countByRuta.set(rid, (countByRuta.get(rid) ?? 0) + 1)
   }
-  const rutaOptions = RUTAS.map((r) => ({
+  const rutaOptions = routes.map((r) => ({
     id: r.id,
     nombre: r.nombre,
     color: r.color as string | undefined,
@@ -162,7 +177,7 @@ export function SortablePedidosTable({
           enableResizing: false,
           cell: (row, index) => {
             // El punto de color de ruta solo tiene sentido una vez optimizado (antes no hay rutas).
-            const color = showRoutes ? RUTAS.find((r) => r.id === efectivaRutaId(row.id))?.color : undefined
+            const color = showRoutes ? routes.find((r) => r.id === efectivaRutaId(row.id))?.color : undefined
             return (
               <span className="inline-flex items-center gap-1.5">
                 {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />}
@@ -200,14 +215,13 @@ export function SortablePedidosTable({
         // Empleado/vendedor — en pausa por ahora:
         // { id: 'vendedor', header: 'Vendedor', accessorKey: 'vendedor', size: 150, enableSorting: false },
       ]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rutaPorPedido, showRoutes],
+    [getRouteByPedidoId, routes, rutaPorPedido, showRoutes],
   )
 
   // ── Acciones por fila (kebab): mover a ruta (solo optimizado) + quitar. Reordenar es por drag. ──
   const rowActions = (row: Pedido): RowAction<Pedido>[] => [
     ...(showRoutes
-      ? RUTAS.filter((r) => r.id !== efectivaRutaId(row.id)).map((r) => ({
+      ? routes.filter((r) => r.id !== efectivaRutaId(row.id)).map((r) => ({
           label: `Mover a ${r.nombre}`,
           icon: Route,
           onClick: () => moverARuta([row.id], r.id),

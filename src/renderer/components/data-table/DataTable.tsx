@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, Fragment, createContext, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -757,11 +757,23 @@ export function DataTable<T extends object>({
     ...(useServerPagination ? { rowCount: serverPagination.total } : {}),
   })
 
+  // Selección REAL sobre `data`: no depende de la página visible ni del row model filtrado.
+  // Para tablas con paginación/filtros (como "fuera de corte"), usar `getSelectedRowModel()` podía
+  // perder filas ya seleccionadas pero no visibles y el caller las interpretaba como destildadas.
+  const selectedRows = useMemo(() => {
+    if (!selectable) return []
+    return data.filter((row) => !!rowSelection[getRowId(row)])
+  }, [data, getRowId, rowSelection, selectable])
+  const selectionSignature = useMemo(
+    () => selectedRows.map((row) => getRowId(row)).join('|'),
+    [getRowId, selectedRows],
+  )
+
   // Fire selection callback
   useEffect(() => {
     if (!onSelectionChange) return
-    onSelectionChange(table.getSelectedRowModel().rows.map((r) => r.original))
-  }, [rowSelection])
+    onSelectionChange(selectedRows)
+  }, [onSelectionChange, selectionSignature])
 
   // Keep special columns pinned
   useEffect(() => {
@@ -802,7 +814,6 @@ export function DataTable<T extends object>({
     }
   }
 
-  const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original)
   const hasSelection  = selectedRows.length > 0
   const DensityIcon   = DENSITY_ICON[density]
   // Lo que le queda al cartel de vacío/error una vez descontado el thead: header + celda = bodyMinHeight.

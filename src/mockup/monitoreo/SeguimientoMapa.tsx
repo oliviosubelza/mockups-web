@@ -9,13 +9,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Truck, Warehouse } from 'lucide-react'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { cn } from '@/lib/utils'
 import type { LatLngTuple } from '../map/geo/polyline'
 import { reactIcon } from '../map/div-icon'
 import { encuadrar } from '../map/encuadrar'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
+import { MercadosLayer } from '../map/mercados/MercadosLayer'
+import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { DEPOSITO } from '../mock-data'
 import type { EntregaMonitoreo, ViajeMonitoreo } from './monitoreo-data'
 import { HerramientasMapa, type CapaBase } from './HerramientasMapa'
+import { useNotificacionesStore } from './notificaciones-store'
+import { useNotificacionesEventos } from './use-notificaciones-eventos'
 import { ESTADO_ENTREGA } from './monitoreo-estado'
 import { minutosSinSenal, posicionDe, senalVieja as esSenalVieja, type ItemActual } from './tracking-dynamo'
 
@@ -354,6 +359,7 @@ function SeguirCamion({
   programatico,
   marcarProgramatico,
   onUsuarioTomaControl,
+  onFueraDeCuadro,
 }: {
   posicion: LatLngTuple | null
   activo: boolean
@@ -362,6 +368,12 @@ function SeguirCamion({
   programatico: React.RefObject<boolean>
   marcarProgramatico: () => void
   onUsuarioTomaControl: () => void
+  /**
+   * Avisa si el camión está fuera de la zona visible. Se reporta SIEMPRE, también con el seguimiento
+   * apagado — es justamente ahí donde el dato hace falta: con el seguimiento encendido el camión vuelve
+   * solo, y con el seguimiento apagado la pantalla tiene que poder decir "se te fue".
+   */
+  onFueraDeCuadro: (fuera: boolean) => void
 }) {
   const map = useMap()
 
@@ -377,33 +389,91 @@ function SeguirCamion({
     }
   }, [map, programatico, onUsuarioTomaControl])
 
+  // El aviso hacia arriba se manda solo cuando el valor CAMBIA: `moveend` y cada ping lo evaluarían
+  // varias veces por segundo, y un setState por evaluación re-renderizaría el mapa entero al ritmo del GPS.
+  const fueraPrevio = useRef<boolean | null>(null)
+  const reportar = useRef(onFueraDeCuadro)
+  reportar.current = onFueraDeCuadro
+
   useEffect(() => {
-    if (!activo || !posicion) return
-    // Mientras un vuelo nuestro está en curso no se evalúa nada: a mitad de camino el camión todavía
-    // puede estar fuera de cuadro, y volver a llamar cortaría la animación en cada ping.
-    if (programatico.current) return
+    /** ¿Está el camión dentro de la zona que NO tapan los paneles? */
+    const evaluar = () => {
+      if (!posicion) return
+      // Se pregunta en píxeles de pantalla y no en coordenadas, porque "detrás de un panel" es una
+      // condición de layout, no de geografía.
+      const punto = map.latLngToContainerPoint(posicion)
+      const { x: ancho, y: alto } = map.getSize()
+      const visible =
+        punto.x > margenIzq + MARGEN_SEGURO &&
+        punto.x < ancho - margenDer - MARGEN_SEGURO &&
+        punto.y > MARGEN_SEGURO &&
+        punto.y < alto - MARGEN_SEGURO
 
-    // ¿Está el camión dentro de la zona que NO tapan los paneles? Se pregunta en píxeles de pantalla
-    // y no en coordenadas, porque "detrás de un panel" es una condición de layout, no de geografía.
-    const punto = map.latLngToContainerPoint(posicion)
-    const { x: ancho, y: alto } = map.getSize()
-    const visible =
-      punto.x > margenIzq + MARGEN_SEGURO &&
-      punto.x < ancho - margenDer - MARGEN_SEGURO &&
-      punto.y > MARGEN_SEGURO &&
-      punto.y < alto - MARGEN_SEGURO
+      if (fueraPrevio.current !== !visible) {
+        fueraPrevio.current = !visible
+        reportar.current(!visible)
+      }
 
-    if (visible) return
+      if (visible || !activo) return
+      // Mientras un vuelo nuestro está en curso no se reencuadra: a mitad de camino el camión todavía
+      // puede estar fuera de cuadro, y volver a llamar cortaría la animación en cada ping.
+      if (programatico.current) return
 
-    // Mismo helper que usan el botón y el encuadre inicial: una sola regla de centrado en todo el
-    // mapa. `zoomMax` es el zoom ACTUAL a propósito — seguir al camión no debe cambiar la escala que
-    // el usuario venía mirando, solo traerlo de vuelta al cuadro.
-    marcarProgramatico()
-    encuadrar(map, [posicion], { margenIzq, margenDer, zoomMax: map.getZoom() })
+      // Mismo helper que usan el botón y el encuadre inicial: una sola regla de centrado en todo el
+      // mapa. `zoomMax` es el zoom ACTUAL a propósito — seguir al camión no debe cambiar la escala que
+      // el usuario venía mirando, solo traerlo de vuelta al cuadro.
+      marcarProgramatico()
+      encuadrar(map, [posicion], { margenIzq, margenDer, zoomMax: map.getZoom() })
+    }
+
+    evaluar()
+    // También al terminar de mover o hacer zoom: si el usuario arrastra el mapa hasta perder al camión,
+    // el ping no cambió y sin estos eventos nadie se enteraría de que se fue de cuadro.
+    map.on('moveend', evaluar)
+    map.on('zoomend', evaluar)
+    return () => {
+      map.off('moveend', evaluar)
+      map.off('zoomend', evaluar)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posicion, activo, margenIzq, margenDer])
 
   return null
+}
+
+/**
+ * Pastilla "el camión se te fue de cuadro".
+ *
+ * Es la pieza que faltaba. El seguimiento se apaga solo en dos casos legítimos —el usuario arrastró el
+ * mapa, o eligió una parada para mirarla— y hasta ahora eso dejaba la pantalla en un estado MUDO: el
+ * camión seguía andando fuera del cuadro y el mapa se veía perfectamente normal. Había que acordarse de
+ * que existe un botón en la barra.
+ *
+ * Por qué un aviso con acción y no un reencuadre automático: si el mapa volviera al camión solo, nadie
+ * podría mirar otra cosa — cada ping le arrancaría la vista de las manos, que es exactamente el problema
+ * que `seguir` resuelve. El aviso convierte un estado invisible en un click.
+ *
+ * Va DENTRO del MapContainer (como `HerramientasMapa`) para poder vivir en el sistema de coordenadas del
+ * mapa; arriba al centro porque es la única franja que no le pertenece a nadie: los paneles flotantes
+ * ocupan los bordes laterales, la barra de herramientas la esquina superior izquierda y los toasts la
+ * franja de abajo.
+ */
+function AvisoFueraDeCuadro({ onSeguir }: { onSeguir: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSeguir}
+      className={cn(
+        'absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-2 rounded-full',
+        'border border-border bg-card/95 py-1.5 pl-3 pr-3.5 text-xs font-medium shadow-lg backdrop-blur-sm',
+        'transition-colors hover:bg-accent',
+      )}
+    >
+      <Truck size={14} className="text-muted-foreground" />
+      El camión salió de cuadro
+      <span className="font-semibold text-primary">Seguirlo</span>
+    </button>
+  )
 }
 
 export function SeguimientoMapa({
@@ -465,6 +535,19 @@ export function SeguimientoMapa({
   const [seguir, setSeguir] = useState(true)
 
   /**
+   * POR QUÉ se apagó el seguimiento. La distinción es la que permite retomarlo sin adivinar:
+   *  · `'foco'`    → lo apagó el sistema porque el usuario eligió una parada. Es TEMPORAL: cuando suelta
+   *                  la parada, volver a seguir al camión es exactamente lo que quería.
+   *  · `'usuario'` → lo apagó arrastrando, con zoom o desde el botón. Es una DECISIÓN suya y no se toca:
+   *                  se fue a mirar otra zona, y encendérselo de vuelta sería pelearle la vista.
+   *
+   * Sin esta distinción hay que elegir entre dos comportamientos y los dos están mal: "retomar siempre
+   * al cerrar la parada" también revive el seguimiento del que se fue a mirar otra cosa, y "no retomar
+   * nunca" es lo que había — mirabas UNA parada y el camión no volvía al cuadro jamás.
+   */
+  const motivoPausa = useRef<'foco' | 'usuario' | null>(null)
+
+  /**
    * Vista de TRAMO SIGUIENTE: en vez del recorrido completo, solo el trecho que el camión está
    * haciendo ahora — de donde está a su próxima parada.
    *
@@ -474,6 +557,37 @@ export function SeguimientoMapa({
    * trece.
    */
   const [soloTramo, setSoloTramo] = useState(false)
+
+  /**
+   * Capa de mercados. Arranca APAGADA: en monitoreo el mapa ya carga recorrido, paradas por estado y el
+   * camión en movimiento, y once polígonos de fondo por defecto tapan justo lo que se vino a mirar.
+   *
+   * El `cityId` sale del filtro de Ciudad del plan si el usuario dejó uno puesto; si no, de la capital,
+   * que es donde corren los viajes del dataset. Acá no hay paradas de planificación de dónde derivarlo
+   * (esta pantalla trabaja con entregas), y por eso el fallback es explícito y no adivinado.
+   */
+  const [verMercados, setVerMercados] = useState(false)
+  const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
+  const cityIds = useCityIdsDelMapa([], 'santacruz')
+  const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
+
+  /**
+   * Avisos de eventos. El hook vive acá y no en la vista porque acá están juntas las tres cosas que
+   * necesita —las entregas vivas, el ping actual y el callback que enfoca una parada— y porque su
+   * interruptor es una herramienta más de esta barra. La preferencia sí es global (store persistido):
+   * es del usuario, no de este viaje.
+   */
+  const notificaciones = useNotificacionesStore((s) => s.activas)
+  const setNotificaciones = useNotificacionesStore((s) => s.setActivas)
+  useNotificacionesEventos({ viaje, entregas, tracking, activas: notificaciones, onVerParada: onSeleccionar })
+
+  // Esta vista entra siempre "viva": seguimiento y avisos encendidos sin depender de la sesión
+  // anterior ni del foco actual. El operador puede apagarlos después si quiere.
+  useEffect(() => {
+    motivoPausa.current = null
+    setSeguir(true)
+    setNotificaciones(true)
+  }, [viaje?.tripId, setNotificaciones])
 
   // Coordenadas de la parada en foco como PRIMITIVAS y no como objeto: `entregas` se reconstruye en
   // cada tick de la simulación, así que un `{lat, lng}` nuevo haría refirar el centrado sin parar.
@@ -513,14 +627,15 @@ export function SeguimientoMapa({
     }, 1200)
   }, [])
 
-  /**
-   * Elegir una parada APAGA el seguimiento, y es a propósito: el usuario pidió mirar ESE punto. Sin
-   * esto, el mapa volaría a la parada y el siguiente ping lo traería de vuelta al camión — la vista
-   * se le escaparía de las manos justo después de pedirla.
-   */
-  useEffect(() => {
-    if (paradaFoco) setSeguir(false)
-  }, [paradaFoco])
+  // El camión está fuera de la zona visible. Lo calcula `SeguirCamion` (que es quien conoce los píxeles
+  // y los paneles) y solo se muestra con el seguimiento APAGADO: encendido, vuelve solo.
+  const [fueraDeCuadro, setFueraDeCuadro] = useState(false)
+
+  /** Retomar el seguimiento a mano: limpia la pausa para que no quede una decisión vieja pendiente. */
+  const retomarSeguimiento = useCallback(() => {
+    motivoPausa.current = null
+    setSeguir(true)
+  }, [])
 
   return (
     <MapContainer
@@ -533,6 +648,15 @@ export function SeguimientoMapa({
     >
       <TileLayer url={TILES[capa]} />
       <InvalidateOnResize />
+
+      {/* Mercados: fondo. Su pane propio (z 350) la deja debajo del recorrido y de todos los pines, así
+          que prenderla no le quita legibilidad a nada de lo que ya estaba en el mapa. A diferencia de la
+          planificación, acá NO se re-encuadra al cargarla: esta pantalla tiene su propia cámara
+          (seguimiento del camión) y moverla por una capa de fondo sería pelearle la vista al usuario. */}
+      {verMercados && (
+        <MercadosLayer mercados={mercados} seleccionadoId={mercadoSelId} onSeleccionar={setMercadoSelId} />
+      )}
+
       <HerramientasMapa
         recorrido={viaje.recorrido}
         posicionCamion={posicion}
@@ -541,10 +665,20 @@ export function SeguimientoMapa({
         seguir={seguir}
         // Centrar a mano vuelve a ENCENDER el seguimiento: pedir el camión es, justamente, decir
         // "quiero mirarlo a él". Obligar a apretar dos botones para eso sería trámite.
-        onSeguir={setSeguir}
+        // Apagarlo desde el botón cuenta como decisión del USUARIO, así que cerrar una parada después
+        // no debe revivirlo.
+        onSeguir={(v) => {
+          motivoPausa.current = v ? null : 'usuario'
+          setSeguir(v)
+        }}
         soloTramo={soloTramo}
         onSoloTramo={setSoloTramo}
         hayTramo={tramo !== null}
+        verMercados={verMercados}
+        onVerMercados={setVerMercados}
+        cargandoMercados={cargandoMercados}
+        notificaciones={notificaciones}
+        onNotificaciones={setNotificaciones}
         ancla={anclaHerramientas}
         margenIzq={margenIzq}
         margenDer={margenDer}
@@ -556,8 +690,21 @@ export function SeguimientoMapa({
         margenDer={margenDer}
         programatico={programatico}
         marcarProgramatico={marcarProgramatico}
-        onUsuarioTomaControl={() => setSeguir(false)}
+        onUsuarioTomaControl={() => {
+          motivoPausa.current = 'usuario'
+          setSeguir(false)
+        }}
+        onFueraDeCuadro={setFueraDeCuadro}
       />
+
+      {/* El camión se fue de cuadro y el seguimiento está apagado: un click lo trae de vuelta. Con el
+          seguimiento encendido no aparece — vuelve solo.
+          Mientras hay una parada en foco tampoco: ahí el usuario está mirando OTRA cosa a propósito, la
+          pausa es temporal y cerrar el panel ya retoma el seguimiento. El aviso sería ruido justo cuando
+          la respuesta ya está en camino. */}
+      {fueraDeCuadro && !seguir && !paradaFoco && posicion && (
+        <AvisoFueraDeCuadro onSeguir={retomarSeguimiento} />
+      )}
       <AjustarVista
         tripId={viaje.tripId}
         recorrido={viaje.recorrido}

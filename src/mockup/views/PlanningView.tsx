@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+import { useDispatchPlanSnapshot } from '../dispatch-plan-snapshot'
 import { OrdersMap } from '../OrdersMap'
 import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
@@ -36,10 +37,8 @@ import {
   CANAL_META,
   CANALES,
   PARADAS,
-  PEDIDOS,
   PRODUCT_TYPES,
   RUTAS,
-  rutaPorCamionId,
   type CanalId,
   type Parada,
   type ProductType,
@@ -300,6 +299,7 @@ export function PlanningView({
   const [selStopIds, setSelStopIds] = useState<string[]>([])
   const [moverSelOpen, setMoverSelOpen] = useState(false)
   const [rutaDestino, setRutaDestino] = useState<string | null>(null)
+  const snapshot = useDispatchPlanSnapshot()
   const onMapSelection = (ids: string[]) => {
     setSelStopIds(ids)
     setRutaDestino(null)
@@ -308,10 +308,32 @@ export function PlanningView({
 
   // Base de datos del planner: el scope unificado si vino, o el plan completo. Los pedidos se
   // DERIVAN de las paradas base (cada parada trae sus pedidos), así el mapa y la lista siempre cuadran.
-  const baseParadas = paradasScope ?? PARADAS
+  const baseParadas = paradasScope ?? (snapshot.active ? snapshot.paradas : PARADAS)
+  const rutasBase = paradasScope ? RUTAS : snapshot.active ? snapshot.rutas : RUTAS
   const paradas = state === 'empty' || state === 'error' ? [] : baseParadas
   const pedidos =
     state === 'empty' || state === 'error' ? [] : baseParadas.flatMap((p) => p.pedidos)
+  const rutasPorCamionId = useMemo(
+    () => new Map(rutasBase.map((ruta) => [ruta.camionId, ruta])),
+    [rutasBase],
+  )
+  const rutasPorId = useMemo(() => new Map(rutasBase.map((ruta) => [ruta.id, ruta])), [rutasBase])
+  const rutaPorPedidoId = useMemo(() => {
+    const out = new Map<string, string>()
+    for (const parada of paradas) {
+      const ruta = parada.camionId ? rutasPorCamionId.get(parada.camionId) : undefined
+      if (!ruta) continue
+      for (const pedido of parada.pedidos) out.set(pedido.id, ruta.id)
+    }
+    return out
+  }, [paradas, rutasPorCamionId])
+  const getRutaPorPedidoId = useMemo(
+    () => (pedidoId: string) => {
+      const rutaId = rutaPorPedidoId.get(pedidoId)
+      return rutaId ? rutasPorId.get(rutaId) : undefined
+    },
+    [rutaPorPedidoId, rutasPorId],
+  )
 
   // Paradas que pasan los filtros activos (lo que se pinta en el mapa). Memoizado: sin esto el
   // `.filter` daría un array nuevo en cada render (ej. al arrastrar el divisor) y el efecto del
@@ -322,12 +344,12 @@ export function PlanningView({
         if (canales.size > 0 && !canales.has(p.canal)) return false
         if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
         if (rutas.size > 0) {
-          const ruta = rutaPorCamionId(p.camionId)
+          const ruta = p.camionId ? rutasPorCamionId.get(p.camionId) : undefined
           if (!ruta || !rutas.has(ruta.id)) return false
         }
         return true
       }),
-    [paradas, canales, tipos, rutas],
+    [canales, paradas, rutas, rutasPorCamionId, tipos],
   )
 
   const hayFiltros = canales.size > 0 || tipos.size > 0 || rutas.size > 0
@@ -338,11 +360,11 @@ export function PlanningView({
   }
 
   // Rutas que quedan visibles con los filtros aplicados (leyenda del mapa).
-  const rutasVisibles = RUTAS.filter((r) => filtradas.some((p) => p.camionId === r.camionId))
+  const rutasVisibles = rutasBase.filter((r) => filtradas.some((p) => p.camionId === r.camionId))
 
   const canalOptions = CANALES.map((c) => ({ value: c.value, label: c.label, color: CANAL_META[c.value].color }))
   const tipoOptions = PRODUCT_TYPES.map((t) => ({ value: t, label: t }))
-  const rutaOptions = RUTAS.map((r) => ({ value: r.id, label: r.nombre, color: r.color }))
+  const rutaOptions = rutasBase.map((r) => ({ value: r.id, label: r.nombre, color: r.color }))
 
   // Paradas seleccionadas en el mapa y sus pedidos (la tabla del diálogo lista los pedidos, igual
   // que la tabla grande de la lista).
@@ -393,6 +415,10 @@ export function PlanningView({
           singleRoute={singleRoute}
           routeColor={routeColor}
           hideTools={readOnly}
+          // Mercados ENCENDIDOS en la planificación: es la pantalla donde el mercado explica por qué
+          // dos pedidos deberían viajar juntos. En la reoptimización (readOnly, un camión ya armado) la
+          // capa existe pero arranca apagada: ahí lo que se mira es la ruta, no la geografía de venta.
+          capaMercados={readOnly ? 'off' : 'on'}
         />
 
         {/* Toolbar flotante de filtros + acciones, dentro del mapa (arriba-centro). El padding
@@ -461,6 +487,8 @@ export function PlanningView({
         state={state}
         optimized={optimized}
         readOnly={readOnly}
+        routes={rutasBase}
+        getRouteByPedidoId={getRutaPorPedidoId}
         headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
       />
     </div>
@@ -547,6 +575,7 @@ export function PlanningView({
                 singleRoute={singleRoute}
                 routeColor={routeColor}
                 hideTools={readOnly}
+                capaMercados={readOnly ? 'off' : 'on'}
               />
             </div>
           </div>
@@ -598,7 +627,7 @@ export function PlanningView({
                 <SelectValue placeholder="Elegí una ruta…" />
               </SelectTrigger>
               <SelectContent>
-                {RUTAS.map((ruta) => (
+                {rutasBase.map((ruta) => (
                   <SelectItem key={ruta.id} value={ruta.id}>
                     <span className="flex items-center gap-2">
                       <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />

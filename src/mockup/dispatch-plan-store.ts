@@ -123,15 +123,28 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
     set((state) => {
       const incluidos = new Set(includedIds)
       const next = { ...state.orderOverrides }
+      let changed = false
       for (const id of scopeIds) {
         const pedido = PEDIDOS.find((p) => p.id === id)
         if (!pedido) continue
         // Solo se persiste la desviación: si la decisión del usuario coincide con lo que ya hacía la
         // regla de corte, se borra el override en vez de guardar una redundancia.
-        if (incluidos.has(id) === incluidoPorDefecto(pedido)) delete next[id]
-        else next[id] = incluidos.has(id)
+        const shouldDelete = incluidos.has(id) === incluidoPorDefecto(pedido)
+        if (shouldDelete) {
+          if (id in next) {
+            delete next[id]
+            changed = true
+          }
+          continue
+        }
+
+        const nextValue = incluidos.has(id)
+        if (next[id] !== nextValue) {
+          next[id] = nextValue
+          changed = true
+        }
       }
-      return { orderOverrides: next }
+      return changed ? { orderOverrides: next } : state
     }),
 
   resetOrderOverrides: () => set({ orderOverrides: {} }),

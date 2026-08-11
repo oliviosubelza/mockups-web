@@ -37,14 +37,18 @@ function MarcadorFila({ entrega }: { entrega: EntregaMonitoreo }) {
 export function ParadasPanel({
   entregas,
   paradaFoco,
+  paradaActual,
   onSeleccionar,
+  actividadReciente,
   /** Mensaje cuando no hay nada que listar. Lo decide el llamador: "sin paradas" y "sin resultados de
    *  búsqueda" se ven igual acá pero significan cosas muy distintas para el usuario. */
   vacio = 'Este viaje todavía no tiene paradas cargadas.',
 }: {
   entregas: EntregaMonitoreo[]
   paradaFoco: string | null
+  paradaActual: string | null
   onSeleccionar: (paradaId: string) => void
+  actividadReciente?: { paradaId: string; at: number } | null
   vacio?: string
 }) {
   const activaRef = useRef<HTMLButtonElement>(null)
@@ -66,7 +70,8 @@ export function ParadasPanel({
       {entregas.map((entrega, i) => {
         const meta = ESTADO_ENTREGA[entrega.estado]
         const enFoco = paradaFoco === entrega.paradaId
-        const activa = entrega.estado === 'en_camino' || entrega.estado === 'en_sitio'
+        const activa = paradaActual === entrega.paradaId
+        const reciente = actividadReciente?.paradaId === entrega.paradaId
 
         // El riel espeja el trazo del mapa: SÓLIDO en el tramo ya recorrido, PUNTEADO en el que falta.
         // El tramo de arriba pertenece al viaje entre la parada anterior y esta, así que su estado lo
@@ -80,19 +85,19 @@ export function ParadasPanel({
         const atencion = atencionMin(entrega)
 
         return (
-          <li key={entrega.id}>
+          <li key={entrega.id} className="px-2 py-1">
             <button
               ref={enFoco || activa ? activaRef : undefined}
               type="button"
               onClick={() => onSeleccionar(entrega.paradaId)}
               aria-current={enFoco}
               className={cn(
-                'flex w-full items-stretch gap-2.5 pr-3 text-left transition-colors hover:bg-muted/60',
-                // La parada abierta lleva una guía de color a la izquierda: en foco es la que el
-                // usuario eligió, así que tiene que distinguirse del hover sin depender del fondo.
-                enFoco && 'bg-muted',
+                'flex w-full items-stretch gap-2.5 rounded-xl pr-3 text-left transition-colors',
+                'hover:bg-muted/60',
+                enFoco && 'bg-muted/70',
+                activa && !enFoco && 'bg-muted/30',
+                reciente && 'bg-muted/60',
               )}
-              style={enFoco ? { boxShadow: `inset 2px 0 0 ${meta.color}` } : undefined}
             >
               {/* Columna del riel: tramo, marcador, tramo. Los extremos del recorrido van
                   transparentes para que la línea no quede colgando arriba de la primera parada ni
@@ -111,6 +116,16 @@ export function ParadasPanel({
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5">
                 <span className="flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{entrega.cliente}</span>
+                  {reciente && (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Ahora
+                    </span>
+                  )}
+                  {activa && !reciente && (
+                    <span className="rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-400">
+                      En curso
+                    </span>
+                  )}
                   {entrega.incidencias.length > 0 && (
                     <AlertTriangle className="size-3.5 shrink-0 text-destructive" aria-label="Con incidencia" />
                   )}

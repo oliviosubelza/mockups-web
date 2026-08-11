@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { LayoutGrid, Monitor } from 'lucide-react'
 import { PortalContainerContext } from '@/components/ui/portal-container'
+import { Toaster } from '@/components/ui/sonnet'
 import { cn } from '@/lib/utils'
 import { ClipWarning } from './ClipWarning'
 import { DispatchFlow } from './DispatchFlow'
@@ -121,6 +122,26 @@ function Board({
             />
           )}
         </MockupShell>
+
+        {/* Toasts (avisos de eventos del monitoreo). Hasta ahora `notify()` existía pero NUNCA se veía:
+            el `<Toaster>` no estaba montado en ningún lado del árbol, así que las notificaciones se
+            emitían al vacío.
+
+            Va DENTRO del tablero, no en la raíz de la página, por dos razones. El tablero tiene
+            `transform: translate(0)`, que lo convierte en el bloque contenedor de sus descendientes
+            `fixed`: así el toast aparece adentro del marco y entra en la captura de Figma, en vez de
+            pegarse a la esquina del viewport. Y hereda el `.dark` del tablero, que es lo único que hace
+            que un aviso sobre un tablero oscuro no salga en claro.
+
+            Abajo al centro: en el detalle del monitoreo los bordes izquierdo y derecho son paneles
+            flotantes (340 y 380 px) y la esquina inferior derecha es del botón de modo de vista. El
+            centro es la única franja que no le tapa nada a nadie.
+
+            Sonner tiene UN store global de toasts, así que en modo mockup (varios tableros apilados
+            mostrando la misma pantalla) el aviso se dibuja en cada tablero. Es lo correcto acá: cada
+            marco es una captura independiente. Lo que sí no puede pasar es que el MISMO evento se
+            apile dos veces, y eso lo resuelve el `id` estable de cada aviso. */}
+        <Toaster position="bottom-center" theme={theme} />
       </PortalContainerContext.Provider>
     </div>
   )

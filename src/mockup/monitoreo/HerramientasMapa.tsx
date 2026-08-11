@@ -12,7 +12,19 @@
 //
 // Vive DENTRO del MapContainer para poder usar `useMap()`. No compite con los paneles porque nunca se
 // superpone con ellos: su posición se calcula desde el mismo margen que usa `fitBounds`.
-import { Layers, LocateFixed, Maximize2, Minus, Navigation, Plus, Truck } from 'lucide-react'
+import {
+  Bell,
+  BellOff,
+  Layers,
+  Loader2,
+  LocateFixed,
+  Maximize2,
+  Minus,
+  Navigation,
+  Plus,
+  Store,
+  Truck,
+} from 'lucide-react'
 import { useMap } from 'react-leaflet'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -76,6 +88,14 @@ export function HerramientasMapa({
   onSoloTramo,
   /** `false` cuando no hay camión o no queda parada por delante: la vista de tramo no aplica. */
   hayTramo,
+  /** Capa de mercados (polígonos de zona de venta). Arranca APAGADA en esta pantalla. */
+  verMercados,
+  onVerMercados,
+  /** Petición de mercados en vuelo: el botón muestra el spinner en lugar de su ícono. */
+  cargandoMercados = false,
+  /** Avisos (toasts) de los eventos del viaje. Preferencia persistida; arranca apagada. */
+  notificaciones,
+  onNotificaciones,
   /** Mismos márgenes que usa `fitBounds`, para que "Encuadrar" no meta paradas debajo de un panel. */
   margenDer,
   margenIzq,
@@ -90,6 +110,11 @@ export function HerramientasMapa({
   soloTramo: boolean
   onSoloTramo: (solo: boolean) => void
   hayTramo: boolean
+  verMercados: boolean
+  onVerMercados: (ver: boolean) => void
+  cargandoMercados?: boolean
+  notificaciones: boolean
+  onNotificaciones: (activas: boolean) => void
   margenDer: number
   margenIzq: number
 }) {
@@ -176,6 +201,33 @@ export function HerramientasMapa({
         onClick={() => onCapa(capa === 'calles' ? 'satelite' : 'calles')}
       >
         <Layers size={15} className={cn(capa === 'satelite' && 'text-primary')} />
+      </Herramienta>
+
+      {/* MERCADOS. Es un interruptor y arranca APAGADO: esta pantalla ya tiene el recorrido, las paradas
+          con su estado y el camión moviéndose; sumarle once polígonos de fondo por defecto convierte la
+          vigilancia en un mapa temático. Queda a mano para el caso en que sí importa —"¿esta entrega
+          fallida es del mercado que venimos teniendo problemas?"— y ahí lo prende quien pregunta. */}
+      <Herramienta
+        etiqueta={verMercados ? 'Ocultar los mercados' : 'Ver los mercados'}
+        onClick={() => onVerMercados(!verMercados)}
+        activo={verMercados}
+      >
+        {cargandoMercados ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}
+      </Herramienta>
+
+      <span className="mx-1.5 h-px bg-border" aria-hidden />
+
+      {/* AVISOS. Arranca apagado y es opt-in: una pantalla de vigilancia que empieza a tirar toasts sin
+          que nadie los pidiera es ruido, y el operador que la dejó abierta en otro monitor no quiere que
+          le salte nada. Apagarlos no detiene la simulación ni el stream — solo el aviso.
+          El ícono es campana / campana tachada y no una campana con color: acá el estado APAGADO es una
+          decisión activa del usuario, y merece verse como tal y no como "nada". */}
+      <Herramienta
+        etiqueta={notificaciones ? 'Desactivar los avisos de eventos' : 'Activar los avisos de eventos'}
+        onClick={() => onNotificaciones(!notificaciones)}
+        activo={notificaciones}
+      >
+        {notificaciones ? <Bell size={15} /> : <BellOff size={15} />}
       </Herramienta>
     </div>
   )

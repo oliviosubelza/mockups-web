@@ -44,6 +44,7 @@ import {
   NOMBRES_PILA,
   NOMBRES_SUCURSAL,
   PREFIJOS_POR_CANAL,
+  PRODUCTOS,
   SUCURSALES_CADENA,
   VIAS,
 } from './mock-pools'
@@ -174,12 +175,18 @@ export type CiudadId = 'santacruz' | 'montero' | 'warnes' | 'laguardia' | 'cotoc
 export type MercadoId = 'capital' | 'provincias' | 'ruta'
 export type ZonaId = 'norte' | 'sur' | 'centro' | 'este'
 
-export const CIUDAD_META: Record<CiudadId, { label: string }> = {
-  santacruz: { label: 'Santa Cruz de la Sierra' },
-  montero: { label: 'Montero' },
-  warnes: { label: 'Warnes' },
-  laguardia: { label: 'La Guardia' },
-  cotoca: { label: 'Cotoca' },
+/**
+ * Ciudades del maestro. `cityId` es el id NUMÉRICO con el que las conoce el backend (es lo que viaja
+ * en `GET /planning/markets/map?cityId=`); el slug de `CiudadId` es solo la clave interna del mockup.
+ * Están juntos a propósito: son dos nombres del mismo lugar y separarlos era la forma de que un día
+ * el filtro dijera "Montero" y el mapa pidiera los mercados de otra ciudad.
+ */
+export const CIUDAD_META: Record<CiudadId, { label: string; cityId: number }> = {
+  santacruz: { label: 'Santa Cruz de la Sierra', cityId: 1 },
+  montero: { label: 'Montero', cityId: 2 },
+  warnes: { label: 'Warnes', cityId: 3 },
+  laguardia: { label: 'La Guardia', cityId: 4 },
+  cotoca: { label: 'Cotoca', cityId: 5 },
 }
 export const MERCADO_META: Record<MercadoId, { label: string }> = {
   capital: { label: 'Santa Cruz Capital' },
@@ -196,6 +203,13 @@ export const ZONA_META: Record<ZonaId, { label: string }> = {
 export const CIUDAD_IDS = Object.keys(CIUDAD_META) as CiudadId[]
 export const MERCADO_IDS = Object.keys(MERCADO_META) as MercadoId[]
 export const ZONA_IDS = Object.keys(ZONA_META) as ZonaId[]
+
+/** `CiudadId` → el `cityId` numérico que espera el backend. */
+export const cityIdDe = (ciudad: CiudadId): number => CIUDAD_META[ciudad].cityId
+
+/** Vuelta: `cityId` numérico → la ciudad del mockup (`undefined` si no es una de las nuestras). */
+export const ciudadDeCityId = (cityId: number): CiudadId | undefined =>
+  CIUDAD_IDS.find((c) => CIUDAD_META[c].cityId === cityId)
 
 /**
  * Mercado DERIVADO de la ciudad, no sorteado: "Ruta al Norte" tiene que contener a Montero y Warnes,
@@ -372,6 +386,44 @@ export const CAMIONES: Camion[] = (() => {
 
 // ── Pedidos ──────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Una LÍNEA del pedido. En el ERD es `sales_order_item` (`DB.puml:24-31`), y ahí está la trampa:
+ * esa entidad vive en el paquete de snapshots marcada `<<MS Ventas - SAP>>`, o sea **no es tabla
+ * nuestra** — grepeá `UltimaVersion.sql` y no aparece. Lo nuestro es `candidate_orders`
+ * (`UltimaVersion.sql:176-203`), que del pedido guarda `total_weight_kg` y `total_volume_m3` y
+ * NINGUNA línea. La primera estructura propia con detalle por producto es
+ * `transport_order_sales_items` (`:338`), o sea recién en el chequeo de carga: muchísimo después de
+ * este paso.
+ *
+ * Está acá para poder discutir la pantalla. Para que sea real, el snapshot de pedidos candidatos
+ * tiene que traer los ítems con `product_id`, descripción, unidad, `requested_qty` y `confirmed_qty`.
+ */
+export interface ItemPedido {
+  id: string
+  /** product_id, resuelto a su nombre. Hoy `product_snapshot` (`DB.puml:35-40`) solo trae peso y
+   *  volumen: la descripción también hay que pedirla. */
+  producto: string
+  /** Lo que se cuenta (cajas, packs, bolsas). No es dato del esquema. */
+  unidad: string
+  /** requested_qty — lo que el cliente pidió. */
+  solicitado: number
+  /** confirmed_qty — lo que Ventas confirmó CON stock. Si es menor que `solicitado`, esa línea está
+   *  a confirmar; si es 0, no hay nada reservado. */
+  confirmado: number
+}
+
+/** Las líneas que Ventas no confirmó completas: `confirmed_qty < requested_qty`. */
+export const itemsPorConfirmar = (p: Pedido): ItemPedido[] =>
+  p.items.filter((i) => i.confirmado < i.solicitado)
+
+/**
+ * Un pedido "con stock a confirmar" es el que tiene AL MENOS una línea corta. Es el criterio que
+ * pinta la fila en el diálogo del canal: el pedido entra igual a la planificación, pero lo que
+ * suba al camión puede ser menos de lo que dice el total.
+ */
+export const tieneStockPorConfirmar = (p: Pedido): boolean =>
+  p.items.some((i) => i.confirmado < i.solicitado)
+
 export interface Pedido {
   id: string
   /** sales_order_id — el pedido tal como viene de Ventas/SAP. */
@@ -412,6 +464,8 @@ export interface Pedido {
   ciudad: CiudadId
   mercado: MercadoId
   zona: ZonaId
+  /** Las líneas del pedido. Ver `ItemPedido`: hoy NO vienen en el snapshot. */
+  items: ItemPedido[]
 }
 
 /**
@@ -484,6 +538,38 @@ function clientesDeProvincia(cantidad: number, usados: Set<string>) {
     )
   }
   return out
+}
+
+/**
+ * Líneas de un pedido. Las cantidades son ILUSTRATIVAS y a propósito no suman el `peso` del pedido:
+ * el peso sale agregado de `candidate_orders`, y para derivarlo de las líneas haría falta el peso
+ * por producto de `product_snapshot`, que hoy tampoco pedimos. Inventar una conversión acá haría
+ * parecer resuelto algo que no lo está.
+ *
+ * ~1 de cada 4 pedidos sale con stock a confirmar, y de esos algunos tienen más de una línea corta:
+ * hace falta que el caso se vea sin buscarlo, y que el panel tenga que agrupar de verdad.
+ */
+function generarItems(pedidoId: string): ItemPedido[] {
+  const catalogo = rand.shuffle(PRODUCTOS).slice(0, rand.int(3, 7))
+  // Se decide por PEDIDO, no por línea: si cada línea tirara su propio dado, casi todos los pedidos
+  // terminarían con alguna corta y el color dejaría de distinguir nada.
+  const conFaltante = rand.chance(0.26)
+  const cortas = conFaltante ? rand.int(1, Math.min(2, catalogo.length)) : 0
+
+  return catalogo.map((producto, i) => {
+    const solicitado = rand.int(4, 60)
+    // Las cortas son las primeras del catálogo ya barajado, así que no hay sesgo por producto.
+    const corta = i < cortas
+    return {
+      id: `${pedidoId}-i${i + 1}`,
+      producto: producto.nombre,
+      unidad: producto.unidad,
+      solicitado,
+      // Sin stock nada (confirmado 0) o parcial. El sin-stock total es el caso que más duele en la
+      // planificación, así que tiene que aparecer.
+      confirmado: corta ? (rand.chance(0.35) ? 0 : rand.int(1, solicitado - 1)) : solicitado,
+    }
+  })
 }
 
 export const PEDIDOS: Pedido[] = (() => {
@@ -594,6 +680,7 @@ export const PEDIDOS: Pedido[] = (() => {
         ciudad,
         mercado: MERCADO_POR_CIUDAD[ciudad],
         zona,
+        items: generarItems(`p${siguienteId}`),
       })
       siguienteId++
     }

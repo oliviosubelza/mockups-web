@@ -15,7 +15,7 @@
 // — no hay paradas de otras órdenes que atenuar, ni el camión se va a puntos fuera de pantalla.
 //
 // La orden se lee de la URL (`:ordenId`). Recargar reconstruye el contexto solo.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ChevronFirst, ListOrdered, Search, Truck, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -89,6 +89,100 @@ const FILTROS: { id: FiltroParadas; label: string }[] = [
 const conProblema = (e: EntregaMonitoreo) =>
   e.estado === 'fallido' || e.estado === 'devuelto' || e.incidencias.length > 0 || e.fueraDeVentana
 
+type ActividadReciente = {
+  paradaId: string
+  at: number
+  titulo: string
+  descripcion: string
+  tono: 'info' | 'success' | 'warning' | 'danger'
+}
+
+const prioridadInicial = (entrega: EntregaMonitoreo) => {
+  if (entrega.estado === 'en_sitio') return 0
+  if (entrega.estado === 'en_camino') return 1
+  if (!ESTADO_ENTREGA[entrega.estado].cerrada) return 2
+  if (conProblema(entrega)) return 3
+  return 4
+}
+
+function paradaInicial(entregas: EntregaMonitoreo[]): string | null {
+  let mejor: EntregaMonitoreo | null = null
+  for (const entrega of entregas) {
+    if (!mejor) {
+      mejor = entrega
+      continue
+    }
+    const prioridad = prioridadInicial(entrega)
+    const actual = prioridadInicial(mejor)
+    if (prioridad < actual || (prioridad === actual && entrega.secuencia < mejor.secuencia)) {
+      mejor = entrega
+    }
+  }
+  return mejor?.paradaId ?? null
+}
+
+function resumirActividad(actual: EntregaMonitoreo, anterior: EntregaMonitoreo): ActividadReciente | null {
+  if (actual.incidencias.length > anterior.incidencias.length) {
+    const incidencia = actual.incidencias[actual.incidencias.length - 1]
+    return {
+      paradaId: actual.paradaId,
+      at: Date.now(),
+      titulo: `Incidencia: ${incidencia.tipo}`,
+      descripcion: incidencia.descripcion,
+      tono: 'warning',
+    }
+  }
+
+  if ((actual.comprobante?.capturadoAt ?? null) !== (anterior.comprobante?.capturadoAt ?? null) && actual.comprobante) {
+    return {
+      paradaId: actual.paradaId,
+      at: Date.now(),
+      titulo: 'Comprobante capturado',
+      descripcion: `${actual.comprobante.receptor} recibió la entrega a las ${actual.comprobante.capturadoAt}.`,
+      tono: 'success',
+    }
+  }
+
+  if (actual.estado !== anterior.estado || actual.historial.length !== anterior.historial.length) {
+    const ultimo = actual.historial[actual.historial.length - 1]
+    const meta = ESTADO_ENTREGA[actual.estado]
+    return {
+      paradaId: actual.paradaId,
+      at: Date.now(),
+      titulo: meta.label,
+      descripcion:
+        ultimo?.nota ??
+        (actual.estado === 'en_sitio'
+          ? `${actual.cliente} ya está siendo atendido.`
+          : actual.estado === 'en_camino'
+            ? `El camión va en camino hacia ${actual.cliente}.`
+            : actual.estado === 'entregado'
+              ? `La parada quedó cerrada${actual.receptor ? ` con recepción de ${actual.receptor}` : ''}.`
+              : actual.motivo || `Se actualizó el estado de ${actual.cliente}.`),
+      tono:
+        actual.estado === 'fallido'
+          ? 'danger'
+          : actual.estado === 'devuelto' || actual.fueraDeVentana
+            ? 'warning'
+            : actual.estado === 'entregado'
+              ? 'success'
+              : 'info',
+    }
+  }
+
+  if (actual.cobro.estado !== anterior.cobro.estado) {
+    return {
+      paradaId: actual.paradaId,
+      at: Date.now(),
+      titulo: 'Cobro actualizado',
+      descripcion: `El estado del cobro pasó a ${actual.cobro.estado.replaceAll('_', ' ')}.`,
+      tono: actual.cobro.estado === 'cobrado' ? 'success' : 'info',
+    }
+  }
+
+  return null
+}
+
 /** Par etiqueta/valor de la cabecera: la etiqueta arriba en chico, el dato abajo con peso. */
 function Campo({
   label,
@@ -110,8 +204,8 @@ function Campo({
 export function MonitoreoDetalleView() {
   // `useRouteParams` y no `useParams`: el shell renderiza esta pantalla fuera de un <Route element>.
   const { ordenId } = useRouteParams()
-  const [paradaFoco, setParadaFoco] = useState<string | null>(null)
   const [paradasAbierto, setParadasAbierto] = useState(true)
+  const [detalleAbierto, setDetalleAbierto] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState<FiltroParadas>('todas')
 
@@ -126,6 +220,11 @@ export function MonitoreoDetalleView() {
   // La simulación en vivo es la única fuente del estado actual: devuelve las entregas ya mutadas y el
   // último ítem ACTUAL crudo (la posición y la batería se derivan de él, no se guardan).
   const { tracking, cursor, actualizadoAt, entregas } = useSeguimientoVivo(viaje, base)
+  const [paradaFoco, setParadaFoco] = useState<string | null>(() => paradaInicial(entregas))
+  const [actividadReciente, setActividadReciente] = useState<ActividadReciente | null>(null)
+  const previas = useRef<{ tripId: number | null; entregas: Map<string, EntregaMonitoreo> } | null>(null)
+  const limpiarActividad = useRef<number | null>(null)
+  const paradaActualRef = useRef<string | null>(null)
 
   // El resumen se calcula sobre las entregas VIVAS de la orden abierta, no sobre el dataset: así la
   // barra de progreso avanza sola cuando la simulación cierra una parada.
@@ -140,6 +239,84 @@ export function MonitoreoDetalleView() {
     () => entregas.find((e) => e.paradaId === paradaFoco) ?? null,
     [entregas, paradaFoco],
   )
+  const paradaActual = useMemo(
+    () =>
+      entregas.find((entrega) => entrega.estado === 'en_sitio')?.paradaId ??
+      entregas.find((entrega) => entrega.estado === 'en_camino')?.paradaId ??
+      paradaInicial(entregas),
+    [entregas],
+  )
+  const detalleVisible = detalleAbierto && seleccionada !== null
+  const actividadSeleccionada =
+    actividadReciente && actividadReciente.paradaId === seleccionada?.paradaId ? actividadReciente : null
+
+  useEffect(() => {
+    setDetalleAbierto(true)
+    paradaActualRef.current = null
+  }, [viaje?.tripId])
+
+  useEffect(() => {
+    if (!paradaActual) {
+      paradaActualRef.current = null
+      return
+    }
+    const anterior = paradaActualRef.current
+    paradaActualRef.current = paradaActual
+    if (anterior === paradaActual) return
+    setDetalleAbierto(true)
+    setParadaFoco(paradaActual)
+  }, [paradaActual])
+
+  useEffect(() => {
+    if (entregas.length === 0) {
+      if (paradaFoco !== null) setParadaFoco(null)
+      return
+    }
+    if (!detalleAbierto) return
+    if (paradaFoco && entregas.some((entrega) => entrega.paradaId === paradaFoco)) return
+    const inicial = paradaInicial(entregas)
+    if (inicial && inicial !== paradaFoco) setParadaFoco(inicial)
+  }, [detalleAbierto, entregas, paradaFoco])
+
+  useEffect(() => {
+    const tripId = viaje?.tripId ?? null
+    const anterior = previas.current
+
+    if (!anterior || anterior.tripId !== tripId) {
+      previas.current = { tripId, entregas: new Map(entregas.map((entrega) => [entrega.id, entrega])) }
+      setActividadReciente(null)
+      if (limpiarActividad.current !== null) {
+        window.clearTimeout(limpiarActividad.current)
+        limpiarActividad.current = null
+      }
+      return
+    }
+
+    let actividad: ActividadReciente | null = null
+    for (const entrega of entregas) {
+      const previa = anterior.entregas.get(entrega.id)
+      if (!previa) continue
+      const cambio = resumirActividad(entrega, previa)
+      if (cambio) actividad = cambio
+    }
+
+    previas.current = { tripId, entregas: new Map(entregas.map((entrega) => [entrega.id, entrega])) }
+    if (!actividad) return
+
+    setActividadReciente(actividad)
+    if (limpiarActividad.current !== null) window.clearTimeout(limpiarActividad.current)
+    limpiarActividad.current = window.setTimeout(() => {
+      setActividadReciente((actual) => (actual?.at === actividad?.at ? null : actual))
+      limpiarActividad.current = null
+    }, 4200)
+  }, [entregas, viaje?.tripId])
+
+  useEffect(
+    () => () => {
+      if (limpiarActividad.current !== null) window.clearTimeout(limpiarActividad.current)
+    },
+    [],
+  )
 
   // El filtro afecta SOLO a la lista; el mapa sigue mostrando el recorrido completo. Ocultar pines
   // rompería la lectura de la secuencia — verías el ①, el ④ y el ⑦ sin nada en el medio.
@@ -153,9 +330,11 @@ export function MonitoreoDetalleView() {
     })
   }, [entregas, busqueda, filtro])
 
-  // Click sobre la parada ya abierta = cerrar. Sin esto el panel no tendría forma de salir desde el
-  // mapa: habría que ir a buscar la X, y el gesto natural es volver a tocar el pin.
-  const seleccionar = (paradaId: string) => setParadaFoco((actual) => (actual === paradaId ? null : paradaId))
+  // La selección es estable: cambiar de parada actualiza el detalle; cerrarlo es una acción explícita.
+  const seleccionar = (paradaId: string) => {
+    setDetalleAbierto(true)
+    setParadaFoco(paradaId)
+  }
 
   // Sin contexto (F5 o URL directa) no hay nada que seguir: se vuelve al listado.
   if (!orden || !viaje) {
@@ -198,7 +377,7 @@ export function MonitoreoDetalleView() {
           paradaFoco={paradaFoco}
           onSeleccionar={seleccionar}
           margenIzq={paradasAbierto ? PARADAS_PX + MARGEN_PX * 2 : MARGEN_PX * 3}
-          margenDer={seleccionada ? DETALLE_PX + MARGEN_PX * 2 : MARGEN_PX * 3}
+          margenDer={detalleVisible ? DETALLE_PX + MARGEN_PX * 2 : MARGEN_PX * 3}
           // Con el panel abierto la barra se apoya en su borde derecho; con el panel cerrado baja
           // al hueco que deja la pastilla "Paradas", que ocupa esa misma esquina.
           anclaHerramientas={
@@ -378,7 +557,9 @@ export function MonitoreoDetalleView() {
           <ParadasPanel
             entregas={visibles}
             paradaFoco={paradaFoco}
+            paradaActual={paradaActual}
             onSeleccionar={seleccionar}
+            actividadReciente={actividadReciente}
             vacio={
               entregas.length === 0
                 ? 'Este viaje todavía no tiene paradas cargadas.'
@@ -423,11 +604,17 @@ export function MonitoreoDetalleView() {
         className={cn(PANEL_FLOTANTE, DESLIZA, 'right-3 top-3 max-h-[calc(100%-1.5rem)]')}
         style={{
           width: DETALLE_PX,
-          transform: seleccionada ? 'translateX(0)' : `translateX(calc(100% + ${MARGEN_PX}px))`,
+          transform: detalleVisible ? 'translateX(0)' : `translateX(calc(100% + ${MARGEN_PX}px))`,
         }}
-        aria-hidden={!seleccionada}
+        aria-hidden={!detalleVisible}
       >
-        {seleccionada && <DetalleParadaPanel entrega={seleccionada} onCerrar={() => setParadaFoco(null)} />}
+        {seleccionada && detalleAbierto && (
+          <DetalleParadaPanel
+            entrega={seleccionada}
+            actividadReciente={actividadSeleccionada}
+            onCerrar={() => setDetalleAbierto(false)}
+          />
+        )}
       </div>
     </Card>
   )
