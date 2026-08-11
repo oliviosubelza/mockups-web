@@ -13,6 +13,7 @@
 // La decisión se guarda en el store al instante (misma convención que la tabla de fuera de corte:
 // no hay Aceptar/Cancelar). Cerrar solo cierra.
 import { useState } from 'react'
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react'
 import { DataTable, defineColumns } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,7 +24,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { CANAL_META, type CanalId, type Pedido } from './mock-data'
+import { cn } from '@/lib/utils'
+import {
+  CANAL_META,
+  itemsPorConfirmar,
+  tieneStockPorConfirmar,
+  type CanalId,
+  type ItemPedido,
+  type Pedido,
+} from './mock-data'
 import { CanalGlyph } from './canal-glyph'
 import { estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
 
@@ -66,7 +75,159 @@ const columns = defineColumns<Pedido>([
     meta: { align: 'right' },
     cell: (row) => <span className="tabular-nums">{fmtPeso.format(row.peso)} kg</span>,
   },
+  // Sin `accessorKey`: el dato no es un campo del pedido sino la cuenta de líneas cortas, y por eso
+  // tampoco ordena (TanStack necesita un accessor). El caso se hace visible por otro lado: fondo
+  // ámbar en la fila y el filtro "Sin stock confirmado" del toolbar, que aísla justo estos pedidos.
+  {
+    id: 'stock',
+    header: 'Stock',
+    size: 118,
+    enableSorting: false,
+    cell: (row) => {
+      const faltan = itemsPorConfirmar(row).length
+      if (faltan === 0) {
+        return <span className="text-xs text-muted-foreground">Confirmado</span>
+      }
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+          <AlertTriangle size={12} className="shrink-0" />
+          {faltan} a confirmar
+        </span>
+      )
+    },
+  },
 ])
+
+/**
+ * Una línea del pedido en el panel. `confirmado / solicitado` es todo el mensaje.
+ *
+ * El nombre del producto NO se trunca: en un panel angosto "Aceite girasol 900…" y "Aceite girasol
+ * 400…" se leen igual, y el planificador necesita distinguir presentaciones. Prefiere dos renglones
+ * antes que puntos suspensivos.
+ */
+function ItemFila({ item }: { item: ItemPedido }) {
+  const corta = item.confirmado < item.solicitado
+  return (
+    <li className="flex items-start justify-between gap-2 py-1.5">
+      <span className="min-w-0 flex-1 text-xs leading-snug">{item.producto}</span>
+      <span
+        className={cn(
+          'shrink-0 text-xs tabular-nums',
+          corta ? 'font-medium text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+        )}
+      >
+        {item.confirmado}/{item.solicitado} {item.unidad}
+      </span>
+    </li>
+  )
+}
+
+/**
+ * Detalle de líneas del pedido clickeado. Se abre a la DERECHA de la tabla y no encima: el usuario
+ * está comparando pedidos, así que la lista tiene que seguir visible mientras mira el detalle.
+ *
+ * Las líneas cortas van PRIMERO y separadas de las confirmadas. Ordenar todo junto obligaría a
+ * escanear una lista de 7 productos para encontrar el que falta, que es justo el único que importa.
+ */
+function StockPanel({ pedido, onClose }: { pedido: Pedido; onClose: () => void }) {
+  const faltantes = itemsPorConfirmar(pedido)
+  const confirmados = pedido.items.filter((i) => i.confirmado >= i.solicitado)
+
+  return (
+    <aside className="flex w-[240px] shrink-0 flex-col overflow-hidden rounded-md border bg-muted/20">
+      <header className="flex items-start justify-between gap-2 border-b bg-background/60 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-tight">Pedido {pedido.salesOrder}</p>
+          <p className="truncate text-[11px] leading-tight text-muted-foreground" title={pedido.cliente}>
+            {pedido.cliente}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-mr-1 size-6 shrink-0"
+          onClick={onClose}
+          aria-label="Cerrar detalle"
+        >
+          <X size={14} />
+        </Button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+        {faltantes.length > 0 && (
+          <section className="mb-3">
+            <h4 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+              <AlertTriangle size={12} className="shrink-0" />
+              A confirmar ({faltantes.length})
+            </h4>
+            <ul className="mt-1 divide-y divide-border/60">
+              {faltantes.map((item) => (
+                <ItemFila key={item.id} item={item} />
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section>
+          <h4 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <CheckCircle2 size={12} className="shrink-0" />
+            Con stock ({confirmados.length})
+          </h4>
+          {confirmados.length > 0 ? (
+            <ul className="mt-1 divide-y divide-border/60">
+              {confirmados.map((item) => (
+                <ItemFila key={item.id} item={item} />
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ninguna línea de este pedido tiene stock confirmado.
+            </p>
+          )}
+        </section>
+      </div>
+    </aside>
+  )
+}
+
+/**
+ * Botón-filtro del toolbar: deja SOLO los pedidos con stock por confirmar. Es un filtro y no un
+ * agrupamiento porque el DataTable persiste el ordenamiento del usuario por `tableId` y lo aplica
+ * sobre todo el array (DataTable.tsx, "El orden persistido del usuario gana"): cualquier agrupación
+ * armada desde el orden de los datos queda deshecha en cuanto alguien ordena por una columna. Un
+ * filtro convive con el orden en vez de pelearse con él.
+ */
+function FiltroStockPendiente({
+  activo,
+  count,
+  onToggle,
+}: {
+  activo: boolean
+  count: number
+  onToggle: () => void
+}) {
+  return (
+    <Button
+      variant={activo ? 'secondary' : 'outline'}
+      size="sm"
+      onClick={onToggle}
+      aria-pressed={activo}
+      className={cn(
+        'h-8 gap-1.5 text-xs',
+        activo &&
+          'border-amber-500/40 bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-300',
+      )}
+      title={
+        activo ? 'Mostrar todos los pedidos' : 'Ver solo los pedidos con stock sin confirmar'
+      }
+    >
+      <AlertTriangle size={12} className="shrink-0" />
+      Sin stock confirmado
+      <span className="tabular-nums opacity-70">{count}</span>
+      {activo && <X size={11} className="shrink-0 opacity-70" />}
+    </Button>
+  )
+}
 
 /** Métrica compacta del pie del diálogo. */
 function Kpi({ label, value }: { label: string; value: string }) {
@@ -100,6 +261,12 @@ export function CanalPedidosDialog({
   // en su `key`: al restablecer, la tabla se remonta y vuelve a sembrar — sin esto los checkboxes
   // quedarían mostrando la selección vieja aunque el store ya estuviera limpio.
   const [seedNonce, setSeedNonce] = useState(0)
+  // Pedido cuyo detalle de líneas está abierto a la derecha. Se guarda el ID y no el objeto para no
+  // quedarse con una copia vieja si la lista cambia.
+  const [detalleId, setDetalleId] = useState<string | null>(null)
+  // Filtro de la lista: deja solo los pedidos con stock por confirmar. Arranca apagado — la lista
+  // completa es el default, el filtro es para ir a mirar los pendientes cuando hacen falta.
+  const [soloPendientes, setSoloPendientes] = useState(false)
 
   if (!canal) return null
 
@@ -124,6 +291,18 @@ export function CanalPedidosDialog({
     (p) => !incluidoPorDefecto(p) && estaIncluido(p, orderOverrides),
   ).length
 
+  // Se resuelve contra la lista: si el pedido dejó de estar (cambió el filtro del panel de atrás),
+  // el panel se cierra solo en vez de mostrar un detalle huérfano.
+  const detalle = dentro.find((p) => p.id === detalleId) ?? null
+  // Cuántos pedidos de los que ENTRAN arrastran líneas sin confirmar. Solo cuenta los incluidos:
+  // advertir por un pedido que el usuario ya destildó sería ruido.
+  const conStockPendiente = incluidos.filter(tieneStockPorConfirmar).length
+
+  // Cuántos hay para filtrar, tildados o no: el botón informa el tamaño del grupo, no del plan.
+  const pendientesTotal = dentro.filter(tieneStockPorConfirmar).length
+  // Lo que la tabla realmente muestra. Con el filtro activo las demás filas salen del row model.
+  const visibles = soloPendientes ? dentro.filter(tieneStockPorConfirmar) : dentro
+
   // Todos los listados están dentro del corte, así que el default es "entran todos".
   const restablecer = () => {
     setOrdersIncluded(scopeIds, scopeIds)
@@ -134,7 +313,14 @@ export function CanalPedidosDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       {/* Solo se pisa el breakpoint `sm`: el `max-w-[calc(100%-2rem)]` del DialogContent se conserva
           para que en pantallas chicas el diálogo no se salga del viewport. */}
-      <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-4xl">
+      <DialogContent
+        className={cn(
+          'flex max-h-[85vh] flex-col gap-3 transition-[max-width]',
+          // El diálogo se ensancha al abrir el detalle: si mantuviera el ancho, el panel le comería
+          // su espacio a la tabla y las columnas de la izquierda quedarían apretadas.
+          detalle ? 'sm:max-w-7xl' : 'sm:max-w-5xl',
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="shrink-0" style={{ color: meta.color }}>
@@ -152,26 +338,69 @@ export function CanalPedidosDialog({
         {/* `overflow-auto` y no `fillHeight` en la tabla: con 3-4 pedidos la tabla crece con su
             contenido (fillHeight la estiraría vacía hasta el 85vh), y si la lista es larga scrollea
             acá dentro en vez de recortarse contra el alto máximo del diálogo. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          <DataTable
-            // El nonce fuerza el remonte tras "Restablecer" para que la siembra vuelva a correr.
-            key={`${canal}-${seedNonce}`}
-            tableId="mockup-canal-pedidos"
-            columns={columns}
-            data={dentro}
-            getRowId={(row) => row.id}
-            emptyTitle="Nada dentro del corte"
-            emptyMessage="Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”."
-            bodyMinHeight={280}
-            selectable
-            defaultSelectedIds={incluidos.map((p) => p.id)}
-            onSelectionChange={(rows) => setOrdersIncluded(scopeIds, rows.map((r) => r.id))}
-            searchable
-            searchPlaceholder="Buscar por código, cliente, vendedor…"
-            searchKeys={[...SEARCH_KEYS]}
-            clientPagination
-            defaultPageSize={8}
-          />
+        <div className="flex min-h-0 flex-1 gap-3">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+            <DataTable
+              // El nonce fuerza el remonte tras "Restablecer" para que la siembra vuelva a correr.
+              key={`${canal}-${seedNonce}`}
+              tableId="mockup-canal-pedidos"
+              columns={columns}
+              data={visibles}
+              getRowId={(row) => row.id}
+              emptyTitle={soloPendientes ? 'Sin stock pendiente' : 'Nada dentro del corte'}
+              emptyMessage={
+                soloPendientes
+                  ? 'Todos los pedidos de este canal tienen el stock confirmado.'
+                  : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
+              }
+              bodyMinHeight={280}
+              selectable
+              defaultSelectedIds={incluidos.map((p) => p.id)}
+              // El scope son los ids VISIBLES y no todos los de dentro del corte: con el filtro
+              // activo las filas escondidas salen del row model y `onSelectionChange` las reporta
+              // como no tildadas, así que un scope más amplio las daría por quitadas del plan.
+              onSelectionChange={(rows) =>
+                setOrdersIncluded(
+                  visibles.map((p) => p.id),
+                  rows.map((r) => r.id),
+                )
+              }
+              searchable
+              searchPlaceholder="Buscar por código, cliente, vendedor…"
+              searchKeys={[...SEARCH_KEYS]}
+              clientPagination
+              defaultPageSize={8}
+              // El filtro va en el toolbar de la tabla, al lado del buscador: es otra forma de
+              // acotar la misma lista, no una acción del diálogo.
+              toolbar={
+                pendientesTotal > 0 ? (
+                  <FiltroStockPendiente
+                    activo={soloPendientes}
+                    count={pendientesTotal}
+                    onToggle={() => setSoloPendientes((v) => !v)}
+                  />
+                ) : undefined
+              }
+              // Click en la fila abre el detalle; el checkbox corta la propagación, así que tildar y
+              // mirar el detalle siguen siendo dos gestos distintos. Re-clickear el mismo cierra.
+              onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
+              rowClassName={(row) =>
+                cn(
+                  // Ámbar = atención, la misma convención que los badges de estado del mockup. Va
+                  // sobre el `bg-primary/5` de fila seleccionada porque `rowClassName` se aplica
+                  // último: un pedido incluido CON stock pendiente tiene que verse como pendiente.
+                  // Con el filtro activo NO se pinta: si todas las filas son pendientes, la banda
+                  // ámbar deja de distinguir nada y solo ensucia la lectura.
+                  !soloPendientes &&
+                    tieneStockPorConfirmar(row) &&
+                    'bg-amber-500/10 hover:bg-amber-500/15',
+                  row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
+                )
+              }
+            />
+          </div>
+
+          {detalle && <StockPanel pedido={detalle} onClose={() => setDetalleId(null)} />}
         </div>
 
         <DialogFooter className="items-center sm:justify-between">
@@ -180,6 +409,19 @@ export function CanalPedidosDialog({
             <Kpi label="Monto" value={fmtMoneda.format(totalMonto)} />
             <Kpi label="Peso" value={`${fmtPeso.format(totalPeso)} kg`} />
             {quitados > 0 && <Kpi label="Quitados" value={String(quitados)} />}
+            {/* No bloquea nada: el pedido entra igual. Es un aviso de que el monto y el peso de
+                arriba pueden bajar cuando Ventas confirme. */}
+            {conStockPendiente > 0 && (
+              <div className="flex flex-col">
+                <span className="text-[11px] leading-tight text-muted-foreground">
+                  Stock a confirmar
+                </span>
+                <span className="flex items-center gap-1 text-sm font-semibold leading-tight tabular-nums text-amber-600 dark:text-amber-400">
+                  <AlertTriangle size={12} className="shrink-0" />
+                  {conStockPendiente} pedido{conStockPendiente === 1 ? '' : 's'}
+                </span>
+              </div>
+            )}
             {/* Reconcilia con la fila del resumen: lo que entra del canal es esto + los de fuera. */}
             {fueraAgregados > 0 && (
               <Kpi label="+ Fuera de corte" value={String(fueraAgregados)} />

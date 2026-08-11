@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+import { useDispatchPlanSnapshot } from '../dispatch-plan-snapshot'
 import { OrdersMap } from '../OrdersMap'
 import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
@@ -40,10 +41,8 @@ import {
   CANAL_META,
   CANALES,
   PARADAS,
-  PEDIDOS,
   PRODUCT_TYPES,
   RUTAS,
-  rutaPorCamionId,
   type CanalId,
   type Parada,
   type ProductType,
@@ -304,6 +303,7 @@ export function PlanningView({
   const [selStopIds, setSelStopIds] = useState<string[]>([])
   const [moverSelOpen, setMoverSelOpen] = useState(false)
   const [rutaDestino, setRutaDestino] = useState<string | null>(null)
+  const snapshot = useDispatchPlanSnapshot()
   const onMapSelection = (ids: string[]) => {
     setSelStopIds(ids)
     setRutaDestino(null)
@@ -349,7 +349,7 @@ export function PlanningView({
         }
         return true
       }),
-    [paradas, canales, tipos, rutas],
+    [canales, paradas, rutas, rutasPorCamionId, tipos],
   )
 
   const hayFiltros = canales.size > 0 || tipos.size > 0 || rutas.size > 0
@@ -427,6 +427,10 @@ export function PlanningView({
           singleRoute={singleRoute}
           routeColor={routeColor}
           hideTools={readOnly}
+          // Mercados ENCENDIDOS en la planificación: es la pantalla donde el mercado explica por qué
+          // dos pedidos deberían viajar juntos. En la reoptimización (readOnly, un camión ya armado) la
+          // capa existe pero arranca apagada: ahí lo que se mira es la ruta, no la geografía de venta.
+          capaMercados={readOnly ? 'off' : 'on'}
         />
 
         {/* Toolbar flotante de filtros + acciones, dentro del mapa (arriba-centro). El padding
@@ -596,6 +600,7 @@ export function PlanningView({
                 singleRoute={singleRoute}
                 routeColor={routeColor}
                 hideTools={readOnly}
+                capaMercados={readOnly ? 'off' : 'on'}
               />
             </div>
           </div>
@@ -654,7 +659,7 @@ export function PlanningView({
                 <SelectValue placeholder="Elegí una ruta…" />
               </SelectTrigger>
               <SelectContent>
-                {RUTAS.map((ruta) => (
+                {rutasBase.map((ruta) => (
                   <SelectItem key={ruta.id} value={ruta.id}>
                     <span className="flex items-center gap-2">
                       <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />

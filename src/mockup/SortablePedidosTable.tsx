@@ -85,16 +85,13 @@ export function SortablePedidosTable({
   onRetry?: () => void
   headerActions?: React.ReactNode
   readOnly?: boolean
-  rutas?: { id: string; nombre: string; color?: string; camionId?: string }[]
 }) {
   const showRoutes = optimized && !readOnly
-  const listRutas = rutas || RUTAS
-  const puntosEntrega = useMemo(() => agruparPorPuntoEntrega(pedidos), [pedidos])
-
-  const [order, setOrder] = useState<string[]>(() => puntosEntrega.map((p) => p.id))
-  const [removedPedidos, setRemovedPedidos] = useState<Set<string>>(new Set())
-  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map())
-  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos, listRutas))
+  const [order, setOrder] = useState<string[]>(() => pedidos.map((p) => p.id))
+  const [removed, setRemoved] = useState<Set<string>>(new Set()) // pedidos quitados del plan (mockup)
+  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map()) // override de "Mover a"
+  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos)) // ruta activa (select)
+  // Modos excluyentes (toggles): seleccionar (checks) y reordenar (drag de filas).
   const [selectMode, setSelectMode] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [detallePunto, setDetallePunto] = useState<PuntoEntregaItem | null>(null)

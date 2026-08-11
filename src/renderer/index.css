@@ -70,6 +70,48 @@ body[data-resizing] * {
     display: none; /* saca la flechita del tooltip */
   }
 
+  /* Nombre del mercado, apoyado en el centro de su polígono. Sin caja ni borde: es una etiqueta de
+     MAPA (como el nombre de un barrio), no un tooltip de un objeto. El halo blanco alrededor del texto
+     es lo que la hace legible tanto sobre el relleno del polígono como sobre el satélite, sin tener que
+     ponerle un fondo que taparía los pines de abajo. */
+  .leaflet-tooltip.mercado-etiqueta {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #0f172a;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-shadow:
+      0 0 3px #fff,
+      0 0 3px #fff,
+      0 0 6px #fff;
+  }
+  .leaflet-tooltip.mercado-etiqueta::before {
+    display: none; /* la flechita no tiene sentido en una etiqueta centrada */
+  }
+  /* En oscuro los tiles van invertidos pero los panes de vectores NO (ver el filtro de arriba): el halo
+     tiene que seguir siendo claro para separar el texto del relleno del polígono. */
+  .dark .leaflet-tooltip.mercado-etiqueta {
+    color: #0b1120;
+  }
+
+  /* Mercado SELECCIONADO (click en su polígono): la misma etiqueta, con más presencia. Es lo que
+     reemplaza al globo que antes repetía el nombre — el foco se marca sobre el texto que ya estaba, no
+     con una segunda copia del nombre al lado. */
+  .leaflet-tooltip.mercado-etiqueta.mercado-etiqueta-sel {
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 0.92);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.22);
+    font-size: 11px;
+    text-shadow: none;
+  }
+
   /* Pin del mapa: leve escala al hover (foco) y un "pop" corto al quedar seleccionado. La animación
      va en el div INTERNO, no en el wrapper de Leaflet (que usa transform para posicionar). */
   .stop-pin {

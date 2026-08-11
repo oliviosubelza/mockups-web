@@ -26,16 +26,16 @@ import {
   CHOFERES,
   ORDENES,
   PARADAS,
-  PEDIDOS,
   ProductType,
-  rutaPorCamionId,
-  rutaPorId,
-  type EstadoOrden,
+  RUTAS,
   type OrdenDespacho,
+  type Ruta,
+  type EstadoOrden,
 } from '../mock-data'
 import type { BoardState } from '../types'
 import { MoreVertical, BellOff, SquarePen, CheckCircle } from 'lucide-react'
 import { OrdersMap } from '../OrdersMap'
+import { useDispatchPlanSnapshot } from '../dispatch-plan-snapshot'
 import { EditarDetalleDialog, type ParadaDetalle } from './EditarDetalleDialog'
 import { navigateTo } from '../routes'
 
@@ -49,19 +49,6 @@ const ESTADO_OPCIONES = [
   { value: 'cargando', label: 'Cargando' },
   { value: 'despachada', label: 'Despachada' },
 ]
-
-const RUTA_OPCIONES = Array.from(
-  new Map(
-    ORDENES.map((o) => rutaPorId(o.rutaId))
-      .filter((r): r is NonNullable<typeof r> => !!r)
-      .map((r) => [r.nombre, r]),
-  ).values(),
-).map((r) => ({ label: r.nombre, value: r.nombre }))
-
-const filterDefs = defineFilters<OrdenFilters>([
-  { type: 'select', id: 'estado', label: 'Estado', options: ESTADO_OPCIONES },
-  { type: 'select', id: 'ruta', label: 'Ruta', options: RUTA_OPCIONES },
-])
 
 /**
  * Capacidad de un camión en kg (truck.capacity_weight viene en toneladas).
@@ -84,18 +71,9 @@ const fmtDuracion = (min: number) => {
   return h > 0 ? `${h} h ${m.toString().padStart(2, '0')} min` : `${m} min`
 }
 
-// Generamos 15 puntos de entrega de prueba para el mockup
-const MOCK_ENTREGAS: ParadaDetalle[] = Array.from({ length: 15 }).map((_, i) => ({
-  id: `del-${i + 1}`,
-  secuencia: i + 1,
-  cliente: `Comercializadora ${String.fromCharCode(65 + i)} SRL`,
-  direccion: `Av. Radial ${10 + i}, Zona Norte`,
-  prioridad: i === 2 || i === 7 ? 'Alta' : 'Normal',
-  ventana: '08:00 - 12:00'
-}))
-
 export function OrdersView({ state }: { state: BoardState }) {
   const [filters, setFilters] = useState<Partial<OrdenFilters>>({})
+  const snapshot = useDispatchPlanSnapshot()
 
   // Estado para el modal
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenDespacho | null>(null)
@@ -136,19 +114,55 @@ export function OrdersView({ state }: { state: BoardState }) {
   const [rutas, setRutas] = useState<Set<string>>(new Set())
   const [showRoute, setShowRoute] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
-  const paradas = state === 'empty' || state === 'error' ? [] : PARADAS
-  const pedidos = state === 'empty' || state === 'error' ? [] : PEDIDOS
+  const paradasBase = snapshot.active ? snapshot.paradas : PARADAS
+  const rutasBase = snapshot.active ? snapshot.rutas : RUTAS
+  const ordenesBase = snapshot.active ? snapshot.ordenes : ORDENES
+  const paradas = state === 'empty' || state === 'error' ? [] : paradasBase
+  const rutasPorCamionId = useMemo(
+    () => new Map(rutasBase.map((ruta) => [ruta.camionId, ruta])),
+    [rutasBase],
+  )
+  const rutasPorId = useMemo(() => new Map(rutasBase.map((ruta) => [ruta.id, ruta])), [rutasBase])
+  const filterDefs = useMemo(
+    () =>
+      defineFilters<OrdenFilters>([
+        { type: 'select', id: 'estado', label: 'Estado', options: ESTADO_OPCIONES },
+        {
+          type: 'select',
+          id: 'ruta',
+          label: 'Ruta',
+          options: rutasBase.map((ruta) => ({ label: ruta.nombre, value: ruta.nombre })),
+        },
+      ]),
+    [rutasBase],
+  )
 
   // Paradas que pasan los filtros activos (lo que se pinta en el mapa).
   const filtradas = paradas.filter((p) => {
     if (canales.size > 0 && !canales.has(p.canal)) return false
     if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
     if (rutas.size > 0) {
-      const ruta = rutaPorCamionId(p.camionId)
+      const ruta = p.camionId ? rutasPorCamionId.get(p.camionId) : undefined
       if (!ruta || !rutas.has(ruta.id)) return false
     }
     return true
   })
+
+  const paradasDetalle = useMemo<ParadaDetalle[]>(() => {
+    if (!ordenSeleccionada) return []
+    const ruta = rutasPorId.get(ordenSeleccionada.rutaId)
+    if (!ruta) return []
+    return paradas
+      .filter((parada) => parada.camionId === ruta.camionId)
+      .map((parada, index) => ({
+        id: parada.id,
+        secuencia: index + 1,
+        cliente: parada.cliente,
+        direccion: parada.puntoEntrega,
+        prioridad: parada.pedidos.some((pedido) => pedido.priority === 1) ? 'Alta' : 'Normal',
+        ventana: parada.ventana,
+      }))
+  }, [ordenSeleccionada, paradas, rutasPorId])
 
   const columns = useMemo(() => defineColumns<OrdenDespacho>([
     { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
@@ -179,7 +193,7 @@ export function OrdersView({ state }: { state: BoardState }) {
       header: 'Ruta',
       size: 160,
       cell: (row) => {
-        const ruta = rutaPorId(row.rutaId)
+        const ruta = rutasPorId.get(row.rutaId)
         return (
           <span className="flex items-center gap-2">
             {ruta && <span className="size-2 shrink-0 rounded-full" style={{ background: ruta.color }} />}
@@ -271,12 +285,12 @@ export function OrdersView({ state }: { state: BoardState }) {
         </div>
       )
     }
-  ]), [choferPorOrden, camionPorOrden])
+  ]), [camionPorOrden, choferPorOrden, rutasPorId])
 
-  const filtrados = ORDENES.filter(
+  const filtrados = ordenesBase.filter(
     (o) =>
       (!filters.estado || o.estado === filters.estado) &&
-      (!filters.ruta || rutaPorId(o.rutaId)?.nombre === filters.ruta),
+      (!filters.ruta || rutasPorId.get(o.rutaId)?.nombre === filters.ruta),
   )
   const data = state === 'empty' || state === 'error' ? [] : filtrados
 
@@ -322,7 +336,7 @@ export function OrdersView({ state }: { state: BoardState }) {
         onOpenChange={(o) => { if (!o) setOrdenSeleccionada(null) }}
         codigo={ordenSeleccionada?.codigo}
         estado={ordenSeleccionada?.estado}
-        paradas={MOCK_ENTREGAS}
+        paradas={paradasDetalle}
         choferes={CHOFERES}
         choferValue={ordenSeleccionada ? choferDe(ordenSeleccionada) || null : null}
         onChoferChange={(v) => ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')}
@@ -345,6 +359,9 @@ export function OrdersView({ state }: { state: BoardState }) {
               showRoute={showRoute}
               onToggleRoute={() => setShowRoute((v) => !v)}
               showDetails={showDetails}
+              // Revisión de rutas: la capa de mercados está disponible pero arranca apagada — acá se
+              // revisan las rutas, y los polígonos serían ruido hasta que alguien los pida.
+              capaMercados="off"
             />
           </div>
         </DialogContent>

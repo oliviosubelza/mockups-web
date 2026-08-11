@@ -24,6 +24,8 @@ import {
   Banknote,
   Building2,
   Camera,
+  CheckCircle2,
+  CircleAlert,
   FileText,
   Image,
   MapPin,
@@ -91,10 +93,43 @@ function Dato({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-export function DetalleParadaPanel({ entrega, onCerrar }: { entrega: EntregaMonitoreo; onCerrar: () => void }) {
+const TONO_ACTIVIDAD = {
+  info: {
+    contenedor: 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+    chip: 'bg-sky-500/12 text-sky-700 dark:text-sky-300',
+    icono: CheckCircle2,
+  },
+  success: {
+    contenedor: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    chip: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300',
+    icono: CheckCircle2,
+  },
+  warning: {
+    contenedor: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    chip: 'bg-amber-500/12 text-amber-700 dark:text-amber-300',
+    icono: CircleAlert,
+  },
+  danger: {
+    contenedor: 'border-destructive/25 bg-destructive/10 text-destructive',
+    chip: 'bg-destructive/10 text-destructive',
+    icono: CircleAlert,
+  },
+} as const
+
+export function DetalleParadaPanel({
+  entrega,
+  actividadReciente,
+  onCerrar,
+}: {
+  entrega: EntregaMonitoreo
+  actividadReciente?: { at: number; titulo: string; descripcion: string; tono: 'info' | 'success' | 'warning' | 'danger' } | null
+  onCerrar: () => void
+}) {
   const meta = ESTADO_ENTREGA[entrega.estado]
   // Fallback compartido por toda la evidencia de esta parada: es el mismo punto de entrega.
   const fallbackFoto = ilustracionDePunto(entrega.puntoEntregaId)
+  const tonoActividad = actividadReciente ? TONO_ACTIVIDAD[actividadReciente.tono] : null
+  const IconoActividad = tonoActividad?.icono ?? CheckCircle2
 
   /**
    * Ficha del punto de entrega — la MISMA del mapa de planificación (`PuntoEntregaDialog`), no una
@@ -173,7 +208,37 @@ export function DetalleParadaPanel({ entrega, onCerrar }: { entrega: EntregaMoni
               Fuera de ventana
             </Badge>
           )}
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            <span className="senal-viva size-1.5 rounded-full bg-current" aria-hidden />
+            En vivo
+          </span>
         </div>
+
+        {actividadReciente && (
+          <div className={cn('mt-2.5 rounded-xl border px-2.5 py-2', tonoActividad?.contenedor)}>
+            <div className="flex items-start gap-2">
+              <span
+                className={cn(
+                  'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full',
+                  tonoActividad?.chip,
+                )}
+              >
+                <IconoActividad className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold">{actividadReciente.titulo}</span>
+                  <span className="rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
+                    Ahora
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug opacity-90">
+                  {actividadReciente.descripcion}
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Llegada y cierre van en UNA celda y no en dos: son las puntas de un intervalo, y separarlas
             en columnas hermanas obligaba a leer dos etiquetas para reconstruir uno solo. La columna que
@@ -239,7 +304,10 @@ export function DetalleParadaPanel({ entrega, onCerrar }: { entrega: EntregaMoni
               const em = ESTADO_ENTREGA[evento.estado]
               const ultimo = i === entrega.historial.length - 1
               return (
-                <li key={`${evento.estado}-${evento.hora}`} className="flex gap-2.5">
+                <li
+                  key={`${evento.estado}-${evento.hora}`}
+                  className={cn('flex gap-2.5', ultimo && actividadReciente && 'rounded-lg bg-muted/55 px-2 py-2')}
+                >
                   {/* Riel del timeline: punto + línea hasta el evento siguiente. */}
                   <span className="flex flex-col items-center">
                     <span className="mt-1 size-2 shrink-0 rounded-full" style={{ background: em.color }} />
@@ -249,6 +317,11 @@ export function DetalleParadaPanel({ entrega, onCerrar }: { entrega: EntregaMoni
                     <span className="flex items-baseline gap-2">
                       <span className="text-xs font-medium">{em.label}</span>
                       <span className="text-[11px] tabular-nums text-muted-foreground">{evento.hora}</span>
+                      {ultimo && actividadReciente && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          Último evento
+                        </span>
+                      )}
                     </span>
                     {evento.nota && <span className="text-[11px] text-muted-foreground">{evento.nota}</span>}
                   </span>
