@@ -103,9 +103,29 @@ export function CoverageSummaryBar({
   // Elegibles (disponible) vs seleccionados: dos números SIEMPRE visibles y distintos, sin
   // depender de que haya alguno seleccionado (a diferencia del badge propio del DataTable).
   const eligibles = CAMIONES.filter((c) => c.estado === 'disponible').length
-  const puedeAvanzar = selectedTruckIds.length > 0 && activeCanales.length > 0
+  const tieneCamion = selectedTruckIds.length > 0
+  const tieneFiltroPedidos = activeCanales.length > 0
+  const sinDeficit = coverage.volumeSurplusM3 >= 0 && coverage.weightSurplusTon >= 0
+
+  const puedeAvanzar = tieneCamion && tieneFiltroPedidos && sinDeficit
   const neededPesoTon = kgToTons(needed.pesoKg)
   const tiempoTotalHoras = selectedTruckIds.length * HORAS_POR_CAMION
+
+  const disabledTitle = (() => {
+    if (!tieneCamion && !tieneFiltroPedidos) {
+      return 'Seleccioná al menos un camión y un canal de pedidos para continuar'
+    }
+    if (!tieneCamion) {
+      return 'Seleccioná al menos un camión para continuar'
+    }
+    if (!tieneFiltroPedidos) {
+      return 'Seleccioná al menos un canal de pedidos para continuar'
+    }
+    if (!sinDeficit) {
+      return 'Capacidad excedida: la carga supera la capacidad disponible (barra en rojo)'
+    }
+    return undefined
+  })()
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
@@ -154,13 +174,11 @@ export function CoverageSummaryBar({
             Pedidos
           </Button>
         )}
-        {/* Gate: no se puede avanzar sin al menos un camión y un canal seleccionado. */}
+        {/* Gate: no se puede avanzar sin camión, filtro de pedidos y sin déficit en volumen/peso. */}
         <Button
           size="sm"
           disabled={!puedeAvanzar}
-          title={
-            !puedeAvanzar ? 'Seleccioná al menos un camión y un canal para continuar' : undefined
-          }
+          title={disabledTitle}
           onClick={onNext}
         >
           {ctaLabel}

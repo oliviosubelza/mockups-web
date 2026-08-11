@@ -87,12 +87,8 @@ const ESTADOS: { value: EstadoCamion; label: string; icon: typeof Truck }[] = [
 
 export function FleetCapacityPanel({ state }: { state: BoardState }) {
   const [filters, setFilters] = useState<Partial<CamionFilters>>({})
+  const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
-
-  // El DataTable arranca su selección interna en `{}` cada vez que se MONTA (no la deriva del
-  // store) → su primer `onSelectionChange` dispara con la tabla vacía. Se ignora ese primer aviso
-  // para no pisar `selectedTruckIds` ya guardado en el store al volver de otra fase del wizard.
-  const skipFirstSelection = useRef(true)
 
   const countByEstado = (e: EstadoCamion) => CAMIONES.filter((c) => c.estado === e).length
 
@@ -148,11 +144,8 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
         selectable
         // Solo los camiones 'disponible' entran al plan — el resto queda visible pero inerte.
         isRowSelectable={(row) => row.estado === 'disponible'}
+        defaultSelectedIds={selectedTruckIds}
         onSelectionChange={(rows) => {
-          if (skipFirstSelection.current) {
-            skipFirstSelection.current = false
-            return
-          }
           setSelectedTrucks(rows.map((r) => r.id))
         }}
         searchable

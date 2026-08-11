@@ -34,9 +34,10 @@ import {
   type OrdenDespacho,
 } from '../mock-data'
 import type { BoardState } from '../types'
-import { MoreVertical, BellOff, SquarePen } from 'lucide-react'
+import { MoreVertical, BellOff, SquarePen, CheckCircle } from 'lucide-react'
 import { OrdersMap } from '../OrdersMap'
 import { EditarDetalleDialog, type ParadaDetalle } from './EditarDetalleDialog'
+import { navigateTo } from '../routes'
 
 interface OrdenFilters extends Record<string, unknown> {
   estado?: EstadoOrden
@@ -281,7 +282,13 @@ export function OrdersView({ state }: { state: BoardState }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-      <h2 className="text-sm font-semibold text-foreground">Órdenes de Transporte</h2>
+      <div className="flex items-center justify-between shrink-0">
+        <h2 className="text-sm font-semibold text-foreground">Órdenes de Transporte</h2>
+        <Button size="sm" className="gap-1.5" onClick={() => navigateTo('planificaciones')}>
+          <CheckCircle size={14} />
+          Finalizar y ver planificaciones
+        </Button>
+      </div>
 
       <DataTable
         tableId="mockup-ordenes-despacho"

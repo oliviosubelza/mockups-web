@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Warehouse } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MapContainer, Marker, Tooltip, ZoomControl, useMapEvents } from 'react-leaflet'
-import { CANAL_META, DEPOSITO, camionPorId, type Parada } from './mock-data'
+import { CANAL_META, DEPOSITO, RUTAS, camionPorId, type Parada, type Ruta } from './mock-data'
 import { divIcon } from './map/div-icon'
 import { InvalidateOnResize } from './map/InvalidateOnResize'
 import { MapLayersControl } from './map/MapLayersControl'
@@ -22,7 +22,7 @@ import { SelectionLayer, type MapTool } from './map/SelectionLayer'
 import { useOverlayStore } from './map/overlay-store'
 import { parseRouteOptimization } from './map/geo/polyline'
 import { SAMPLE_ROUTE_OPTIMIZATION } from './map/sample-route'
-import { buildSingleRouteOverlay } from './map/route-optimizer'
+import { buildRouteOverlay, buildSingleRouteOverlay } from './map/route-optimizer'
 import { PuntoEntregaDialog } from './PuntoEntregaDialog'
 
 const SIN_CAMION = '#94a3b8'
@@ -40,10 +40,12 @@ function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
   return null
 }
 
-function pinParada(parada: Parada, seleccionado: boolean) {
+function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[]) {
   const { icon: Icon } = CANAL_META[parada.canal]
+  const listRutas = rutas || RUTAS
+  const ruta = listRutas.find((r) => r.camionId === parada.camionId || r.id === `r-${parada.camionId}`)
   const camion = camionPorId(parada.camionId)
-  const color = camion?.color ?? SIN_CAMION
+  const color = parada.camionId ? (ruta?.color ?? camion?.color ?? SIN_CAMION) : SIN_CAMION
 
   const html = renderToStaticMarkup(
     <div
@@ -53,7 +55,6 @@ function pinParada(parada: Parada, seleccionado: boolean) {
         height: 30,
         borderRadius: 999,
         background: color,
-        // Seleccionada: anillo azul de marca alrededor del pin (no cambia el color del canal/camión).
         border: seleccionado ? `2px solid ${SELECCION}` : '2px solid #fff',
         boxShadow: seleccionado
           ? `0 0 0 3px ${SELECCION}66, 0 1px 4px rgb(0 0 0 / 0.35)`
@@ -76,7 +77,7 @@ const pinDeposito = divIcon(
       style={{
         width: 36,
         height: 36,
-        borderRadius: 10,
+        borderRadius: 999,
         background: '#0f172a',
         border: '2px solid #fff',
         boxShadow: '0 2px 6px rgb(0 0 0 / 0.4)',
@@ -92,15 +93,6 @@ const pinDeposito = divIcon(
   36
 )
 
-/** Convierte la respuesta de ejemplo del optimizador en el overlay del store (trazo + marcadores). */
-function overlayDemo() {
-  const { paths, markers } = parseRouteOptimization(SAMPLE_ROUTE_OPTIMIZATION)
-  return {
-    polylines: paths.map((path, i) => ({ id: `demo-${i}`, path, color: SELECCION })),
-    markers: markers.map((m, i) => ({ id: `demo-m-${i}`, position: m.position, color: '#0f172a', label: m.label })),
-  }
-}
-
 export function OrdersMap({
   paradas,
   onSelectionChange,
@@ -111,32 +103,23 @@ export function OrdersMap({
   singleRoute = false,
   routeColor = SELECCION,
   hideTools = false,
+  rutas,
 }: {
   paradas: Parada[]
   onSelectionChange?: (ids: string[]) => void
-  /** Habilita el botón de ruta en la toolbar (recién tras Optimizar). */
   routeToolEnabled?: boolean
-  /** Muestra el overlay de ruta de EJEMPLO (polilíneas). Controlado desde afuera; no calcula nada. */
   showRoute?: boolean
   onToggleRoute?: () => void
-  /** Muestra bajo cada punto el nombre + ventana horaria. Controlado desde la barra de filtros. */
   showDetails?: boolean
-  /**
-   * Modo UNIFICACIÓN: en vez de la ruta de ejemplo (varias polilíneas), dibuja UNA sola ruta por
-   * todas las paradas dadas (depósito → vecino-más-cercano → depósito). Es "unifiqué en un camión".
-   */
   singleRoute?: boolean
-  /** Color de la ruta única (default: el azul de selección). */
   routeColor?: string
-  /** Oculta la toolbar de herramientas (pan/selección/dibujo). Modo solo-lectura (ej. unificación). */
   hideTools?: boolean
+  rutas?: Ruta[]
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
-  // Parada cuyo detalle está abierto (null = cerrado). Se abre clickeando su pin con la mano activa.
   const [paradaDetalle, setParadaDetalle] = useState<Parada | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
-  // Etiquetas de detalle: activadas por la tool Y con zoom suficiente (para no solaparse).
   const showLabels = showDetails && zoom >= DETAIL_ZOOM
 
   const setOverlay = useOverlayStore((s) => s.setOverlay)
@@ -157,15 +140,25 @@ export function OrdersMap({
     onSelectionChange?.([])
   }, [onSelectionChange])
 
-  // Siembra (o limpia) el overlay de ruta según `showRoute` (controlado desde Optimizar). En modo
-  // unificación arma UNA ruta por las paradas reales; si no, usa la respuesta de EJEMPLO (varias).
   useEffect(() => {
     if (!showRoute) {
       clearOverlay()
       return
     }
-    setOverlay(singleRoute ? buildSingleRouteOverlay(paradas, routeColor) : overlayDemo())
-  }, [showRoute, singleRoute, paradas, routeColor, setOverlay, clearOverlay])
+    const listRutas = rutas || RUTAS
+    setOverlay(
+      singleRoute
+        ? buildSingleRouteOverlay(paradas, routeColor)
+        : buildRouteOverlay(
+            paradas,
+            (pId) => {
+              const p = paradas.find((item) => item.id === pId)
+              if (!p?.camionId) return undefined
+              return `r-${p.camionId}`
+            },
+          )
+    )
+  }, [showRoute, singleRoute, paradas, routeColor, rutas, setOverlay, clearOverlay])
 
   return (
     <div className="relative h-full w-full">
@@ -220,10 +213,14 @@ export function OrdersMap({
                 </Tooltip>
               ) : (
                 <Tooltip key="hover" direction="top" offset={[0, -16]}>
-                  <span className="font-medium">{parada.cliente}</span> · {parada.puntoEntregaId}
-                  <br />
-                  {CANAL_META[parada.canal].label} · {parada.pedidos.length} pedido
-                  {parada.pedidos.length !== 1 ? 's' : ''} · {parada.pesoTotal} kg
+                  <span className="font-medium">{parada.cliente}</span>
+                  {parada.puntoEntrega && (
+                    <span className="block text-[11px] text-muted-foreground">{parada.puntoEntrega}</span>
+                  )}
+                  <div className="mt-0.5 text-[11px]">
+                    {CANAL_META[parada.canal].label} · {parada.pedidos.length} pedido
+                    {parada.pedidos.length !== 1 ? 's' : ''} · {parada.pesoTotal} kg
+                  </div>
                 </Tooltip>
               )}
             </Marker>

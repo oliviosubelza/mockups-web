@@ -22,6 +22,7 @@ import { MonitoreoDetalleView } from './monitoreo/MonitoreoDetalleView'
 import { PlanningView } from './views/PlanningView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
+import { useDispatchPlanStore } from './dispatch-plan-store'
 
 /**
  * Un destino navegable. Espejo reducido del `RouteInterface` de mockup-native: la ruta se define
@@ -46,7 +47,15 @@ export interface MockRoute {
 // props, así que se envuelven acá. El botón "Nueva planificación" de la lista entra al flujo.
 
 function PlanificacionesScreen() {
-  return <PlansView state="default" onNew={() => navigateTo('nueva-planificacion')} />
+  return (
+    <PlansView
+      state="default"
+      onNew={() => {
+        useDispatchPlanStore.getState().reset()
+        navigateTo('nueva-planificacion')
+      }}
+    />
+  )
 }
 
 function NuevaPlanificacionScreen() {

@@ -212,7 +212,14 @@ export function PuntoEntregaDialog({
               <span className="shrink-0" style={{ color: meta.color }}>
                 <CanalGlyph canal={parada.canal} size={15} />
               </span>
-              <span className="min-w-0 truncate">{parada.cliente}</span>
+              <div className="flex flex-col min-w-0 leading-tight">
+                <span className="min-w-0 truncate font-semibold">{parada.cliente}</span>
+                {parada.puntoEntrega && (
+                  <span className="truncate text-xs font-normal text-muted-foreground">
+                    {parada.puntoEntrega}
+                  </span>
+                )}
+              </div>
             </DialogTitle>
             {/* Las clases van en el propio DialogDescription (que es un <p>) y no en un div
                 anidado: base-ui compone con `render`, no con `asChild`, y los Badge son <span>,

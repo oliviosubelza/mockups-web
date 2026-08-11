@@ -554,7 +554,7 @@ export const PEDIDOS: Pedido[] = (() => {
         ? rand.pick(puntosDelCanal)
         : {
             id: `DP-${String(siguientePunto++).padStart(4, '0')}`,
-            nombre: `${lugar}, ${rand.pick(VIAS)} ${rand.int(2, 48)}`,
+            nombre: `Suc. ${lugar} · ${rand.pick(VIAS)} ${rand.int(2, 48)}`,
             lat,
             lng,
             cliente: clientePropio,
@@ -1057,24 +1057,7 @@ function fechaOffset(dias: number): string {
  * Planes de más nuevo a más viejo. Los de hoy pueden estar en borrador u optimizado; los pasados ya
  * están aprobados — un plan viejo en borrador sería inconsistente (nunca se ejecutó).
  */
-export const PLANES: Plan[] = (() => {
-  const planificador = rand.cycler(PLANIFICADORES)
-  return Array.from({ length: VOLUMEN.planes }, (_, i) => {
-    // Dos planes por día hacia atrás.
-    const dias = -Math.floor(i / 2)
-    const estado: EstadoPlan =
-      dias === 0 ? (rand.chance(0.5) ? 'borrador' : 'optimizado') : 'aprobado'
-    return {
-      id: 148 - i,
-      fecha: fechaOffset(dias),
-      estado,
-      distribuidora: rand.pick(DISTRIBUIDORAS).nombre,
-      pedidos: rand.int(9, 48),
-      camiones: rand.int(2, 12),
-      creadoPor: planificador(),
-    } satisfies Plan
-  })
-})()
+export const PLANES: Plan[] = []
 
 // ── Transferencias entre sucursales + Devoluciones (logística inversa) ─────────────────────────
 // Se crean en OTRO sistema; acá solo se LISTAN a nivel ORDEN (no ítem), se seleccionan y se suman

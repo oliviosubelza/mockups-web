@@ -32,7 +32,11 @@ import { cn } from '@/lib/utils'
 import { OrdersMap } from '../OrdersMap'
 import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
+import { usePlanesStore } from '../planes-store'
+import { useDispatchPlanStore, selectIncludedOrders, selectSelectedTrucks } from '../dispatch-plan-store'
+import { ordenarPorCercania } from '../map/geo/hilbert'
 import {
+  CAMIONES,
   CANAL_META,
   CANALES,
   PARADAS,
@@ -306,24 +310,42 @@ export function PlanningView({
     setMoverSelOpen(ids.length > 0)
   }
 
-  // Base de datos del planner: el scope unificado si vino, o el plan completo. Los pedidos se
-  // DERIVAN de las paradas base (cada parada trae sus pedidos), así el mapa y la lista siempre cuadran.
-  const baseParadas = paradasScope ?? PARADAS
-  const paradas = state === 'empty' || state === 'error' ? [] : baseParadas
-  const pedidos =
-    state === 'empty' || state === 'error' ? [] : baseParadas.flatMap((p) => p.pedidos)
+  // Camiones seleccionados en la fase anterior (o fallback a los primeros 3 camiones activos)
+  const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
+  const selectedTrucks = useMemo(() => {
+    const sel = CAMIONES.filter((c) => selectedTruckIds.includes(c.id))
+    return sel.length > 0 ? sel : CAMIONES.filter((c) => c.enRuteo).slice(0, 3)
+  }, [selectedTruckIds])
 
-  // Paradas que pasan los filtros activos (lo que se pinta en el mapa). Memoizado: sin esto el
-  // `.filter` daría un array nuevo en cada render (ej. al arrastrar el divisor) y el efecto del
-  // overlay de ruta se re-dispararía y re-encuadraría el mapa.
+  // Genera exactamente 1 Ruta por cada camión seleccionado
+  const rutasPlan = useMemo(() => {
+    const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7']
+    return selectedTrucks.map((camion, i) => ({
+      id: `r-${camion.id}`,
+      nombre: `Ruta ${i + 1} (${camion.alias || camion.codigoPlaca || camion.id})`,
+      camionId: camion.id,
+      camion,
+      color: colores[i % colores.length],
+    }))
+  }, [selectedTrucks])
+
+  const [assignedParadasState, setAssignedParadasState] = useState<Parada[] | null>(null)
+
+  // Base de datos del planner: el scope unificado si vino, o las paradas optimizadas/base.
+  const baseParadas = paradasScope ?? PARADAS
+  const paradas = state === 'empty' || state === 'error' ? [] : (assignedParadasState ?? baseParadas)
+  const pedidos =
+    state === 'empty' || state === 'error' ? [] : paradas.flatMap((p) => p.pedidos)
+
+  // Paradas que pasan los filtros activos
   const filtradas = useMemo(
     () =>
       paradas.filter((p) => {
         if (canales.size > 0 && !canales.has(p.canal)) return false
         if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
         if (rutas.size > 0) {
-          const ruta = rutaPorCamionId(p.camionId)
-          if (!ruta || !rutas.has(ruta.id)) return false
+          const rId = p.camionId ? `r-${p.camionId}` : undefined
+          if (!rId || !rutas.has(rId)) return false
         }
         return true
       }),
@@ -338,27 +360,38 @@ export function PlanningView({
   }
 
   // Rutas que quedan visibles con los filtros aplicados (leyenda del mapa).
-  const rutasVisibles = RUTAS.filter((r) => filtradas.some((p) => p.camionId === r.camionId))
+  const rutasVisibles = rutasPlan.filter((r) => filtradas.some((p) => p.camionId === r.camionId))
 
   const canalOptions = CANALES.map((c) => ({ value: c.value, label: c.label, color: CANAL_META[c.value].color }))
   const tipoOptions = PRODUCT_TYPES.map((t) => ({ value: t, label: t }))
-  const rutaOptions = RUTAS.map((r) => ({ value: r.id, label: r.nombre, color: r.color }))
+  const rutaOptions = rutasPlan.map((r) => ({ value: r.id, label: r.nombre, color: r.color }))
 
-  // Paradas seleccionadas en el mapa y sus pedidos (la tabla del diálogo lista los pedidos, igual
-  // que la tabla grande de la lista).
+  // Paradas seleccionadas en el mapa y sus pedidos
   const selectedStops = filtradas.filter((p) => selStopIds.includes(p.id))
   const selectedPedidos = selectedStops.flatMap((p) => p.pedidos)
-  // Mover la selección a una ruta (mockup: stub — cierra el diálogo, no reasigna el dato del mapa).
   const moverSeleccion = () => {
     setMoverSelOpen(false)
   }
 
-  // Optimizar (mockup): no calcula nada. Simula ~2s de "procesando" y recién ahí habilita la tool de
-  // ruta, muestra las polilíneas de ejemplo y separa por rutas la lista.
+  // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta por camión.
   const optimizar = () => {
     if (optimizing || optimized) return
     setOptimizing(true)
     setTimeout(() => {
+      const trucks = selectedTrucks
+      const porCercania = ordenarPorCercania(baseParadas, (p) => [p.lat, p.lng])
+      const porCamionCount = Math.ceil(porCercania.length / Math.max(trucks.length, 1))
+
+      const asignadas = porCercania.map((parada, i) => {
+        const camionIndex = Math.min(Math.floor(i / porCamionCount), trucks.length - 1)
+        const camion = trucks[camionIndex]
+        return {
+          ...parada,
+          camionId: camion.id,
+        }
+      })
+
+      setAssignedParadasState(asignadas)
       setOptimizing(false)
       setOptimized(true)
       setShowRoute(true)
@@ -385,6 +418,7 @@ export function PlanningView({
       <div className="relative isolate min-h-0 flex-1">
         <OrdersMap
           paradas={filtradas}
+          rutas={rutasPlan as any}
           routeToolEnabled={optimized}
           showRoute={showRoute}
           onToggleRoute={() => setShowRoute((v) => !v)}
@@ -461,10 +495,25 @@ export function PlanningView({
         state={state}
         optimized={optimized}
         readOnly={readOnly}
+        rutas={rutasPlan}
         headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
       />
     </div>
   )
+
+  const handleCreateRoutes = () => {
+    if (!readOnly && !scopeLabel?.includes('Reoptimizando')) {
+      const dispatchState = useDispatchPlanStore.getState()
+      const includedOrders = selectIncludedOrders(dispatchState)
+      const selectedTrucks = selectSelectedTrucks(dispatchState)
+      usePlanesStore.getState().addPlan({
+        pedidos: includedOrders.length > 0 ? includedOrders.length : 24,
+        camiones: selectedTrucks.length > 0 ? selectedTrucks.length : 6,
+        estado: 'optimizado',
+      })
+    }
+    onNext()
+  }
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-0">
@@ -493,7 +542,7 @@ export function PlanningView({
           size="sm"
           disabled={!optimized}
           title={optimized ? 'Generar órdenes de transporte' : 'Primero optimizar las rutas'}
-          onClick={onNext}
+          onClick={handleCreateRoutes}
         >
           Crear {(scopeLabel?.includes('Reoptimizando')) ? 'órdenes de Transporte' : 'Rutas '}
         </Button>
@@ -580,7 +629,14 @@ export function PlanningView({
               <tbody>
                 {selectedPedidos.map((p) => (
                   <tr key={p.id} className="border-b last:border-b-0">
-                    <td className="px-3 py-1.5 font-medium">{p.cliente}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-col min-w-0 leading-tight">
+                        <span className="font-medium text-foreground">{p.cliente}</span>
+                        {p.puntoEntrega && (
+                          <span className="text-[11px] text-muted-foreground">{p.puntoEntrega}</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{bs(p.total)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{p.peso} kg</td>
                     {/* <td className="px-3 py-1.5">{p.vendedor}</td> */}

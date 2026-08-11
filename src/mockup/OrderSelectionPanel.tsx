@@ -399,23 +399,25 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const [draftZonas, setDraftZonas] = useState<ZonaId[]>(activeZonas)
   const [draftVendedores, setDraftVendedores] = useState<string[]>(activeVendedores)
 
-  // Toggle genérico de un valor dentro de un array de draft.
-  const toggleEn = <T,>(set: (fn: (prev: T[]) => T[]) => void, value: T) =>
-    set((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]))
-
-  // Debounce: aplica el draft al store 450ms después del último cambio (equivale al "fetch" único).
-  useEffect(() => {
-    const t = setTimeout(() => {
-      applySelection({
-        canales: draftCanales,
-        ciudades: draftCiudades,
-        mercados: draftMercados,
-        zonas: draftZonas,
-        vendedores: draftVendedores,
-      })
-    }, 450)
-    return () => clearTimeout(t)
-  }, [draftCanales, draftCiudades, draftMercados, draftZonas, draftVendedores, applySelection])
+  // Toggle genérico de un valor dentro de un array de draft con actualización inmediata del store.
+  const toggleEn = <T extends string>(
+    key: 'canales' | 'ciudades' | 'mercados' | 'zonas' | 'vendedores',
+    setDraft: React.Dispatch<React.SetStateAction<T[]>>,
+    value: T
+  ) => {
+    setDraft((prev) => {
+      const next = prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+      const sel = {
+        canales: key === 'canales' ? (next as CanalId[]) : draftCanales,
+        ciudades: key === 'ciudades' ? (next as CiudadId[]) : draftCiudades,
+        mercados: key === 'mercados' ? (next as MercadoId[]) : draftMercados,
+        zonas: key === 'zonas' ? (next as ZonaId[]) : draftZonas,
+        vendedores: key === 'vendedores' ? (next as string[]) : draftVendedores,
+      }
+      applySelection(sel)
+      return next
+    })
+  }
 
   // El filtro de Entrega arranca por defecto en MAÑANA (inicio=fin=día siguiente).
   const [filters, setFilters] = useState<Partial<PedidoFilters>>(() => mananaRange())
@@ -514,7 +516,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           label="Ciudad"
           icon={Building2}
           active={draftCiudades}
-          onToggle={(v) => toggleEn(setDraftCiudades, v as CiudadId)}
+          onToggle={(v) => toggleEn('ciudades', setDraftCiudades, v as CiudadId)}
           searchPlaceholder="Buscar ciudad…"
           emptyText="Sin ciudades"
           options={CIUDAD_IDS.map((c) => ({ value: c, label: CIUDAD_META[c].label }))}
@@ -523,7 +525,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           label="Canal"
           icon={Store}
           active={draftCanales}
-          onToggle={(v) => toggleEn(setDraftCanales, v as CanalId)}
+          onToggle={(v) => toggleEn('canales', setDraftCanales, v as CanalId)}
           searchPlaceholder="Buscar canal…"
           emptyText="Sin canales"
           options={CANAL_IDS.map((c) => ({
@@ -540,7 +542,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           label="Mercado"
           icon={Globe}
           active={draftMercados}
-          onToggle={(v) => toggleEn(setDraftMercados, v as MercadoId)}
+          onToggle={(v) => toggleEn('mercados', setDraftMercados, v as MercadoId)}
           searchPlaceholder="Buscar mercado…"
           emptyText="Sin mercados"
           options={MERCADO_IDS.map((m) => ({ value: m, label: MERCADO_META[m].label }))}
@@ -549,7 +551,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           label="Zona"
           icon={MapPin}
           active={draftZonas}
-          onToggle={(v) => toggleEn(setDraftZonas, v as ZonaId)}
+          onToggle={(v) => toggleEn('zonas', setDraftZonas, v as ZonaId)}
           searchPlaceholder="Buscar zona…"
           emptyText="Sin zonas"
           options={ZONA_IDS.map((z) => ({ value: z, label: ZONA_META[z].label }))}
@@ -558,7 +560,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           label="Vendedor"
           icon={User}
           active={draftVendedores}
-          onToggle={(v) => toggleEn(setDraftVendedores, v)}
+          onToggle={(v) => toggleEn('vendedores', setDraftVendedores, v)}
           searchPlaceholder="Buscar vendedor…"
           emptyText="Sin vendedores"
           options={VENDEDORES.map((v) => ({ value: v, label: v }))}

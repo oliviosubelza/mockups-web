@@ -1,17 +1,8 @@
-// Lista de pedidos del plan sobre el DataTable COMPARTIDO (TanStack) — el mismo de todos los
-// listados: columnas redimensionables, movibles (drag horizontal del header), ocultables, búsqueda
-// y densidad.
-//
-// Dos MODOS que se prenden con toggles (excluyentes, como el resto del flujo):
-//   • "Seleccionar" → aparecen los checks y la barra de acciones masivas (Quitar del plan).
-//   • "Reordenar"   → aparece el grip por fila y la SECUENCIA de entrega se cambia por DRAG-AND-DROP
-//                     (soporte de filas agregado al DataTable con enableRowReorder/onRowReorder).
-//
-// Los pedidos se navegan por RUTA con un select arriba (barra de filtros). La columna "#" numera la
-// parada 1..N DENTRO de la ruta y lleva el color de la ruta. Mover a otra ruta / Quitar viven en el
-// kebab por fila.
+// Lista de puntos de entrega del plan sobre el DataTable COMPARTIDO (TanStack)
+// Agrupa los pedidos por punto de entrega (delivery_point) para que no se repita el cliente/sucursal
+// cuando realiza múltiples pedidos en la misma entrega.
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpDown, ListChecks, Route, Trash2 } from 'lucide-react'
+import { ArrowUpDown, Eye, ListChecks, Route, Trash2 } from 'lucide-react'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
   DataTable,
@@ -20,9 +11,11 @@ import {
   type ColumnDefConfig,
   type RowAction,
 } from '@/components/data-table'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RUTAS, rutaPorPedidoId, type Pedido } from './mock-data'
+import { RUTAS, rutaPorPedidoId, type CanalId, type Parada, type Pedido } from './mock-data'
+import { PuntoEntregaDialog } from './PuntoEntregaDialog'
 import type { BoardState } from './types'
 
 /** Formatea un monto en Bs con separadores es-BO (1.240,50). */
@@ -30,9 +23,51 @@ const bs = (n: number) => n.toLocaleString('es-BO', { minimumFractionDigits: 2, 
 
 const SIN_RUTA = 'sin'
 
+export interface PuntoEntregaItem {
+  id: string
+  puntoEntregaId: string
+  puntoEntrega: string
+  cliente: string
+  canal: CanalId
+  total: number
+  peso: number
+  pedidos: Pedido[]
+  pedidosIds: string[]
+  firstPedidoId: string
+}
+
+/** Agrupa los pedidos por punto de entrega (puntoEntregaId) */
+function agruparPorPuntoEntrega(pedidos: Pedido[]): PuntoEntregaItem[] {
+  const map = new Map<string, PuntoEntregaItem>()
+  for (const p of pedidos) {
+    const key = p.puntoEntregaId || p.puntoEntrega || p.id
+    let group = map.get(key)
+    if (!group) {
+      group = {
+        id: `stop-${key}`,
+        puntoEntregaId: p.puntoEntregaId || key,
+        puntoEntrega: p.puntoEntrega,
+        cliente: p.cliente,
+        canal: p.canal,
+        total: 0,
+        peso: 0,
+        pedidos: [],
+        pedidosIds: [],
+        firstPedidoId: p.id,
+      }
+      map.set(key, group)
+    }
+    group.total += p.total
+    group.peso += p.peso
+    group.pedidos.push(p)
+    group.pedidosIds.push(p.id)
+  }
+  return Array.from(map.values())
+}
+
 /** Primera ruta con pedidos (default del select); cae a la primera ruta o "Sin ruta". */
-function primeraRutaConPedidos(pedidos: Pedido[]): string {
-  return RUTAS.find((r) => pedidos.some((p) => rutaPorPedidoId(p.id)?.id === r.id))?.id ?? RUTAS[0]?.id ?? SIN_RUTA
+function primeraRutaConPedidos(pedidos: Pedido[], listRutas: { id: string }[]): string {
+  return listRutas.find((r) => pedidos.some((p) => (p.camionId ? `r-${p.camionId}` === r.id : false)))?.id ?? listRutas[0]?.id ?? SIN_RUTA
 }
 
 export function SortablePedidosTable({
@@ -42,78 +77,73 @@ export function SortablePedidosTable({
   onRetry = () => {},
   headerActions,
   readOnly = false,
+  rutas,
 }: {
   pedidos: Pedido[]
   state: BoardState
-  /**
-   * Antes de Optimizar todavía NO hay rutas: se muestra TODA la lista de puntos de entrega en una
-   * sola tabla, sin filtrar ni separar por ruta. Recién con `optimized` aparecen las rutas (select
-   * para navegarlas, color por ruta y "Mover a ruta").
-   */
   optimized?: boolean
   onRetry?: () => void
-  /** Acciones a la derecha de la barra de filtros (ej. el botón de contraer el panel). */
   headerActions?: React.ReactNode
-  /**
-   * Flujo de UNIFICACIÓN: es UNA sola ruta, así que no se separa por rutas ni hay "Mover a ruta" ni
-   * "Seleccionar". SÍ se permite REORDENAR la secuencia (cambiar de posición). Solo se listan los
-   * puntos de entrega unificados.
-   */
   readOnly?: boolean
+  rutas?: { id: string; nombre: string; color?: string; camionId?: string }[]
 }) {
-  // Con solo-lectura NO se separa por rutas aunque esté optimizado (es una sola ruta unificada).
   const showRoutes = optimized && !readOnly
-  const [order, setOrder] = useState<string[]>(() => pedidos.map((p) => p.id))
-  const [removed, setRemoved] = useState<Set<string>>(new Set()) // pedidos quitados del plan (mockup)
-  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map()) // override de "Mover a"
-  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos)) // ruta activa (select)
-  // Modos excluyentes (toggles): seleccionar (checks) y reordenar (drag de filas).
+  const listRutas = rutas || RUTAS
+  const puntosEntrega = useMemo(() => agruparPorPuntoEntrega(pedidos), [pedidos])
+
+  const [order, setOrder] = useState<string[]>(() => puntosEntrega.map((p) => p.id))
+  const [removedPedidos, setRemovedPedidos] = useState<Set<string>>(new Set())
+  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map())
+  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos, listRutas))
   const [selectMode, setSelectMode] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [detallePunto, setDetallePunto] = useState<PuntoEntregaItem | null>(null)
 
-  // Cuando cambia el conjunto de pedidos (cambio de estado del board), reseteamos todo lo derivado.
   useEffect(() => {
-    setOrder(pedidos.map((p) => p.id))
-    setRemoved(new Set())
+    setOrder(puntosEntrega.map((p) => p.id))
+    setRemovedPedidos(new Set())
     setRutaPorPedido(new Map())
-    setRutaSel(primeraRutaConPedidos(pedidos))
+    setRutaSel(primeraRutaConPedidos(pedidos, listRutas))
     setSelectMode(false)
     setEditMode(false)
-  }, [pedidos])
+  }, [puntosEntrega, pedidos, listRutas])
 
-  const byId = useMemo(() => new Map(pedidos.map((p) => [p.id, p])), [pedidos])
+  const byId = useMemo(() => new Map(puntosEntrega.map((p) => [p.id, p])), [puntosEntrega])
 
-  // Ruta EFECTIVA de un pedido: gana el override de "Mover a"; si no, la que asignó la corrida.
-  const efectivaRutaId = (id: string): string =>
-    rutaPorPedido.get(id) ?? rutaPorPedidoId(id)?.id ?? SIN_RUTA
+  // Ruta efectiva del punto de entrega (según su primer pedido o override)
+  const efectivaRutaId = (item: PuntoEntregaItem): string => {
+    for (const pid of item.pedidosIds) {
+      if (rutaPorPedido.has(pid)) return rutaPorPedido.get(pid)!
+    }
+    const camionId = item.pedidos[0]?.camionId
+    if (camionId) return `r-${camionId}`
+    return rutaPorPedidoId(item.firstPedidoId)?.id ?? SIN_RUTA
+  }
 
-  // Orden actual del plan (sin los quitados).
-  const planPedidos = order
+  // Filtrar los puntos que conservan al menos un pedido sin eliminar
+  const planPuntos = order
     .map((id) => byId.get(id))
-    .filter((p): p is Pedido => !!p && !removed.has(p.id))
+    .filter((item): item is PuntoEntregaItem => {
+      if (!item) return false
+      return item.pedidosIds.some((pid) => !removedPedidos.has(pid))
+    })
 
-  // Conteo por ruta para las opciones del select.
   const countByRuta = new Map<string, number>()
-  for (const p of planPedidos) {
-    const rid = efectivaRutaId(p.id)
+  for (const item of planPuntos) {
+    const rid = efectivaRutaId(item)
     countByRuta.set(rid, (countByRuta.get(rid) ?? 0) + 1)
   }
-  const rutaOptions = RUTAS.map((r) => ({
+
+  const rutaOptions = listRutas.map((r) => ({
     id: r.id,
     nombre: r.nombre,
     color: r.color as string | undefined,
     count: countByRuta.get(r.id) ?? 0,
   }))
 
-  // Pedidos de la ruta activa (solo importa una vez optimizado).
-  const rutaPedidos = planPedidos.filter((p) => efectivaRutaId(p.id) === rutaSel)
+  const rutaPuntos = planPuntos.filter((item) => efectivaRutaId(item) === rutaSel)
+  const data = showRoutes ? rutaPuntos : planPuntos
 
-  // Lo que ve la tabla: sin rutas → TODOS los puntos de entrega; con rutas → los de la ruta activa.
-  const data = showRoutes ? rutaPedidos : planPedidos
-
-  // ── Acciones ──
-  // Reordenar por drag: el DataTable avisa qué fila se soltó sobre cuál; aplicamos el movimiento al
-  // orden global (ambas están en la ruta activa, así que el arrayMove refleja la nueva secuencia).
   function onRowReorder(activeId: string, overId: string) {
     setOrder((prev) => {
       const from = prev.indexOf(activeId)
@@ -123,20 +153,18 @@ export function SortablePedidosTable({
     })
   }
 
-  // Mueve pedidos a otra ruta (override local): salen de la ruta activa y aparecen al elegir la destino.
-  function moverARuta(ids: string[], rutaId: string) {
+  function moverARuta(pedidoIds: string[], rutaId: string) {
     setRutaPorPedido((prev) => {
       const next = new Map(prev)
-      ids.forEach((id) => next.set(id, rutaId))
+      pedidoIds.forEach((id) => next.set(id, rutaId))
       return next
     })
   }
 
-  function quitar(ids: string[]) {
-    setRemoved((prev) => new Set([...prev, ...ids]))
+  function quitar(pedidoIds: string[]) {
+    setRemovedPedidos((prev) => new Set([...prev, ...pedidoIds]))
   }
 
-  // Modos excluyentes: prender uno apaga el otro (como en el resto del flujo).
   function toggleSelect() {
     setSelectMode((v) => !v)
     setEditMode(false)
@@ -146,13 +174,10 @@ export function SortablePedidosTable({
     setSelectMode(false)
   }
 
-  // ── Columnas del DataTable ──
-  const columns = useMemo<ColumnDefConfig<Pedido>[]>(
+  const columns = useMemo<ColumnDefConfig<PuntoEntregaItem>[]>(
     () =>
-      defineColumns<Pedido>([
+      defineColumns<PuntoEntregaItem>([
         {
-          // Secuencia 1..N dentro de la ruta + punto del color de la ruta. Fija a la izquierda,
-          // no se oculta ni se ordena (es el orden manual del plan).
           id: 'seq',
           header: '#',
           size: 64,
@@ -161,8 +186,7 @@ export function SortablePedidosTable({
           enableHiding: false,
           enableResizing: false,
           cell: (row, index) => {
-            // El punto de color de ruta solo tiene sentido una vez optimizado (antes no hay rutas).
-            const color = showRoutes ? RUTAS.find((r) => r.id === efectivaRutaId(row.id))?.color : undefined
+            const color = showRoutes ? listRutas.find((r) => r.id === efectivaRutaId(row))?.color : undefined
             return (
               <span className="inline-flex items-center gap-1.5">
                 {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />}
@@ -173,11 +197,27 @@ export function SortablePedidosTable({
         },
         {
           id: 'cliente',
-          header: 'Cliente',
+          header: 'Cliente / Punto de entrega',
           accessorKey: 'cliente',
-          size: 200,
+          size: 240,
           enableSorting: false,
-          cell: (row) => <span className="truncate font-medium">{row.cliente}</span>,
+          cell: (row) => (
+            <div className="flex flex-col min-w-0 leading-tight py-0.5" title={`${row.cliente} — ${row.puntoEntrega}`}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="truncate font-medium text-foreground">{row.cliente}</span>
+                {row.pedidos.length > 1 && (
+                  <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-semibold tabular-nums">
+                    {row.pedidos.length} pedidos
+                  </Badge>
+                )}
+              </div>
+              {row.puntoEntrega && (
+                <span className="truncate text-[11px] text-muted-foreground">
+                  {row.puntoEntrega}
+                </span>
+              )}
+            </div>
+          ),
         },
         {
           id: 'total',
@@ -197,83 +237,91 @@ export function SortablePedidosTable({
           meta: { align: 'right' },
           cell: (row) => <span className="tabular-nums">{row.peso} kg</span>,
         },
-        // Empleado/vendedor — en pausa por ahora:
-        // { id: 'vendedor', header: 'Vendedor', accessorKey: 'vendedor', size: 150, enableSorting: false },
       ]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rutaPorPedido, showRoutes],
+    [rutaPorPedido, showRoutes, listRutas],
   )
 
-  // ── Acciones por fila (kebab): mover a ruta (solo optimizado) + quitar. Reordenar es por drag. ──
-  const rowActions = (row: Pedido): RowAction<Pedido>[] => [
+  const rowActions = (row: PuntoEntregaItem): RowAction<PuntoEntregaItem>[] => [
+    {
+      label: 'Ver detalle de pedidos',
+      icon: Eye,
+      onClick: () => setDetallePunto(row),
+    },
     ...(showRoutes
-      ? RUTAS.filter((r) => r.id !== efectivaRutaId(row.id)).map((r) => ({
+      ? listRutas.filter((r) => r.id !== efectivaRutaId(row)).map((r) => ({
           label: `Mover a ${r.nombre}`,
           icon: Route,
-          onClick: () => moverARuta([row.id], r.id),
+          onClick: () => moverARuta(row.pedidosIds, r.id),
         }))
       : []),
-    { label: 'Quitar', icon: Trash2, variant: 'destructive' as const, separator: showRoutes, onClick: () => quitar([row.id]) },
+    {
+      label: 'Quitar del plan',
+      icon: Trash2,
+      variant: 'destructive' as const,
+      separator: true,
+      onClick: () => quitar(row.pedidosIds),
+    },
   ]
 
-  // ── Acciones masivas (barra de selección): quitar del plan. ──
-  const bulkActions: BulkAction<Pedido>[] = [
-    { label: 'Quitar del plan', icon: Trash2, variant: 'destructive', onClick: (rows) => quitar(rows.map((r) => r.id)) },
+  const bulkActions: BulkAction<PuntoEntregaItem>[] = [
+    {
+      label: 'Quitar del plan',
+      icon: Trash2,
+      variant: 'destructive',
+      onClick: (rows) => quitar(rows.flatMap((r) => r.pedidosIds)),
+    },
   ]
 
-  // Select de ruta + toggles (Seleccionar / Reordenar) + acciones del panel — en la barra de filtros.
   const filterBar = (
     <div className="flex flex-1 items-center gap-2">
       {showRoutes ? (
         <>
-      <span className="text-xs font-medium text-muted-foreground">Ruta</span>
-      <Select value={rutaSel} onValueChange={(v) => v && setRutaSel(v)}>
-        <SelectTrigger size="sm" className="w-56">
-          {/* Base UI muestra el valor crudo ("r1") si no le damos render explícito. */}
-          <SelectValue>
-            {(value) => {
-              const rt = rutaOptions.find((r) => r.id === value)
-              if (!rt) return null
-              return (
-                <span className="flex items-center gap-2">
-                  {rt.color ? (
-                    <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
-                  ) : (
-                    <Route size={12} className="shrink-0 opacity-60" />
-                  )}
-                  {rt.nombre}
-                  <span className="text-muted-foreground tabular-nums">({rt.count})</span>
-                </span>
-              )
-            }}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {rutaOptions.map((rt) => (
-            <SelectItem key={rt.id} value={rt.id}>
-              <span className="flex items-center gap-2">
-                {rt.color ? (
-                  <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
-                ) : (
-                  <Route size={12} className="shrink-0 opacity-60" />
-                )}
-                {rt.nombre}
-                <span className="text-muted-foreground tabular-nums">({rt.count})</span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          <span className="text-xs font-medium text-muted-foreground">Ruta</span>
+          <Select value={rutaSel} onValueChange={(v) => v && setRutaSel(v)}>
+            <SelectTrigger size="sm" className="w-56">
+              <SelectValue>
+                {(value) => {
+                  const rt = rutaOptions.find((r) => r.id === value)
+                  if (!rt) return null
+                  return (
+                    <span className="flex items-center gap-2">
+                      {rt.color ? (
+                        <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
+                      ) : (
+                        <Route size={12} className="shrink-0 opacity-60" />
+                      )}
+                      {rt.nombre}
+                      <span className="text-muted-foreground tabular-nums">({rt.count})</span>
+                    </span>
+                  )
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {rutaOptions.map((rt) => (
+                <SelectItem key={rt.id} value={rt.id}>
+                  <span className="flex items-center gap-2">
+                    {rt.color ? (
+                      <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
+                    ) : (
+                      <Route size={12} className="shrink-0 opacity-60" />
+                    )}
+                    {rt.nombre}
+                    <span className="text-muted-foreground tabular-nums">({rt.count})</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </>
       ) : (
         <span className="text-xs font-medium text-muted-foreground">
-          Puntos de entrega <span className="tabular-nums">({planPedidos.length})</span>
+          Puntos de entrega <span className="tabular-nums">({planPuntos.length})</span>
         </span>
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        {/* Solo-lectura (unificación): se oculta "Seleccionar", pero SÍ se permite REORDENAR la
-            secuencia de paradas (cambiar de posición arrastrando). */}
         {!readOnly && (
           <Button
             variant={selectMode ? 'default' : 'outline'}
@@ -281,7 +329,7 @@ export function SortablePedidosTable({
             className="h-8 gap-1.5"
             onClick={toggleSelect}
             aria-pressed={selectMode}
-            title="Seleccionar pedidos"
+            title="Seleccionar puntos de entrega"
           >
             <ListChecks size={14} />
             {selectMode ? 'Listo' : 'Seleccionar'}
@@ -303,33 +351,61 @@ export function SortablePedidosTable({
     </div>
   )
 
-  return (
-    <DataTable
-      tableId={`mockup-plan-lista-${state}`}
-      columns={columns}
-      data={data}
-      getRowId={(row) => row.id}
-      isLoading={state === 'loading'}
-      isError={state === 'error'}
-      errorMessage="No pudimos armar los pedidos del plan."
-      onRetry={onRetry}
-      emptyTitle="Sin puntos de entrega"
-      emptyMessage={
-        showRoutes
-          ? 'Esta ruta no tiene puntos de entrega.'
-          : 'Todavía no hay puntos de entrega para planificar.'
+  const paradaDialogData: Parada | null = detallePunto
+    ? {
+        id: detallePunto.id,
+        puntoEntregaId: detallePunto.puntoEntregaId,
+        puntoEntrega: detallePunto.puntoEntrega,
+        cliente: detallePunto.cliente,
+        canal: detallePunto.canal,
+        pedidos: detallePunto.pedidos,
+        pesoTotal: detallePunto.peso,
+        volumenTotal: detallePunto.pedidos.reduce((acc, p) => acc + p.volumen, 0),
+        ventana: detallePunto.pedidos[0]?.ventana ?? '',
+        secuencia: 1,
+        camionId: null,
+        camionForzadoId: null,
+        lat: detallePunto.pedidos[0]?.lat ?? 0,
+        lng: detallePunto.pedidos[0]?.lng ?? 0,
       }
-      fillHeight
-      clientPagination
-      defaultPageSize={10}
-      selectable={!readOnly && selectMode}
-      enableRowReorder={editMode}
-      onRowReorder={onRowReorder}
-      searchable
-      searchPlaceholder="Buscar por cliente…"
-      rowActions={rowActions}
-      bulkActions={bulkActions}
-      filterBar={filterBar}
-    />
+    : null
+
+  return (
+    <>
+      <DataTable
+        tableId={`mockup-plan-lista-${state}`}
+        columns={columns}
+        data={data}
+        getRowId={(row) => row.id}
+        isLoading={state === 'loading'}
+        isError={state === 'error'}
+        errorMessage="No pudimos armar los puntos de entrega del plan."
+        onRetry={onRetry}
+        emptyTitle="Sin puntos de entrega"
+        emptyMessage={
+          showRoutes
+            ? 'Esta ruta no tiene puntos de entrega.'
+            : 'Todavía no hay puntos de entrega para planificar.'
+        }
+        fillHeight
+        clientPagination
+        defaultPageSize={10}
+        selectable={!readOnly && selectMode}
+        enableRowReorder={editMode}
+        onRowReorder={onRowReorder}
+        onRowClick={(row) => setDetallePunto(row)}
+        rowClassName={() => 'cursor-pointer'}
+        searchable
+        searchPlaceholder="Buscar por cliente o sucursal…"
+        searchKeys={['cliente', 'puntoEntrega', 'puntoEntregaId']}
+        rowActions={rowActions}
+        bulkActions={bulkActions}
+        filterBar={filterBar}
+      />
+
+      {paradaDialogData && (
+        <PuntoEntregaDialog parada={paradaDialogData} onClose={() => setDetallePunto(null)} />
+      )}
+    </>
   )
 }

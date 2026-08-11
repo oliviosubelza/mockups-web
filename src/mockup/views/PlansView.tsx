@@ -1,12 +1,13 @@
 // Lista de planes (dispatch_plan) — la pantalla de entrada del proceso. El flujo de fases no
 // empieza en el aire: arranca cuando se crea un plan en BORRADOR y se entra en él.
-import { Plus } from 'lucide-react'
+import { Plus, RotateCcw } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
-import { DISTRIBUIDORAS, PLANES, type EstadoPlan, type Plan } from '../mock-data'
+import { DISTRIBUIDORAS, type EstadoPlan, type Plan } from '../mock-data'
+import { usePlanesStore } from '../planes-store'
 import type { BoardState } from '../types'
 
 /** ISO (YYYY-MM-DD…) → DD/MM/YYYY para mostrar. */
@@ -100,8 +101,10 @@ const filterDefs = defineFilters<PlanFilters>([
 
 export function PlansView({ state, onNew }: { state: BoardState; onNew?: () => void }) {
   const [filters, setFilters] = useState<Partial<PlanFilters>>({})
+  const planes = usePlanesStore((s) => s.planes)
+  const clearPlanes = usePlanesStore((s) => s.clearPlanes)
 
-  const filtrados = PLANES.filter((p) => {
+  const filtrados = planes.filter((p) => {
     if (filters.estado && p.estado !== filters.estado) return false
     if (filters.distribuidora && p.distribuidora !== filters.distribuidora) return false
     // El daterange emite ISO con hora; comparo solo la parte fecha (ambas en YYYY-MM-DD ordenan lexicográficamente).
@@ -117,10 +120,18 @@ export function PlansView({ state, onNew }: { state: BoardState; onNew?: () => v
         <span className="text-sm text-muted-foreground">
           Planificaciones de los últimos días. Entrá a un borrador para seguir planificando.
         </span>
-        <Button className="ml-auto shrink-0" onClick={onNew}>
-          <Plus size={14} className="mr-1.5" />
-          Nueva planificación
-        </Button>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {planes.length > 0 && (
+            <Button variant="outline" size="sm" onClick={clearPlanes} title="Reiniciar lista de planificaciones para demostración">
+              <RotateCcw size={13} className="mr-1.5" />
+              Reiniciar demo
+            </Button>
+          )}
+          <Button onClick={onNew}>
+            <Plus size={14} className="mr-1.5" />
+            Nueva planificación
+          </Button>
+        </div>
       </div>
 
       <DataTable
@@ -140,7 +151,7 @@ export function PlansView({ state, onNew }: { state: BoardState; onNew?: () => v
         searchPlaceholder="Buscar por plan, distribuidora o planificador…"
         clientPagination
         defaultPageSize={10}
-        onRowClick={() => {}}
+        onRowClick={onNew}
         filterBar={
           <FilterBar
             defs={filterDefs}
@@ -152,3 +163,4 @@ export function PlansView({ state, onNew }: { state: BoardState; onNew?: () => v
     </div>
   )
 }
+
