@@ -609,28 +609,13 @@ export const PEDIDOS: Pedido[] = (() => {
     for (let i = 0; i < cantidad; i++) {
       const clientePropio = deProvincia ? deProvincia[i].cliente : nombres![i]
 
-      // Ciudad y coordenada se eligen JUNTAS, para que el pin y el filtro no se contradigan.
-      let ciudad: CiudadId
-      let ancla: { lat: number; lng: number }
-      let lugar: string
-      if (deProvincia) {
-        const localidad = deProvincia[i].localidad
-        ciudad = localidad.ciudad as CiudadId
-        ancla = { lat: localidad.lat, lng: localidad.lng }
-        lugar = localidad.nombre
-      } else if (rand.chance(0.2)) {
-        const localidad = rand.pick(cercanas)
-        ciudad = localidad.ciudad as CiudadId
-        ancla = { lat: localidad.lat, lng: localidad.lng }
-        lugar = localidad.nombre
-      } else {
-        ciudad = 'santacruz'
-        ancla = ANCLAS_ZONA[rand.pick(ZONA_IDS)]
-        lugar = rand.pick(LUGARES_SCZ)
-      }
+      // Coordenadas elegidas dentro del radio urbano de Santa Cruz de la Sierra
+      const ciudad: CiudadId = 'santacruz'
+      const zona = rand.pick(ZONA_IDS)
+      const ancla = ANCLAS_ZONA[zona]
+      const lugar = rand.pick(LUGARES_SCZ)
 
-      const zona = ZONA_POR_CIUDAD[ciudad] ?? rand.pick(ZONA_IDS)
-      const jitter = ciudad === 'santacruz' ? 0.022 : 0.011
+      const jitter = 0.022
       const lat = Number((ancla.lat + rand.float(-jitter, jitter, 4)).toFixed(4))
       const lng = Number((ancla.lng + rand.float(-jitter, jitter, 4)).toFixed(4))
 
@@ -1113,6 +1098,27 @@ export const MAX_PEDIDOS_POR_CAMION = 50
 // el listado no tiene que sumar sobre planning_truck ni dispatch_delivery_points.
 export type EstadoPlan = 'borrador' | 'optimizado' | 'aprobado'
 
+export interface PlanCamion {
+  id: string
+  camionId: string
+  placa: string
+  tipo: 'Frío' | 'Seco'
+  clase: 'Furgón' | 'Camión'
+  capacidadKg: number
+  capacidadVolM3: number
+  rutaNombre: string
+  rutaId: string
+  rutaColor: string
+  orderCount: number
+  cargaKg: number
+  cargaVolM3: number
+  pedidos: number
+  chofer: string
+  auxiliar: string
+  ocupacionPct: number
+  planId?: number
+}
+
 export interface Plan {
   /** dispatch_plans.id — PK numérico. */
   id: number
@@ -1128,6 +1134,8 @@ export interface Plan {
   camiones: number
   /** Planificador del plan (dispatch_plans.employee_id / created_by). */
   creadoPor: string
+  /** Detalle de camiones asignados y sus rutas creadas. */
+  camionesDetalle?: PlanCamion[]
 }
 
 /** YYYY-MM-DD de hoy + `dias` (negativo = pasado). Mantiene el listado fresco sin editar fechas a mano. */

@@ -146,7 +146,13 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
         isRowSelectable={(row) => row.estado === 'disponible'}
         defaultSelectedIds={selectedTruckIds}
         onSelectionChange={(rows) => {
-          setSelectedTrucks(rows.map((r) => r.id))
+          const nextIds = rows.map((r) => r.id)
+          if (
+            nextIds.length !== selectedTruckIds.length ||
+            nextIds.some((id, i) => id !== selectedTruckIds[i])
+          ) {
+            setSelectedTrucks(nextIds)
+          }
         }}
         searchable
         searchPlaceholder="Buscar por placa o tipo…"

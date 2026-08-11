@@ -41,7 +41,9 @@ export function nearestOrder(start: LatLngTuple, stops: Parada[]): Parada[] {
 export function buildRouteOverlay(
   paradas: Parada[],
   rutaIdOf: (paradaId: string) => string | undefined,
+  rutas?: { id: string; color: string }[],
 ): { polylines: OverlayPolyline[]; markers: OverlayMarker[] } {
+  const listRutas = rutas || RUTAS
   const depot: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
 
   const byRuta = new Map<string, Parada[]>()
@@ -56,9 +58,10 @@ export function buildRouteOverlay(
   const polylines: OverlayPolyline[] = []
   const markers: OverlayMarker[] = []
   for (const [rid, stops] of byRuta) {
-    const ruta = RUTAS.find((r) => r.id === rid)
+    const ruta = listRutas.find((r) => r.id === rid)
     if (!ruta) continue
     const ordered = nearestOrder(depot, stops)
+    // Ruta cerrada: origen (depósito) -> paradas en secuencia -> fin (depósito)
     const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
     polylines.push({ id: `route-${rid}`, path, color: ruta.color })
     // Badge con el orden de visita de cada parada (secuencia optimizada).

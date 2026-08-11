@@ -36,6 +36,7 @@ import {
   type OrdenTransporte,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
+import { usePlanesStore } from '../planes-store'
 
 const kg = (n: number) => `${n.toLocaleString('es')} kg`
 const m3 = (n: number) => `${n.toLocaleString('es', { maximumFractionDigits: 1 })} m³`
@@ -263,23 +264,42 @@ function OrdenRow({
 
 export function CamionesView() {
   const [filters, setFilters] = useState<Partial<CamionFilters>>({})
-  // Camión en proceso de finalización (paso de selección de órdenes). null = diálogo cerrado.
   const [seleccion, setSeleccion] = useState<CamionResumen | null>(null)
-  // Órdenes EXCLUIDAS de la finalización (siguen visibles, atenuadas, fuera de la suma de peso).
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
+  const planes = usePlanesStore((s) => s.planes)
 
-  const data = useMemo(
-    () =>
-      CAMIONES_RESUMEN.filter(
-        (c) =>
-          (!filters.tipo || c.tipo === filters.tipo) && (!filters.clase || c.clase === filters.clase),
-      ),
-    [filters],
-  )
+  const createdTrucks: CamionResumen[] = useMemo(() => {
+    return planes.flatMap((p) =>
+      (p.camionesDetalle || []).map((ct) => ({
+        id: `${p.id}-${ct.placa}`,
+        placa: ct.placa,
+        tipo: ct.tipo,
+        clase: ct.clase,
+        capacidadKg: ct.capacidadKg,
+        capacidadVolM3: ct.capacidadVolM3,
+        ordenes: [],
+        orderCount: ct.orderCount,
+        cargaKg: ct.cargaKg,
+        cargaVolM3: ct.cargaVolM3,
+        pedidos: ct.pedidos,
+        chofer: ct.chofer,
+        auxiliar: ct.auxiliar,
+        ocupacionPct: ct.ocupacionPct,
+        rutaNombre: ct.rutaNombre,
+        rutaColor: ct.rutaColor,
+        planId: p.id,
+      })),
+    )
+  }, [planes])
 
-  // "Finalizar" ya NO va directo al mapa: abre el paso de selección para elegir qué órdenes del
-  // camión entran en el viaje final. Arranca con todas incluidas.
+  const data = useMemo(() => {
+    let list = createdTrucks.length > 0 ? createdTrucks : CAMIONES_RESUMEN
+    if (filters.tipo) list = list.filter((c) => c.tipo === filters.tipo)
+    if (filters.clase) list = list.filter((c) => c.clase === filters.clase)
+    return list
+  }, [createdTrucks, filters])
+
   const abrirSeleccion = (c: CamionResumen) => {
     setSeleccion(c)
     setExcluidas(new Set())
@@ -292,24 +312,17 @@ export function CamionesView() {
       return next
     })
 
-  // Solo las órdenes INCLUIDAS cuentan para la carga y para lo que recibe el mapa.
   const incluidas = seleccion?.ordenes.filter((o) => !excluidas.has(o.id)) ?? []
   const usadoKg = incluidas.reduce((acc, o) => acc + pesoDeOrden(o), 0)
   const usadoVolM3 = incluidas.reduce((acc, o) => acc + volumenDeOrden(o), 0)
   const usadoPedidos = incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0)
   const capacidadKg = seleccion?.capacidadKg ?? 0
   const capacidadVolM3 = seleccion?.capacidadVolM3 ?? 0
-  // Exceder capacidad (peso o volumen) es una ALERTA, no un bloqueo: el planificador la observa y
-  // decide igual. Lo único que impide finalizar es no tener ninguna orden incluida.
   const excedePeso = usadoKg > capacidadKg
   const excedeVol = usadoVolM3 > capacidadVolM3
   const totalParadas = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds))).length
   const puedeFinalizar = incluidas.length >= 1
 
-  // Confirma la finalización: junta las paradas de las órdenes INCLUIDAS y va al mapa (mismo destino
-  // que disparaba "unificar"). El planner scopea el mapa a esas paradas y dibuja UNA sola ruta.
-  // El resumen que viaja al mapa se calcula sobre las INCLUIDAS (no sobre todo el camión): las
-  // tarjetas sobre el mapa tienen que mostrar el viaje que el usuario acaba de armar acá.
   const confirmar = () => {
     if (!seleccion || !puedeFinalizar) return
     const paradaIds = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
@@ -334,20 +347,33 @@ export function CamionesView() {
           id: 'placa',
           header: 'Camión',
           accessorKey: 'placa',
-          size: 190,
+          size: 220,
           pin: 'left',
           cell: (row) => (
-            <span className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Truck className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate font-medium">{row.placa}</span>
-            </span>
+              {row.rutaNombre && (
+                <Badge
+                  variant="outline"
+                  className="rounded-full text-[10px] tabular-nums shrink-0"
+                  style={{
+                    borderColor: row.rutaColor ? `${row.rutaColor}60` : undefined,
+                    backgroundColor: row.rutaColor ? `${row.rutaColor}15` : undefined,
+                    color: row.rutaColor || undefined,
+                  }}
+                >
+                  {row.rutaNombre}
+                </Badge>
+              )}
+            </div>
           ),
         },
         {
           id: 'tipo',
           header: 'Tipo',
           accessorKey: 'tipo',
-          size: 50,
+          size: 70,
           pin: 'left',
           cell: (row) => (
             <span className="flex items-center gap-2">
@@ -359,17 +385,12 @@ export function CamionesView() {
         },
         {
           id: 'rutas',
-          // "Órdenes" solo se leía como pedidos. Acá el conteo es de transport_orders (las órdenes de
-          // transporte del camión, las que después se unifican), así que el header lo dice completo.
           header: 'Rutas',
-          size: 170,
+          size: 150,
           meta: { align: 'right' },
           cell: (row) => (
-            <span className="tabular-nums">
-              {row.orderCount}
-              <span className="ml-1 text-xs text-muted-foreground">
-                {/* {row.orderCount === 1 ? 'orden' : 'órdenes'} */}
-              </span>
+            <span className="tabular-nums font-medium">
+              {row.rutaNombre || `${row.orderCount} orden(es)`}
             </span>
           ),
         },

@@ -45,6 +45,7 @@ import {
   RUTAS,
   type CanalId,
   type Parada,
+  type PlanCamion,
   type ProductType,
 } from '../mock-data'
 import type { BoardState, PlanningTab } from '../types'
@@ -317,17 +318,27 @@ export function PlanningView({
     return sel.length > 0 ? sel : CAMIONES.filter((c) => c.enRuteo).slice(0, 3)
   }, [selectedTruckIds])
 
+  const [customRutaNombres, setCustomRutaNombres] = useState<Record<string, string>>({})
+
   // Genera exactamente 1 Ruta por cada camión seleccionado
   const rutasPlan = useMemo(() => {
     const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7']
-    return selectedTrucks.map((camion, i) => ({
-      id: `r-${camion.id}`,
-      nombre: `Ruta ${i + 1} (${camion.alias || camion.codigoPlaca || camion.id})`,
-      camionId: camion.id,
-      camion,
-      color: colores[i % colores.length],
-    }))
-  }, [selectedTrucks])
+    return selectedTrucks.map((camion, i) => {
+      const id = `r-${camion.id}`
+      const defaultNombre = `Ruta ${i + 1} (${camion.alias || camion.codigoPlaca || camion.id})`
+      return {
+        id,
+        nombre: customRutaNombres[id] || defaultNombre,
+        camionId: camion.id,
+        camion,
+        color: colores[i % colores.length],
+      }
+    })
+  }, [selectedTrucks, customRutaNombres])
+
+  const handleRenameRuta = (rutaId: string, nuevoNombre: string) => {
+    setCustomRutaNombres((prev) => ({ ...prev, [rutaId]: nuevoNombre }))
+  }
 
   const [assignedParadasState, setAssignedParadasState] = useState<Parada[] | null>(null)
 
@@ -349,7 +360,7 @@ export function PlanningView({
         }
         return true
       }),
-    [canales, paradas, rutas, rutasPorCamionId, tipos],
+    [canales, paradas, rutas, tipos],
   )
 
   const hayFiltros = canales.size > 0 || tipos.size > 0 || rutas.size > 0
@@ -357,6 +368,19 @@ export function PlanningView({
     setCanales(new Set())
     setTipos(new Set())
     setRutas(new Set())
+  }
+
+  const selectedRutaId = useMemo(() => {
+    if (rutas.size === 1) return Array.from(rutas)[0]
+    return 'ALL'
+  }, [rutas])
+
+  const handleSelectRuta = (rId: string) => {
+    if (!rId || rId === 'ALL') {
+      setRutas(new Set())
+    } else {
+      setRutas(new Set([rId]))
+    }
   }
 
   // Rutas que quedan visibles con los filtros aplicados (leyenda del mapa).
@@ -388,6 +412,7 @@ export function PlanningView({
         return {
           ...parada,
           camionId: camion.id,
+          pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: camion.id })),
         }
       })
 
@@ -418,7 +443,7 @@ export function PlanningView({
       <div className="relative isolate min-h-0 flex-1">
         <OrdersMap
           paradas={filtradas}
-          rutas={rutasPlan as any}
+          rutas={(rutas.size > 0 ? rutasPlan.filter((r) => rutas.has(r.id)) : rutasPlan) as any}
           routeToolEnabled={optimized}
           showRoute={showRoute}
           onToggleRoute={() => setShowRoute((v) => !v)}
@@ -500,6 +525,10 @@ export function PlanningView({
         optimized={optimized}
         readOnly={readOnly}
         rutas={rutasPlan}
+        selectedRutaId={selectedRutaId}
+        onSelectRuta={handleSelectRuta}
+        onReorder={() => setOptimized(false)}
+        onRenameRuta={handleRenameRuta}
         headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
       />
     </div>
@@ -510,10 +539,43 @@ export function PlanningView({
       const dispatchState = useDispatchPlanStore.getState()
       const includedOrders = selectIncludedOrders(dispatchState)
       const selectedTrucks = selectSelectedTrucks(dispatchState)
+
+      const camionesDetalle: PlanCamion[] = rutasPlan.map((ruta) => {
+        const truck = ruta.camion
+        const paradasDeRuta = paradas.filter((p) => p.camionId === truck.id)
+        const cargaKg = paradasDeRuta.reduce((sum, p) => sum + p.pesoTotal, 0)
+        const cargaVolM3 = paradasDeRuta.reduce((sum, p) => sum + p.volumenTotal, 0)
+        const pedidosCount = paradasDeRuta.reduce((sum, p) => sum + p.pedidos.length, 0)
+        const capacidadKg = (truck.capacidadPeso ?? 0) * 1000
+        const capacidadVolM3 = truck.capacidadVolumen ?? 0
+        const ocupacionPct = capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0
+
+        return {
+          id: truck.id,
+          camionId: truck.id,
+          placa: truck.codigoPlaca || truck.id,
+          tipo: truck.tipo,
+          clase: truck.clase,
+          capacidadKg,
+          capacidadVolM3,
+          rutaNombre: ruta.nombre,
+          rutaId: ruta.id,
+          rutaColor: ruta.color,
+          orderCount: 1,
+          cargaKg,
+          cargaVolM3,
+          pedidos: pedidosCount,
+          chofer: truck.chofer || 'M. Suárez',
+          auxiliar: truck.auxiliar || 'R. Fernández',
+          ocupacionPct,
+        }
+      })
+
       usePlanesStore.getState().addPlan({
-        pedidos: includedOrders.length > 0 ? includedOrders.length : 24,
-        camiones: selectedTrucks.length > 0 ? selectedTrucks.length : 6,
+        pedidos: includedOrders.length > 0 ? includedOrders.length : paradas.flatMap((p) => p.pedidos).length,
+        camiones: selectedTrucks.length > 0 ? selectedTrucks.length : 3,
         estado: 'optimizado',
+        camionesDetalle,
       })
     }
     onNext()
@@ -659,7 +721,7 @@ export function PlanningView({
                 <SelectValue placeholder="Elegí una ruta…" />
               </SelectTrigger>
               <SelectContent>
-                {rutasBase.map((ruta) => (
+                {rutasPlan.map((ruta) => (
                   <SelectItem key={ruta.id} value={ruta.id}>
                     <span className="flex items-center gap-2">
                       <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />

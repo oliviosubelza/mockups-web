@@ -399,6 +399,14 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const [draftZonas, setDraftZonas] = useState<ZonaId[]>(activeZonas)
   const [draftVendedores, setDraftVendedores] = useState<string[]>(activeVendedores)
 
+  useEffect(() => {
+    setDraftCiudades(activeCiudades)
+    setDraftCanales(activeCanales)
+    setDraftMercados(activeMercados)
+    setDraftZonas(activeZonas)
+    setDraftVendedores(activeVendedores)
+  }, [activeCiudades, activeCanales, activeMercados, activeZonas, activeVendedores])
+
   // Toggle genérico de un valor dentro de un array de draft con actualización inmediata del store.
   const toggleEn = <T extends string>(
     key: 'canales' | 'ciudades' | 'mercados' | 'zonas' | 'vendedores',

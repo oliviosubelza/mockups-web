@@ -1,7 +1,7 @@
 // Store de planificaciones guardadas en memoria/session (planes_store)
 // Mantiene el listado de planes creados durante la sesión para el flujo de demostración.
 import { create } from 'zustand'
-import { DISTRIBUIDORAS, type EstadoPlan, type Plan } from './mock-data'
+import { DISTRIBUIDORAS, type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
 
 const STORAGE_KEY = 'mockups-web:planes'
 
@@ -31,6 +31,7 @@ export interface CreatePlanInput {
   camiones?: number
   creadoPor?: string
   estado?: EstadoPlan
+  camionesDetalle?: PlanCamion[]
 } 
 
 interface PlanesState {
@@ -66,6 +67,7 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
       pedidos: input?.pedidos && input.pedidos > 0 ? input.pedidos : 24,
       camiones: input?.camiones && input.camiones > 0 ? input.camiones : 6,
       creadoPor: input?.creadoPor || 'Juan Pérez',
+      camionesDetalle: input?.camionesDetalle?.map((c) => ({ ...c, planId: newId })),
     }
 
     const updated = [newPlan, ...currentPlanes]

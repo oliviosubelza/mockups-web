@@ -98,6 +98,15 @@ const INITIAL_STATE = {
   orderOverrides: {} as OrderOverrides,
 }
 
+function arrayEquals<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
 export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
   ...INITIAL_STATE,
 
@@ -108,15 +117,30 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
         : [...state.selectedTruckIds, id],
     })),
 
-  setSelectedTrucks: (ids) => set({ selectedTruckIds: ids }),
+  setSelectedTrucks: (ids) =>
+    set((state) => {
+      if (arrayEquals(state.selectedTruckIds, ids)) return state
+      return { selectedTruckIds: ids }
+    }),
 
   applySelection: (sel) =>
-    set({
-      activeCanales: sel.canales,
-      activeCiudades: sel.ciudades,
-      activeMercados: sel.mercados,
-      activeZonas: sel.zonas,
-      activeVendedores: sel.vendedores,
+    set((state) => {
+      if (
+        arrayEquals(state.activeCanales, sel.canales) &&
+        arrayEquals(state.activeCiudades, sel.ciudades) &&
+        arrayEquals(state.activeMercados, sel.mercados) &&
+        arrayEquals(state.activeZonas, sel.zonas) &&
+        arrayEquals(state.activeVendedores, sel.vendedores)
+      ) {
+        return state
+      }
+      return {
+        activeCanales: sel.canales,
+        activeCiudades: sel.ciudades,
+        activeMercados: sel.mercados,
+        activeZonas: sel.zonas,
+        activeVendedores: sel.vendedores,
+      }
     }),
 
   setOrdersIncluded: (scopeIds, includedIds) =>

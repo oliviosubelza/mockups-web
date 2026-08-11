@@ -373,6 +373,7 @@ function RowActionsMenu<T extends object>({ row, actions }: { row: T; actions: R
       <DropdownMenuTrigger
         className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent transition-colors"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
       >
         <MoreHorizontal size={14} />
       </DropdownMenuTrigger>
@@ -382,7 +383,10 @@ function RowActionsMenu<T extends object>({ row, actions }: { row: T; actions: R
             {action.separator && i > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem
               disabled={action.disabled?.(row)}
-              onClick={() => action.onClick(row)}
+              onClick={(e) => {
+                e.stopPropagation()
+                action.onClick(row)
+              }}
               className={action.variant === 'destructive' ? 'text-destructive focus:text-destructive' : ''}
             >
               {action.icon && <action.icon size={13} className="mr-2 shrink-0" />}

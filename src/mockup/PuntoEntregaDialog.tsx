@@ -306,7 +306,7 @@ export function PuntoEntregaDialog({
                       {pedido.salesOrder}
                     </ItemTitle>
                     <ItemDescription className="text-[11px] leading-tight">
-                      {pedido.productType} · {pedido.paymentType} · {pedido.vendedor}
+                      {pedido.productType} · Pendiente · {pedido.vendedor}
                     </ItemDescription>
                   </ItemContent>
                   <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">

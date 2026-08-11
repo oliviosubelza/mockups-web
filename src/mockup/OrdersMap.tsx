@@ -156,6 +156,7 @@ export function OrdersMap({
               if (!p?.camionId) return undefined
               return `r-${p.camionId}`
             },
+            listRutas,
           )
     )
   }, [showRoute, singleRoute, paradas, routeColor, rutas, setOverlay, clearOverlay])

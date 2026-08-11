@@ -2,7 +2,7 @@
 // Agrupa los pedidos por punto de entrega (delivery_point) para que no se repita el cliente/sucursal
 // cuando realiza múltiples pedidos en la misma entrega.
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpDown, Eye, ListChecks, Route, Trash2 } from 'lucide-react'
+import { ArrowUpDown, Eye, ListChecks, Pencil, Route, Trash2 } from 'lucide-react'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
   DataTable,
@@ -13,6 +13,7 @@ import {
 } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RUTAS, rutaPorPedidoId, type CanalId, type Parada, type Pedido } from './mock-data'
 import { PuntoEntregaDialog } from './PuntoEntregaDialog'
@@ -66,7 +67,8 @@ function agruparPorPuntoEntrega(pedidos: Pedido[]): PuntoEntregaItem[] {
 }
 
 /** Primera ruta con pedidos (default del select); cae a la primera ruta o "Sin ruta". */
-function primeraRutaConPedidos(pedidos: Pedido[], listRutas: { id: string }[]): string {
+function primeraRutaConPedidos(pedidos: Pedido[], listRutas: { id: string }[] = RUTAS): string {
+  if (!listRutas || listRutas.length === 0) return SIN_RUTA
   return listRutas.find((r) => pedidos.some((p) => (p.camionId ? `r-${p.camionId}` === r.id : false)))?.id ?? listRutas[0]?.id ?? SIN_RUTA
 }
 
@@ -78,6 +80,10 @@ export function SortablePedidosTable({
   headerActions,
   readOnly = false,
   rutas,
+  selectedRutaId,
+  onSelectRuta,
+  onReorder,
+  onRenameRuta,
 }: {
   pedidos: Pedido[]
   state: BoardState
@@ -85,12 +91,27 @@ export function SortablePedidosTable({
   onRetry?: () => void
   headerActions?: React.ReactNode
   readOnly?: boolean
+  rutas?: { id: string; nombre: string; color?: string; camionId?: string }[]
+  selectedRutaId?: string
+  onSelectRuta?: (rutaId: string) => void
+  onReorder?: () => void
+  onRenameRuta?: (rutaId: string, nuevoNombre: string) => void
 }) {
   const showRoutes = optimized && !readOnly
-  const [order, setOrder] = useState<string[]>(() => pedidos.map((p) => p.id))
-  const [removed, setRemoved] = useState<Set<string>>(new Set()) // pedidos quitados del plan (mockup)
-  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map()) // override de "Mover a"
-  const [rutaSel, setRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos)) // ruta activa (select)
+  const listRutas = rutas || RUTAS
+  const puntosEntrega = useMemo(() => agruparPorPuntoEntrega(pedidos), [pedidos])
+
+  const [order, setOrder] = useState<string[]>(() => puntosEntrega.map((p) => p.id))
+  const [removedPedidos, setRemovedPedidos] = useState<Set<string>>(new Set())
+  const [rutaPorPedido, setRutaPorPedido] = useState<Map<string, string>>(new Map())
+  const [localRutaSel, setLocalRutaSel] = useState<string>(() => primeraRutaConPedidos(pedidos, listRutas))
+  
+  const rutaSel = selectedRutaId !== undefined ? selectedRutaId : localRutaSel
+  const changeRutaSel = (v: string) => {
+    if (onSelectRuta) onSelectRuta(v)
+    else setLocalRutaSel(v)
+  }
+
   // Modos excluyentes (toggles): seleccionar (checks) y reordenar (drag de filas).
   const [selectMode, setSelectMode] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -100,7 +121,7 @@ export function SortablePedidosTable({
     setOrder(puntosEntrega.map((p) => p.id))
     setRemovedPedidos(new Set())
     setRutaPorPedido(new Map())
-    setRutaSel(primeraRutaConPedidos(pedidos, listRutas))
+    setLocalRutaSel(primeraRutaConPedidos(pedidos, listRutas))
     setSelectMode(false)
     setEditMode(false)
   }, [puntosEntrega, pedidos, listRutas])
@@ -138,7 +159,7 @@ export function SortablePedidosTable({
     count: countByRuta.get(r.id) ?? 0,
   }))
 
-  const rutaPuntos = planPuntos.filter((item) => efectivaRutaId(item) === rutaSel)
+  const rutaPuntos = rutaSel === 'ALL' ? planPuntos : planPuntos.filter((item) => efectivaRutaId(item) === rutaSel)
   const data = showRoutes ? rutaPuntos : planPuntos
 
   function onRowReorder(activeId: string, overId: string) {
@@ -148,6 +169,7 @@ export function SortablePedidosTable({
       if (from === -1 || to === -1) return prev
       return arrayMove(prev, from, to)
     })
+    if (onReorder) onReorder()
   }
 
   function moverARuta(pedidoIds: string[], rutaId: string) {
@@ -156,10 +178,12 @@ export function SortablePedidosTable({
       pedidoIds.forEach((id) => next.set(id, rutaId))
       return next
     })
+    if (onReorder) onReorder()
   }
 
   function quitar(pedidoIds: string[]) {
     setRemovedPedidos((prev) => new Set([...prev, ...pedidoIds]))
+    if (onReorder) onReorder()
   }
 
   function toggleSelect() {
@@ -253,7 +277,7 @@ export function SortablePedidosTable({
         }))
       : []),
     {
-      label: 'Quitar del plan',
+      label: 'Quitar punto de entrega',
       icon: Trash2,
       variant: 'destructive' as const,
       separator: true,
@@ -263,7 +287,7 @@ export function SortablePedidosTable({
 
   const bulkActions: BulkAction<PuntoEntregaItem>[] = [
     {
-      label: 'Quitar del plan',
+      label: 'Quitar punto de entrega',
       icon: Trash2,
       variant: 'destructive',
       onClick: (rows) => quitar(rows.flatMap((r) => r.pedidosIds)),
@@ -271,17 +295,48 @@ export function SortablePedidosTable({
   ]
 
   const filterBar = (
-    <div className="flex flex-1 items-center gap-2">
-      {showRoutes ? (
-        <>
-          <span className="text-xs font-medium text-muted-foreground">Ruta</span>
-          <Select value={rutaSel} onValueChange={(v) => v && setRutaSel(v)}>
-            <SelectTrigger size="sm" className="w-56">
-              <SelectValue>
-                {(value) => {
-                  const rt = rutaOptions.find((r) => r.id === value)
-                  if (!rt) return null
-                  return (
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between min-w-0">
+      {/* Grupo Izquierdo: Selección de Ruta y Renombrado */}
+      <div className="flex items-center gap-2 min-w-0 flex-wrap flex-1">
+        {showRoutes ? (
+          <>
+            <span className="text-xs font-medium text-muted-foreground shrink-0">Ruta</span>
+            <Select value={rutaSel} onValueChange={(v) => v && changeRutaSel(v)}>
+              <SelectTrigger size="sm" className="h-8 w-36 sm:w-44 shrink-0 text-xs">
+                <SelectValue>
+                  {(value) => {
+                    if (value === 'ALL') {
+                      return (
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Route size={12} className="shrink-0 opacity-60" />
+                          <span className="truncate">Todas ({planPuntos.length})</span>
+                        </span>
+                      )
+                    }
+                    const rt = rutaOptions.find((r) => r.id === value)
+                    if (!rt) return null
+                    return (
+                      <span className="flex items-center gap-1.5 truncate">
+                        {rt.color ? (
+                          <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
+                        ) : (
+                          <Route size={12} className="shrink-0 opacity-60" />
+                        )}
+                        <span className="truncate">{rt.nombre}</span>
+                      </span>
+                    )
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">
+                  <span className="flex items-center gap-2">
+                    <Route size={12} className="shrink-0 opacity-60" />
+                    Todas las rutas ({planPuntos.length})
+                  </span>
+                </SelectItem>
+                {rutaOptions.map((rt) => (
+                  <SelectItem key={rt.id} value={rt.id}>
                     <span className="flex items-center gap-2">
                       {rt.color ? (
                         <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
@@ -291,57 +346,55 @@ export function SortablePedidosTable({
                       {rt.nombre}
                       <span className="text-muted-foreground tabular-nums">({rt.count})</span>
                     </span>
-                  )
-                }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {rutaOptions.map((rt) => (
-                <SelectItem key={rt.id} value={rt.id}>
-                  <span className="flex items-center gap-2">
-                    {rt.color ? (
-                      <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
-                    ) : (
-                      <Route size={12} className="shrink-0 opacity-60" />
-                    )}
-                    {rt.nombre}
-                    <span className="text-muted-foreground tabular-nums">({rt.count})</span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </>
-      ) : (
-        <span className="text-xs font-medium text-muted-foreground">
-          Puntos de entrega <span className="tabular-nums">({planPuntos.length})</span>
-        </span>
-      )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+            {rutaSel !== 'ALL' && onRenameRuta && (
+              <div className="flex items-center gap-1.5 min-w-[130px] max-w-[200px] flex-1">
+                <Pencil size={12} className="text-muted-foreground shrink-0" />
+                <Input
+                  value={listRutas.find((r) => r.id === rutaSel)?.nombre ?? ''}
+                  onChange={(e) => onRenameRuta(rutaSel, e.target.value)}
+                  className="h-8 w-full text-xs bg-background font-medium"
+                  placeholder="Nombre de la ruta..."
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <span className="text-xs font-medium text-muted-foreground shrink-0">
+            Puntos de entrega <span className="tabular-nums">({planPuntos.length})</span>
+          </span>
+        )}
+      </div>
+
+      {/* Grupo Derecho: Acciones y Botones */}
+      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
         {!readOnly && (
           <Button
             variant={selectMode ? 'default' : 'outline'}
             size="sm"
-            className="h-8 gap-1.5"
+            className="h-8 px-2.5 gap-1.5 text-xs"
             onClick={toggleSelect}
             aria-pressed={selectMode}
             title="Seleccionar puntos de entrega"
           >
             <ListChecks size={14} />
-            {selectMode ? 'Listo' : 'Seleccionar'}
+            <span>{selectMode ? 'Listo' : 'Seleccionar'}</span>
           </Button>
         )}
         <Button
           variant={editMode ? 'default' : 'outline'}
           size="sm"
-          className="h-8 gap-1.5"
+          className="h-8 px-2.5 gap-1.5 text-xs"
           onClick={toggleEdit}
           aria-pressed={editMode}
           title="Reordenar la secuencia arrastrando las filas"
         >
           <ArrowUpDown size={14} />
-          {editMode ? 'Listo' : 'Reordenar'}
+          <span>{editMode ? 'Listo' : 'Reordenar'}</span>
         </Button>
         {headerActions && <div className="flex shrink-0 items-center">{headerActions}</div>}
       </div>
