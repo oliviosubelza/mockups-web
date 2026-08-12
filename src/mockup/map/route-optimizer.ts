@@ -60,13 +60,18 @@ export function buildRouteOverlay(
   for (const [rid, stops] of byRuta) {
     const ruta = listRutas.find((r) => r.id === rid)
     if (!ruta) continue
-    const ordered = nearestOrder(depot, stops)
+    const hasSeq = stops.some((s) => s.secuencia !== undefined && s.secuencia !== null)
+    const ordered = hasSeq
+      ? [...stops].sort((a, b) => (a.secuencia ?? 0) - (b.secuencia ?? 0))
+      : nearestOrder(depot, stops)
+
     // Ruta cerrada: origen (depósito) -> paradas en secuencia -> fin (depósito)
     const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
     polylines.push({ id: `route-${rid}`, path, color: ruta.color })
-    // Badge con el orden de visita de cada parada (secuencia optimizada).
+    // Badge con el orden de visita de cada parada (secuencia 1..N).
     ordered.forEach((s, i) => {
-      markers.push({ id: `seq-${rid}-${s.id}`, position: [s.lat, s.lng], color: ruta.color, label: `#${i + 1} · ${s.cliente}` })
+      const seqNum = s.secuencia ?? (i + 1)
+      markers.push({ id: `seq-${rid}-${s.id}`, position: [s.lat, s.lng], color: ruta.color, label: `#${seqNum} · ${s.cliente}` })
     })
   }
   return { polylines, markers }
@@ -82,7 +87,10 @@ export function buildSingleRouteOverlay(
   color: string,
 ): { polylines: OverlayPolyline[]; markers: OverlayMarker[] } {
   const depot: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
-  const ordered = nearestOrder(depot, paradas)
+  const hasSeq = paradas.some((s) => s.secuencia !== undefined && s.secuencia !== null)
+  const ordered = hasSeq
+    ? [...paradas].sort((a, b) => (a.secuencia ?? 0) - (b.secuencia ?? 0))
+    : nearestOrder(depot, paradas)
   const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
   return {
     polylines: [{ id: 'route-unified', path, color }],
@@ -90,7 +98,7 @@ export function buildSingleRouteOverlay(
       id: `seq-unified-${s.id}`,
       position: [s.lat, s.lng],
       color,
-      label: `#${i + 1} · ${s.cliente}`,
+      label: `#${s.secuencia ?? (i + 1)} · ${s.cliente}`,
     })),
   }
 }

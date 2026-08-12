@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Warehouse } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MapContainer, Marker, Tooltip, ZoomControl, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Tooltip, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
 import { CANAL_META, DEPOSITO, RUTAS, camionPorId, type Parada, type Ruta } from './mock-data'
 import { divIcon } from './map/div-icon'
 import { InvalidateOnResize } from './map/InvalidateOnResize'
@@ -40,35 +40,86 @@ function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
   return null
 }
 
-function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[]) {
+/** Descarta la parada enfocada al hacer clic en cualquier area vacia del mapa. */
+function MapClickListener({ onDismiss }: { onDismiss?: () => void }) {
+  useMapEvents({
+    click: () => onDismiss?.(),
+  })
+  return null
+}
+
+/** Centra y vuela suavemente a nivel calle (zoom 17) al punto de entrega seleccionado. */
+function MapCenterer({ target }: { target?: { lat: number; lng: number; t: number } | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (target && target.lat && target.lng) {
+      map.flyTo([target.lat, target.lng], 17, {
+        duration: 1.2,
+        animate: true,
+      })
+    }
+  }, [target, map])
+  return null
+}
+
+function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[], showRoute?: boolean) {
   const { icon: Icon } = CANAL_META[parada.canal]
   const listRutas = rutas || RUTAS
-  const ruta = listRutas.find((r) => r.camionId === parada.camionId || r.id === `r-${parada.camionId}`)
+  const targetRutaId = parada.rutaId || (parada.camionId ? `r-${parada.camionId}` : undefined)
+  const ruta = listRutas.find((r) => r.id === targetRutaId || r.camionId === parada.camionId)
   const camion = camionPorId(parada.camionId)
-  const color = parada.camionId ? (ruta?.color ?? camion?.color ?? SIN_CAMION) : SIN_CAMION
+  const isAssignedAndShown = showRoute && !!(parada.camionId || parada.rutaId)
+  const color = isAssignedAndShown ? (ruta?.color ?? camion?.color ?? SIN_CAMION) : SIN_CAMION
+  const seq = isAssignedAndShown ? parada.secuencia : undefined
 
   const html = renderToStaticMarkup(
     <div
       className={`stop-pin ${seleccionado ? 'stop-pin-selected' : ''}`}
       style={{
-        width: 30,
-        height: 30,
+        width: 32,
+        height: 32,
         borderRadius: 999,
         background: color,
         border: seleccionado ? `2px solid ${SELECCION}` : '2px solid #fff',
         boxShadow: seleccionado
-          ? `0 0 0 3px ${SELECCION}66, 0 1px 4px rgb(0 0 0 / 0.35)`
-          : '0 1px 4px rgb(0 0 0 / 0.35)',
+          ? `0 0 0 3px ${SELECCION}66, 0 2px 5px rgb(0 0 0 / 0.4)`
+          : '0 2px 5px rgb(0 0 0 / 0.4)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: '#fff',
+        position: 'relative',
       }}
     >
-      <Icon size={15} strokeWidth={2.25} />
+      <Icon size={14} strokeWidth={2.25} />
+      {seq !== undefined && (
+        <span
+          style={{
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            minWidth: 17,
+            height: 17,
+            padding: '0 3px',
+            borderRadius: 999,
+            background: '#0f172a',
+            color: '#ffffff',
+            border: '1.5px solid #ffffff',
+            fontSize: 10,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 1,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+          }}
+        >
+          {seq}
+        </span>
+      )}
     </div>
   )
-  return divIcon(html, 30)
+  return divIcon(html, 32)
 }
 
 const pinDeposito = divIcon(
@@ -104,6 +155,9 @@ export function OrdersMap({
   routeColor = SELECCION,
   hideTools = false,
   rutas,
+  focusedParadaId,
+  focusTarget,
+  onDismissFocus,
 }: {
   paradas: Parada[]
   onSelectionChange?: (ids: string[]) => void
@@ -115,12 +169,39 @@ export function OrdersMap({
   routeColor?: string
   hideTools?: boolean
   rutas?: Ruta[]
+  focusedParadaId?: string | null
+  focusTarget?: { lat: number; lng: number; id: string; t: number } | null
+  onDismissFocus?: () => void
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
   const [paradaDetalle, setParadaDetalle] = useState<Parada | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const showLabels = showDetails && zoom >= DETAIL_ZOOM
+
+  const activeFocusId = focusTarget?.id ?? focusedParadaId
+
+  const activeFocusParada = useMemo(() => {
+    if (focusTarget?.lat && focusTarget?.lng) {
+      const p = paradas.find(
+        (item) =>
+          item.id === focusTarget.id ||
+          `stop-${item.puntoEntregaId}` === focusTarget.id ||
+          item.puntoEntregaId === focusTarget.id,
+      )
+      if (p) return p
+      return { lat: focusTarget.lat, lng: focusTarget.lng }
+    }
+    if (!focusedParadaId) return null
+    return (
+      paradas.find(
+        (p) =>
+          p.id === focusedParadaId ||
+          `stop-${p.puntoEntregaId}` === focusedParadaId ||
+          p.puntoEntregaId === focusedParadaId,
+      ) ?? null
+    )
+  }, [paradas, focusTarget, focusedParadaId])
 
   const setOverlay = useOverlayStore((s) => s.setOverlay)
   const clearOverlay = useOverlayStore((s) => s.clearOverlay)
@@ -153,8 +234,8 @@ export function OrdersMap({
             paradas,
             (pId) => {
               const p = paradas.find((item) => item.id === pId)
-              if (!p?.camionId) return undefined
-              return `r-${p.camionId}`
+              if (!p) return undefined
+              return p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)
             },
             listRutas,
           )
@@ -175,6 +256,8 @@ export function OrdersMap({
         <MapLayersControl />
         <InvalidateOnResize />
         <ZoomWatcher onZoom={setZoom} />
+        <MapClickListener onDismiss={onDismissFocus} />
+        <MapCenterer target={focusTarget ?? (activeFocusParada ? { lat: activeFocusParada.lat, lng: activeFocusParada.lng, t: Date.now() } : null)} />
         <SelectionLayer activeTool={activeTool} paradas={paradas} onSelect={handleSelect} />
         <OverlayLayer />
 
@@ -187,11 +270,15 @@ export function OrdersMap({
 
         {paradas.map((parada) => {
           const [desde, hasta] = parada.ventana.split('–').map((s) => s.trim())
+          const isFocused =
+            activeFocusId === parada.id ||
+            activeFocusId === `stop-${parada.puntoEntregaId}` ||
+            activeFocusId === parada.puntoEntregaId
           return (
             <Marker
               key={parada.id}
               position={[parada.lat, parada.lng]}
-              icon={pinParada(parada, selectedSet.has(parada.id))}
+              icon={pinParada(parada, selectedSet.has(parada.id) || isFocused, rutas, showRoute)}
               eventHandlers={{
                 // Solo con la mano ('pan'): con rect/lazo activos el click es parte del gesto de
                 // seleccionar, y abrir un modal ahí interrumpiría la selección a medio hacer.
@@ -200,30 +287,35 @@ export function OrdersMap({
                 },
               }}
             >
-              {/* Con la tool "Ver detalles" activa: etiqueta permanente y chica DEBAJO del pin
-                  (nombre + ventana). Si no, el tooltip completo al hover, arriba. */}
-              {showLabels ? (
-                // `key` distinto fuerza el remount del Tooltip: react-leaflet fija `permanent` al
-                // crearlo, no lo re-aplica si solo cambian props → sin key se quedaba en modo hover.
-                <Tooltip key="detail" permanent direction="bottom" offset={[0, 13]} className="stop-detail-tip">
-                  <span className="block text-center font-mono text-[9px] font-semibold leading-tight">
-                    {parada.pedidos[0]?.salesOrder ?? parada.puntoEntregaId}
-                  </span>
-                  <span className="block text-center text-[9px] leading-tight text-muted-foreground">De: {desde}</span>
-                  <span className="block text-center text-[9px] leading-tight text-muted-foreground">A: {hasta}</span>
-                </Tooltip>
-              ) : (
-                <Tooltip key="hover" direction="top" offset={[0, -16]}>
-                  <span className="font-medium">{parada.cliente}</span>
-                  {parada.puntoEntrega && (
-                    <span className="block text-[11px] text-muted-foreground">{parada.puntoEntrega}</span>
-                  )}
-                  <div className="mt-0.5 text-[11px]">
-                    {CANAL_META[parada.canal].label} · {parada.pedidos.length} pedido
-                    {parada.pedidos.length !== 1 ? 's' : ''} · {parada.pesoTotal} kg
+              <Tooltip
+                key={showLabels ? 'detail' : isFocused ? 'focused' : 'hover'}
+                permanent={showLabels || isFocused}
+                direction={showLabels ? 'bottom' : 'top'}
+                offset={showLabels ? [0, 13] : [0, -16]}
+                className={showLabels ? 'stop-detail-tip' : ''}
+              >
+                {showLabels ? (
+                  <>
+                    <span className="block text-center font-mono text-[9px] font-semibold leading-tight">
+                      {parada.pedidos[0]?.salesOrder ?? parada.puntoEntregaId}
+                    </span>
+                    <span className="block text-center text-[9px] leading-tight text-muted-foreground">De: {desde}</span>
+                    <span className="block text-center text-[9px] leading-tight text-muted-foreground">A: {hasta}</span>
+                  </>
+                ) : (
+                  <div>
+                    <span className="font-medium text-foreground font-semibold">{parada.cliente}</span>
+                    {parada.puntoEntrega && (
+                      <span className="block text-[11px] text-muted-foreground">{parada.puntoEntrega}</span>
+                    )}
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {CANAL_META[parada.canal].label} · {parada.pedidos.length} pedido
+                      {parada.pedidos.length !== 1 ? 's' : ''} · {parada.pesoTotal} kg
+                      {showRoute && parada.secuencia ? ` · Parada #${parada.secuencia}` : ''}
+                    </div>
                   </div>
-                </Tooltip>
-              )}
+                )}
+              </Tooltip>
             </Marker>
           )
         })}

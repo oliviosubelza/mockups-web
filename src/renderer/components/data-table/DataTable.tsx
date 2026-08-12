@@ -447,6 +447,17 @@ function DragAlongCell<T extends object>({
     <td
       ref={setNodeRef}
       style={style}
+      onClick={(e) => {
+        if (
+          col.id === '__dragrow__' ||
+          col.id === '__actions__' ||
+          col.id === 'seq' ||
+          col.id === '__expand__' ||
+          col.id === '__select__'
+        ) {
+          e.stopPropagation()
+        }
+      }}
       className={cn(
         DENSITY_CELL[density],
         'border-r last:border-r-0',
