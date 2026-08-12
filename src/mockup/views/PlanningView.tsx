@@ -1170,14 +1170,19 @@ export function PlanningView({
             <DialogDescription className="pt-2 text-sm text-foreground/90 leading-relaxed">
               {emptyRoutesList.length === 1 ? (
                 <>
-                  Tienes <strong className="font-semibold text-foreground">1 ruta sin entregas asignadas</strong>. Si continúas, se creará(n){' '}
-                  <strong className="font-semibold text-foreground">{validRoutesCount} ruta(s) activa(s)</strong> y se descartará{' '}
-                  <strong className="text-amber-700 dark:text-amber-400 font-semibold">{emptyRoutesList[0]?.nombre}</strong> por no contener puntos de entrega.
+                  Tienes <strong className="font-semibold text-foreground">1 ruta sin entregas asignadas</strong>. Si continúas,{' '}
+                  <strong className="font-semibold text-foreground">
+                    {validRoutesCount === 1 ? 'se creará 1 ruta activa' : `se crearán ${validRoutesCount} rutas activas`}
+                  </strong>{' '}
+                  y se descartará <strong className="text-amber-700 dark:text-amber-400 font-semibold">{emptyRoutesList[0]?.nombre}</strong> por no contener entregas.
                 </>
               ) : (
                 <>
-                  Tienes <strong className="font-semibold text-foreground">{emptyRoutesList.length} rutas sin entregas asignadas</strong>. Si continúas, se creará(n){' '}
-                  <strong className="font-semibold text-foreground">{validRoutesCount} ruta(s) activa(s)</strong> y se descartarán las rutas vacías.
+                  Tienes <strong className="font-semibold text-foreground">{emptyRoutesList.length} rutas sin entregas asignadas</strong>. Si continúas,{' '}
+                  <strong className="font-semibold text-foreground">
+                    {validRoutesCount === 1 ? 'se creará 1 ruta activa' : `se crearán ${validRoutesCount} rutas activas`}
+                  </strong>{' '}
+                  y se descartarán las rutas vacías indicadas a continuación.
                 </>
               )}
             </DialogDescription>
