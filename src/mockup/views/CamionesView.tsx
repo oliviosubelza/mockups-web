@@ -66,6 +66,10 @@ interface CamionResumen {
   chofer: string
   auxiliar: string
   ocupacionPct: number
+  /** Solo en las filas que vienen de un plan creado: la ruta que la optimización le armó al camión. */
+  rutaNombre?: string
+  rutaColor?: string
+  planId?: number
 }
 
 /**
@@ -352,20 +356,9 @@ export function CamionesView() {
           cell: (row) => (
             <div className="flex items-center gap-2 min-w-0">
               <Truck className="size-3.5 shrink-0 text-muted-foreground" />
+              {/* Solo la placa: el nombre de la ruta ya vive en la columna "Rutas", repetirlo acá
+                  duplica el mismo dato en la misma fila. */}
               <span className="truncate font-medium">{row.placa}</span>
-              {row.rutaNombre && (
-                <Badge
-                  variant="outline"
-                  className="rounded-full text-[10px] tabular-nums shrink-0"
-                  style={{
-                    borderColor: row.rutaColor ? `${row.rutaColor}60` : undefined,
-                    backgroundColor: row.rutaColor ? `${row.rutaColor}15` : undefined,
-                    color: row.rutaColor || undefined,
-                  }}
-                >
-                  {row.rutaNombre}
-                </Badge>
-              )}
             </div>
           ),
         },

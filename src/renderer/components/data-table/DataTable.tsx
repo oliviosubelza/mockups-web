@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment, createContext, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -772,12 +772,22 @@ export function DataTable<T extends object>({
     () => selectedRows.map((row) => getRowId(row)).join('|'),
     [getRowId, selectedRows],
   )
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  const selectedRowsRef = useRef(selectedRows)
+
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange
+  }, [onSelectionChange])
+
+  useEffect(() => {
+    selectedRowsRef.current = selectedRows
+  }, [selectedRows])
 
   // Fire selection callback
   useEffect(() => {
-    if (!onSelectionChange) return
-    onSelectionChange(selectedRows)
-  }, [onSelectionChange, selectionSignature])
+    if (!onSelectionChangeRef.current) return
+    onSelectionChangeRef.current(selectedRowsRef.current)
+  }, [selectionSignature])
 
   // Keep special columns pinned
   useEffect(() => {

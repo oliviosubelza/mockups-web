@@ -4,6 +4,7 @@
 //
 // Arriba del mapa hay filtros (Canal / Tipo Frío·Seco / Ruta) que reducen los puntos mostrados.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   Check,
   Eye,
@@ -325,7 +326,7 @@ export function PlanningView({
     const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7']
     return selectedTrucks.map((camion, i) => {
       const id = `r-${camion.id}`
-      const defaultNombre = `Ruta ${i + 1} (${camion.alias || camion.codigoPlaca || camion.id})`
+      const defaultNombre = `Ruta ${i + 1} (${camion.placa})`
       return {
         id,
         nombre: customRutaNombres[id] || defaultNombre,
@@ -342,8 +343,36 @@ export function PlanningView({
 
   const [assignedParadasState, setAssignedParadasState] = useState<Parada[] | null>(null)
 
-  // Base de datos del planner: el scope unificado si vino, o las paradas optimizadas/base.
-  const baseParadas = paradasScope ?? PARADAS
+  // Pedidos que quedaron DENTRO del plan en la fase de selección (canal + narrowing + corte +
+  // decisiones manuales). El mapa y el optimizador tienen que trabajar sobre ESE universo: el gate
+  // de CoverageSummaryBar ya verificó que la capacidad de los camiones seleccionados alcanza para
+  // cubrirlo. Repartir `PARADAS` entero (el dataset completo, con los pedidos fuera de corte que el
+  // planificador nunca metió al plan) tiraba esa garantía a la basura y producía ocupaciones >100%.
+  const includedOrderIds = useDispatchPlanStore(
+    useShallow((s) => selectIncludedOrders(s).map((p) => p.id)),
+  )
+
+  // Base de datos del planner: el scope unificado si vino, o las paradas del plan.
+  // Una parada puede tener pedidos dentro y fuera del plan → se recorta y se recalculan sus
+  // totales, para que el peso que ve el optimizador sea el mismo que contó la fase de selección.
+  const baseParadas = useMemo(() => {
+    if (paradasScope) return paradasScope
+    // Sin selección todavía (se entró directo al mapa): se muestra el dataset completo, como antes.
+    if (includedOrderIds.length === 0) return PARADAS
+    const incluidos = new Set(includedOrderIds)
+    return PARADAS.flatMap<Parada>((parada) => {
+      const pedidos = parada.pedidos.filter((ped) => incluidos.has(ped.id))
+      if (pedidos.length === 0) return []
+      return [
+        {
+          ...parada,
+          pedidos,
+          pesoTotal: pedidos.reduce((acc, ped) => acc + ped.peso, 0),
+          volumenTotal: Number(pedidos.reduce((acc, ped) => acc + ped.volumen, 0).toFixed(1)),
+        },
+      ]
+    })
+  }, [paradasScope, includedOrderIds])
   const paradas = state === 'empty' || state === 'error' ? [] : (assignedParadasState ?? baseParadas)
   const pedidos =
     state === 'empty' || state === 'error' ? [] : paradas.flatMap((p) => p.pedidos)
@@ -397,18 +426,63 @@ export function PlanningView({
     setMoverSelOpen(false)
   }
 
-  // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta por camión.
+  // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta
+  // por camión. El reparto es POR PESO, no por cantidad de paradas: antes se partía la lista en N
+  // trozos iguales de paradas, y como las paradas no pesan lo mismo ni los camiones tienen la misma
+  // capacidad, un camión de 11 t podía terminar con 80 t encima (729% de ocupación).
   const optimizar = () => {
     if (optimizing || optimized) return
     setOptimizing(true)
     setTimeout(() => {
       const trucks = selectedTrucks
       const porCercania = ordenarPorCercania(baseParadas, (p) => [p.lat, p.lng])
-      const porCamionCount = Math.ceil(porCercania.length / Math.max(trucks.length, 1))
+      // Capacidad libre de cada camión, en kg (capacidadPeso viene en toneladas).
+      const libreKg = trucks.map((t) => (t.capacidadPeso ?? 0) * 1000)
+      // Objetivo por camión: se reparte la demanda A PRORRATA de la capacidad, así todos los camiones
+      // seleccionados quedan más o menos con la misma ocupación en vez de llenar los primeros hasta
+      // el tope y dejar los últimos vacíos. Como `ratio ≤ 1`, el objetivo nunca supera la capacidad.
+      const capTotalKg = libreKg.reduce((acc, kg) => acc + kg, 0)
+      const demandaKg = porCercania.reduce((acc, p) => acc + p.pesoTotal, 0)
+      const ratio = capTotalKg > 0 ? Math.min(1, demandaKg / capTotalKg) : 1
+      const objetivoKg = libreKg.map((kg) => kg * ratio)
+      // Se llena un camión hasta su objetivo y recién ahí se pasa al siguiente. Recorrer la curva de
+      // Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta; ir rotando de camión en
+      // camión parada por parada daría rutas entrelazadas por todo el mapa.
+      let actual = 0
 
-      const asignadas = porCercania.map((parada, i) => {
-        const camionIndex = Math.min(Math.floor(i / porCamionCount), trucks.length - 1)
-        const camion = trucks[camionIndex]
+      const asignadas = porCercania.map((parada) => {
+        // Primer camión, desde el actual, donde la parada entra dentro de su objetivo; si ninguno
+        // tiene lugar (resto de empaquetado), se reintenta contra la capacidad real.
+        let idx = -1
+        for (let k = 0; k < trucks.length; k++) {
+          const i = (actual + k) % trucks.length
+          if (objetivoKg[i] >= parada.pesoTotal) {
+            idx = i
+            break
+          }
+        }
+        if (idx === -1) {
+          for (let k = 0; k < trucks.length; k++) {
+            const i = (actual + k) % trucks.length
+            if (libreKg[i] >= parada.pesoTotal) {
+              idx = i
+              break
+            }
+          }
+        }
+        // No entra en ninguno: queda SIN ASIGNAR en vez de sobrecargar un camión. Con el gate de
+        // cobertura del paso 1 esto no debería pasar; si pasa, es un resto de empaquetado y se ve.
+        if (idx === -1) {
+          return {
+            ...parada,
+            camionId: null,
+            pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: null })),
+          }
+        }
+        libreKg[idx] -= parada.pesoTotal
+        objetivoKg[idx] -= parada.pesoTotal
+        actual = idx
+        const camion = trucks[idx]
         return {
           ...parada,
           camionId: camion.id,
@@ -553,7 +627,7 @@ export function PlanningView({
         return {
           id: truck.id,
           camionId: truck.id,
-          placa: truck.codigoPlaca || truck.id,
+          placa: truck.placa,
           tipo: truck.tipo,
           clase: truck.clase,
           capacidadKg,
