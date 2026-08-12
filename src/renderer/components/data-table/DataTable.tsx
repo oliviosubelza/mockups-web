@@ -714,6 +714,18 @@ export function DataTable<T extends object>({
       ...(useClientPagination ? { pagination: { pageIndex: clientPage, pageSize } } : {}),
     },
     columnResizeMode: 'onChange',
+    // TanStack resetea la página (y el expandido) cada vez que cambia la IDENTIDAD de `data`:
+    // `getRowModel`/`getFilteredRowModel`/`getSortedRowModel` están memoizados por referencia y su
+    // callback llama a `_autoResetPageIndex()`. Con el default (`!manualPagination` → true) alcanzaba
+    // con que el caller reconstruyera el array en el render para que la tabla saltara a la página 1:
+    // tildar una fila en la página 3 dispara onSelectionChange → el padre re-renderiza → `data` es un
+    // array nuevo → de vuelta a la página 1 con la selección invisible.
+    //
+    // La página es estado de NAVEGACIÓN del usuario: no puede depender de si el caller memoiza su
+    // array. Se apaga el reset automático y abajo se resetea explícitamente donde sí corresponde
+    // (búsqueda) y se acota la página cuando deja de existir.
+    autoResetPageIndex: false,
+    autoResetExpanded: false,
     // `isRowSelectable` restringe la selección fila por fila (tanstack acepta la forma función);
     // sin ella, el comportamiento es el de siempre (todas seleccionables si `selectable`).
     enableRowSelection:      isRowSelectable ? (row) => isRowSelectable(row.original) : !!selectable,
@@ -760,6 +772,29 @@ export function DataTable<T extends object>({
     manualPagination:    useServerPagination,
     ...(useServerPagination ? { rowCount: serverPagination.total } : {}),
   })
+
+  // Buscar cambia el conjunto de resultados: volver a la primera página es lo que el usuario espera
+  // (quedarse en la página 7 de un resultado de 2 páginas se ve como "no encontró nada").
+  const primeraBusqueda = useRef(true)
+  useEffect(() => {
+    if (primeraBusqueda.current) {
+      primeraBusqueda.current = false
+      return
+    }
+    setClientPage(0)
+  }, [globalFilter])
+
+  // La página actual puede dejar de existir porque el caller filtró, borró filas o achicó el dataset.
+  // Se acota a la última página válida en vez de saltar a la primera: el usuario pierde lo mínimo.
+  const clientPageCount = useClientPagination ? table.getPageCount() : 0
+  useEffect(() => {
+    if (!useClientPagination) return
+    if (clientPageCount === 0) {
+      if (clientPage !== 0) setClientPage(0)
+      return
+    }
+    if (clientPage > clientPageCount - 1) setClientPage(clientPageCount - 1)
+  }, [clientPage, clientPageCount, useClientPagination])
 
   // Selección REAL sobre `data`: no depende de la página visible ni del row model filtrado.
   // Para tablas con paginación/filtros (como "fuera de corte"), usar `getSelectedRowModel()` podía

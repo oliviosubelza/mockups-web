@@ -1,5 +1,5 @@
 // Tarjetas de resumen del viaje que se está unificando, en una franja ARRIBA del mapa: tripulación
-// (chofer/auxiliar) y los dos techos del camión (pedidos y peso). Aparecen recién cuando el usuario
+// (chofer/auxiliar), la cantidad de pedidos y el peso contra la capacidad del camión. Aparecen recién cuando el usuario
 // vuelve del diálogo de finalización y cae en el mapa en solo-lectura: ahí ya no tiene la tabla de
 // órdenes a la vista y necesita saber con qué viaje está trabajando sin volver atrás.
 //
@@ -18,7 +18,6 @@
 import { AlertTriangle, CheckCircle2, Package, User, Users, Weight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { MAX_PEDIDOS_POR_CAMION } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
 
 // Mismo formato que el listado de camiones y el diálogo de finalización (miles con separador local +
@@ -126,13 +125,9 @@ export function UnifyMapStats() {
       <div className="flex flex-wrap items-stretch gap-1.5">
         <TarjetaTexto icono={User} label="Chofer" valor={chofer} />
         <TarjetaTexto icono={Users} label="Auxiliar" valor={auxiliar} />
-        <TarjetaBarra
-          icono={Package}
-          label="Pedidos"
-          usado={pedidos}
-          tope={MAX_PEDIDOS_POR_CAMION}
-          fmt={(n) => `${n}`}
-        />
+        {/* Pedidos es un CONTEO, no un techo: el camión no tiene un máximo de pedidos que comunicar,
+            así que se muestra el número pelado en vez de una barra contra un tope arbitrario. */}
+        <TarjetaTexto icono={Package} label="Pedidos" valor={`${pedidos}`} />
         <TarjetaBarra icono={Weight} label="Peso" usado={cargaKg} tope={capacidadKg} fmt={kg} />
       </div>
     </div>

@@ -44,6 +44,7 @@ import {
   PARADAS,
   PRODUCT_TYPES,
   RUTAS,
+  tripulacionDeCamion,
   type CanalId,
   type Parada,
   type PlanCamion,
@@ -623,6 +624,7 @@ export function PlanningView({
         const capacidadKg = (truck.capacidadPeso ?? 0) * 1000
         const capacidadVolM3 = truck.capacidadVolumen ?? 0
         const ocupacionPct = capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0
+        const tripulacion = tripulacionDeCamion(truck.placa)
 
         return {
           id: truck.id,
@@ -635,12 +637,14 @@ export function PlanningView({
           rutaNombre: ruta.nombre,
           rutaId: ruta.id,
           rutaColor: ruta.color,
+          paradaIds: paradasDeRuta.map((p) => p.id),
           orderCount: 1,
           cargaKg,
           cargaVolM3,
           pedidos: pedidosCount,
-          chofer: truck.chofer || 'M. Suárez',
-          auxiliar: truck.auxiliar || 'R. Fernández',
+          // La dupla viaja con el camión: se resuelve por placa contra el dataset, no se inventa.
+          chofer: tripulacion.chofer,
+          auxiliar: tripulacion.auxiliar,
           ocupacionPct,
         }
       })
