@@ -233,7 +233,7 @@ export function PuntoEntregaDialog({
                 <Badge variant="outline">
                   {/* El color es DATO: es el mismo con el que se pinta la ruta en el mapa. */}
                   <span className="size-2 rounded-full" style={{ backgroundColor: ruta.color }} />
-                  {ruta.nombre}
+                  {ruta.nombre} {parada.secuencia ? `· Parada #${parada.secuencia}` : ''}
                 </Badge>
               )}
             </DialogDescription>

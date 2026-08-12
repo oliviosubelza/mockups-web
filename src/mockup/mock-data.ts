@@ -466,6 +466,9 @@ export interface Pedido {
   zona: ZonaId
   /** Las líneas del pedido. Ver `ItemPedido`: hoy NO vienen en el snapshot. */
   items: ItemPedido[]
+  camionId?: string | null
+  rutaId?: string | null
+  secuencia?: number
 }
 
 /**
@@ -744,6 +747,7 @@ export interface Parada {
   secuencia: number
   /** Camión que le asignó la optimización (null = todavía sin asignar). */
   camionId: string | null
+  rutaId?: string | null
   /** forced_planning_truck_id — el usuario clavó esta parada a un camión. */
   camionForzadoId: string | null
   lat: number
@@ -794,12 +798,14 @@ function construirParadas(pedidos: Pedido[]): Parada[] {
   // todo el rango norte-sur — paradas del mismo viaje separadas ~95 km. El orden FINO dentro de cada
   // ruta lo sigue haciendo el nearest-neighbour del mapa.
   const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
-  const porCamion = Math.ceil(porCercania.length / Math.max(enRuteo.length, 1))
+  const paradasPorCamionTarget = 44
+  const maxTotalAsignables = enRuteo.length * paradasPorCamionTarget
 
-  porCercania.forEach((parada, i) => {
-    // ~12% queda sin asignar a propósito: es el estado "todavía sin camión" que el mockup retrata.
-    if (rand.chance(0.12)) return
-    parada.camionId = enRuteo[Math.min(Math.floor(i / porCamion), enRuteo.length - 1)].id
+  porCercania.slice(0, maxTotalAsignables).forEach((parada, i) => {
+    // ~5% queda sin asignar a propósito: es el estado "todavía sin camión" que el mockup retrata.
+    if (rand.chance(0.05)) return
+    const camionIndex = Math.min(Math.floor(i / paradasPorCamionTarget), enRuteo.length - 1)
+    parada.camionId = enRuteo[camionIndex].id
   })
 
   // Un puñado de paradas clavadas a mano por el usuario (forced_planning_truck_id).

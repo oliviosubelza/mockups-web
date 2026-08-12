@@ -3,9 +3,10 @@
 // derecha. Cada panel se puede colapsar (pin/unpin) para ver solo mapa o solo lista.
 //
 // Arriba del mapa hay filtros (Canal / Tipo Frío·Seco / Ruta) que reducen los puntos mostrados.
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
+  AlertTriangle,
   Check,
   Eye,
   ListFilter,
@@ -15,9 +16,11 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Plus,
 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -37,14 +40,17 @@ import { SortablePedidosTable } from '../SortablePedidosTable'
 import { usePlanesStore } from '../planes-store'
 import { useDispatchPlanStore, selectIncludedOrders, selectSelectedTrucks } from '../dispatch-plan-store'
 import { ordenarPorCercania } from '../map/geo/hilbert'
+import { nearestOrder } from '../map/route-optimizer'
 import {
   CAMIONES,
   CANAL_META,
   CANALES,
+  DEPOSITO,
   PARADAS,
   PRODUCT_TYPES,
   RUTAS,
   tripulacionDeCamion,
+  type Camion,
   type CanalId,
   type Parada,
   type PlanCamion,
@@ -301,6 +307,8 @@ export function PlanningView({
   const [showRoute, setShowRoute] = useState(false)
   // Simulación de "procesando" al Optimizar: unos 2s con feedback visible y recién ahí aparecen las rutas.
   const [optimizing, setOptimizing] = useState(false)
+  // Simulación de "procesando" al mover paradas a otra ruta.
+  const [moving, setMoving] = useState(false)
 
   // Selección en el mapa (rectángulo/lazo): abre un diálogo con lo seleccionado para moverlo a ruta.
   const [selStopIds, setSelStopIds] = useState<string[]>([])
@@ -313,6 +321,14 @@ export function PlanningView({
     setMoverSelOpen(ids.length > 0)
   }
 
+  // Modal para "Nueva ruta"
+  const [nuevaRutaModalOpen, setNuevaRutaModalOpen] = useState(false)
+  const [nuevaRutaNombre, setNuevaRutaNombre] = useState('')
+  const [nuevaRutaCamionId, setNuevaRutaCamionId] = useState('')
+  const [createdRoutes, setCreatedRoutes] = useState<
+    { id: string; nombre: string; camionId: string; camion: Camion; color: string }[]
+  >([])
+
   // Camiones seleccionados en la fase anterior (o fallback a los primeros 3 camiones activos)
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const selectedTrucks = useMemo(() => {
@@ -322,11 +338,13 @@ export function PlanningView({
 
   const [customRutaNombres, setCustomRutaNombres] = useState<Record<string, string>>({})
 
-  // Genera exactamente 1 Ruta por cada camión seleccionado
-  const rutasPlan = useMemo(() => {
-    const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7']
+  // Genera las rutas del plan (camiones seleccionados + rutas creadas manualmente por el usuario)
+  const baseRutasPlan = useMemo(() => {
+    const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7', '#d97706', '#059669', '#7c3aed']
     return selectedTrucks.map((camion, i) => {
       const id = `r-${camion.id}`
+      // `alias` y `codigoPlaca` NO existen en `Camion` (solo `placa`): encadenarlos con `as any` no
+      // agrega un fallback, solo silencia al compilador y deja dos ramas muertas que caían a `t1`.
       const defaultNombre = `Ruta ${i + 1} (${camion.placa})`
       return {
         id,
@@ -338,42 +356,95 @@ export function PlanningView({
     })
   }, [selectedTrucks, customRutaNombres])
 
+  const rutasPlan = useMemo(() => {
+    const updatedCreated = createdRoutes.map((r) => ({
+      ...r,
+      nombre: customRutaNombres[r.id] || r.nombre,
+    }))
+    return [...baseRutasPlan, ...updatedCreated]
+  }, [baseRutasPlan, createdRoutes, customRutaNombres])
+
+  // Camiones disponibles para asignar en el modal de Nueva Ruta
+  const camionesDisponiblesParaModal = useMemo(() => {
+    const enRuteo = CAMIONES.filter((c) => c.enRuteo || c.estado === 'disponible')
+    return enRuteo.length > 0 ? enRuteo : CAMIONES
+  }, [])
+
+  const selectedCamionParaModal = useMemo(() => {
+    return CAMIONES.find((c) => c.id === nuevaRutaCamionId)
+  }, [nuevaRutaCamionId])
+
+  const handleCreateNuevaRuta = () => {
+    if (!nuevaRutaNombre.trim() || !nuevaRutaCamionId) return
+    const camionObj = CAMIONES.find((c) => c.id === nuevaRutaCamionId) ?? selectedTrucks[0]
+    const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7', '#d97706', '#059669', '#7c3aed']
+    const newId = `r-${camionObj.id}-custom-${Date.now()}`
+    const newRoute = {
+      id: newId,
+      nombre: nuevaRutaNombre.trim(),
+      camionId: camionObj.id,
+      camion: camionObj,
+      color: colores[rutasPlan.length % colores.length],
+    }
+    setCreatedRoutes((prev) => [...prev, newRoute])
+    setNuevaRutaNombre('')
+    setNuevaRutaCamionId('')
+    setNuevaRutaModalOpen(false)
+  }
+
   const handleRenameRuta = (rutaId: string, nuevoNombre: string) => {
     setCustomRutaNombres((prev) => ({ ...prev, [rutaId]: nuevoNombre }))
   }
 
   const [assignedParadasState, setAssignedParadasState] = useState<Parada[] | null>(null)
+  const [focusedParadaId, setFocusedParadaId] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<{ lat: number; lng: number; id: string; t: number } | null>(null)
 
-  // Pedidos que quedaron DENTRO del plan en la fase de selección (canal + narrowing + corte +
-  // decisiones manuales). El mapa y el optimizador tienen que trabajar sobre ESE universo: el gate
-  // de CoverageSummaryBar ya verificó que la capacidad de los camiones seleccionados alcanza para
-  // cubrirlo. Repartir `PARADAS` entero (el dataset completo, con los pedidos fuera de corte que el
-  // planificador nunca metió al plan) tiraba esa garantía a la basura y producía ocupaciones >100%.
-  const includedOrderIds = useDispatchPlanStore(
-    useShallow((s) => selectIncludedOrders(s).map((p) => p.id)),
-  )
+  const handleDismissFocus = useCallback(() => {
+    setFocusedParadaId(null)
+    setFocusTarget(null)
+  }, [])
 
-  // Base de datos del planner: el scope unificado si vino, o las paradas del plan.
-  // Una parada puede tener pedidos dentro y fuera del plan → se recorta y se recalculan sus
-  // totales, para que el peso que ve el optimizador sea el mismo que contó la fase de selección.
+  const handleSelectPointInTable = (item: any) => {
+    const p = paradas.find(
+      (parada) =>
+        parada.id === item.id ||
+        `stop-${parada.puntoEntregaId}` === item.id ||
+        parada.puntoEntregaId === item.puntoEntregaId ||
+        item.pedidos?.some((ped: any) => ped.puntoEntregaId === parada.puntoEntregaId),
+    )
+    const targetId = p?.id ?? item.id
+    if (focusedParadaId === targetId) {
+      handleDismissFocus()
+      return
+    }
+    const lat = p?.lat ?? item.pedidos?.[0]?.lat ?? 0
+    const lng = p?.lng ?? item.pedidos?.[0]?.lng ?? 0
+    setFocusedParadaId(targetId)
+    if (lat && lng) {
+      setFocusTarget({ lat, lng, id: targetId, t: Date.now() })
+    }
+  }
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleDismissFocus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleDismissFocus])
+
+  const activeCanales = useDispatchPlanStore((s) => s.activeCanales)
+
+  // Base de datos del planner: el scope unificado si vino, los puntos del flujo de despacho (canales seleccionados), o fallback base.
   const baseParadas = useMemo(() => {
     if (paradasScope) return paradasScope
-    // Sin selección todavía (se entró directo al mapa): se muestra el dataset completo, como antes.
-    if (includedOrderIds.length === 0) return PARADAS
-    const incluidos = new Set(includedOrderIds)
-    return PARADAS.flatMap<Parada>((parada) => {
-      const pedidos = parada.pedidos.filter((ped) => incluidos.has(ped.id))
-      if (pedidos.length === 0) return []
-      return [
-        {
-          ...parada,
-          pedidos,
-          pesoTotal: pedidos.reduce((acc, ped) => acc + ped.peso, 0),
-          volumenTotal: Number(pedidos.reduce((acc, ped) => acc + ped.volumen, 0).toFixed(1)),
-        },
-      ]
-    })
-  }, [paradasScope, includedOrderIds])
+    if (snapshot.active && snapshot.paradas.length > 0) return snapshot.paradas
+    return PARADAS
+  }, [paradasScope, snapshot.active, snapshot.paradas])
+
   const paradas = state === 'empty' || state === 'error' ? [] : (assignedParadasState ?? baseParadas)
   const pedidos =
     state === 'empty' || state === 'error' ? [] : paradas.flatMap((p) => p.pedidos)
@@ -385,7 +456,7 @@ export function PlanningView({
         if (canales.size > 0 && !canales.has(p.canal)) return false
         if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
         if (rutas.size > 0) {
-          const rId = p.camionId ? `r-${p.camionId}` : undefined
+          const rId = p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)
           if (!rId || !rutas.has(rId)) return false
         }
         return true
@@ -414,17 +485,147 @@ export function PlanningView({
   }
 
   // Rutas que quedan visibles con los filtros aplicados (leyenda del mapa).
-  const rutasVisibles = rutasPlan.filter((r) => filtradas.some((p) => p.camionId === r.camionId))
+  const rutasVisibles = rutasPlan.filter((r) =>
+    filtradas.some((p) => (p.rutaId ? p.rutaId === r.id : p.camionId === r.camionId)),
+  )
 
-  const canalOptions = CANALES.map((c) => ({ value: c.value, label: c.label, color: CANAL_META[c.value].color }))
+  const canalOptions = useMemo(() => {
+    const list = activeCanales.length > 0
+      ? CANALES.filter((c) => activeCanales.includes(c.value))
+      : CANALES
+    return list.map((c) => ({ value: c.value, label: c.label, color: CANAL_META[c.value].color }))
+  }, [activeCanales])
   const tipoOptions = PRODUCT_TYPES.map((t) => ({ value: t, label: t }))
   const rutaOptions = rutasPlan.map((r) => ({ value: r.id, label: r.nombre, color: r.color }))
 
   // Paradas seleccionadas en el mapa y sus pedidos
   const selectedStops = filtradas.filter((p) => selStopIds.includes(p.id))
   const selectedPedidos = selectedStops.flatMap((p) => p.pedidos)
+
+  // Mover los puntos de entrega seleccionados a la nueva ruta / camión
   const moverSeleccion = () => {
+    if (!rutaDestino || selectedStops.length === 0) return
+
+    const targetRuta = rutasPlan.find((r) => r.id === rutaDestino)
+    if (!targetRuta) return
+
+    const targetCamionId = targetRuta.camionId
+    const targetRutaId = targetRuta.id
+    const currentParadas = assignedParadasState ?? baseParadas
+    const targetParadaIds = new Set(selStopIds)
+
+    // 1. Modificar las paradas seleccionadas asignando el nuevo camionId y rutaId
+    const updatedParadas = currentParadas.map((p) => {
+      if (targetParadaIds.has(p.id)) {
+        return {
+          ...p,
+          rutaId: targetRutaId,
+          camionId: targetCamionId,
+          pedidos: p.pedidos.map((ped) => ({
+            ...ped,
+            rutaId: targetRutaId,
+            camionId: targetCamionId,
+          })),
+        }
+      }
+      return p
+    })
+
+    // 2. Re-secuenciar paradas de cada ruta
+    const paradasPorRuta = new Map<string, Parada[]>()
+    updatedParadas.forEach((p) => {
+      const key = p.rutaId || (p.camionId ? `r-${p.camionId}` : 'unassigned')
+      const list = paradasPorRuta.get(key) || []
+      list.push(p)
+      paradasPorRuta.set(key, list)
+    })
+
+    const finalParadas: Parada[] = []
+    for (const [, groupStops] of paradasPorRuta) {
+      groupStops.forEach((p, index) => {
+        const seq = index + 1
+        finalParadas.push({
+          ...p,
+          secuencia: seq,
+          pedidos: p.pedidos.map((ped) => ({
+            ...ped,
+            secuencia: seq,
+          })),
+        })
+      })
+    }
+
+    const movedCount = selectedStops.length
+
+    // 3. Cerrar el modal e iniciar simulación de envío y recarga
     setMoverSelOpen(false)
+    setMoving(true)
+
+    setTimeout(() => {
+      setAssignedParadasState(finalParadas)
+      setOptimized(true)
+      setShowRoute(true)
+      setSelStopIds([])
+      setRutaDestino(null)
+      setMoving(false)
+      toast.success(`Se movieron ${movedCount} punto(s) de entrega a ${targetRuta.nombre}`)
+    }, 1200)
+  }
+
+  // Reordenar la secuencia de los puntos de entrega de una ruta específica
+  const handleReorderRoute = (rutaId: string, orderedPointIds: string[]) => {
+    if (!rutaId || orderedPointIds.length === 0) return
+
+    const currentParadas = assignedParadasState ?? baseParadas
+    const pointPosMap = new Map<string, number>()
+    orderedPointIds.forEach((id, idx) => pointPosMap.set(id, idx + 1))
+
+    // Actualizar la secuencia de las paradas pertenecientes a esta ruta
+    const updatedParadas = currentParadas.map((p) => {
+      const pRutaId = p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)
+      if (pRutaId === rutaId) {
+        const matchingId = orderedPointIds.find(
+          (id) =>
+            id === p.id ||
+            id === `pe-${p.puntoEntregaId}` ||
+            id === p.puntoEntregaId ||
+            `stop-${p.puntoEntregaId}` === id,
+        )
+        if (matchingId) {
+          const newSeq = pointPosMap.get(matchingId)!
+          return {
+            ...p,
+            secuencia: newSeq,
+            pedidos: p.pedidos.map((ped) => ({ ...ped, secuencia: newSeq })),
+          }
+        }
+      }
+      return p
+    })
+
+    // Re-ordenar la lista conservando el orden de secuencia para la ruta modificada
+    const paradasPorRuta = new Map<string, Parada[]>()
+    updatedParadas.forEach((p) => {
+      const key = p.rutaId || (p.camionId ? `r-${p.camionId}` : 'unassigned')
+      const list = paradasPorRuta.get(key) || []
+      list.push(p)
+      paradasPorRuta.set(key, list)
+    })
+
+    const finalParadas: Parada[] = []
+    for (const [rKey, groupStops] of paradasPorRuta) {
+      if (rKey === rutaId) {
+        groupStops.sort((a, b) => a.secuencia - b.secuencia)
+      }
+      finalParadas.push(...groupStops)
+    }
+
+    setMoving(true)
+    setTimeout(() => {
+      setAssignedParadasState(finalParadas)
+      setMoving(false)
+      toast.success('Secuencia de la ruta recalculada')
+    }, 1000)
   }
 
   // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta
@@ -436,22 +637,25 @@ export function PlanningView({
     setOptimizing(true)
     setTimeout(() => {
       const trucks = selectedTrucks
+      const depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
       const porCercania = ordenarPorCercania(baseParadas, (p) => [p.lat, p.lng])
-      // Capacidad libre de cada camión, en kg (capacidadPeso viene en toneladas).
+      // Reparto POR PESO, a prorrata de la capacidad de cada camión — NO por cantidad de paradas.
+      // Partir la lista en N trozos iguales ignora que las paradas no pesan lo mismo ni los camiones
+      // tienen la misma capacidad: así un camión de 11 t terminaba con 80 t encima (729% de ocupación).
+      // Como `ratio ≤ 1`, el objetivo de cada camión nunca supera su capacidad real.
       const libreKg = trucks.map((t) => (t.capacidadPeso ?? 0) * 1000)
-      // Objetivo por camión: se reparte la demanda A PRORRATA de la capacidad, así todos los camiones
-      // seleccionados quedan más o menos con la misma ocupación en vez de llenar los primeros hasta
-      // el tope y dejar los últimos vacíos. Como `ratio ≤ 1`, el objetivo nunca supera la capacidad.
       const capTotalKg = libreKg.reduce((acc, kg) => acc + kg, 0)
       const demandaKg = porCercania.reduce((acc, p) => acc + p.pesoTotal, 0)
       const ratio = capTotalKg > 0 ? Math.min(1, demandaKg / capTotalKg) : 1
       const objetivoKg = libreKg.map((kg) => kg * ratio)
-      // Se llena un camión hasta su objetivo y recién ahí se pasa al siguiente. Recorrer la curva de
-      // Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta; ir rotando de camión en
-      // camión parada por parada daría rutas entrelazadas por todo el mapa.
-      let actual = 0
 
-      const asignadas = porCercania.map((parada) => {
+      const truckGroups = new Map<string, Parada[]>()
+      const sinAsignar: Parada[] = []
+      // Se llena un camión hasta su objetivo y recién ahí se pasa al siguiente: recorrer la curva de
+      // Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta. El orden FINO dentro del
+      // grupo lo hace después el nearest-neighbour desde el depósito.
+      let actual = 0
+      for (const parada of porCercania) {
         // Primer camión, desde el actual, donde la parada entra dentro de su objetivo; si ninguno
         // tiene lugar (resto de empaquetado), se reintenta contra la capacidad real.
         let idx = -1
@@ -474,22 +678,41 @@ export function PlanningView({
         // No entra en ninguno: queda SIN ASIGNAR en vez de sobrecargar un camión. Con el gate de
         // cobertura del paso 1 esto no debería pasar; si pasa, es un resto de empaquetado y se ve.
         if (idx === -1) {
-          return {
-            ...parada,
-            camionId: null,
-            pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: null })),
-          }
+          sinAsignar.push(parada)
+          continue
         }
         libreKg[idx] -= parada.pesoTotal
         objetivoKg[idx] -= parada.pesoTotal
         actual = idx
         const camion = trucks[idx]
-        return {
+        const group = truckGroups.get(camion.id) ?? []
+        group.push(parada)
+        truckGroups.set(camion.id, group)
+      }
+
+      const asignadas: Parada[] = []
+      for (const [camionId, groupStops] of truckGroups) {
+        const ordered = nearestOrder(depot, groupStops)
+        ordered.forEach((parada, seqIdx) => {
+          const rutaId = `r-${camionId}`
+          asignadas.push({
+            ...parada,
+            camionId,
+            rutaId,
+            secuencia: seqIdx + 1,
+            pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId, rutaId, secuencia: seqIdx + 1 })),
+          })
+        })
+      }
+      // Las que no entraron en ningún camión se conservan sin asignar: desaparecerlas del mapa
+      // escondería el problema en vez de mostrarlo.
+      for (const parada of sinAsignar) {
+        asignadas.push({
           ...parada,
-          camionId: camion.id,
-          pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: camion.id })),
-        }
-      })
+          camionId: null,
+          pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: null })),
+        })
+      }
 
       setAssignedParadasState(asignadas)
       setOptimizing(false)
@@ -527,6 +750,9 @@ export function PlanningView({
           singleRoute={singleRoute}
           routeColor={routeColor}
           hideTools={readOnly}
+          focusedParadaId={focusedParadaId}
+          focusTarget={focusTarget}
+          onDismissFocus={handleDismissFocus}
           // Mercados ENCENDIDOS en la planificación: es la pantalla donde el mercado explica por qué
           // dos pedidos deberían viajar juntos. En la reoptimización (readOnly, un camión ya armado) la
           // capa existe pero arranca apagada: ahí lo que se mira es la ruta, no la geografía de venta.
@@ -578,13 +804,14 @@ export function PlanningView({
           </div>
         </div>
 
-        {/* Overlay de "procesando" al Optimizar (z alto para tapar los controles de Leaflet). Cubre
-            solo el mapa: la franja del viaje queda afuera porque no es contenido que se re-optimice. */}
-        {optimizing && (
+        {/* Overlay de "procesando" al Optimizar o Mover paradas (z alto para tapar los controles de Leaflet). */}
+        {(optimizing || moving) && (
           <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
             <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3 shadow-lg">
               <Loader2 size={18} className="animate-spin text-primary" />
-              <span className="text-sm font-medium">Optimizando rutas…</span>
+              <span className="text-sm font-medium">
+                {optimizing ? 'Optimizando rutas…' : 'Redistribuyendo paradas y cargando rutas…'}
+              </span>
             </div>
           </div>
         )}
@@ -602,22 +829,29 @@ export function PlanningView({
         rutas={rutasPlan}
         selectedRutaId={selectedRutaId}
         onSelectRuta={handleSelectRuta}
-        onReorder={() => setOptimized(false)}
+        onReorder={handleReorderRoute}
         onRenameRuta={handleRenameRuta}
+        onSelectPoint={handleSelectPointInTable}
         headerActions={<UnpinButton label="Tabla" side="right" onClick={unpinList} />}
       />
     </div>
   )
 
-  const handleCreateRoutes = () => {
+  const [emptyRoutesWarningOpen, setEmptyRoutesWarningOpen] = useState(false)
+  const [emptyRoutesList, setEmptyRoutesList] = useState<{ id: string; nombre: string }[]>([])
+  const [validRoutesCount, setValidRoutesCount] = useState(0)
+
+  const executeRouteCreation = (rutasAProcesar: typeof rutasPlan) => {
     if (!readOnly && !scopeLabel?.includes('Reoptimizando')) {
       const dispatchState = useDispatchPlanStore.getState()
       const includedOrders = selectIncludedOrders(dispatchState)
       const selectedTrucks = selectSelectedTrucks(dispatchState)
 
-      const camionesDetalle: PlanCamion[] = rutasPlan.map((ruta) => {
+      const camionesDetalle: PlanCamion[] = rutasAProcesar.map((ruta) => {
         const truck = ruta.camion
-        const paradasDeRuta = paradas.filter((p) => p.camionId === truck.id)
+        const paradasDeRuta = paradas.filter(
+          (p) => (p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)) === ruta.id,
+        )
         const cargaKg = paradasDeRuta.reduce((sum, p) => sum + p.pesoTotal, 0)
         const cargaVolM3 = paradasDeRuta.reduce((sum, p) => sum + p.volumenTotal, 0)
         const pedidosCount = paradasDeRuta.reduce((sum, p) => sum + p.pedidos.length, 0)
@@ -651,12 +885,49 @@ export function PlanningView({
 
       usePlanesStore.getState().addPlan({
         pedidos: includedOrders.length > 0 ? includedOrders.length : paradas.flatMap((p) => p.pedidos).length,
-        camiones: selectedTrucks.length > 0 ? selectedTrucks.length : 3,
+        camiones: camionesDetalle.length,
         estado: 'optimizado',
         camionesDetalle,
       })
     }
     onNext()
+  }
+
+  const handleCreateRoutes = () => {
+    const paradasActuales = assignedParadasState ?? baseParadas
+    const countByRuta = new Map<string, number>()
+    paradasActuales.forEach((p) => {
+      const rId = p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)
+      if (rId) {
+        countByRuta.set(rId, (countByRuta.get(rId) ?? 0) + 1)
+      }
+    })
+
+    const emptyRutas = rutasPlan.filter((r) => (countByRuta.get(r.id) ?? 0) === 0)
+    const validRutas = rutasPlan.filter((r) => (countByRuta.get(r.id) ?? 0) > 0)
+
+    if (emptyRutas.length > 0) {
+      setEmptyRoutesList(emptyRutas.map((r) => ({ id: r.id, nombre: r.nombre })))
+      setValidRoutesCount(validRutas.length)
+      setEmptyRoutesWarningOpen(true)
+      return
+    }
+
+    executeRouteCreation(rutasPlan)
+  }
+
+  const confirmCreateRoutesWithEmpty = () => {
+    setEmptyRoutesWarningOpen(false)
+    const paradasActuales = assignedParadasState ?? baseParadas
+    const countByRuta = new Map<string, number>()
+    paradasActuales.forEach((p) => {
+      const rId = p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)
+      if (rId) {
+        countByRuta.set(rId, (countByRuta.get(rId) ?? 0) + 1)
+      }
+    })
+    const validRutas = rutasPlan.filter((r) => (countByRuta.get(r.id) ?? 0) > 0)
+    executeRouteCreation(validRutas)
   }
 
   return (
@@ -681,6 +952,17 @@ export function PlanningView({
             'Optimizar'
           )}
         </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setNuevaRutaModalOpen(true)}
+          >
+            <Plus size={14} />
+            Nueva ruta
+          </Button>
+        )}
         {/* Solo se habilita una vez optimizadas las rutas: sin optimización no hay órdenes que generar. */}
         <Button
           size="sm"
@@ -817,6 +1099,179 @@ export function PlanningView({
             </Button>
             <Button disabled={!rutaDestino} onClick={moverSeleccion}>
               Mover
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de "Nueva ruta" */}
+      <Dialog open={nuevaRutaModalOpen} onOpenChange={setNuevaRutaModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus size={18} className="text-primary" />
+              Nueva ruta
+            </DialogTitle>
+            <DialogDescription>
+              Ingresá el nombre para la ruta y seleccioná el camión asignado. La ruta se creará sin puntos de entrega.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleCreateNuevaRuta()
+            }}
+            className="flex flex-col gap-4 py-2"
+          >
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="nueva-ruta-nombre" className="text-xs font-medium text-foreground">
+                Nombre de la ruta <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="nueva-ruta-nombre"
+                placeholder="Ej. Ruta 4, Ruta Zona Norte..."
+                value={nuevaRutaNombre}
+                onChange={(e) => setNuevaRutaNombre(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="nueva-ruta-camion" className="text-xs font-medium text-foreground">
+                Camión asignado <span className="text-destructive">*</span>
+              </label>
+              <Select value={nuevaRutaCamionId} onValueChange={setNuevaRutaCamionId}>
+                <SelectTrigger id="nueva-ruta-camion" className="w-full h-10">
+                  <SelectValue placeholder="Seleccioná un camión…">
+                    {selectedCamionParaModal ? (
+                      <div className="flex items-center gap-2 text-xs font-medium text-foreground truncate">
+                        <span
+                          className="flex size-2.5 rounded-full shrink-0"
+                          style={{ background: selectedCamionParaModal.color || '#2563eb' }}
+                        />
+                        <span className="font-semibold text-foreground">
+                          {selectedCamionParaModal.placa || selectedCamionParaModal.id}
+                        </span>
+                        <span className="text-muted-foreground">•</span>
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                          {selectedCamionParaModal.tipo}
+                        </span>
+                        <span className="text-muted-foreground">{selectedCamionParaModal.clase}</span>
+                        <span className="text-muted-foreground">•</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {selectedCamionParaModal.capacidadPeso}t / {selectedCamionParaModal.capacidadVolumen}m³
+                        </span>
+                      </div>
+                    ) : null}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {camionesDisponiblesParaModal.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <div className="flex items-center justify-between w-full gap-4 py-1 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="flex size-2.5 rounded-full shrink-0"
+                            style={{ background: c.color || '#2563eb' }}
+                          />
+                          <span className="font-semibold text-foreground">{c.placa || c.id}</span>
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {c.tipo}
+                          </span>
+                          <span className="text-muted-foreground text-[11px]">{c.clase}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                          <span>
+                            Cap: <strong>{c.capacidadPeso}t</strong> / <strong>{c.capacidadVolumen}m³</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setNuevaRutaModalOpen(false)
+                  setNuevaRutaNombre('')
+                  setNuevaRutaCamionId('')
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={!nuevaRutaNombre.trim() || !nuevaRutaCamionId}
+              >
+                Crear ruta
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* Modal de advertencia para rutas vacías (0 puntos de entrega) */}
+      <Dialog open={emptyRoutesWarningOpen} onOpenChange={setEmptyRoutesWarningOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="size-5 shrink-0 text-amber-500" />
+              <span>Rutas sin puntos de entrega</span>
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm text-foreground/90 leading-relaxed">
+              {emptyRoutesList.length === 1 ? (
+                <>
+                  Tienes <strong className="font-semibold text-foreground">1 ruta sin entregas asignadas</strong>. Si continúas, se creará(n){' '}
+                  <strong className="font-semibold text-foreground">{validRoutesCount} ruta(s) activa(s)</strong> y se descartará{' '}
+                  <strong className="text-amber-700 dark:text-amber-400 font-semibold">{emptyRoutesList[0]?.nombre}</strong> por no contener puntos de entrega.
+                </>
+              ) : (
+                <>
+                  Tienes <strong className="font-semibold text-foreground">{emptyRoutesList.length} rutas sin entregas asignadas</strong>. Si continúas, se creará(n){' '}
+                  <strong className="font-semibold text-foreground">{validRoutesCount} ruta(s) activa(s)</strong> y se descartarán las rutas vacías.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/30 p-3 my-2 space-y-2">
+            <span className="text-xs font-semibold text-amber-900 dark:text-amber-200 block">
+              {emptyRoutesList.length === 1 ? 'Ruta que se descartará:' : 'Rutas que se descartarán:'}
+            </span>
+            <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+              {emptyRoutesList.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between gap-2 text-xs rounded-md bg-background/80 px-2.5 py-1.5 border border-amber-200/60 dark:border-amber-900/40 shadow-xs"
+                >
+                  <div className="flex items-center gap-2 font-medium text-foreground min-w-0 truncate">
+                    <span className="size-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="truncate">{r.nombre}</span>
+                  </div>
+                  <span className="text-muted-foreground tabular-nums text-[11px] shrink-0 font-medium bg-muted px-1.5 py-0.5 rounded">
+                    0 entregas
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-1.5 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setEmptyRoutesWarningOpen(false)}>
+              Volver y asignar entregas
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={confirmCreateRoutesWithEmpty}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+            >
+              Confirmar creación
             </Button>
           </DialogFooter>
         </DialogContent>

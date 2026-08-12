@@ -55,16 +55,34 @@ body[data-resizing] * {
     background: hsl(var(--muted));
   }
 
-  /* Etiqueta de detalle bajo los pines (tool "Ver detalles"): pill compacto y sin la caja/flecha
-     por defecto de Leaflet, para que sea chico y legible debajo del punto. */
+  /* Eliminar la transparencia de los tooltips de Leaflet (100% opacos) */
+  .leaflet-tooltip {
+    opacity: 1 !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid rgba(0, 0, 0, 0.15) !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  }
+
+  .leaflet-tooltip-top:before,
+  .leaflet-tooltip-bottom:before,
+  .leaflet-tooltip-left:before,
+  .leaflet-tooltip-right:before {
+    opacity: 1 !important;
+  }
+
+  /* Etiqueta de detalle bajo los pines (tool "Ver detalles"): pill compacto y 100% opaco */
   .leaflet-tooltip.stop-detail-tip {
-    padding: 1px 5px;
-    border: none;
-    border-radius: 6px;
-    background: rgb(255 255 255 / 0.92);
-    color: #0f172a;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
-    white-space: nowrap;
+    padding: 2px 6px !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3) !important;
+    white-space: nowrap !important;
+    opacity: 1 !important;
   }
   .leaflet-tooltip.stop-detail-tip::before {
     display: none; /* saca la flechita del tooltip */

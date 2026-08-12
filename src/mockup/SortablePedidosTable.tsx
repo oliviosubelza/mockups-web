@@ -2,7 +2,7 @@
 // Agrupa los pedidos por punto de entrega (delivery_point) para que no se repita el cliente/sucursal
 // cuando realiza múltiples pedidos en la misma entrega.
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpDown, Eye, ListChecks, Pencil, Route, Trash2 } from 'lucide-react'
+import { ArrowUpDown, Eye, Pencil, RotateCw, Route, Trash2 } from 'lucide-react'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
   DataTable,
@@ -69,7 +69,13 @@ function agruparPorPuntoEntrega(pedidos: Pedido[]): PuntoEntregaItem[] {
 /** Primera ruta con pedidos (default del select); cae a la primera ruta o "Sin ruta". */
 function primeraRutaConPedidos(pedidos: Pedido[], listRutas: { id: string }[] = RUTAS): string {
   if (!listRutas || listRutas.length === 0) return SIN_RUTA
-  return listRutas.find((r) => pedidos.some((p) => (p.camionId ? `r-${p.camionId}` === r.id : false)))?.id ?? listRutas[0]?.id ?? SIN_RUTA
+  return (
+    listRutas.find((r) =>
+      pedidos.some((p) => (p.rutaId ? p.rutaId === r.id : p.camionId ? `r-${p.camionId}` === r.id : false)),
+    )?.id ??
+    listRutas[0]?.id ??
+    SIN_RUTA
+  )
 }
 
 export function SortablePedidosTable({
@@ -84,6 +90,7 @@ export function SortablePedidosTable({
   onSelectRuta,
   onReorder,
   onRenameRuta,
+  onSelectPoint,
 }: {
   pedidos: Pedido[]
   state: BoardState
@@ -94,8 +101,9 @@ export function SortablePedidosTable({
   rutas?: { id: string; nombre: string; color?: string; camionId?: string }[]
   selectedRutaId?: string
   onSelectRuta?: (rutaId: string) => void
-  onReorder?: () => void
+  onReorder?: (rutaId: string, orderedItemIds: string[]) => void
   onRenameRuta?: (rutaId: string, nuevoNombre: string) => void
+  onSelectPoint?: (item: PuntoEntregaItem) => void
 }) {
   const showRoutes = optimized && !readOnly
   const listRutas = rutas || RUTAS
@@ -108,22 +116,32 @@ export function SortablePedidosTable({
   
   const rutaSel = selectedRutaId !== undefined ? selectedRutaId : localRutaSel
   const changeRutaSel = (v: string) => {
+    if (v === 'ALL') {
+      setEditMode(false)
+    }
     if (onSelectRuta) onSelectRuta(v)
     else setLocalRutaSel(v)
   }
 
-  // Modos excluyentes (toggles): seleccionar (checks) y reordenar (drag de filas).
-  const [selectMode, setSelectMode] = useState(false)
+  // Modos: reordenar (drag de filas). Habilitado solo para una ruta específica.
   const [editMode, setEditMode] = useState(false)
   const [detallePunto, setDetallePunto] = useState<PuntoEntregaItem | null>(null)
 
+  // Estado para el recálculo por lotes (cambios pendientes)
+  const [lastAppliedOrder, setLastAppliedOrder] = useState<string[]>(() => puntosEntrega.map((p) => p.id))
+  const [hasPendingReorder, setHasPendingReorder] = useState(false)
+  const [pendingChangesCount, setPendingChangesCount] = useState(0)
+
   useEffect(() => {
-    setOrder(puntosEntrega.map((p) => p.id))
+    const initialIds = puntosEntrega.map((p) => p.id)
+    setOrder(initialIds)
+    setLastAppliedOrder(initialIds)
     setRemovedPedidos(new Set())
     setRutaPorPedido(new Map())
     setLocalRutaSel(primeraRutaConPedidos(pedidos, listRutas))
-    setSelectMode(false)
     setEditMode(false)
+    setHasPendingReorder(false)
+    setPendingChangesCount(0)
   }, [puntosEntrega, pedidos, listRutas])
 
   const byId = useMemo(() => new Map(puntosEntrega.map((p) => [p.id, p])), [puntosEntrega])
@@ -133,8 +151,9 @@ export function SortablePedidosTable({
     for (const pid of item.pedidosIds) {
       if (rutaPorPedido.has(pid)) return rutaPorPedido.get(pid)!
     }
-    const camionId = item.pedidos[0]?.camionId
-    if (camionId) return `r-${camionId}`
+    const p0 = item.pedidos[0]
+    if (p0?.rutaId) return p0.rutaId
+    if (p0?.camionId) return `r-${p0.camionId}`
     return rutaPorPedidoId(item.firstPedidoId)?.id ?? SIN_RUTA
   }
 
@@ -145,6 +164,20 @@ export function SortablePedidosTable({
       if (!item) return false
       return item.pedidosIds.some((pid) => !removedPedidos.has(pid))
     })
+
+  const seqPorPunto = useMemo(() => {
+    const seqMap = new Map<string, number>()
+    const countMap = new Map<string, number>()
+    for (const item of planPuntos) {
+      const rid = efectivaRutaId(item)
+      const current = (countMap.get(rid) ?? 0) + 1
+      countMap.set(rid, current)
+      // Si la parada trae secuencia asignada por el optimizador, la usa; si no, usa el contador de la ruta
+      const seqVal = item.pedidos[0]?.secuencia ?? current
+      seqMap.set(item.id, seqVal)
+    }
+    return seqMap
+  }, [planPuntos, rutaPorPedido])
 
   const countByRuta = new Map<string, number>()
   for (const item of planPuntos) {
@@ -167,9 +200,49 @@ export function SortablePedidosTable({
       const from = prev.indexOf(activeId)
       const to = prev.indexOf(overId)
       if (from === -1 || to === -1) return prev
-      return arrayMove(prev, from, to)
+      const nextOrder = arrayMove(prev, from, to)
+
+      const currentRutaItems = nextOrder
+        .map((id) => byId.get(id))
+        .filter((item): item is PuntoEntregaItem => !!item && efectivaRutaId(item) === rutaSel)
+
+      const lastRutaItems = lastAppliedOrder
+        .map((id) => byId.get(id))
+        .filter((item): item is PuntoEntregaItem => !!item && efectivaRutaId(item) === rutaSel)
+
+      let changed = 0
+      currentRutaItems.forEach((item, index) => {
+        if (lastRutaItems[index]?.id !== item.id) {
+          changed++
+        }
+      })
+
+      setHasPendingReorder(changed > 0)
+      setPendingChangesCount(changed)
+      return nextOrder
     })
-    if (onReorder) onReorder()
+  }
+
+  function applyReorder() {
+    if (!onReorder || rutaSel === 'ALL') return
+    const currentPlanPuntos = order
+      .map((id) => byId.get(id))
+      .filter((item): item is PuntoEntregaItem => !!item && item.pedidosIds.some((pid) => !removedPedidos.has(pid)))
+
+    const newRutaOrder = currentPlanPuntos
+      .filter((item) => efectivaRutaId(item) === rutaSel)
+      .map((item) => item.id)
+
+    setLastAppliedOrder(order)
+    setHasPendingReorder(false)
+    setPendingChangesCount(0)
+    onReorder(rutaSel, newRutaOrder)
+  }
+
+  function discardReorder() {
+    setOrder(lastAppliedOrder)
+    setHasPendingReorder(false)
+    setPendingChangesCount(0)
   }
 
   function moverARuta(pedidoIds: string[], rutaId: string) {
@@ -186,13 +259,12 @@ export function SortablePedidosTable({
     if (onReorder) onReorder()
   }
 
-  function toggleSelect() {
-    setSelectMode((v) => !v)
-    setEditMode(false)
-  }
   function toggleEdit() {
+    if (rutaSel === 'ALL') return
+    if (editMode && hasPendingReorder) {
+      applyReorder()
+    }
     setEditMode((v) => !v)
-    setSelectMode(false)
   }
 
   const columns = useMemo<ColumnDefConfig<PuntoEntregaItem>[]>(
@@ -201,17 +273,34 @@ export function SortablePedidosTable({
         {
           id: 'seq',
           header: '#',
-          size: 64,
+          size: 70,
           pin: 'left',
           enableSorting: false,
           enableHiding: false,
           enableResizing: false,
           cell: (row, index) => {
-            const color = showRoutes ? listRutas.find((r) => r.id === efectivaRutaId(row))?.color : undefined
+            if (!showRoutes) {
+              return <span className="tabular-nums text-muted-foreground text-xs">{index + 1}</span>
+            }
+            const color = listRutas.find((r) => r.id === efectivaRutaId(row))?.color
+            const seqNum = seqPorPunto.get(row.id) ?? row.pedidos[0]?.secuencia ?? (index + 1)
             return (
-              <span className="inline-flex items-center gap-1.5">
-                {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />}
-                <span className="tabular-nums text-muted-foreground">{index + 1}</span>
+              <span
+                className="inline-flex items-center select-none"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <Badge
+                  variant="outline"
+                  className="h-5 px-1.5 font-bold tabular-nums text-[11px] rounded-md"
+                  style={{
+                    borderColor: color ? `${color}60` : undefined,
+                    backgroundColor: color ? `${color}15` : undefined,
+                    color: color || undefined,
+                  }}
+                >
+                  #{seqNum}
+                </Badge>
               </span>
             )
           },
@@ -302,12 +391,12 @@ export function SortablePedidosTable({
           <>
             <span className="text-xs font-medium text-muted-foreground shrink-0">Ruta</span>
             <Select value={rutaSel} onValueChange={(v) => v && changeRutaSel(v)}>
-              <SelectTrigger size="sm" className="h-8 w-36 sm:w-44 shrink-0 text-xs">
+              <SelectTrigger size="sm" className="h-8 w-40 sm:w-48 shrink-0 text-xs">
                 <SelectValue>
                   {(value) => {
                     if (value === 'ALL') {
                       return (
-                        <span className="flex items-center gap-1.5 truncate">
+                        <span className="flex items-center gap-1.5 min-w-0 truncate">
                           <Route size={12} className="shrink-0 opacity-60" />
                           <span className="truncate">Todas ({planPuntos.length})</span>
                         </span>
@@ -316,36 +405,46 @@ export function SortablePedidosTable({
                     const rt = rutaOptions.find((r) => r.id === value)
                     if (!rt) return null
                     return (
-                      <span className="flex items-center gap-1.5 truncate">
+                      <span className="flex items-center gap-1.5 min-w-0 truncate">
                         {rt.color ? (
                           <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
                         ) : (
                           <Route size={12} className="shrink-0 opacity-60" />
                         )}
-                        <span className="truncate">{rt.nombre}</span>
+                        <span className="truncate font-medium">{rt.nombre}</span>
+                        <span className="text-muted-foreground text-[11px] tabular-nums shrink-0">({rt.count})</span>
                       </span>
                     )
                   }}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-60 w-auto min-w-[220px]">
                 <SelectItem value="ALL">
-                  <span className="flex items-center gap-2">
-                    <Route size={12} className="shrink-0 opacity-60" />
-                    Todas las rutas ({planPuntos.length})
-                  </span>
+                  <div className="flex items-center justify-between w-full gap-2 min-w-0 pr-1">
+                    <span className="flex items-center gap-2 min-w-0 truncate">
+                      <Route size={12} className="shrink-0 opacity-60" />
+                      <span className="truncate">Todas las rutas</span>
+                    </span>
+                    <span className="text-muted-foreground tabular-nums shrink-0 text-[11px] font-medium">
+                      ({planPuntos.length})
+                    </span>
+                  </div>
                 </SelectItem>
                 {rutaOptions.map((rt) => (
                   <SelectItem key={rt.id} value={rt.id}>
-                    <span className="flex items-center gap-2">
-                      {rt.color ? (
-                        <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
-                      ) : (
-                        <Route size={12} className="shrink-0 opacity-60" />
-                      )}
-                      {rt.nombre}
-                      <span className="text-muted-foreground tabular-nums">({rt.count})</span>
-                    </span>
+                    <div className="flex items-center justify-between w-full gap-2 min-w-0 pr-1">
+                      <span className="flex items-center gap-2 min-w-0 truncate">
+                        {rt.color ? (
+                          <span className="size-2 shrink-0 rounded-full" style={{ background: rt.color }} />
+                        ) : (
+                          <Route size={12} className="shrink-0 opacity-60" />
+                        )}
+                        <span className="truncate font-medium">{rt.nombre}</span>
+                      </span>
+                      <span className="text-muted-foreground tabular-nums shrink-0 text-[11px] font-medium">
+                        ({rt.count})
+                      </span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -372,26 +471,18 @@ export function SortablePedidosTable({
 
       {/* Grupo Derecho: Acciones y Botones */}
       <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
-        {!readOnly && (
-          <Button
-            variant={selectMode ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 px-2.5 gap-1.5 text-xs"
-            onClick={toggleSelect}
-            aria-pressed={selectMode}
-            title="Seleccionar puntos de entrega"
-          >
-            <ListChecks size={14} />
-            <span>{selectMode ? 'Listo' : 'Seleccionar'}</span>
-          </Button>
-        )}
         <Button
           variant={editMode ? 'default' : 'outline'}
           size="sm"
           className="h-8 px-2.5 gap-1.5 text-xs"
           onClick={toggleEdit}
+          disabled={rutaSel === 'ALL'}
           aria-pressed={editMode}
-          title="Reordenar la secuencia arrastrando las filas"
+          title={
+            rutaSel === 'ALL'
+              ? 'Elegí una ruta específica para reordenar sus paradas'
+              : 'Reordenar la secuencia arrastrando las filas'
+          }
         >
           <ArrowUpDown size={14} />
           <span>{editMode ? 'Listo' : 'Reordenar'}</span>
@@ -421,7 +512,7 @@ export function SortablePedidosTable({
     : null
 
   return (
-    <>
+    <div className="relative flex flex-1 flex-col min-h-0">
       <DataTable
         tableId={`mockup-plan-lista-${state}`}
         columns={columns}
@@ -440,10 +531,13 @@ export function SortablePedidosTable({
         fillHeight
         clientPagination
         defaultPageSize={10}
-        selectable={!readOnly && selectMode}
+        selectable={false}
         enableRowReorder={editMode}
         onRowReorder={onRowReorder}
-        onRowClick={(row) => setDetallePunto(row)}
+        onRowClick={(row) => {
+          if (onSelectPoint) onSelectPoint(row)
+          else setDetallePunto(row)
+        }}
         rowClassName={() => 'cursor-pointer'}
         searchable
         searchPlaceholder="Buscar por cliente o sucursal…"
@@ -453,9 +547,42 @@ export function SortablePedidosTable({
         filterBar={filterBar}
       />
 
+      {/* Barra flotante de confirmación para recalcular cambios de reordenamiento */}
+      {hasPendingReorder && rutaSel !== 'ALL' && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[100] flex max-w-[95%] w-max items-center justify-between gap-3 rounded-full border border-primary/25 bg-popover/95 px-3.5 py-1.5 shadow-xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-2 whitespace-nowrap">
+          <div className="flex items-center gap-2 text-xs font-medium text-popover-foreground shrink-0 whitespace-nowrap">
+            <span className="flex size-5 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <ArrowUpDown size={12} />
+            </span>
+            <span className="whitespace-nowrap">
+              <strong className="font-semibold tabular-nums text-primary">{pendingChangesCount}</strong>{' '}
+              {pendingChangesCount === 1 ? 'cambio de orden' : 'cambios de orden'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={discardReorder}
+            >
+              Deshacer
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 rounded-full px-3 gap-1.5 text-xs font-medium shadow-sm"
+              onClick={applyReorder}
+            >
+              <RotateCw size={12} />
+              Recalcular
+            </Button>
+          </div>
+        </div>
+      )}
+
       {paradaDialogData && (
         <PuntoEntregaDialog parada={paradaDialogData} onClose={() => setDetallePunto(null)} />
       )}
-    </>
+    </div>
   )
 }
