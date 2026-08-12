@@ -34,6 +34,7 @@ import {
   pesoDeOrden,
   type Camion,
   type OrdenTransporte,
+  type PlanCamion,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
 import { usePlanesStore } from '../planes-store'
@@ -66,6 +67,25 @@ interface CamionResumen {
   chofer: string
   auxiliar: string
   ocupacionPct: number
+  /**
+   * Rutas que los planes le armaron a ESTE camión. Es una lista, no una ruta: un camión puede quedar
+   * asignado a varias rutas (del mismo plan o de planes distintos) y la fila tiene que poder
+   * expresarlo — justamente porque "Finalizar" existe para UNIFICARLAS en un solo viaje.
+   * Las filas derivadas de ORDENES_TRANSPORTE no la usan: sus paradas salen de las órdenes.
+   */
+  rutas?: RutaDeCamion[]
+}
+
+/** Una ruta creada por un plan, con lo que aporta al viaje del camión. */
+interface RutaDeCamion {
+  id: string
+  nombre: string
+  color: string
+  planId: number
+  paradaIds: string[]
+  cargaKg: number
+  cargaVolM3: number
+  pedidos: number
 }
 
 /**
@@ -262,6 +282,45 @@ function OrdenRow({
   )
 }
 
+/** Fila de una ruta del plan en el paso de selección. Mismo mecanismo que `OrdenRow`. */
+function RutaRow({
+  ruta,
+  incluida,
+  onToggle,
+}: {
+  ruta: RutaDeCamion
+  incluida: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={incluida}
+      title={incluida ? 'Quitar de la unificación' : 'Volver a incluir'}
+      className={cn(
+        'flex w-full items-center gap-3 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50',
+        !incluida && 'opacity-45',
+      )}
+    >
+      <span
+        className={cn(
+          'flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
+          incluida ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background',
+        )}
+      >
+        {incluida && <Check size={11} strokeWidth={3} />}
+      </span>
+      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: ruta.color }} />
+      <span className={cn('truncate font-medium', !incluida && 'line-through')}>{ruta.nombre}</span>
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <MapPin className="size-3.5" /> {ruta.paradaIds.length}
+      </span>
+      <span className="ml-auto tabular-nums text-muted-foreground">{kg(ruta.cargaKg)}</span>
+    </button>
+  )
+}
+
 export function CamionesView() {
   const [filters, setFilters] = useState<Partial<CamionFilters>>({})
   const [seleccion, setSeleccion] = useState<CamionResumen | null>(null)
@@ -269,28 +328,54 @@ export function CamionesView() {
   const setUnifyCtx = useUnifyStore((s) => s.set)
   const planes = usePlanesStore((s) => s.planes)
 
+  /**
+   * Una fila POR CAMIÓN, agrupando todas las rutas que los planes le asignaron — no una fila por ruta.
+   * Antes se hacía `planes.flatMap(p => p.camionesDetalle.map(...))`, o sea una fila por ruta con
+   * `id: ${planId}-${placa}`: dos rutas del MISMO camión en el mismo plan colisionaban en ese id (el
+   * DataTable las ve como la misma fila y sobrevive una sola), y la columna Rutas —un solo nombre—
+   * no tenía cómo expresar "2 rutas". Agrupando por placa, la fila dice cuántas rutas tiene el camión
+   * y "Finalizar" puede unificarlas en un viaje, que es para lo que existe la acción.
+   */
   const createdTrucks: CamionResumen[] = useMemo(() => {
-    return planes.flatMap((p) =>
-      (p.camionesDetalle || []).map((ct) => ({
-        id: `${p.id}-${ct.placa}`,
-        placa: ct.placa,
-        tipo: ct.tipo,
-        clase: ct.clase,
-        capacidadKg: ct.capacidadKg,
-        capacidadVolM3: ct.capacidadVolM3,
+    const porPlaca = new Map<string, { camion: PlanCamion; rutas: RutaDeCamion[] }>()
+    for (const plan of planes) {
+      for (const ct of plan.camionesDetalle || []) {
+        const entrada = porPlaca.get(ct.placa) ?? { camion: ct, rutas: [] }
+        entrada.rutas.push({
+          id: `${plan.id}-${ct.rutaId}`,
+          nombre: ct.rutaNombre,
+          color: ct.rutaColor,
+          planId: plan.id,
+          paradaIds: ct.paradaIds ?? [],
+          cargaKg: ct.cargaKg,
+          cargaVolM3: ct.cargaVolM3,
+          pedidos: ct.pedidos,
+        })
+        porPlaca.set(ct.placa, entrada)
+      }
+    }
+    return Array.from(porPlaca.values()).map(({ camion, rutas }) => {
+      // Las paradas se unen por id: dos rutas del mismo camión no deberían compartir parada, pero si
+      // el dataset las repitiera contarlas dos veces inflaría el viaje.
+      const cargaKg = rutas.reduce((acc, r) => acc + r.cargaKg, 0)
+      return {
+        id: camion.placa,
+        placa: camion.placa,
+        tipo: camion.tipo,
+        clase: camion.clase,
+        capacidadKg: camion.capacidadKg,
+        capacidadVolM3: camion.capacidadVolM3,
         ordenes: [],
-        orderCount: ct.orderCount,
-        cargaKg: ct.cargaKg,
-        cargaVolM3: ct.cargaVolM3,
-        pedidos: ct.pedidos,
-        chofer: ct.chofer,
-        auxiliar: ct.auxiliar,
-        ocupacionPct: ct.ocupacionPct,
-        rutaNombre: ct.rutaNombre,
-        rutaColor: ct.rutaColor,
-        planId: p.id,
-      })),
-    )
+        rutas,
+        orderCount: rutas.length,
+        cargaKg,
+        cargaVolM3: rutas.reduce((acc, r) => acc + r.cargaVolM3, 0),
+        pedidos: rutas.reduce((acc, r) => acc + r.pedidos, 0),
+        chofer: camion.chofer,
+        auxiliar: camion.auxiliar,
+        ocupacionPct: camion.capacidadKg > 0 ? Math.round((cargaKg / camion.capacidadKg) * 100) : 0,
+      }
+    })
   }, [planes])
 
   const data = useMemo(() => {
@@ -312,26 +397,45 @@ export function CamionesView() {
       return next
     })
 
+  // Una fila tiene DOS orígenes posibles y el viaje se arma distinto en cada uno:
+  //  · derivada de ORDENES_TRANSPORTE → el usuario elige qué órdenes entran, y todo (paradas, peso,
+  //    pedidos, tripulación) se recalcula sobre las incluidas.
+  //  · creada por un plan → todavía no hay órdenes de transporte; el viaje es la RUTA completa que
+  //    la optimización le armó al camión, así que se toma tal cual del plan.
+  const esFilaDePlan = (seleccion?.ordenes.length ?? 0) === 0 && (seleccion?.rutas?.length ?? 0) > 0
   const incluidas = seleccion?.ordenes.filter((o) => !excluidas.has(o.id)) ?? []
-  const usadoKg = incluidas.reduce((acc, o) => acc + pesoDeOrden(o), 0)
-  const usadoVolM3 = incluidas.reduce((acc, o) => acc + volumenDeOrden(o), 0)
-  const usadoPedidos = incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0)
+  // Mismo mecanismo de incluir/excluir para las dos formas de la fila: en una se tildan órdenes de
+  // transporte, en la otra las rutas del plan. El viaje final es la UNIÓN de lo tildado.
+  const rutasIncluidas = seleccion?.rutas?.filter((r) => !excluidas.has(r.id)) ?? []
+  const paradaIdsViaje = esFilaDePlan
+    ? Array.from(new Set(rutasIncluidas.flatMap((r) => r.paradaIds)))
+    : Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
+  const usadoKg = esFilaDePlan
+    ? rutasIncluidas.reduce((acc, r) => acc + r.cargaKg, 0)
+    : incluidas.reduce((acc, o) => acc + pesoDeOrden(o), 0)
+  const usadoVolM3 = esFilaDePlan
+    ? rutasIncluidas.reduce((acc, r) => acc + r.cargaVolM3, 0)
+    : incluidas.reduce((acc, o) => acc + volumenDeOrden(o), 0)
+  const usadoPedidos = esFilaDePlan
+    ? rutasIncluidas.reduce((acc, r) => acc + r.pedidos, 0)
+    : incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0)
   const capacidadKg = seleccion?.capacidadKg ?? 0
   const capacidadVolM3 = seleccion?.capacidadVolM3 ?? 0
   const excedePeso = usadoKg > capacidadKg
   const excedeVol = usadoVolM3 > capacidadVolM3
-  const totalParadas = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds))).length
-  const puedeFinalizar = incluidas.length >= 1
+  const totalParadas = paradaIdsViaje.length
+  const puedeFinalizar = paradaIdsViaje.length >= 1
 
   const confirmar = () => {
     if (!seleccion || !puedeFinalizar) return
-    const paradaIds = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
     setUnifyCtx({
       camion: seleccion.placa,
-      paradaIds,
-      ordenes: incluidas.map((o) => o.codigo),
-      chofer: tripulacionDe(incluidas, 'chofer'),
-      auxiliar: tripulacionDe(incluidas, 'auxiliar'),
+      paradaIds: paradaIdsViaje,
+      ordenes: esFilaDePlan ? rutasIncluidas.map((r) => r.nombre) : incluidas.map((o) => o.codigo),
+      // La tripulación de la fila (que viaja con el camión) es la fuente; solo se recalcula desde
+      // las órdenes incluidas cuando hay órdenes, porque ahí el usuario pudo excluir alguna.
+      chofer: tripulacionDe(incluidas, 'chofer') || seleccion.chofer,
+      auxiliar: tripulacionDe(incluidas, 'auxiliar') || seleccion.auxiliar,
       pedidos: usadoPedidos,
       cargaKg: usadoKg,
       capacidadKg,
@@ -352,20 +456,9 @@ export function CamionesView() {
           cell: (row) => (
             <div className="flex items-center gap-2 min-w-0">
               <Truck className="size-3.5 shrink-0 text-muted-foreground" />
+              {/* Solo la placa: el nombre de la ruta ya vive en la columna "Rutas", repetirlo acá
+                  duplica el mismo dato en la misma fila. */}
               <span className="truncate font-medium">{row.placa}</span>
-              {row.rutaNombre && (
-                <Badge
-                  variant="outline"
-                  className="rounded-full text-[10px] tabular-nums shrink-0"
-                  style={{
-                    borderColor: row.rutaColor ? `${row.rutaColor}60` : undefined,
-                    backgroundColor: row.rutaColor ? `${row.rutaColor}15` : undefined,
-                    color: row.rutaColor || undefined,
-                  }}
-                >
-                  {row.rutaNombre}
-                </Badge>
-              )}
             </div>
           ),
         },
@@ -390,7 +483,9 @@ export function CamionesView() {
           meta: { align: 'right' },
           cell: (row) => (
             <span className="tabular-nums font-medium">
-              {row.rutaNombre || `${row.orderCount} orden(es)`}
+              {row.rutas?.length
+                ? `${row.rutas.length} ruta(s)`
+                : `${row.orderCount} orden(es)`}
             </span>
           ),
         },
@@ -497,7 +592,11 @@ export function CamionesView() {
               <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <span className="text-muted-foreground">
-                    {incluidas.length} {incluidas.length === 1 ? 'ruta' : 'rutas'} incluidas
+                    {esFilaDePlan ? rutasIncluidas.length : incluidas.length}{' '}
+                    {(esFilaDePlan ? rutasIncluidas.length : incluidas.length) === 1
+                      ? 'ruta'
+                      : 'rutas'}{' '}
+                    incluidas
                   </span>
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <MapPin className="size-3.5" /> {totalParadas} paradas
@@ -515,9 +614,9 @@ export function CamionesView() {
                     </span>
                   </p>
                 )} */}
-                {incluidas.length === 0 && (
+                {paradaIdsViaje.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Incluí al menos una orden para finalizar.
+                    Incluí al menos {esFilaDePlan ? 'una ruta' : 'una orden'} para finalizar.
                   </p>
                 )}
               </div>
@@ -526,18 +625,32 @@ export function CamionesView() {
                 <div className="flex shrink-0 items-center justify-between px-5 pb-1 pt-3 text-xs text-muted-foreground">
                   <span>Rutas del camión</span>
                   <span className="tabular-nums">
-                    {incluidas.length} incluidas de {seleccion.ordenes.length}
+                    {esFilaDePlan
+                      ? `${rutasIncluidas.length} incluidas de ${seleccion.rutas?.length ?? 0}`
+                      : `${incluidas.length} incluidas de ${seleccion.ordenes.length}`}
                   </span>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-5 pb-4 pt-1">
-                  {seleccion.ordenes.map((o) => (
-                    <OrdenRow
-                      key={o.id}
-                      orden={o}
-                      incluida={!excluidas.has(o.id)}
-                      onToggle={() => toggle(o.id)}
-                    />
-                  ))}
+                  {/* Fila de plan: todavía no hay órdenes de transporte, la unidad es la RUTA. Se
+                      tildan igual que las órdenes, así "Finalizar" unifica las que queden incluidas
+                      en un solo viaje — que es exactamente para lo que existe la acción. */}
+                  {esFilaDePlan
+                    ? (seleccion.rutas ?? []).map((r) => (
+                        <RutaRow
+                          key={r.id}
+                          ruta={r}
+                          incluida={!excluidas.has(r.id)}
+                          onToggle={() => toggle(r.id)}
+                        />
+                      ))
+                    : seleccion.ordenes.map((o) => (
+                        <OrdenRow
+                          key={o.id}
+                          orden={o}
+                          incluida={!excluidas.has(o.id)}
+                          onToggle={() => toggle(o.id)}
+                        />
+                      ))}
                 </div>
               </div>
             </>

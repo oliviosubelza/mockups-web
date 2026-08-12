@@ -1,7 +1,7 @@
 // Panel izquierdo del paso combinado (fase 0): elegibilidad + selección MANUAL de camiones. La
 // tabla solo lista camiones 'disponible' (los únicos seleccionables); los otros estados aparecen
 // como chips informativos con su conteo. Sin auto-cálculo ni recomendación: el usuario elige a mano.
-import { useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { MapIcon, Truck, UserX, Wrench } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
@@ -89,6 +89,22 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
   const [filters, setFilters] = useState<Partial<CamionFilters>>({})
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
+  const getRowId = useCallback((row: Camion) => row.id, [])
+  const isRowSelectable = useCallback((row: Camion) => row.estado === 'disponible', [])
+  const handleSelectionChange = useCallback(
+    (rows: Camion[]) => {
+      const nextIds = rows.map((r) => r.id)
+      const currentIds = useDispatchPlanStore.getState().selectedTruckIds
+      if (
+        nextIds.length === currentIds.length &&
+        nextIds.every((id, i) => id === currentIds[i])
+      ) {
+        return
+      }
+      setSelectedTrucks(nextIds)
+    },
+    [setSelectedTrucks],
+  )
 
   const countByEstado = (e: EstadoCamion) => CAMIONES.filter((c) => c.estado === e).length
 
@@ -133,7 +149,7 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
         tableId={`mockup-camiones-${state}`}
         columns={columns}
         data={data}
-        getRowId={(row) => row.id}
+        getRowId={getRowId}
         isLoading={state === 'loading'}
         isError={state === 'error'}
         errorMessage="No pudimos traer la flota desde el servidor de logística."
@@ -143,17 +159,9 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
         fillHeight
         selectable
         // Solo los camiones 'disponible' entran al plan — el resto queda visible pero inerte.
-        isRowSelectable={(row) => row.estado === 'disponible'}
+        isRowSelectable={isRowSelectable}
         defaultSelectedIds={selectedTruckIds}
-        onSelectionChange={(rows) => {
-          const nextIds = rows.map((r) => r.id)
-          if (
-            nextIds.length !== selectedTruckIds.length ||
-            nextIds.some((id, i) => id !== selectedTruckIds[i])
-          ) {
-            setSelectedTrucks(nextIds)
-          }
-        }}
+        onSelectionChange={handleSelectionChange}
         searchable
         searchPlaceholder="Buscar por placa o tipo…"
         clientPagination

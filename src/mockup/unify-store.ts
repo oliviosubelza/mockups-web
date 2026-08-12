@@ -21,7 +21,7 @@ interface UnifyState {
   chofer: string
   /** Auxiliar del viaje ('' = sin asignar). */
   auxiliar: string
-  /** Cantidad de pedidos de las órdenes incluidas (se compara contra MAX_PEDIDOS_POR_CAMION). */
+  /** Cantidad de pedidos de las órdenes incluidas. */
   pedidos: number
   /** Peso (kg) de las órdenes incluidas. */
   cargaKg: number

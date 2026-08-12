@@ -1073,6 +1073,25 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
   return out
 })()
 
+/**
+ * Tripulación de un camión, por placa. La dupla chofer/auxiliar viaja con el CAMIÓN, no con la
+ * orden, así que se resuelve una sola vez acá y la usan todas las superficies (listado de camiones,
+ * franja del mapa, planes creados) — antes cada una la derivaba por su cuenta y un plan recién
+ * creado terminaba con una dupla hardcodeada que no correspondía a ningún camión real.
+ *
+ * Si el camión tiene órdenes de transporte, gana la dupla de sus órdenes — INCLUIDO el caso vacío
+ * del primer camión, que el dataset deja sin tripulación a propósito para retratar "sin asignar".
+ * Si no tiene órdenes (un camión de la flota que recién entra en un plan) se le asigna una dupla
+ * determinística por su posición en la flota: siempre la misma placa → la misma tripulación.
+ */
+export const tripulacionDeCamion = (placa: string): { chofer: string; auxiliar: string } => {
+  const conOrdenes = ORDENES_TRANSPORTE.find((o) => o.camion === placa)
+  if (conOrdenes) return { chofer: conOrdenes.chofer, auxiliar: conOrdenes.auxiliar }
+  const i = CAMIONES.findIndex((c) => c.placa === placa)
+  if (i < 0) return { chofer: '', auxiliar: '' }
+  return { chofer: CHOFERES[i % CHOFERES.length], auxiliar: AUXILIARES[i % AUXILIARES.length] }
+}
+
 /** Paradas (dispatch_delivery_points) reales que cubre una orden de transporte. */
 export const paradasDeOrden = (o: OrdenTransporte): Parada[] =>
   PARADAS.filter((p) => o.paradaIds.includes(p.id))
@@ -1115,6 +1134,12 @@ export interface PlanCamion {
   rutaNombre: string
   rutaId: string
   rutaColor: string
+  /**
+   * Paradas que la optimización le asignó a ESTE camión. Sin esto el plan guardaba solo agregados y
+   * "Finalizar" desde el listado de camiones no tenía con qué armar el viaje: quedaba sin paradas,
+   * sin pedidos y con el botón deshabilitado.
+   */
+  paradaIds: string[]
   orderCount: number
   cargaKg: number
   cargaVolM3: number

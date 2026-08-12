@@ -49,6 +49,8 @@ import {
   PARADAS,
   PRODUCT_TYPES,
   RUTAS,
+  tripulacionDeCamion,
+  type Camion,
   type CanalId,
   type Parada,
   type PlanCamion,
@@ -341,7 +343,9 @@ export function PlanningView({
     const colores = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0284c7', '#d97706', '#059669', '#7c3aed']
     return selectedTrucks.map((camion, i) => {
       const id = `r-${camion.id}`
-      const defaultNombre = `Ruta ${i + 1} (${(camion as any).alias || (camion as any).codigoPlaca || camion.placa || camion.id})`
+      // `alias` y `codigoPlaca` NO existen en `Camion` (solo `placa`): encadenarlos con `as any` no
+      // agrega un fallback, solo silencia al compilador y deja dos ramas muertas que caían a `t1`.
+      const defaultNombre = `Ruta ${i + 1} (${camion.placa})`
       return {
         id,
         nombre: customRutaNombres[id] || defaultNombre,
@@ -624,7 +628,10 @@ export function PlanningView({
     }, 1000)
   }
 
-  // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta por camión.
+  // Optimizar: reparte geográficamente las paradas entre los N camiones seleccionados y genera 1 ruta
+  // por camión. El reparto es POR PESO, no por cantidad de paradas: antes se partía la lista en N
+  // trozos iguales de paradas, y como las paradas no pesan lo mismo ni los camiones tienen la misma
+  // capacidad, un camión de 11 t podía terminar con 80 t encima (729% de ocupación).
   const optimizar = () => {
     if (optimizing || optimized) return
     setOptimizing(true)
@@ -632,19 +639,56 @@ export function PlanningView({
       const trucks = selectedTrucks
       const depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
       const porCercania = ordenarPorCercania(baseParadas, (p) => [p.lat, p.lng])
-
-      // Distribuye dinámicamente las paradas seleccionadas entre los camiones elegidos
-      const targetPointsPerRoute = Math.max(1, Math.ceil(porCercania.length / Math.max(1, trucks.length)))
-      const subsetParadas = porCercania
+      // Reparto POR PESO, a prorrata de la capacidad de cada camión — NO por cantidad de paradas.
+      // Partir la lista en N trozos iguales ignora que las paradas no pesan lo mismo ni los camiones
+      // tienen la misma capacidad: así un camión de 11 t terminaba con 80 t encima (729% de ocupación).
+      // Como `ratio ≤ 1`, el objetivo de cada camión nunca supera su capacidad real.
+      const libreKg = trucks.map((t) => (t.capacidadPeso ?? 0) * 1000)
+      const capTotalKg = libreKg.reduce((acc, kg) => acc + kg, 0)
+      const demandaKg = porCercania.reduce((acc, p) => acc + p.pesoTotal, 0)
+      const ratio = capTotalKg > 0 ? Math.min(1, demandaKg / capTotalKg) : 1
+      const objetivoKg = libreKg.map((kg) => kg * ratio)
 
       const truckGroups = new Map<string, Parada[]>()
-      subsetParadas.forEach((parada, i) => {
-        const camionIndex = Math.min(Math.floor(i / targetPointsPerRoute), trucks.length - 1)
-        const camion = trucks[camionIndex]
+      const sinAsignar: Parada[] = []
+      // Se llena un camión hasta su objetivo y recién ahí se pasa al siguiente: recorrer la curva de
+      // Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta. El orden FINO dentro del
+      // grupo lo hace después el nearest-neighbour desde el depósito.
+      let actual = 0
+      for (const parada of porCercania) {
+        // Primer camión, desde el actual, donde la parada entra dentro de su objetivo; si ninguno
+        // tiene lugar (resto de empaquetado), se reintenta contra la capacidad real.
+        let idx = -1
+        for (let k = 0; k < trucks.length; k++) {
+          const i = (actual + k) % trucks.length
+          if (objetivoKg[i] >= parada.pesoTotal) {
+            idx = i
+            break
+          }
+        }
+        if (idx === -1) {
+          for (let k = 0; k < trucks.length; k++) {
+            const i = (actual + k) % trucks.length
+            if (libreKg[i] >= parada.pesoTotal) {
+              idx = i
+              break
+            }
+          }
+        }
+        // No entra en ninguno: queda SIN ASIGNAR en vez de sobrecargar un camión. Con el gate de
+        // cobertura del paso 1 esto no debería pasar; si pasa, es un resto de empaquetado y se ve.
+        if (idx === -1) {
+          sinAsignar.push(parada)
+          continue
+        }
+        libreKg[idx] -= parada.pesoTotal
+        objetivoKg[idx] -= parada.pesoTotal
+        actual = idx
+        const camion = trucks[idx]
         const group = truckGroups.get(camion.id) ?? []
         group.push(parada)
         truckGroups.set(camion.id, group)
-      })
+      }
 
       const asignadas: Parada[] = []
       for (const [camionId, groupStops] of truckGroups) {
@@ -658,6 +702,15 @@ export function PlanningView({
             secuencia: seqIdx + 1,
             pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId, rutaId, secuencia: seqIdx + 1 })),
           })
+        })
+      }
+      // Las que no entraron en ningún camión se conservan sin asignar: desaparecerlas del mapa
+      // escondería el problema en vez de mostrarlo.
+      for (const parada of sinAsignar) {
+        asignadas.push({
+          ...parada,
+          camionId: null,
+          pedidos: parada.pedidos.map((ped) => ({ ...ped, camionId: null })),
         })
       }
 
@@ -805,11 +858,12 @@ export function PlanningView({
         const capacidadKg = (truck.capacidadPeso ?? 0) * 1000
         const capacidadVolM3 = truck.capacidadVolumen ?? 0
         const ocupacionPct = capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0
+        const tripulacion = tripulacionDeCamion(truck.placa)
 
         return {
           id: truck.id,
           camionId: truck.id,
-          placa: truck.codigoPlaca || truck.id,
+          placa: truck.placa,
           tipo: truck.tipo,
           clase: truck.clase,
           capacidadKg,
@@ -817,12 +871,14 @@ export function PlanningView({
           rutaNombre: ruta.nombre,
           rutaId: ruta.id,
           rutaColor: ruta.color,
+          paradaIds: paradasDeRuta.map((p) => p.id),
           orderCount: 1,
           cargaKg,
           cargaVolM3,
           pedidos: pedidosCount,
-          chofer: truck.chofer || 'M. Suárez',
-          auxiliar: truck.auxiliar || 'R. Fernández',
+          // La dupla viaja con el camión: se resuelve por placa contra el dataset, no se inventa.
+          chofer: tripulacion.chofer,
+          auxiliar: tripulacion.auxiliar,
           ocupacionPct,
         }
       })
