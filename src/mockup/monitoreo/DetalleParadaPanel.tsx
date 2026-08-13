@@ -208,9 +208,14 @@ export function DetalleParadaPanel({
               Fuera de ventana
             </Badge>
           )}
-          <span className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          {/* Señal de "en vivo" sin texto: el punto latiendo alcanza. Con la palabra al lado del badge
+              de estado, la cabecera decía dos veces lo mismo con distintas palabras. */}
+          <span
+            className="inline-flex size-5 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary"
+            title="Datos en vivo"
+            aria-label="Datos en vivo"
+          >
             <span className="senal-viva size-1.5 rounded-full bg-current" aria-hidden />
-            En vivo
           </span>
         </div>
 
@@ -226,13 +231,14 @@ export function DetalleParadaPanel({
                 <IconoActividad className="size-3.5" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-semibold">{actividadReciente.titulo}</span>
-                  <span className="rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
-                    Ahora
-                  </span>
-                </span>
-                <span className="mt-0.5 block text-[11px] leading-snug opacity-90">
+                {/* El título solo aparece cuando DICE algo que el badge de estado no dijo: si la
+                    actividad es "En el punto" y el badge ya dice "En el punto", repetirlo es ruido.
+                    Tampoco lleva un pill "Ahora": la tarjeta ES el último evento, por eso está acá
+                    arriba y con tinte propio. */}
+                {actividadReciente.titulo !== meta.label && (
+                  <span className="block text-xs font-semibold">{actividadReciente.titulo}</span>
+                )}
+                <span className="block text-[11px] leading-snug opacity-90">
                   {actividadReciente.descripcion}
                 </span>
               </span>
@@ -317,11 +323,6 @@ export function DetalleParadaPanel({
                     <span className="flex items-baseline gap-2">
                       <span className="text-xs font-medium">{em.label}</span>
                       <span className="text-[11px] tabular-nums text-muted-foreground">{evento.hora}</span>
-                      {ultimo && actividadReciente && (
-                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                          Último evento
-                        </span>
-                      )}
                     </span>
                     {evento.nota && <span className="text-[11px] text-muted-foreground">{evento.nota}</span>}
                   </span>

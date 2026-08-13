@@ -91,12 +91,17 @@ export function ParadasPanel({
               type="button"
               onClick={() => onSeleccionar(entrega.paradaId)}
               aria-current={enFoco}
+              // La parada EN CURSO se marca con una barra de acento a la izquierda, no con un badge.
+              // El tinte solo no alcanzaba: `bg-muted/30` es más flojo que el `hover:bg-muted/60`, así
+              // que al pasar el mouse la marca desaparecía — por eso hacía falta la palabra "En curso".
+              // La barra es ortogonal al fondo: hover y selección siguen usando tinte sin borrarla.
               className={cn(
-                'flex w-full items-stretch gap-2.5 rounded-xl pr-3 text-left transition-colors',
+                'flex w-full items-stretch gap-2.5 rounded-xl border-l-2 border-transparent pr-3 text-left transition-colors',
                 'hover:bg-muted/60',
                 enFoco && 'bg-muted/70',
-                activa && !enFoco && 'bg-muted/30',
                 reciente && 'bg-muted/60',
+                activa && 'border-primary bg-primary/5',
+                activa && enFoco && 'bg-primary/10',
               )}
             >
               {/* Columna del riel: tramo, marcador, tramo. Los extremos del recorrido van
@@ -116,14 +121,12 @@ export function ParadasPanel({
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5">
                 <span className="flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{entrega.cliente}</span>
-                  {reciente && (
+                  {/* "Ahora" solo cuando el último evento cayó en una parada que NO es la actual: ahí
+                      sí agrega algo. Sobre la parada en curso sería decir dos veces lo que ya dice la
+                      barra de acento. Y "En curso" se fue del todo: eso es lo que marca la barra. */}
+                  {reciente && !activa && (
                     <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                       Ahora
-                    </span>
-                  )}
-                  {activa && !reciente && (
-                    <span className="rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-400">
-                      En curso
                     </span>
                   )}
                   {entrega.incidencias.length > 0 && (
