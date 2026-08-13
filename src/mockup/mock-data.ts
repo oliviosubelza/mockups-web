@@ -156,7 +156,7 @@ export const DEPOSITO = { nombre: 'Planta Santa Cruz', lat: -17.7712, lng: -63.1
 
 // Dimensiones de filtrado del listado de pedidos (contrato del backend `filterOrders`).
 export type ProductType = 'Frío' | 'Seco'
-export type PaymentType = 'Contado' | 'Crédito' | 'Transferencia'
+export type PaymentType = 'Contado' | 'Crédito' | 'Pronto Pago'
 
 /** Distribuidoras (distributorId): scope OBLIGATORIO del listado — de qué distribuidora son los pedidos. */
 export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(0, VOLUMEN.distribuidoras).map(
@@ -164,7 +164,7 @@ export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(0, VOLUMEN.distribuido
 )
 
 export const PRODUCT_TYPES: ProductType[] = ['Frío', 'Seco']
-export const PAYMENT_TYPES: PaymentType[] = ['Contado', 'Crédito', 'Transferencia']
+export const PAYMENT_TYPES: PaymentType[] = ['Contado', 'Crédito', 'Pronto Pago']
 /** Sociedades/empresas (company) — códigos de sociedad SAP. */
 export const EMPRESAS = [...CODIGOS_EMPRESA]
 

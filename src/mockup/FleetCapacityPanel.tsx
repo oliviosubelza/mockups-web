@@ -1,13 +1,12 @@
 // Panel izquierdo del paso combinado (fase 0): elegibilidad + selección MANUAL de camiones. La
-// tabla solo lista camiones 'disponible' (los únicos seleccionables); los otros estados aparecen
-// como chips informativos con su conteo. Sin auto-cálculo ni recomendación: el usuario elige a mano.
+// tabla solo lista camiones 'disponible' (los únicos seleccionables); arriba quedan los chips
+// informativos con su conteo. Sin auto-cálculo ni recomendación: el usuario elige a mano.
 import { useCallback, useState } from 'react'
-import { MapIcon, Truck, UserX, Wrench } from 'lucide-react'
+import { Truck, Wrench } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { CapacityBar } from './CapacityBar'
-import { CamionEstadoBadge } from './estado-badge'
 import { useDispatchPlanStore } from './dispatch-plan-store'
 import { CAMIONES, type Camion, type EstadoCamion } from './mock-data'
 import type { BoardState } from './types'
@@ -62,13 +61,6 @@ const columns = defineColumns<Camion>([
       />
     ),
   },
-  {
-    id: 'estado',
-    header: 'Estado',
-    accessorKey: 'estado',
-    size: 130,
-    cell: (row) => <CamionEstadoBadge estado={row.estado} />,
-  },
 ])
 
 const filterDefs = defineFilters<CamionFilters>([
@@ -76,13 +68,13 @@ const filterDefs = defineFilters<CamionFilters>([
   { type: 'select', id: 'clase', label: 'Clase', options: CLASES.map((c) => ({ label: c, value: c })) },
 ])
 
-// Los cuatro estados de la flota. Solo 'disponible' es elegible (y por eso el único chip ACTIVO);
-// el resto es informativo, NO interactuable — muestra el conteo pero no filtra ni se selecciona.
+// Estados que se muestran arriba de la tabla. 'provincia' y 'sinchofer' se sacaron a pedido del
+// negocio: no aportaban a la decisión de armar el plan. Solo 'disponible' es elegible (y por eso el
+// único chip ACTIVO); 'mantenimiento' es informativo, NO interactuable — muestra el conteo pero no
+// filtra ni se selecciona.
 const ESTADOS: { value: EstadoCamion; label: string; icon: typeof Truck }[] = [
   { value: 'disponible', label: 'Disponibles', icon: Truck },
   { value: 'mantenimiento', label: 'Mantenimiento', icon: Wrench },
-  { value: 'provincia', label: 'Provincia', icon: MapIcon },
-  { value: 'sinchofer', label: 'Sin chofer', icon: UserX },
 ]
 
 export function FleetCapacityPanel({ state }: { state: BoardState }) {
@@ -109,7 +101,7 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
   const countByEstado = (e: EstadoCamion) => CAMIONES.filter((c) => c.estado === e).length
 
   // La tabla SIEMPRE lista disponibles: son los únicos seleccionables, así que mostrar los otros
-  // estados solo agregaría ruido no accionable. Los demás estados quedan como conteo informativo.
+  // estados solo agregaría ruido no accionable.
   const filtrados = CAMIONES.filter(
     (c) =>
       c.estado === 'disponible' &&
@@ -121,7 +113,7 @@ export function FleetCapacityPanel({ state }: { state: BoardState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
       {/* Chips de estado (mismo lenguaje visual que los canales de la derecha). 'Disponibles' es el
-          único ACTIVO — resaltado y siempre presente; los demás son informativos, no clickeables. */}
+          único ACTIVO — resaltado y siempre presente; 'Mantenimiento' es informativo, no clickeable. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         {ESTADOS.map(({ value, label, icon: Icon }) => {
           const activo = value === 'disponible'
