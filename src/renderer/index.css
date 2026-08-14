@@ -173,6 +173,22 @@ body[data-resizing] * {
     100% { transform: scale(2.8); opacity: 0; }
   }
 
+  /* Trazo de una ruta al optimizar: la línea se DIBUJA desde el depósito en vez de aparecer entera.
+     Optimizar es la acción más cara de la planificación, y si su resultado se materializa de golpe no
+     queda claro qué cambió; viendo el trazo avanzar se lee "esto es un recorrido", no "esto es una
+     línea". Va en CSS porque Leaflet dibuja SVG y el `className` de la polilínea es el único enganche.
+
+     El `stroke-dasharray` alto es a propósito: es la longitud máxima que la animación puede recorrer.
+     Un valor chico dejaría el trazo punteado al terminar. */
+  .ruta-trazo {
+    stroke-dasharray: 12000;
+    stroke-dashoffset: 12000;
+    animation: ruta-trazo 900ms ease-out forwards;
+  }
+  @keyframes ruta-trazo {
+    to { stroke-dashoffset: 0; }
+  }
+
   /* ── El listado también tiene que verse VIVO ──────────────────────────────────────────────
      Una pantalla de vigilancia que cambia sin avisar es peor que una quieta: el dato se actualiza
      mientras mirás otra fila y nunca te enterás. Dos canales, la misma duración:
@@ -215,8 +231,15 @@ body[data-resizing] * {
     .truck-pulse,
     .celda-viva,
     .fila-viva,
-    .senal-viva {
+    .senal-viva,
+    .ruta-trazo {
       animation: none;
+    }
+    /* Sin animación el trazo tiene que quedar SÓLIDO, no invisible: el `dashoffset` inicial lo dejaría
+       sin dibujar para siempre. */
+    .ruta-trazo {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
     }
   }
 

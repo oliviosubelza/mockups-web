@@ -41,19 +41,71 @@ function writeStored(mode: ViewMode): void {
   }
 }
 
+/**
+ * Dónde quedó el botón flotante del modo de vista. `null` = todavía no lo movieron, y ahí manda la
+ * esquina inferior derecha por defecto.
+ *
+ * Se persiste por la misma razón que el modo: es una preferencia de quien mira. El botón se arrastra
+ * porque tapa cosas distintas en cada pantalla —en el detalle del monitoreo la esquina inferior
+ * derecha es del panel de detalle, en el planificador es de la barra de herramientas—, así que quien
+ * lo corrió una vez lo quiere ahí en la siguiente pantalla y en el próximo reload.
+ */
+export interface TogglePos {
+  x: number
+  y: number
+}
+
+const POS_STORAGE_KEY = 'mockups-web:view-mode:toggle-pos'
+
+function readStoredPos(): TogglePos | null {
+  try {
+    const raw = localStorage.getItem(POS_STORAGE_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof (parsed as TogglePos).x !== 'number' ||
+      typeof (parsed as TogglePos).y !== 'number'
+    ) {
+      return null
+    }
+    return parsed as TogglePos
+  } catch {
+    // Storage bloqueado o JSON corrupto: se cae a la esquina por defecto en vez de explotar.
+    return null
+  }
+}
+
+function writeStoredPos(pos: TogglePos | null): void {
+  try {
+    if (pos === null) localStorage.removeItem(POS_STORAGE_KEY)
+    else localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(pos))
+  } catch {
+    // Sin persistencia el arrastre igual funciona, solo no sobrevive el reload.
+  }
+}
+
 interface ViewModeState {
   mode: ViewMode
+  togglePos: TogglePos | null
   setMode: (mode: ViewMode) => void
   toggle: () => void
+  setTogglePos: (pos: TogglePos) => void
 }
 
 export const useViewModeStore = create<ViewModeState>()((set, get) => ({
   mode: readStored() ?? DEFAULT_MODE,
+  togglePos: readStoredPos(),
   setMode: (mode) => {
     writeStored(mode)
     set({ mode })
   },
   toggle: () => get().setMode(get().mode === 'web' ? 'mockup' : 'web'),
+  setTogglePos: (togglePos) => {
+    writeStoredPos(togglePos)
+    set({ togglePos })
+  },
 }))
 
 /**

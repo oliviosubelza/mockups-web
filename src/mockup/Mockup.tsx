@@ -1,6 +1,6 @@
 // Pantalla de mockup: componentes REALES del workbench con datos falsos.
 // Sirve para exportar a Figma (html.to.design) y aprobar diseño sin cablear backend.
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { LayoutGrid, Monitor } from 'lucide-react'
 import { PortalContainerContext } from '@/components/ui/portal-container'
@@ -13,7 +13,7 @@ import { MockupShell, type MockTheme } from './MockupShell'
 import type { BoardState, Fase, PlanningTab, TransferTab } from './types'
 import { PlansView } from './views/PlansView'
 import { useActiveRouteValue } from '@/core/routing/active-route'
-import { getRouteComponent } from './routes'
+import { findRoute, getRouteComponent } from './routes'
 import { useViewModeStore, type ViewMode } from './view-mode-store'
 
 interface BoardDef {
@@ -74,6 +74,9 @@ function Board({
   // ruta activa se cae al tablero fijo — así el modo Figma sigue funcionando igual que antes.
   const activeRoute = useActiveRouteValue()
   const ActiveScreen = activeRoute ? getRouteComponent(activeRoute.routeId) : undefined
+  // El padding del inset lo decide la RUTA, no el shell: solo las pantallas cuyo contenido es el fondo
+  // (los mapas a sangre) lo piden apagado. Ver `MockRoute.fullBleed`.
+  const fullBleed = activeRoute ? (findRoute(activeRoute.routeId)?.fullBleed ?? false) : false
   // Los overlays (selects, popovers, dialogs) se portalizan al `document.body` por defecto, que
   // está FUERA del `.dark` de este tablero → salían en claro sobre tableros oscuros. Portalizándolos
   // DENTRO del tablero heredan su `.dark`. (En la app real el `.dark` vive en <html>, ancestro del
@@ -109,6 +112,7 @@ function Board({
           breadcrumb={board.breadcrumb}
           theme={theme}
           onThemeChange={setTheme}
+          fullBleed={fullBleed}
         >
           {ActiveScreen ? (
             <ActiveScreen />
@@ -155,8 +159,12 @@ function Board({
 function ViewModeToggle({ mode, onToggle }: { mode: ViewMode; onToggle: () => void }) {
   const goingToWeb = mode === 'mockup'
   const btnRef = useRef<HTMLButtonElement>(null)
-  // Posición libre (fixed). null = esquina inferior derecha por defecto.
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  // Posición libre (fixed), PERSISTIDA. `null` = nunca lo movieron → esquina inferior derecha.
+  // Vive en el store (localStorage) y no en un useState: el botón se arrastra porque tapa cosas
+  // distintas en cada pantalla, así que moverlo una vez y que vuelva al default en el próximo reload
+  // era exactamente el trabajo que el arrastre venía a evitar.
+  const pos = useViewModeStore((s) => s.togglePos)
+  const setPos = useViewModeStore((s) => s.setTogglePos)
   // Estado del arrastre: offset del puntero dentro del botón + punto inicial + si ya se movió.
   const drag = useRef<{ ox: number; oy: number; sx: number; sy: number; moved: boolean } | null>(null)
 
@@ -187,6 +195,25 @@ function ViewModeToggle({ mode, onToggle }: { mode: ViewMode; onToggle: () => vo
     // Si no se arrastró, fue un click → alterna el modo.
     if (d && !d.moved) onToggle()
   }
+
+  // Reencuadre de la posición guardada. Una posición persistida puede quedar FUERA de la ventana: se
+  // guardó con el navegador maximizado y se abre en media pantalla, o en otro monitor. Sin esto el
+  // botón desaparece y no hay forma de recuperarlo salvo borrando el localStorage.
+  const reencuadrar = useCallback(() => {
+    if (!pos) return
+    const el = btnRef.current
+    const w = el?.offsetWidth ?? 0
+    const h = el?.offsetHeight ?? 0
+    const x = clamp(pos.x, 4, Math.max(4, window.innerWidth - w - 4))
+    const y = clamp(pos.y, 4, Math.max(4, window.innerHeight - h - 4))
+    if (x !== pos.x || y !== pos.y) setPos({ x, y })
+  }, [pos, setPos])
+
+  useEffect(() => {
+    reencuadrar()
+    window.addEventListener('resize', reencuadrar)
+    return () => window.removeEventListener('resize', reencuadrar)
+  }, [reencuadrar])
 
   return (
     <button

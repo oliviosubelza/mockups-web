@@ -1,5 +1,5 @@
 {
-  "exclude": ["vite.config.ts", "src/**/__tests__/**/*"],
+  "exclude": ["vite.config.ts", "src/**/__tests__/**/*", "diagrams/**/*"],
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",

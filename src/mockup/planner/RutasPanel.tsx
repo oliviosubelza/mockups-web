@@ -1,0 +1,492 @@
+// Panel "Rutas": UNA ruta a la vez, elegida con un select-search, y su tabla de paradas debajo.
+//
+// POR QUÉ NO ES UNA LISTA DE TARJETAS. Antes eran N tarjetas apiladas, cada una con nombre, placa,
+// barra de ocupación y conteos. Con seis camiones el panel se llenaba de barras compitiendo entre sí y
+// había que hacer scroll para llegar a la última, pero lo que se hace en esta pantalla es mirar UNA
+// ruta —¿este recorrido tiene sentido?, ¿en qué orden visita?— y para eso las otras cinco son ruido.
+//
+// El select-search resuelve las dos cosas que la lista sí hacía bien: se ve el conjunto completo al
+// abrirlo (con su color, su placa y su ocupación) y se salta a cualquiera escribiendo. Lo que era el
+// "ojo" de cada tarjeta ahora es una herramienta al lado del select, y aplica a la ruta elegida.
+import { useEffect, useMemo, useState } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  ChevronsUpDown,
+  Crosshair,
+  GripVertical,
+  Eye,
+  EyeOff,
+  PackageX,
+  Route,
+  Search,
+} from 'lucide-react'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
+import { CanalGlyph } from '../canal-glyph'
+import { CANAL_META, type Parada } from '../mock-data'
+import { cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
+import { usePlannerStore } from './planner-store'
+
+const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
+
+/** Id del grupo "Sin asignar": no es una ruta, pero se elige con el mismo select. */
+const SIN_ASIGNAR = '__sin-asignar__'
+
+/**
+ * Fila de una parada dentro de una ruta, ARRASTRABLE para cambiar el orden de visita.
+ *
+ * La manija es un elemento aparte y no la fila entera: la fila ya tiene un click —enfocar la parada en
+ * el mapa— y si además iniciara el arrastre, cada intento de mirar una parada empezaría a moverla. Con
+ * manija propia los dos gestos conviven sin ambigüedad, que es la razón por la que casi todas las
+ * listas ordenables tienen una.
+ */
+function FilaParada({
+  parada,
+  enFoco,
+  onFoco,
+  arrastrable,
+}: {
+  parada: Parada
+  enFoco: boolean
+  onFoco: () => void
+  /** `false` con búsqueda activa o en "Sin asignar": ahí reordenar no significa nada. */
+  arrastrable: boolean
+}) {
+  const meta = CANAL_META[parada.canal]
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: parada.id,
+    disabled: !arrastrable,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        'flex h-7 items-center gap-2 pl-1 pr-2 text-xs transition-colors',
+        enFoco ? 'bg-primary/10' : 'hover:bg-muted/70',
+        // Mientras viaja se despega del resto: sombra y fondo sólido para que no se lea a través de
+        // las filas que va cruzando.
+        isDragging && 'relative z-10 rounded-md bg-card shadow-lg',
+      )}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={!arrastrable}
+        title={arrastrable ? 'Arrastrar para cambiar el orden de visita' : undefined}
+        aria-label={`Reordenar ${parada.cliente}`}
+        className={cn(
+          'flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground',
+          arrastrable ? 'cursor-grab hover:text-foreground active:cursor-grabbing' : 'opacity-30',
+        )}
+      >
+        <GripVertical size={12} />
+      </button>
+
+      <button
+        type="button"
+        onClick={onFoco}
+        title={`${parada.cliente} · ${parada.puntoEntrega} · ${parada.ventana}`}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
+      >
+        <span className="w-5 shrink-0 text-right text-[11px] font-semibold tabular-nums text-muted-foreground">
+          {parada.secuencia > 0 ? parada.secuencia : '—'}
+        </span>
+        <span className="shrink-0" style={{ color: meta.color }} title={meta.label}>
+          <CanalGlyph canal={parada.canal} size={13} />
+        </span>
+        <span className="min-w-0 flex-1 truncate">{parada.cliente}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {fmtPeso.format(parada.pesoTotal)} kg
+        </span>
+      </button>
+    </div>
+  )
+}
+
+/** Barra de ocupación en línea. Ámbar arriba del 90%, igual que `CapacityBar`. */
+function Ocupacion({ carga, color }: { carga: CargaRuta; color: string }) {
+  const alta = carga.ocupacionPct >= 90
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn('h-full rounded-full transition-all duration-500', alta && 'bg-amber-500')}
+          style={{
+            width: `${Math.min(100, carga.ocupacionPct)}%`,
+            background: alta ? undefined : color,
+          }}
+        />
+      </div>
+      <span
+        className={cn(
+          'shrink-0 text-[11px] font-semibold tabular-nums',
+          alta ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
+        )}
+      >
+        {carga.ocupacionPct}%
+      </span>
+    </div>
+  )
+}
+
+export function RutasPanel({
+  rutas,
+  paradasAsignadas,
+  paradaFoco,
+  onFoco,
+  onOptimizar,
+  onReordenar,
+}: {
+  rutas: RutaPlan[]
+  paradasAsignadas: Parada[]
+  paradaFoco: string | null
+  onFoco: (id: string) => void
+  onOptimizar: () => void
+  /** Aplica el nuevo orden de visita de una ruta (arrastre de filas). */
+  onReordenar: (rutaId: string, ordenIds: string[]) => void
+}) {
+  const optimizado = usePlannerStore((s) => s.optimizado)
+  const rutaFoco = usePlannerStore((s) => s.rutaFoco)
+  const setRutaFoco = usePlannerStore((s) => s.setRutaFoco)
+  const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
+  const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
+  const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
+
+  const [abierto, setAbierto] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
+
+  const sinAsignar = useMemo(
+    () => paradasAsignadas.filter((p) => !p.rutaId),
+    [paradasAsignadas],
+  )
+
+  // Se elige sola la primera ruta al entrar: un panel que abre pidiendo que elijas algo antes de
+  // mostrar nada es un paso de más cuando la respuesta obvia es "la primera".
+  useEffect(() => {
+    if (rutas.length === 0) return
+    if (rutaFoco && (rutaFoco === SIN_ASIGNAR || rutas.some((r) => r.id === rutaFoco))) return
+    setRutaFoco(rutas[0].id)
+  }, [rutaFoco, rutas, setRutaFoco])
+
+  // `activationConstraint`: sin él, cualquier click sobre la manija cuenta como arrastre y el botón
+  // deja de poder recibir un click limpio. 4 px es el umbral clásico de "esto fue un gesto, no un dedo
+  // tembloroso". El teclado entra por el mismo contexto y hace la lista accesible sin mouse.
+  const sensores = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const ruta = rutas.find((r) => r.id === rutaFoco) ?? null
+  const esSinAsignar = rutaFoco === SIN_ASIGNAR
+  const carga = ruta ? cargaDeRuta(paradasAsignadas, ruta) : null
+  const paradas = esSinAsignar ? sinAsignar : (carga?.paradas ?? [])
+
+  const visibles = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase()
+    if (!texto) return paradas
+    return paradas.filter((p) => p.cliente.toLowerCase().includes(texto))
+  }, [busqueda, paradas])
+
+
+  /**
+   * Reordenar solo tiene sentido sobre la lista COMPLETA de una ruta real: con una búsqueda activa se
+   * ven 3 de 12 paradas y arrastrar la segunda visible "arriba de todo" no dice nada sobre las 9 que
+   * no se ven. En "Sin asignar" directamente no hay orden de visita que definir.
+   */
+  const sePuedeReordenar = !esSinAsignar && rutaFoco !== null && busqueda.trim() === ''
+
+  const alSoltar = (evento: DragEndEvent) => {
+    const { active, over } = evento
+    if (!over || active.id === over.id || !rutaFoco) return
+    const ids = paradas.map((p) => p.id)
+    const desde = ids.indexOf(String(active.id))
+    const hasta = ids.indexOf(String(over.id))
+    if (desde === -1 || hasta === -1) return
+    onReordenar(rutaFoco, arrayMove(ids, desde, hasta))
+  }
+
+  if (rutas.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
+        <Route size={20} className="text-muted-foreground" />
+        <p className="text-sm font-medium">Sin camiones</p>
+        <p className="text-xs text-muted-foreground">
+          Cada camión que elijas en Flota se convierte en una ruta de este plan.
+        </p>
+      </div>
+    )
+  }
+
+  if (!optimizado) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+        <Route size={20} className="text-muted-foreground" />
+        <p className="text-sm font-medium">
+          {rutas.length} ruta{rutas.length !== 1 ? 's' : ''} sin repartir
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Las paradas todavía no tienen camión. Optimizar las reparte por capacidad y dibuja el
+          recorrido de cada una.
+        </p>
+        <Button size="sm" className="mt-1" onClick={onOptimizar}>
+          Optimizar
+        </Button>
+      </div>
+    )
+  }
+
+  const oculta = rutaFoco !== null && rutasOcultas.includes(rutaFoco)
+  const etiqueta = esSinAsignar ? 'Sin asignar' : (ruta?.nombre ?? 'Elegí una ruta')
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* ── Cabecera: select-search + herramientas de la ruta elegida ── */}
+      <div className="shrink-0 space-y-2 border-b border-border px-2 py-2">
+        <div className="flex items-center gap-1">
+          <Popover open={abierto} onOpenChange={setAbierto}>
+            <PopoverTrigger
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs',
+              )}
+            >
+              {esSinAsignar ? (
+                <PackageX size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ background: ruta?.color }}
+                  aria-hidden
+                />
+              )}
+              <span className="min-w-0 flex-1 truncate text-left font-medium">{etiqueta}</span>
+              {!esSinAsignar && ruta && (
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                  {ruta.camion.placa}
+                </span>
+              )}
+              <ChevronsUpDown size={12} className="shrink-0 opacity-50" />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 p-0">
+              <Command>
+                <CommandInput placeholder="Buscar ruta o placa…" className="h-8 text-xs" />
+                <CommandList>
+                  <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
+                    Sin resultados
+                  </CommandEmpty>
+                  {/* El conjunto completo se ve ACÁ: color, placa, ocupación y conteos de cada ruta,
+                      que es lo que la lista de tarjetas mostraba a costa de todo el panel. */}
+                  <CommandGroup>
+                    {rutas.map((r) => {
+                      const c = cargaDeRuta(paradasAsignadas, r)
+                      return (
+                        <CommandItem
+                          key={r.id}
+                          value={`${r.nombre} ${r.camion.placa}`}
+                          data-checked={rutaFoco === r.id}
+                          onSelect={() => {
+                            setRutaFoco(r.id)
+                            setAbierto(false)
+                          }}
+                          className="gap-2 text-xs"
+                        >
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ background: r.color }}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {r.camion.placa}
+                          </span>
+                          <span
+                            className={cn(
+                              'w-9 shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                              c.ocupacionPct >= 90 && 'text-amber-600 dark:text-amber-400',
+                            )}
+                          >
+                            {c.ocupacionPct}%
+                          </span>
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+
+                  {/* "Sin asignar" es el resto de empaquetado del optimizador. Va en el mismo select y
+                      no escondido en otro lado: es la ruta más importante de revisar cuando existe. */}
+                  {sinAsignar.length > 0 && (
+                    <CommandGroup heading="Pendiente">
+                      <CommandItem
+                        value="Sin asignar"
+                        data-checked={esSinAsignar}
+                        onSelect={() => {
+                          setRutaFoco(SIN_ASIGNAR)
+                          setAbierto(false)
+                        }}
+                        className="gap-2 text-xs"
+                      >
+                        <PackageX size={12} className="text-amber-600 dark:text-amber-400" />
+                        <span className="min-w-0 flex-1 truncate">Sin asignar</span>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                          {sinAsignar.length}
+                        </span>
+                      </CommandItem>
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
+          {/* Herramientas de la ruta elegida. Antes vivían una por tarjeta; acá son dos botones que
+              siempre significan lo mismo, aplicados a lo que estés mirando. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            disabled={esSinAsignar}
+            onClick={() => rutaFoco && toggleRutaVisible(rutaFoco)}
+            title={oculta ? 'Mostrar esta ruta en el mapa' : 'Ocultar esta ruta del mapa'}
+            aria-pressed={!oculta}
+          >
+            {oculta ? <EyeOff size={13} /> : <Eye size={13} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            disabled={paradas.length === 0}
+            onClick={() => {
+              // Encuadrar sobre la primera parada de la ruta: alcanza para llevar la cámara a su zona
+              // sin tener que inventar un encuadre por subconjunto en la cámara del mapa.
+              if (paradas[0]) onFoco(paradas[0].id)
+              pedirEncuadre('foco')
+            }}
+            title="Llevar el mapa a esta ruta"
+            aria-label="Llevar el mapa a esta ruta"
+          >
+            <Crosshair size={13} />
+          </Button>
+        </div>
+
+        {esSinAsignar ? (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            No entran en ningún camión con la capacidad elegida. Sumá flota o sacá pedidos.
+          </p>
+        ) : (
+          carga &&
+          ruta && (
+            <>
+              <Ocupacion carga={carga} color={ruta.color} />
+              <div className="flex items-baseline justify-between gap-2 text-[10px] tabular-nums text-muted-foreground">
+                <span>
+                  {fmtPeso.format(carga.pesoKg / 1000)} / {ruta.camion.capacidadPeso} t ·{' '}
+                  {fmtPeso.format(carga.volumenM3)} / {ruta.camion.capacidadVolumen} m³
+                </span>
+                <span>
+                  {carga.paradas.length} paradas · {carga.pedidos} pedidos
+                </span>
+              </div>
+            </>
+          )
+        )}
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar cliente en esta ruta"
+            className="h-7 pl-7 text-xs"
+            aria-label="Buscar parada"
+          />
+        </div>
+      </div>
+
+      {/* ── Tabla de paradas de la ruta elegida ──
+          Encabezado fijo con las columnas que importan: orden de visita, cliente y peso. Es una tabla y
+          no una lista porque las tres se comparan verticalmente entre filas. */}
+      <div className="flex h-6 shrink-0 items-center gap-2 border-b border-border bg-muted/40 pl-1 pr-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="w-4 shrink-0" aria-hidden />
+        <span className="w-5 shrink-0 text-right">#</span>
+        <span className="min-w-0 flex-1">Cliente</span>
+        <span className="shrink-0">Peso</span>
+      </div>
+
+      {/* SIN PAGINAR, a diferencia de los otros paneles. Acá se arrastra para reordenar, y un orden que
+          se puede cambiar solo dentro de la página visible no es un orden: mover la parada 9 al primer
+          lugar sería imposible. Una ruta tiene ~10 paradas, así que la lista entra scrolleando. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {visibles.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {paradas.length === 0
+              ? 'Esta ruta todavía no tiene paradas.'
+              : 'Ninguna parada coincide con la búsqueda.'}
+          </p>
+        ) : (
+          <DndContext
+            sensors={sensores}
+            collisionDetection={closestCenter}
+            // El arrastre es SOLO vertical: es una lista, no un tablero. Sin esto la fila se despega
+            // hacia el costado y el gesto se siente flojo.
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={alSoltar}
+          >
+            <SortableContext
+              items={visibles.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {visibles.map((parada) => (
+                <FilaParada
+                  key={parada.id}
+                  parada={parada}
+                  enFoco={paradaFoco === parada.id}
+                  onFoco={() => onFoco(parada.id)}
+                  arrastrable={sePuedeReordenar}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
+
+      {/* Por qué NO se puede arrastrar ahora mismo. Una manija que a veces responde y a veces no, sin
+          decir por qué, se lee como un bug. */}
+      {!sePuedeReordenar && visibles.length > 1 && !esSinAsignar && (
+        <p className="shrink-0 border-t border-border px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          Limpiá la búsqueda para poder reordenar las paradas.
+        </p>
+      )}
+    </div>
+  )
+}

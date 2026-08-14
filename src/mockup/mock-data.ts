@@ -311,7 +311,7 @@ export interface Camion {
  * Color por camión: se reparte el círculo de matices SALTEANDO la franja azul (205°–255°). El azul
  * es el color de MARCA (selección), y un camión azul haría indistinguible "seleccionado" de "es de
  * ese camión". Generado y no escrito a mano porque a 30+ camiones garantizar matices bien distintos
- * a ojo es imposible.
+ * a ojo es imposible. El reparto lo hace `colorDeCamion` — ver ahí por qué NO es un reparto en orden.
  */
 const BANDA_AZUL = { desde: 205, hasta: 255 }
 
@@ -327,11 +327,45 @@ function hslAHex(h: number, s: number, l: number): string {
   return `#${canal(0)}${canal(8)}${canal(4)}`
 }
 
-function colorDeCamion(indice: number, total: number): string {
+/**
+ * Paso entre matices consecutivos, sobre el círculo YA reducido (310°, sin la franja azul).
+ *
+ * No es el ángulo áureo (137,5°): ese está definido para un círculo de 360° y acá el círculo mide 310,
+ * así que aplicado tal cual deja al camión 10 a 2,4° del camión 1 — dos rojos idénticos. 129,15 es el
+ * valor que maximiza la separación MÍNIMA en el rango que importa: 52° con 4-5 rutas y 26° de 6 a 12,
+ * contra los 13° parejos del reparto en orden.
+ *
+ * El precio, dicho explícito: pasando las ~12 rutas los matices vuelven a acercarse. Es el intercambio
+ * correcto porque un plan usa entre 4 y 10 camiones, y en el listado de la flota —donde sí se ven los
+ * 30— el color es un punto al lado de la placa, no algo que se compare fila contra fila. Ahí la
+ * rotación de claridad de abajo es la que sostiene la distinción.
+ */
+const PASO_MATIZ = 129.15
+
+/**
+ * Color de un camión.
+ *
+ * ANTES REPARTÍA EL CÍRCULO EN ORDEN (`indice / total`), y con 30 camiones eso daba saltos de 13°: los
+ * ocho primeros salían todos entre rojo y amarillo. El problema no era teórico — quien planifica elige
+ * los primeros camiones de la lista, así que las rutas del mapa terminaban siendo seis tonos de marrón
+ * imposibles de distinguir entre sí.
+ *
+ * Ahora los índices CONSECUTIVOS caen en extremos opuestos del círculo (129° de distancia), que es
+ * exactamente el caso que importa: los camiones se eligen en orden.
+ *
+ * La lightness rota en tres pasos como segundo eje de separación. Recién a partir del camión ~9 el
+ * paso áureo empieza a cerrar huecos chicos, y ahí la diferencia de claridad es la que sostiene la
+ * distinción. Se mantiene en la franja 36–46: más claro y el número del marcador —que se dibuja en
+ * este color sobre blanco— pierde contraste.
+ */
+function colorDeCamion(indice: number): string {
   const anchoBanda = BANDA_AZUL.hasta - BANDA_AZUL.desde
-  let matiz = (indice * (360 - anchoBanda)) / Math.max(total, 1)
+  // El paseo se hace sobre el círculo REDUCIDO (sin la franja azul) y recién después se reinserta el
+  // salto. Aplicarlo al revés metería matices dentro de la franja reservada.
+  let matiz = (indice * PASO_MATIZ) % (360 - anchoBanda)
   if (matiz >= BANDA_AZUL.desde) matiz += anchoBanda
-  return hslAHex(matiz, 62, 42)
+  const luz = [42, 36, 46][indice % 3]
+  return hslAHex(matiz, 62, luz)
 }
 
 const TURNOS = [
@@ -378,7 +412,7 @@ export const CAMIONES: Camion[] = (() => {
       turnoFin: turno?.fin ?? '—',
       enRuteo,
       almacen: rand.pick(ALMACENES),
-      color: enRuteo ? colorDeCamion(i, VOLUMEN.camionesEnRuta) : COLOR_CAMION_INACTIVO,
+      color: enRuteo ? colorDeCamion(i) : COLOR_CAMION_INACTIVO,
     } satisfies Camion
   })
 })()

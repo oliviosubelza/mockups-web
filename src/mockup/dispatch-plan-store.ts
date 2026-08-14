@@ -9,7 +9,9 @@ import { kgToTons } from './unit-conversion'
 import {
   CAMIONES,
   CANAL_META,
+  DEVOLUCIONES,
   PEDIDOS,
+  TRANSFERENCIAS,
   aMinutos,
   ciudadDe,
   finVentana,
@@ -69,6 +71,17 @@ interface DispatchPlanState {
   activeZonas: ZonaId[]
   activeVendedores: string[]
   orderOverrides: OrderOverrides
+  /**
+   * Traslados y devoluciones elegidos en el sub-paso de movimientos.
+   *
+   * VIVEN ACÁ Y NO EN EL PANEL a propósito. Antes eran un `useState` del componente: se perdían al
+   * cambiar de fase, no había forma de saber desde ninguna otra pantalla qué se había elegido, y el
+   * propio panel afirmaba "lo seleccionado es lo que se suma a la planificación" cuando en realidad no
+   * salía de ese archivo. Con la selección acá, al menos existe una fuente de verdad para consultarla.
+   */
+  selectedTransferIds: string[]
+  /** Devoluciones de los DOS movimientos (entrega y recojo): son subconjuntos disjuntos de DEVOLUCIONES. */
+  selectedDevolucionIds: string[]
   toggleTruck: (id: string) => void
   setSelectedTrucks: (ids: string[]) => void
   /**
@@ -91,6 +104,16 @@ interface DispatchPlanState {
   setOrdersIncluded: (scopeIds: string[], includedIds: string[]) => void
   /** Vuelve todos los pedidos a la regla de corte (borra las decisiones manuales). */
   resetOrderOverrides: () => void
+  /**
+   * Registra la selección de UN movimiento. `scopeIds` son todas las filas que ese movimiento mostraba
+   * e `includedIds` las que quedaron tildadas. Lo de afuera del scope no se toca — mismo criterio que
+   * `setOrdersIncluded`: así elegir recojos no puede pisar lo elegido en devoluciones de entrega.
+   */
+  setMovimientoSeleccion: (
+    tipo: 'transferencia' | 'devolucion',
+    scopeIds: string[],
+    includedIds: string[],
+  ) => void
   reset: () => void
 }
 
@@ -102,6 +125,8 @@ const INITIAL_STATE = {
   activeZonas: [] as ZonaId[],
   activeVendedores: [] as string[],
   orderOverrides: {} as OrderOverrides,
+  selectedTransferIds: [] as string[],
+  selectedDevolucionIds: [] as string[],
 }
 
 function arrayEquals<T>(a: T[], b: T[]): boolean {
@@ -187,6 +212,25 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
 
   resetOrderOverrides: () => set({ orderOverrides: {} }),
 
+  setMovimientoSeleccion: (tipo, scopeIds, includedIds) =>
+    set((state) => {
+      const actual =
+        tipo === 'transferencia' ? state.selectedTransferIds : state.selectedDevolucionIds
+      const enScope = new Set(scopeIds)
+      // Se conserva lo elegido FUERA del scope y se reemplaza solo lo de adentro: el movimiento activo
+      // no puede borrar las decisiones de los otros dos.
+      const siguiente = [...actual.filter((id) => !enScope.has(id)), ...includedIds]
+      // Comparación por CONJUNTO y no por orden: `siguiente` se rearma poniendo primero lo de afuera
+      // del scope, así que un `arrayEquals` posicional marcaría cambio en cada aviso de la tabla y
+      // dispararía un re-render infinito.
+      if (siguiente.length === actual.length && actual.every((id) => siguiente.includes(id))) {
+        return state
+      }
+      return tipo === 'transferencia'
+        ? { selectedTransferIds: siguiente }
+        : { selectedDevolucionIds: siguiente }
+    }),
+
   reset: () => set({ ...INITIAL_STATE }),
 }))
 
@@ -243,6 +287,36 @@ export const selectNeededTotals = (s: DispatchPlanState): NeededTotals => {
   return {
     pesoKg: Number(incluidos.reduce((acc, p) => acc + p.peso, 0).toFixed(2)),
     volumenM3: Number(incluidos.reduce((acc, p) => acc + p.volumen, 0).toFixed(1)),
+  }
+}
+
+export interface MovimientoTotals {
+  /** Órdenes elegidas (traslados + devoluciones), sumando los tres movimientos. */
+  ordenes: number
+  items: number
+  pesoKg: number
+  volumenM3: number
+}
+
+/**
+ * Lo elegido en el sub-paso de movimientos, sumando los TRES (traslados, devoluciones de entrega y
+ * recojos). Es a nivel plan y no del movimiento activo a propósito: la pregunta que importa es cuánto
+ * ocupa todo lo que se agregó, no cuánto ocupa la pestaña que estás mirando.
+ *
+ * NO se suma a `selectNeededTotals`. Eso exigiría decidir si una devolución consume la capacidad de la
+ * SALIDA o la del regreso, y esa regla todavía no está definida por el negocio: meterla acá sería
+ * inventarla. Mientras tanto el panel compara esto contra la capacidad que SOBRA, que sí es un dato
+ * derivable sin suponer nada.
+ */
+export const selectMovimientoTotals = (s: DispatchPlanState): MovimientoTotals => {
+  const transferencias = TRANSFERENCIAS.filter((t) => s.selectedTransferIds.includes(t.id))
+  const devoluciones = DEVOLUCIONES.filter((d) => s.selectedDevolucionIds.includes(d.id))
+  const filas = [...transferencias, ...devoluciones]
+  return {
+    ordenes: filas.length,
+    items: filas.reduce((acc, f) => acc + f.items, 0),
+    pesoKg: Number(filas.reduce((acc, f) => acc + f.peso, 0).toFixed(1)),
+    volumenM3: Number(filas.reduce((acc, f) => acc + f.volumen, 0).toFixed(2)),
   }
 }
 

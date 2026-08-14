@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -26,6 +27,15 @@ interface MockupShellProps {
   theme: MockTheme
   onThemeChange: (theme: MockTheme) => void
   children: ReactNode
+  /**
+   * La vista se dibuja PEGADA a los bordes del inset, sin el respiro de 16 px.
+   *
+   * Existe para las pantallas cuyo contenido ES el fondo —los mapas a sangre—: ahí el padding no es
+   * respiro, es un marco que separa el mapa del shell y le roba 32 px de ancho y de alto a la única
+   * cosa que la pantalla vino a mostrar. Para todo lo demás (tablas, formularios, listados) el padding
+   * sigue siendo lo correcto y por eso es opt-out y no al revés.
+   */
+  fullBleed?: boolean
 }
 
 function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellProps, 'children'>) {
@@ -96,7 +106,14 @@ function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellPro
  *  se le pasa por `--sidebar-offset` (mismo mecanismo que usa App.tsx con el TitleBar de Electron). */
 const TOPBAR_HEIGHT = '3rem'
 
-export function MockupShell({ title, breadcrumb, theme, onThemeChange, children }: MockupShellProps) {
+export function MockupShell({
+  title,
+  breadcrumb,
+  theme,
+  onThemeChange,
+  children,
+  fullBleed = false,
+}: MockupShellProps) {
   const sidebarWidth = useSidebarWidthStore((s) => s.width)
 
   return (
@@ -116,7 +133,16 @@ export function MockupShell({ title, breadcrumb, theme, onThemeChange, children 
         {/* min-w-0: sin esto, una tabla ancha (min-width:auto del inset flex) empuja el ancho de
             toda la vista y desborda el board (que es overflow-hidden) → se recorta el contenido. */}
         <SidebarInset className="flex min-h-0 min-w-0 flex-col">
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">{children}</div>
+          {/* A sangre además va `overflow-hidden`: una vista que llena exactamente su caja no debe
+              poder generar una barra de scroll por un subpíxel. */}
+          <div
+            className={cn(
+              'min-h-0 min-w-0 flex-1',
+              fullBleed ? 'overflow-hidden' : 'overflow-auto p-4',
+            )}
+          >
+            {children}
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </div>

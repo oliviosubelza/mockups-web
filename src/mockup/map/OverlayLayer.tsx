@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import L from 'leaflet'
 import { CircleMarker, Polyline, Popup, useMap } from 'react-leaflet'
 import { useOverlayStore } from './overlay-store'
@@ -27,7 +27,7 @@ export function OverlayLayer() {
   return (
     <>
       {polylines.map((line) => (
-        <React.Fragment key={line.id}>
+        <Fragment key={line.id}>
           <Polyline
             positions={line.path}
             pathOptions={{ color: '#ffffff', weight: 6.5, opacity: 0.95 }}
@@ -36,7 +36,7 @@ export function OverlayLayer() {
             positions={line.path}
             pathOptions={{ color: line.color, weight: 3.5, opacity: 1 }}
           />
-        </React.Fragment>
+        </Fragment>
       ))}
 
       {markers.map((marker) => (

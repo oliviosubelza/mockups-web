@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardCheck, ClipboardList, Flag, Radar } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Flag, Map as MapIcon, Radar } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -20,6 +20,7 @@ import { CamionesView } from './views/CamionesView'
 import { MonitoreoView } from './monitoreo/MonitoreoView'
 import { MonitoreoDetalleView } from './monitoreo/MonitoreoDetalleView'
 import { PlanningView } from './views/PlanningView'
+import { PlannerView } from './planner/PlannerView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -42,6 +43,12 @@ export interface MockRoute {
   order?: number
   /** `false` la mantiene navegable (por botón/comando) pero fuera del sidebar. */
   showInSidebar?: boolean
+  /**
+   * La pantalla se dibuja sin el padding de 16 px del shell. Solo para las que el contenido ES el
+   * fondo (mapas a sangre): ahí ese padding es un marco que le roba ancho y alto a lo único que la
+   * pantalla muestra.
+   */
+  fullBleed?: boolean
 }
 
 // ── Pantallas (wrappers de vistas existentes con sus props por defecto) ──────────────────────────
@@ -199,6 +206,21 @@ export const routes: MockRoute[] = [
     order: 2,
     // Es una ACCIÓN (se llega por el botón de la lista), no un lugar fijo del sidebar.
     showInSidebar: false,
+  },
+  {
+    // PROPUESTA (paralela, no reemplaza nada): paso 1 + paso 2 en una sola pantalla, sobre un mapa a
+    // sangre con paneles flotantes — el pedido de logística de poder filtrar y armar sin pasar por un
+    // paso previo. Vive en su propia URL para poder comparar las dos variantes lado a lado; el flujo
+    // actual (`nueva-planificacion`) queda intacto.
+    id: 'planificacion-mapa',
+    path: '/planificaciones/mapa',
+    label: 'Planificación mapa',
+    icon: MapIcon,
+    component: PlannerView,
+    order: 2,
+    // El mapa es el fondo de esta pantalla: con el padding del shell quedaba flotando dentro de un
+    // marco de 16 px y perdía 32 px de ancho y de alto.
+    fullBleed: true,
   },
   {
     id: 'reoptimizar-plan',
