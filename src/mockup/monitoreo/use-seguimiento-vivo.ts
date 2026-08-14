@@ -150,6 +150,18 @@ export function useSeguimientoVivo(
   /** Entregas del viaje en orden de visita: `entregas[i]` es la parada de secuencia `i + 1`. */
   entregas: EntregaMonitoreo[],
 ): SeguimientoVivo {
+  const tripId = viaje?.tripId ?? null
+  const viajeEstado = viaje?.estado ?? null
+  const viajeCursor = viaje?.cursor ?? 0
+  const employeeId = viaje?.employeeId ?? 0
+  const salida = viaje?.salida ?? ''
+  const recorrido = viaje?.recorrido ?? []
+  const recorridoKey = useMemo(
+    () => recorrido.map(([lat, lng]) => `${lat},${lng}`).join('|'),
+    [recorrido],
+  )
+  const entregasKey = useMemo(() => entregas.map((entrega) => entrega.id).join('|'), [entregas])
+
   // El SNAPSHOT del detalle sale de la tabla, no de un campo del viaje: es la Query documentada
   // (`PK=TRIP#{tripId}`, `ScanIndexForward=false`, `Limit=1`). Leerlo de la tabla y no de
   // `viaje.tracking` importa porque la tabla es lo que la simulación va escribiendo: al volver a entrar
@@ -162,23 +174,25 @@ export function useSeguimientoVivo(
   }>(() => ({
     // Inicializador PEREZOSO: `snapshotDetalle` es una lectura de la tabla y solo hace falta en el
     // primer render. Sin la función, se ejecutaría en cada uno para descartar el resultado.
-    tracking: viaje ? snapshotDetalle(DISTRIBUIDOR_ACTIVO, viaje.tripId) : null,
-    cursor: viaje?.cursor ?? 0,
+    tracking: tripId !== null ? snapshotDetalle(DISTRIBUIDOR_ACTIVO, tripId) : null,
+    cursor: viajeCursor,
     overrides: new Map(),
     actualizadoAt: Date.now(),
   }))
 
   useEffect(() => {
-    const inicial = viaje ? snapshotDetalle(DISTRIBUIDOR_ACTIVO, viaje.tripId) : null
+    const inicial = tripId !== null ? snapshotDetalle(DISTRIBUIDOR_ACTIVO, tripId) : null
     setAvance({
       tracking: inicial,
-      cursor: viaje?.cursor ?? 0,
+      cursor: viajeCursor,
       overrides: new Map(),
       actualizadoAt: Date.now(),
     })
-    if (!viaje || viaje.estado !== 'en_ruta') return
+    if (!viaje || viajeEstado !== 'en_ruta') return
+    const tripIdActual = viaje.tripId
+    const employeeIdActual = viaje.employeeId
 
-    let cursor = viaje.cursor
+    let cursor = viajeCursor
     let t = 0.55
     let ticksEnSitio = 0
     let pings = 0
@@ -198,9 +212,9 @@ export function useSeguimientoVivo(
       pings++
       if (pings % PINGS_POR_PUNTO_BATERIA === 0) battery = Math.max(1, battery - 1)
       tracking = escribirPing({
-        tripId: viaje.tripId,
+        tripId: tripIdActual,
         distributorId: DISTRIBUIDOR_ACTIVO,
-        employeeId: viaje.employeeId,
+        employeeId: employeeIdActual,
         latitude: posicion[0],
         longitude: posicion[1],
         battery,
@@ -227,8 +241,8 @@ export function useSeguimientoVivo(
 
       // `recorrido` es [depósito, ...paradas, depósito], así que el tramo hacia la parada `cursor`
       // va de `recorrido[cursor]` a `recorrido[cursor + 1]`.
-      const desde = viaje.recorrido[cursor]
-      const hasta = viaje.recorrido[cursor + 1]
+      const desde = recorrido[cursor]
+      const hasta = recorrido[cursor + 1]
       const actual = vigente(activa)
 
       // ── En camino ──
@@ -242,7 +256,7 @@ export function useSeguimientoVivo(
             overrides.set(activa.id, {
               ...overrides.get(activa.id),
               estado: 'en_camino',
-              historial: [...actual.historial, { estado: 'en_camino', hora: horaLlegadaPlanificada(viaje.salida, activa.secuencia) }],
+              historial: [...actual.historial, { estado: 'en_camino', hora: horaLlegadaPlanificada(salida, activa.secuencia) }],
             })
           }
           publicar(interpolar(desde, hasta, t))
@@ -251,7 +265,7 @@ export function useSeguimientoVivo(
 
         // ── Llegó al punto: es el botón "Iniciar entrega" de la app del chofer (arrived_at) ──
         ticksEnSitio = 1
-        const llegada = horaLlegadaPlanificada(viaje.salida, activa.secuencia)
+        const llegada = horaLlegadaPlanificada(salida, activa.secuencia)
         overrides.set(activa.id, {
           ...overrides.get(activa.id),
           estado: 'en_sitio',
@@ -272,7 +286,7 @@ export function useSeguimientoVivo(
       // ── Cierra la parada: es el botón "Finalizar" (delivered_at + delivery_result_code) ──
       const estado = resultadoDe(activa.id)
       const motivo = motivoDe(activa.id, estado)
-      const hora = horaEntregaPlanificada(viaje.salida, activa.secuencia)
+      const hora = horaEntregaPlanificada(salida, activa.secuencia)
       // Mismos constructores que el dataset (`construirComprobante`, `construirCobro`) y no una copia
       // local: una parada cerrada en vivo tiene que quedar indistinguible de las que ya venían cerradas.
       // Con dos implementaciones, la firma, el GPS o el recibo saldrían distintos según CUÁNDO cerró.
@@ -310,7 +324,7 @@ export function useSeguimientoVivo(
     }, TICK_MS)
 
     return () => clearInterval(id)
-  }, [viaje, entregas])
+  }, [tripId, viajeEstado, viajeCursor, employeeId, salida, recorridoKey, entregasKey])
 
   const vivas = useMemo(
     () =>

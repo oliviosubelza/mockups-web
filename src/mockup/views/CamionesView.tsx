@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/routing/open-route'
 import { OrdenEstadoBadge } from '../estado-badge'
+import { usePlanesStore } from '../planes-store'
 import {
   CAMIONES,
   paradasDeOrden,
@@ -77,6 +78,7 @@ interface CamionResumen {
 /** Una ruta creada por un plan, con lo que aporta al viaje del camión. */
 interface RutaDeCamion {
   id: string
+  camionId: string
   nombre: string
   color: string
   planId: number
@@ -324,15 +326,72 @@ export function CamionesView() {
   const [seleccion, setSeleccion] = useState<CamionResumen | null>(null)
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
+  const activePlanId = usePlanesStore((s) => s.activePlanId)
+  const activePlan = usePlanesStore((s) =>
+    activePlanId === null ? undefined : s.planes.find((plan) => plan.id === activePlanId),
+  )
   const transportOrders = useTransportOrdersStore((s) => s.orders)
-  const operationalTrucks = useMemo(() => resumirOrdenesPorCamion(transportOrders), [transportOrders])
+  const scopedTransportOrders = useMemo(() => {
+    if (!activePlanId) return transportOrders
+    return transportOrders.filter((order) => order.id.startsWith(`plan-${activePlanId}-`))
+  }, [activePlanId, transportOrders])
+  const operationalTrucks = useMemo(() => resumirOrdenesPorCamion(scopedTransportOrders), [scopedTransportOrders])
+  const pendingPlanTrucks = useMemo(() => {
+    if (!activePlan) return []
+
+    const existingIds = new Set(scopedTransportOrders.map((order) => order.id))
+    const grouped = new Map<string, CamionResumen>()
+
+    ;(activePlan.camionesDetalle ?? []).forEach((route) => {
+      const orderId = `plan-${activePlan.id}-${route.camionId}`
+      if (existingIds.has(orderId)) return
+
+      const key = route.camionId
+      const current = grouped.get(key)
+      const rutas = current?.rutas ?? []
+      rutas.push({
+        id: route.rutaId,
+        camionId: route.camionId,
+        nombre: route.rutaNombre,
+        color: route.rutaColor,
+        planId: activePlan.id,
+        paradaIds: [...route.paradaIds],
+        cargaKg: route.cargaKg,
+        cargaVolM3: route.cargaVolM3,
+        pedidos: route.pedidos,
+      })
+
+      grouped.set(key, {
+        id: key,
+        placa: route.placa,
+        tipo: route.tipo,
+        clase: route.clase,
+        capacidadKg: route.capacidadKg,
+        capacidadVolM3: route.capacidadVolM3,
+        ordenes: [],
+        orderCount: rutas.length,
+        cargaKg: rutas.reduce((acc, item) => acc + item.cargaKg, 0),
+        cargaVolM3: rutas.reduce((acc, item) => acc + item.cargaVolM3, 0),
+        pedidos: rutas.reduce((acc, item) => acc + item.pedidos, 0),
+        chofer: route.chofer,
+        auxiliar: route.auxiliar,
+        ocupacionPct:
+          route.capacidadKg > 0
+            ? Math.round((rutas.reduce((acc, item) => acc + item.cargaKg, 0) / route.capacidadKg) * 100)
+            : 0,
+        rutas,
+      })
+    })
+
+    return Array.from(grouped.values())
+  }, [activePlan, scopedTransportOrders])
 
   const data = useMemo(() => {
-    let list = operationalTrucks
+    let list = activePlan ? [...pendingPlanTrucks, ...operationalTrucks] : operationalTrucks
     if (filters.tipo) list = list.filter((c) => c.tipo === filters.tipo)
     if (filters.clase) list = list.filter((c) => c.clase === filters.clase)
     return list
-  }, [operationalTrucks, filters])
+  }, [activePlan, pendingPlanTrucks, operationalTrucks, filters])
 
   const abrirSeleccion = (c: CamionResumen) => {
     setSeleccion(c)
@@ -379,7 +438,12 @@ export function CamionesView() {
     if (!seleccion || !puedeFinalizar) return
     setUnifyCtx({
       camion: seleccion.placa,
+      camionId: esFilaDePlan
+        ? (rutasIncluidas[0]?.camionId ?? null)
+        : (CAMIONES.find((camion) => camion.placa === seleccion.placa)?.id ?? null),
+      planId: esFilaDePlan ? (rutasIncluidas[0]?.planId ?? null) : null,
       paradaIds: paradaIdsViaje,
+      orderIds: esFilaDePlan ? [] : incluidas.map((o) => o.id),
       ordenes: esFilaDePlan ? rutasIncluidas.map((r) => r.nombre) : incluidas.map((o) => o.codigo),
       // La tripulación de la fila (que viaja con el camión) es la fuente; solo se recalcula desde
       // las órdenes incluidas cuando hay órdenes, porque ahí el usuario pudo excluir alguna.

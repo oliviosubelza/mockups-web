@@ -350,7 +350,10 @@ export function OrdenesTransporteView() {
     const primera = incluidas[0]
     setUnifyCtx({
       camion: camiones[0],
+      camionId: CAMIONES.find((camion) => camion.placa === camiones[0])?.id ?? null,
+      planId: null,
       paradaIds,
+      orderIds: incluidas.map((o) => o.id),
       ordenes: incluidas.map((o) => o.codigo),
       chofer: primera.chofer,
       auxiliar: primera.auxiliar,

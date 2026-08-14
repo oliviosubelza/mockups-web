@@ -38,8 +38,7 @@ import { OrdersMap } from '../OrdersMap'
 import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
 import { usePlanesStore } from '../planes-store'
-import { useTransportOrdersStore } from '../transport-orders-store'
-import { useDispatchPlanStore, selectIncludedOrders, selectSelectedTrucks } from '../dispatch-plan-store'
+import { useDispatchPlanStore, selectIncludedOrders } from '../dispatch-plan-store'
 import { ordenarPorCercania } from '../map/geo/hilbert'
 import { nearestOrder } from '../map/route-optimizer'
 import {
@@ -205,6 +204,8 @@ export function PlanningView({
   singleRoute,
   routeColor,
   readOnly = false,
+  readOnlyActionLabel,
+  onReadOnlyConfirm,
 }: {
   state: BoardState
   // Se mantiene por compatibilidad con el caller (DispatchFlow/Mockup); ya no hay tabs que elegir.
@@ -223,6 +224,10 @@ export function PlanningView({
    * filtro por Ruta y los toggles/select de rutas de la tabla. El flujo normal no lo pasa.
    */
   readOnly?: boolean
+  /** Etiqueta del CTA final del flujo readOnly (ej. "Iniciar despacho"). */
+  readOnlyActionLabel?: string
+  /** Acción adicional del flujo readOnly antes de salir de la pantalla. */
+  onReadOnlyConfirm?: () => void
 }) {
   // Pin/unpin de cada panel. Al contraer (unpin) uno queda un RIEL fijo (~48px) con su botón para
   // volver a expandirlo; el otro se garantiza pineado (nunca ambos contraídos). El split se maneja
@@ -848,12 +853,22 @@ export function PlanningView({
   const [emptyRoutesWarningOpen, setEmptyRoutesWarningOpen] = useState(false)
   const [emptyRoutesList, setEmptyRoutesList] = useState<{ id: string; nombre: string }[]>([])
   const [validRoutesCount, setValidRoutesCount] = useState(0)
+  const primaryActionLabel = readOnly ? (readOnlyActionLabel ?? 'Generar órdenes') : 'Generar rutas'
+  const primaryActionTitle = optimized ? primaryActionLabel : 'Primero optimizar las rutas'
+  const readOnlyContinueVerb = readOnlyActionLabel === 'Iniciar despacho' ? 'despachará(n)' : 'generará(n)'
+  const readOnlyContinueCountLabel = readOnlyActionLabel === 'Iniciar despacho'
+    ? `${validRoutesCount} orden(es) activa(s)`
+    : `${validRoutesCount} orden(es) para ruta(s) activa(s)`
+  const emptyRoutesContinueLabel = !readOnly
+    ? 'Confirmar creación'
+    : readOnlyActionLabel === 'Iniciar despacho'
+      ? 'Confirmar despacho'
+      : 'Confirmar generación'
 
-  const executeRouteCreation = (rutasAProcesar: typeof rutasPlan) => {
+  const executePrimaryAction = (rutasAProcesar: typeof rutasPlan) => {
     if (!readOnly && !scopeLabel?.includes('Reoptimizando')) {
       const dispatchState = useDispatchPlanStore.getState()
       const includedOrders = selectIncludedOrders(dispatchState)
-      const selectedTrucks = selectSelectedTrucks(dispatchState)
 
       const camionesDetalle: PlanCamion[] = rutasAProcesar.map((ruta) => {
         const truck = ruta.camion
@@ -905,26 +920,24 @@ export function PlanningView({
           cargaKg,
           cargaVolM3,
           pedidos: pedidosCount,
-          // En producción esto lo termina disparando el chofer desde mobile. En el mock lo dejamos
-          // listo para monitoreo desde que se generan las rutas.
           chofer: tripulacion.chofer,
           auxiliar: tripulacion.auxiliar,
           ocupacionPct,
         }
       })
 
-      const plan = usePlanesStore.getState().saveActivePlan({
+      usePlanesStore.getState().saveActivePlan({
         pedidos: includedOrders.length > 0 ? includedOrders.length : paradas.flatMap((p) => p.pedidos).length,
         camiones: camionesDetalle.length,
-        estado: 'aprobado',
         camionesDetalle,
       })
-      useTransportOrdersStore.getState().createForPlan(plan)
+    } else if (readOnly) {
+      onReadOnlyConfirm?.()
     }
     onNext()
   }
 
-  const handleCreateRoutes = () => {
+  const handleGenerateOrders = () => {
     const paradasActuales = assignedParadasState ?? baseParadas
     const countByRuta = new Map<string, number>()
     paradasActuales.forEach((p) => {
@@ -944,10 +957,10 @@ export function PlanningView({
       return
     }
 
-    executeRouteCreation(rutasPlan)
+    executePrimaryAction(rutasPlan)
   }
 
-  const confirmCreateRoutesWithEmpty = () => {
+  const confirmGenerateOrdersWithEmpty = () => {
     setEmptyRoutesWarningOpen(false)
     const paradasActuales = assignedParadasState ?? baseParadas
     const countByRuta = new Map<string, number>()
@@ -958,7 +971,7 @@ export function PlanningView({
       }
     })
     const validRutas = rutasPlan.filter((r) => (countByRuta.get(r.id) ?? 0) > 0)
-    executeRouteCreation(validRutas)
+    executePrimaryAction(validRutas)
   }
 
   return (
@@ -994,14 +1007,14 @@ export function PlanningView({
             Nueva ruta
           </Button>
         )}
-        {/* Solo se habilita una vez optimizadas las rutas: después se confirma su distribución. */}
+        {/* Solo se habilita una vez optimizadas las rutas; el verbo cambia según el flujo. */}
         <Button
           size="sm"
           disabled={!optimized}
-          title={optimized ? 'Generar rutas' : 'Primero optimizar las rutas'}
-          onClick={handleCreateRoutes}
+          title={primaryActionTitle}
+          onClick={handleGenerateOrders}
         >
-          Generar rutas
+          {primaryActionLabel}
         </Button>
       </div>
 
@@ -1304,10 +1317,10 @@ export function PlanningView({
             <Button
               variant="default"
               size="sm"
-              onClick={confirmCreateRoutesWithEmpty}
+              onClick={confirmGenerateOrdersWithEmpty}
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
             >
-              Confirmar creación
+              {emptyRoutesContinueLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

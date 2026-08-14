@@ -97,7 +97,7 @@ export function OrdersView({ state }: { state: BoardState }) {
   )
   const updatePlanEstado = usePlanesStore((store) => store.updatePlanEstado)
   const updateCamionDetalle = usePlanesStore((store) => store.updateCamionDetalle)
-  const transportOrders = useTransportOrdersStore((store) => store.orders)
+  const updateActivePlanCamion = usePlanesStore((store) => store.updateActivePlanCamion)
   const assignDriver = useTransportOrdersStore((store) => store.assignDriver)
   const reassignTruck = useTransportOrdersStore((store) => store.reassignTruck)
 
@@ -118,6 +118,11 @@ export function OrdersView({ state }: { state: BoardState }) {
   const camionDe = (o: OrdenDespacho) => o.camionId
 
   const asignarChofer = (id: string, chofer: string) => {
+    if (activePlan) {
+      updateActivePlanCamion(id, { chofer })
+      setOrdenSeleccionada((current) => current?.id === id ? { ...current, conductor: chofer } : current)
+      return
+    }
     assignDriver(id, chofer)
     const orden = ordenesBase.find((o) => o.id === id)
     if (activePlanId !== null && orden) {
@@ -129,6 +134,20 @@ export function OrdersView({ state }: { state: BoardState }) {
   }
 
   const reasignarCamion = (id: string, camionPlaca: string) => {
+    if (activePlan) {
+      const camion = CAMIONES.find((item) => item.placa === camionId)
+      const actual = activePlan.camionesDetalle?.find((item) => item.rutaId === id)
+      updateActivePlanCamion(id, {
+        camionId: camion?.id ?? actual?.camionId ?? '',
+        placa: camionId,
+        tipo: camion?.tipo ?? actual?.tipo,
+        clase: camion?.clase ?? actual?.clase,
+        capacidadKg: camion ? camion.capacidadPeso * 1000 : actual?.capacidadKg,
+        capacidadVolM3: camion?.capacidadVolumen ?? actual?.capacidadVolM3,
+      })
+      setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId } : current)
+      return
+    }
     reassignTruck(id, camionPlaca)
     const orden = ordenesBase.find((o) => o.id === id)
     if (activePlanId !== null && orden) {
@@ -212,7 +231,7 @@ export function OrdersView({ state }: { state: BoardState }) {
           },
         ]
       }),
-    [activePlan, transportOrders],
+    [activePlan],
   )
 
   const paradasBase = activePlan ? paradasConfirmadas : snapshotParadas

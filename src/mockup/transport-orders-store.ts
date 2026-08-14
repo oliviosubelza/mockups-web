@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { ORDENES_TRANSPORTE, type EstadoOrden, type OrdenTransporte, type Plan } from './mock-data'
+import { ORDENES_TRANSPORTE, type EstadoOrden, type OrdenTransporte, type Parada } from './mock-data'
 
-const STORAGE_KEY = 'mockups-web:transport-orders-v4'
+const STORAGE_KEY = 'mockups-web:transport-orders-v5'
 const DEFAULT_CONFIRMATION_TRUCKS = 3
 
 export type TransportOrderEventType =
@@ -29,7 +29,16 @@ interface TransportOrdersState extends PersistedTransportOrders {
   assignDriver: (orderId: string, driver: string) => void
   reassignTruck: (orderId: string, truckPlate: string) => void
   changeStatus: (orderId: string, status: EstadoOrden) => void
-  createForPlan: (plan: Plan) => void
+  finalizeConfirmedTrip: (input: {
+    planId: number | null
+    camionId: string | null
+    camion: string
+    chofer: string
+    auxiliar: string
+    paradaIds: string[]
+    paradas: Parada[]
+    orderIds: string[]
+  }) => void
   reset: () => void
 }
 
@@ -88,6 +97,13 @@ function eventFor(
   }
 }
 
+function maxNumericCode(orders: OrdenTransporte[]): number {
+  return orders.reduce((max, order) => {
+    const code = Number.parseInt(order.codigo, 10)
+    return Number.isFinite(code) ? Math.max(max, code) : max
+  }, 0)
+}
+
 const updateOrder = (
   state: PersistedTransportOrders,
   orderId: string,
@@ -118,35 +134,59 @@ export const useTransportOrdersStore = create<TransportOrdersState>((set) => ({
     set((state) => updateOrder(state, orderId, 'camion', truckPlate, 'TRUCK_REASSIGNED')),
   changeStatus: (orderId, status) =>
     set((state) => updateOrder(state, orderId, 'estado', status, 'STATUS_CHANGED')),
-  createForPlan: (plan) =>
+  finalizeConfirmedTrip: (input) =>
     set((state) => {
-      const existingIds = new Set(state.orders.map((order) => order.id))
-      const created = (plan.camionesDetalle ?? [])
-        .map((truck, index): OrdenTransporte => ({
-          id: `plan-${plan.id}-${truck.rutaId}`,
-          codigo: `OT-${plan.id}-${String(index + 1).padStart(2, '0')}`,
-          camion: truck.placa,
-          chofer: truck.chofer,
-          auxiliar: truck.auxiliar,
-          // En el mock la acción mobile "iniciar ruta" se adelanta para que el monitoreo tenga
-          // tracking visible apenas se generan las órdenes.
-          estado: 'despachada',
-          paradaIds: [...truck.paradaIds],
-          paradas: truck.paradas?.map((parada) => ({
-            ...parada,
-            pedidos: parada.pedidos.map((pedido) => ({ ...pedido })),
-          })),
-        }))
-        .filter((order) => !existingIds.has(order.id) && order.paradaIds.length > 0)
-
-      if (created.length === 0) return state
-      const next = {
-        orders: [...created, ...state.orders],
-        events: [
-          ...state.events,
-          ...created.map((order) => eventFor(order.id, 'ORDER_CREATED', '', order.codigo)),
-        ],
+      if (input.orderIds.length > 0) {
+        let changed = false
+        const ids = new Set(input.orderIds)
+        const events: TransportOrderEvent[] = []
+        const orders = state.orders.map((order) => {
+          if (!ids.has(order.id) || order.estado === 'despachada' || order.estado === 'procesado') return order
+          changed = true
+          events.push(eventFor(order.id, 'STATUS_CHANGED', order.estado, 'despachada'))
+          return { ...order, estado: 'despachada' } satisfies OrdenTransporte
+        })
+        if (!changed) return state
+        const next = { orders, events: [...state.events, ...events] }
+        persist(next)
+        return next
       }
+
+      if (input.planId === null || input.camionId === null || input.paradaIds.length === 0) return state
+
+      const orderId = `plan-${input.planId}-${input.camionId}`
+      const existing = state.orders.find((order) => order.id === orderId)
+      const nextCode = existing?.codigo ?? String(maxNumericCode(state.orders) + 1)
+      const nextOrder: OrdenTransporte = {
+        id: orderId,
+        codigo: nextCode,
+        camion: input.camion,
+        chofer: input.chofer,
+        auxiliar: input.auxiliar,
+        estado: 'despachada',
+        paradaIds: [...input.paradaIds],
+        paradas: input.paradas.map((parada) => ({
+          ...parada,
+          pedidos: parada.pedidos.map((pedido) => ({ ...pedido })),
+        })),
+      }
+
+      const next = existing
+        ? {
+            orders: state.orders.map((order) => (order.id === orderId ? nextOrder : order)),
+            events:
+              existing.estado === 'despachada' || existing.estado === 'procesado'
+                ? state.events
+                : [...state.events, eventFor(orderId, 'STATUS_CHANGED', existing.estado, 'despachada')],
+          }
+        : {
+            orders: [nextOrder, ...state.orders],
+            events: [
+              ...state.events,
+              eventFor(orderId, 'ORDER_CREATED', '', nextOrder.codigo),
+              eventFor(orderId, 'STATUS_CHANGED', 'pendiente', 'despachada'),
+            ],
+          }
       persist(next)
       return next
     }),
