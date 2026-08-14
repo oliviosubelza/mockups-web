@@ -86,6 +86,7 @@ interface RutaDeCamion {
   cargaKg: number
   cargaVolM3: number
   pedidos: number
+  ref: string
 }
 
 /**
@@ -326,25 +327,17 @@ export function CamionesView() {
   const [seleccion, setSeleccion] = useState<CamionResumen | null>(null)
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
-  const activePlanId = usePlanesStore((s) => s.activePlanId)
-  const activePlan = usePlanesStore((s) =>
-    activePlanId === null ? undefined : s.planes.find((plan) => plan.id === activePlanId),
-  )
+  const planes = usePlanesStore((s) => s.planes)
   const transportOrders = useTransportOrdersStore((s) => s.orders)
-  const scopedTransportOrders = useMemo(() => {
-    if (!activePlanId) return transportOrders
-    return transportOrders.filter((order) => order.id.startsWith(`plan-${activePlanId}-`))
-  }, [activePlanId, transportOrders])
+  const scopedTransportOrders = transportOrders
   const operationalTrucks = useMemo(() => resumirOrdenesPorCamion(scopedTransportOrders), [scopedTransportOrders])
   const pendingPlanTrucks = useMemo(() => {
-    if (!activePlan) return []
-
-    const existingIds = new Set(scopedTransportOrders.map((order) => order.id))
+    const consumedRouteRefs = new Set(scopedTransportOrders.flatMap((order) => order.planningRouteRefs ?? []))
     const grouped = new Map<string, CamionResumen>()
 
-    ;(activePlan.camionesDetalle ?? []).forEach((route) => {
-      const orderId = `plan-${activePlan.id}-${route.camionId}`
-      if (existingIds.has(orderId)) return
+    planes.forEach((plan) => (plan.camionesDetalle ?? []).forEach((route) => {
+      const ref = `${plan.id}:${route.rutaId}`
+      if (consumedRouteRefs.has(ref)) return
 
       const key = route.camionId
       const current = grouped.get(key)
@@ -354,11 +347,12 @@ export function CamionesView() {
         camionId: route.camionId,
         nombre: route.rutaNombre,
         color: route.rutaColor,
-        planId: activePlan.id,
+        planId: plan.id,
         paradaIds: [...route.paradaIds],
         cargaKg: route.cargaKg,
         cargaVolM3: route.cargaVolM3,
         pedidos: route.pedidos,
+        ref,
       })
 
       grouped.set(key, {
@@ -381,17 +375,17 @@ export function CamionesView() {
             : 0,
         rutas,
       })
-    })
+    }))
 
     return Array.from(grouped.values())
-  }, [activePlan, scopedTransportOrders])
+  }, [planes, scopedTransportOrders])
 
   const data = useMemo(() => {
-    let list = activePlan ? [...pendingPlanTrucks, ...operationalTrucks] : operationalTrucks
+    let list = [...pendingPlanTrucks, ...operationalTrucks]
     if (filters.tipo) list = list.filter((c) => c.tipo === filters.tipo)
     if (filters.clase) list = list.filter((c) => c.clase === filters.clase)
     return list
-  }, [activePlan, pendingPlanTrucks, operationalTrucks, filters])
+  }, [pendingPlanTrucks, operationalTrucks, filters])
 
   const abrirSeleccion = (c: CamionResumen) => {
     setSeleccion(c)
@@ -444,6 +438,7 @@ export function CamionesView() {
       planId: esFilaDePlan ? (rutasIncluidas[0]?.planId ?? null) : null,
       paradaIds: paradaIdsViaje,
       orderIds: esFilaDePlan ? [] : incluidas.map((o) => o.id),
+      planningRouteRefs: esFilaDePlan ? rutasIncluidas.map((r) => r.ref) : [],
       ordenes: esFilaDePlan ? rutasIncluidas.map((r) => r.nombre) : incluidas.map((o) => o.codigo),
       // La tripulación de la fila (que viaja con el camión) es la fuente; solo se recalcula desde
       // las órdenes incluidas cuando hay órdenes, porque ahí el usuario pudo excluir alguna.

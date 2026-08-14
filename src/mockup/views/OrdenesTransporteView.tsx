@@ -354,6 +354,7 @@ export function OrdenesTransporteView() {
       planId: null,
       paradaIds,
       orderIds: incluidas.map((o) => o.id),
+      planningRouteRefs: [],
       ordenes: incluidas.map((o) => o.codigo),
       chofer: primera.chofer,
       auxiliar: primera.auxiliar,

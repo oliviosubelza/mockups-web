@@ -21,6 +21,7 @@ interface UnifyState {
   paradaIds: string[]
   /** Órdenes de transporte incluidas en la unificación (vacío = todavía no existen OT, viene del plan). */
   orderIds: string[]
+  planningRouteRefs: string[]
   /** Códigos de las órdenes que se unificaron (para mostrar contexto). */
   ordenes: string[]
   /** Chofer del viaje ('' = sin asignar). */
@@ -39,6 +40,7 @@ interface UnifyState {
     planId: number | null
     paradaIds: string[]
     orderIds: string[]
+    planningRouteRefs: string[]
     ordenes: string[]
     chofer: string
     auxiliar: string
@@ -55,6 +57,7 @@ const VACIO = {
   planId: null,
   paradaIds: [],
   orderIds: [],
+  planningRouteRefs: [],
   ordenes: [],
   chofer: '',
   auxiliar: '',

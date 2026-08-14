@@ -1050,6 +1050,8 @@ export interface OrdenTransporte {
   paradaIds: string[]
   /** Fotografía de las paradas generadas por la planificación. Las órdenes semilla se resuelven por id. */
   paradas?: Parada[]
+  /** Rutas planificadas que originaron la orden. */
+  planningRouteRefs?: string[]
 }
 
 /**

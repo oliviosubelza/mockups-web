@@ -38,6 +38,7 @@ interface TransportOrdersState extends PersistedTransportOrders {
     paradaIds: string[]
     paradas: Parada[]
     orderIds: string[]
+    planningRouteRefs: string[]
   }) => void
   reset: () => void
 }
@@ -152,9 +153,12 @@ export const useTransportOrdersStore = create<TransportOrdersState>((set) => ({
         return next
       }
 
-      if (input.planId === null || input.camionId === null || input.paradaIds.length === 0) return state
+      if (input.camionId === null || input.paradaIds.length === 0) return state
 
-      const orderId = `plan-${input.planId}-${input.camionId}`
+      const routeKey = [...input.planningRouteRefs].sort().join('|')
+      const orderId = routeKey
+        ? `planned-routes-${input.camionId}-${routeKey}`
+        : `plan-${input.planId ?? 'adhoc'}-${input.camionId}`
       const existing = state.orders.find((order) => order.id === orderId)
       const nextCode = existing?.codigo ?? String(maxNumericCode(state.orders) + 1)
       const nextOrder: OrdenTransporte = {
@@ -169,6 +173,7 @@ export const useTransportOrdersStore = create<TransportOrdersState>((set) => ({
           ...parada,
           pedidos: parada.pedidos.map((pedido) => ({ ...pedido })),
         })),
+        planningRouteRefs: [...input.planningRouteRefs],
       }
 
       const next = existing

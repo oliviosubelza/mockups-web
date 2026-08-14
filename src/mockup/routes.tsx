@@ -79,7 +79,8 @@ function ReoptimizarScreen() {
   // Destino tras unificar (opción B del doc 11): el planificador directo en el MAPA, scopeado a las
   // paradas unificadas del camión. Como es UN camión, todas las paradas se reasignan a él (un solo
   // color) y al optimizar se dibuja UNA sola ruta — ya no las 4 del plan completo.
-  const { camion, camionId, planId, paradaIds, orderIds, chofer, auxiliar } = useUnifyStore()
+  const { camion, camionId, planId, paradaIds, orderIds, planningRouteRefs, chofer, auxiliar } = useUnifyStore()
+  const planes = usePlanesStore((store) => store.planes)
   const transportOrders = useTransportOrdersStore((store) => store.orders)
   const finalizeConfirmedTrip = useTransportOrdersStore((store) => store.finalizeConfirmedTrip)
   const target = camion ? CAMIONES.find((c) => c.placa === camion) : undefined
@@ -87,8 +88,12 @@ function ReoptimizarScreen() {
     () => transportOrders.flatMap((order) => order.paradas ?? []),
     [transportOrders],
   )
+  const plannedStops = useMemo(
+    () => planes.flatMap((plan) => (plan.camionesDetalle ?? []).flatMap((route) => route.paradas ?? [])),
+    [planes],
+  )
   const scope = useMemo(
-    () => [...PARADAS, ...operationalStops]
+    () => [...PARADAS, ...plannedStops, ...operationalStops]
       .filter((p) => paradaIds.includes(p.id))
       .map((p) => {
         const camionId = target?.id ?? p.camionId
@@ -100,7 +105,7 @@ function ReoptimizarScreen() {
           pedidos: p.pedidos.map((pedido) => ({ ...pedido, camionId, rutaId })),
         }
       }),
-    [operationalStops, paradaIds, target?.id],
+    [operationalStops, paradaIds, plannedStops, target?.id],
   )
   // Sin contexto (refresh/URL directa) cae al plan completo.
   if (!camion) return <DispatchFlow state="default" initialFase={1} planningTab="mapa" />
@@ -124,6 +129,7 @@ function ReoptimizarScreen() {
             paradaIds,
             paradas: scope,
             orderIds,
+            planningRouteRefs,
           })
         }
         onNext={() => navigateTo('camiones')}
