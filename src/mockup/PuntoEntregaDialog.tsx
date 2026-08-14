@@ -45,7 +45,7 @@ import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/comp
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { CANAL_META, camionPorId, rutaPorCamionId, type Parada } from './mock-data'
+import { CANAL_META, RUTAS, camionPorId, rutaPorCamionId, type Parada } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
 import { fotosDePunto, ilustracionDePunto } from './mock-fotos'
 
@@ -185,7 +185,9 @@ export function PuntoEntregaDialog({
 
   const meta = CANAL_META[parada.canal]
   const camion = camionPorId(parada.camionId)
-  const ruta = rutaPorCamionId(parada.camionId)
+  const targetRutaId = parada.rutaId || (parada.camionId ? `r-${parada.camionId}` : undefined)
+  const ruta = targetRutaId ? (RUTAS.find((r) => r.id === targetRutaId) || rutaPorCamionId(parada.camionId)) : undefined
+  const tieneRuta = !!(parada.rutaId || parada.camionId)
   const fotos = fotosDePunto(parada.puntoEntregaId, parada.canal)
   const fallback = ilustracionDePunto(parada.puntoEntregaId)
 
@@ -229,7 +231,7 @@ export function PuntoEntregaDialog({
               <Badge variant="outline" className="font-mono">
                 {parada.puntoEntregaId}
               </Badge>
-              {ruta && (
+              {tieneRuta && ruta && (
                 <Badge variant="outline">
                   {/* El color es DATO: es el mismo con el que se pinta la ruta en el mapa. */}
                   <span className="size-2 rounded-full" style={{ backgroundColor: ruta.color }} />
@@ -247,18 +249,22 @@ export function PuntoEntregaDialog({
             <Dato icon={Clock} label="Ventana">
               {parada.ventana}
             </Dato>
-            <Dato icon={Truck} label="Camión">
-              {camion ? `${camion.placa} · ${camion.tipo}` : 'Sin asignar'}
-            </Dato>
+            {tieneRuta && (
+              <Dato icon={Truck} label="Camión">
+                {camion ? `${camion.placa} · ${camion.tipo}` : 'Sin asignar'}
+              </Dato>
+            )}
             <Dato icon={Weight} label="Peso total">
               {fmtPeso.format(parada.pesoTotal)} kg
             </Dato>
             <Dato icon={Boxes} label="Volumen total">
               {parada.volumenTotal} m³
             </Dato>
-            <Dato icon={Hash} label="Secuencia">
-              #{parada.secuencia}
-            </Dato>
+            {tieneRuta && (
+              <Dato icon={Hash} label="Secuencia">
+                #{parada.secuencia}
+              </Dato>
+            )}
             <Dato icon={Navigation} label="Coordenadas">
               {parada.lat.toFixed(4)}, {parada.lng.toFixed(4)}
             </Dato>

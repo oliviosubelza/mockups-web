@@ -66,22 +66,21 @@ function centroAproximado(anillo: LatLngTuple[]): LatLngTuple {
  * geometría no es un error de la pantalla, es un dato incompleto de Ventas.
  */
 export function aMercadosMapa(data: MarketMapDto[]): MercadoMapa[] {
-  return data
-    .map((dto, i) => {
-      const anillos = (dto.polygon?.coordinates ?? [])
-        .filter((anillo) => anillo.length >= 3)
-        .map((anillo) => anillo.map(aLatLng))
-      if (anillos.length === 0) return null
-      return {
-        id: dto.marketId,
-        nombre: dto.marketName,
-        cityId: dto.cityId,
-        anillos,
-        centro: centroAproximado(anillos[0]),
-        color: COLORES_MERCADO[i % COLORES_MERCADO.length],
-      } satisfies MercadoMapa
-    })
-    .filter((m): m is MercadoMapa => m !== null)
+  const items: (MercadoMapa | null)[] = data.map((dto, i) => {
+    const anillos = (dto.polygon?.coordinates ?? [])
+      .filter((anillo) => anillo.length >= 3)
+      .map((anillo) => anillo.map(aLatLng))
+    if (anillos.length === 0) return null
+    return {
+      id: dto.marketId,
+      nombre: dto.marketName,
+      cityId: dto.cityId,
+      anillos,
+      centro: centroAproximado(anillos[0]),
+      color: COLORES_MERCADO[i % COLORES_MERCADO.length],
+    }
+  })
+  return items.filter((m): m is MercadoMapa => m !== null)
 }
 
 /** Todos los vértices de los mercados, para encuadrar el mapa sobre ellos. */

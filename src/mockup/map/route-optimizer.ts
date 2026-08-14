@@ -58,8 +58,16 @@ export function buildRouteOverlay(
   const polylines: OverlayPolyline[] = []
   const markers: OverlayMarker[] = []
   for (const [rid, stops] of byRuta) {
-    const ruta = listRutas.find((r) => r.id === rid)
-    if (!ruta) continue
+    const ruta = listRutas.find(
+      (r) =>
+        r.id === rid ||
+        r.camionId === rid ||
+        `r-${r.camionId}` === rid ||
+        r.id === `r-${rid}` ||
+        rid.includes(r.id) ||
+        (r.camionId && rid.includes(r.camionId)),
+    )
+    const color = ruta?.color ?? '#2563eb'
     const hasSeq = stops.some((s) => s.secuencia !== undefined && s.secuencia !== null)
     const ordered = hasSeq
       ? [...stops].sort((a, b) => (a.secuencia ?? 0) - (b.secuencia ?? 0))
@@ -67,11 +75,11 @@ export function buildRouteOverlay(
 
     // Ruta cerrada: origen (depósito) -> paradas en secuencia -> fin (depósito)
     const path: LatLngTuple[] = [depot, ...ordered.map((s) => [s.lat, s.lng] as LatLngTuple), depot]
-    polylines.push({ id: `route-${rid}`, path, color: ruta.color })
+    polylines.push({ id: `route-${rid}`, path, color })
     // Badge con el orden de visita de cada parada (secuencia 1..N).
     ordered.forEach((s, i) => {
       const seqNum = s.secuencia ?? (i + 1)
-      markers.push({ id: `seq-${rid}-${s.id}`, position: [s.lat, s.lng], color: ruta.color, label: `#${seqNum} · ${s.cliente}` })
+      markers.push({ id: `seq-${rid}-${s.id}`, position: [s.lat, s.lng], color, label: `#${seqNum} · ${s.cliente}` })
     })
   }
   return { polylines, markers }

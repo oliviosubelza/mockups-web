@@ -62,14 +62,26 @@ function MapCenterer({ target }: { target?: { lat: number; lng: number; t: numbe
   return null
 }
 
-function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[], showRoute?: boolean) {
+function pinParada(
+  parada: Parada,
+  seleccionado: boolean,
+  rutas?: Ruta[],
+  showRoute?: boolean,
+  defaultRouteColor?: string,
+) {
   const { icon: Icon } = CANAL_META[parada.canal]
   const listRutas = rutas || RUTAS
   const targetRutaId = parada.rutaId || (parada.camionId ? `r-${parada.camionId}` : undefined)
-  const ruta = listRutas.find((r) => r.id === targetRutaId || r.camionId === parada.camionId)
+  const ruta = listRutas.find(
+    (r) =>
+      r.id === targetRutaId ||
+      r.camionId === parada.camionId ||
+      r.id === parada.rutaId ||
+      (targetRutaId && r.id.endsWith(targetRutaId)),
+  )
   const camion = camionPorId(parada.camionId)
-  const isAssignedAndShown = showRoute && !!(parada.camionId || parada.rutaId)
-  const color = isAssignedAndShown ? (ruta?.color ?? camion?.color ?? SIN_CAMION) : SIN_CAMION
+  const isAssignedAndShown = showRoute && (!!parada.camionId || !!parada.rutaId || parada.secuencia !== undefined)
+  const color = isAssignedAndShown ? (ruta?.color ?? camion?.color ?? defaultRouteColor ?? SELECCION) : SIN_CAMION
   const seq = isAssignedAndShown ? parada.secuencia : undefined
 
   const html = renderToStaticMarkup(
@@ -80,15 +92,17 @@ function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[], showRo
         height: 32,
         borderRadius: 999,
         background: color,
-        border: seleccionado ? `2px solid ${SELECCION}` : '2px solid #fff',
+        border: seleccionado ? '2.5px solid #2563eb' : '2px solid #fff',
         boxShadow: seleccionado
-          ? `0 0 0 3px ${SELECCION}66, 0 2px 5px rgb(0 0 0 / 0.4)`
+          ? '0 0 0 4px rgba(37, 99, 235, 0.45), 0 3px 8px rgba(0, 0, 0, 0.45)'
           : '0 2px 5px rgb(0 0 0 / 0.4)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: '#fff',
         position: 'relative',
+        transform: seleccionado ? 'scale(1.15)' : 'scale(1)',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
       }}
     >
       <Icon size={14} strokeWidth={2.25} />
@@ -98,8 +112,8 @@ function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[], showRo
             position: 'absolute',
             top: -6,
             right: -6,
-            minWidth: 17,
-            height: 17,
+            minWidth: 18,
+            height: 18,
             padding: '0 3px',
             borderRadius: 999,
             background: '#0f172a',
@@ -111,7 +125,7 @@ function pinParada(parada: Parada, seleccionado: boolean, rutas?: Ruta[], showRo
             alignItems: 'center',
             justifyContent: 'center',
             lineHeight: 1,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
           }}
         >
           {seq}
@@ -158,6 +172,7 @@ export function OrdersMap({
   focusedParadaId,
   focusTarget,
   onDismissFocus,
+  capaMercados,
 }: {
   paradas: Parada[]
   onSelectionChange?: (ids: string[]) => void
@@ -172,6 +187,7 @@ export function OrdersMap({
   focusedParadaId?: string | null
   focusTarget?: { lat: number; lng: number; id: string; t: number } | null
   onDismissFocus?: () => void
+  capaMercados?: string
 }) {
   const [activeTool, setActiveTool] = useState<MapTool>('pan')
   const [paradaDetalle, setParadaDetalle] = useState<Parada | null>(null)
@@ -278,10 +294,14 @@ export function OrdersMap({
             <Marker
               key={parada.id}
               position={[parada.lat, parada.lng]}
-              icon={pinParada(parada, selectedSet.has(parada.id) || isFocused, rutas, showRoute)}
+              icon={pinParada(
+                parada,
+                selectedSet.has(parada.id) || isFocused,
+                rutas,
+                showRoute,
+                singleRoute ? routeColor : undefined,
+              )}
               eventHandlers={{
-                // Solo con la mano ('pan'): con rect/lazo activos el click es parte del gesto de
-                // seleccionar, y abrir un modal ahí interrumpiría la selección a medio hacer.
                 click: () => {
                   if (activeTool === 'pan') setParadaDetalle(parada)
                 },

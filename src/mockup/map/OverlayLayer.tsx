@@ -27,18 +27,23 @@ export function OverlayLayer() {
   return (
     <>
       {polylines.map((line) => (
-        <Polyline
-          key={line.id}
-          positions={line.path}
-          pathOptions={{ color: line.color, weight: 4, opacity: 0.85 }}
-        />
+        <React.Fragment key={line.id}>
+          <Polyline
+            positions={line.path}
+            pathOptions={{ color: '#ffffff', weight: 6.5, opacity: 0.95 }}
+          />
+          <Polyline
+            positions={line.path}
+            pathOptions={{ color: line.color, weight: 3.5, opacity: 1 }}
+          />
+        </React.Fragment>
       ))}
 
       {markers.map((marker) => (
         <CircleMarker
           key={marker.id}
           center={marker.position}
-          radius={6}
+          radius={5}
           pathOptions={{ color: '#ffffff', weight: 2, fillColor: marker.color, fillOpacity: 1 }}
         >
           {marker.label && <Popup>{marker.label}</Popup>}

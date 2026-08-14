@@ -880,9 +880,11 @@ export function PlanningView({
               chofer: CHOFERES[truckIndex % CHOFERES.length] ?? '',
               auxiliar: AUXILIARES[truckIndex % AUXILIARES.length] ?? '',
             }
-        const paradasDeRuta = paradas.filter(
-          (p) => (p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)) === ruta.id,
-        )
+        const paradasDeRuta = paradas
+          .filter(
+            (p) => (p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)) === ruta.id,
+          )
+          .sort((a, b) => (a.secuencia ?? 0) - (b.secuencia ?? 0))
         const cargaKg = paradasDeRuta.reduce((sum, p) => sum + p.pesoTotal, 0)
         const cargaVolM3 = paradasDeRuta.reduce((sum, p) => sum + p.volumenTotal, 0)
         const pedidosCount = paradasDeRuta.reduce((sum, p) => sum + p.pedidos.length, 0)
@@ -902,9 +904,17 @@ export function PlanningView({
           rutaId: ruta.id,
           rutaColor: ruta.color,
           paradaIds: paradasDeRuta.map((p) => p.id),
-          paradas: paradasDeRuta.map((parada) => ({
+          paradas: paradasDeRuta.map((parada, index) => ({
             ...parada,
-            pedidos: parada.pedidos.map((pedido) => ({ ...pedido })),
+            secuencia: index + 1,
+            rutaId: ruta.id,
+            camionId: truck.id,
+            pedidos: parada.pedidos.map((pedido) => ({
+              ...pedido,
+              secuencia: index + 1,
+              rutaId: ruta.id,
+              camionId: truck.id,
+            })),
           })),
           orderCount: 1,
           cargaKg,
@@ -1175,7 +1185,7 @@ export function PlanningView({
               <label htmlFor="nueva-ruta-camion" className="text-xs font-medium text-foreground">
                 Camión asignado <span className="text-destructive">*</span>
               </label>
-              <Select value={nuevaRutaCamionId} onValueChange={setNuevaRutaCamionId}>
+              <Select value={nuevaRutaCamionId} onValueChange={(val) => setNuevaRutaCamionId(val ?? '')}>
                 <SelectTrigger id="nueva-ruta-camion" className="w-full h-10">
                   <SelectValue placeholder="Seleccioná un camión…">
                     {selectedCamionParaModal ? (
@@ -1260,20 +1270,19 @@ export function PlanningView({
             <DialogDescription className="pt-2 text-sm text-foreground/90 leading-relaxed">
               {emptyRoutesList.length === 1 ? (
                 <>
-                  Tienes <strong className="font-semibold text-foreground">1 ruta sin entregas asignadas</strong>. Si continúas, se {readOnly ? readOnlyContinueVerb : 'creará(n)'}{' '}
+                  Tienes <strong className="font-semibold text-foreground">1 ruta sin entregas asignadas</strong>. Si continúas,{' '}
                   <strong className="font-semibold text-foreground">
-                    {readOnly ? readOnlyContinueCountLabel : `${validRoutesCount} ruta(s) activa(s)`}
+                    {validRoutesCount === 1 ? 'se creará 1 ruta activa' : `se crearán ${validRoutesCount} rutas activas`}
                   </strong>{' '}
-                  y se descartará{' '}
-                  <strong className="text-amber-700 dark:text-amber-400 font-semibold">{emptyRoutesList[0]?.nombre}</strong> por no contener puntos de entrega.
+                  y se descartará <strong className="text-amber-700 dark:text-amber-400 font-semibold">{emptyRoutesList[0]?.nombre}</strong> por no contener entregas.
                 </>
               ) : (
                 <>
-                  Tienes <strong className="font-semibold text-foreground">{emptyRoutesList.length} rutas sin entregas asignadas</strong>. Si continúas, se {readOnly ? readOnlyContinueVerb : 'creará(n)'}{' '}
+                  Tienes <strong className="font-semibold text-foreground">{emptyRoutesList.length} rutas sin entregas asignadas</strong>. Si continúas,{' '}
                   <strong className="font-semibold text-foreground">
-                    {readOnly ? readOnlyContinueCountLabel : `${validRoutesCount} ruta(s) activa(s)`}
+                    {validRoutesCount === 1 ? 'se creará 1 ruta activa' : `se crearán ${validRoutesCount} rutas activas`}
                   </strong>{' '}
-                  y se descartarán las rutas vacías.
+                  y se descartarán las rutas vacías indicadas a continuación.
                 </>
               )}
             </DialogDescription>

@@ -1,7 +1,7 @@
 // Store de planificaciones guardadas en memoria/session (planes_store)
 // Mantiene el listado de planes creados durante la sesión para el flujo de demostración.
 import { create } from 'zustand'
-import { type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
+import { CAMIONES, type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
 
 const STORAGE_KEY = 'mockups-web:planes'
 const ACTIVE_PLAN_STORAGE_KEY = 'mockups-web:planes:active-id'
@@ -88,7 +88,11 @@ interface PlanesState {
   addPlan: (input?: CreatePlanInput) => Plan
   saveActivePlan: (input?: CreatePlanInput) => Plan
   updatePlanEstado: (id: number, estado: EstadoPlan) => void
-  updateActivePlanCamion: (rutaId: string, patch: Partial<PlanCamion>) => void
+  updateCamionDetalle: (
+    planId: number,
+    rutaId: string,
+    updates: { chofer?: string; camionPlaca?: string },
+  ) => void
   beginPlan: () => Plan
   clearPlanes: () => void
   removePlan: (id: number) => void
@@ -166,6 +170,46 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
     const updated = get().planes.map((plan) => (plan.id === id ? { ...plan, estado } : plan))
     writeStoredPlanes(updated)
     set({ planes: updated })
+  },
+
+  updateCamionDetalle: (planId, rutaId, updates) => {
+    const { planes } = get()
+    const plan = planes.find((p) => p.id === planId)
+    if (!plan || !plan.camionesDetalle) return
+
+    const newCamion = updates.camionPlaca ? CAMIONES.find((c) => c.placa === updates.camionPlaca) : undefined
+
+    const updatedCamiones = plan.camionesDetalle.map((c) => {
+      if (c.rutaId !== rutaId && c.id !== rutaId) return c
+      return {
+        ...c,
+        ...(updates.chofer !== undefined ? { chofer: updates.chofer } : {}),
+        ...(newCamion
+          ? {
+              id: newCamion.id,
+              camionId: newCamion.id,
+              placa: newCamion.placa,
+              tipo: newCamion.tipo,
+              clase: newCamion.clase,
+              capacidadKg: (newCamion.capacidadPeso ?? 0) * 1000,
+              capacidadVolM3: newCamion.capacidadVolumen ?? 0,
+              ocupacionPct:
+                newCamion.capacidadPeso > 0
+                  ? Math.round((c.cargaKg / (newCamion.capacidadPeso * 1000)) * 100)
+                  : 0,
+            }
+          : {}),
+      }
+    })
+
+    const updatedPlan: Plan = {
+      ...plan,
+      camionesDetalle: updatedCamiones,
+    }
+
+    const updatedPlanes = planes.map((p) => (p.id === planId ? updatedPlan : p))
+    writeStoredPlanes(updatedPlanes)
+    set({ planes: updatedPlanes })
   },
 
   updateActivePlanCamion: (rutaId, patch) => {
