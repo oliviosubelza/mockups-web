@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { storage } from '@/lib/storage/adapter'
 import type { PersistedTableState, DensityMode } from './types'
 
-const PREFIX = 'data-table:'
+// v2: el default de densidad pasó de 'normal' a 'compact'. El estado por tabla se persiste, así
+// que sin cambiar el prefijo toda tabla ya abierta seguiría leyendo su density:'normal' guardada y
+// el default nuevo no se aplicaría jamás. Bumpear el prefijo descarta esos blobs viejos.
+const PREFIX = 'data-table:v2:'
 const DEBOUNCE_MS = 400
 
 const DEFAULTS: PersistedTableState = {
@@ -11,7 +14,7 @@ const DEFAULTS: PersistedTableState = {
   columnVisibility: {},
   columnPinning: { left: [], right: [] },
   sorting: [],
-  density: 'normal',
+  density: 'compact',
   pageSize: 20,
 }
 

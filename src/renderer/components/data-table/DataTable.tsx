@@ -101,15 +101,15 @@ import { DENSITY } from './types'
 const SPECIAL = new Set(['__select__', '__actions__', '__expand__', '__dragrow__'])
 
 const DENSITY_ROW: Record<DensityMode, string> = {
-  compact:     'h-8  text-xs',
-  normal:      'h-10 text-sm',
-  comfortable: 'h-14 text-sm',
+  compact:     'h-7  text-[11px]',
+  normal:      'h-9  text-xs',
+  comfortable: 'h-12 text-sm',
 }
 
 const DENSITY_CELL: Record<DensityMode, string> = {
-  compact:     'px-2 py-0.5',
-  normal:      'px-3 py-2',
-  comfortable: 'px-3 py-3',
+  compact:     'px-2 py-0',
+  normal:      'px-2.5 py-1',
+  comfortable: 'px-3 py-2',
 }
 
 const DENSITY_ICON: Record<DensityMode, typeof Rows3> = {
@@ -132,9 +132,10 @@ const PAGE_SIZES = [10, 20, 50, 100]
 // cada vez que un fetch vuelve sin filas. Con esto el cuadro mide siempre lo mismo.
 const DEFAULT_BODY_MIN_HEIGHT = 320
 
-// Alto real del thead según densidad (h-8 / h-10 en DraggableHeader) — se descuenta para que el
-// cartel de vacío/error ocupe EXACTAMENTE el resto y el total dé bodyMinHeight clavado.
-const HEADER_HEIGHT: Record<DensityMode, number> = { compact: 32, normal: 40, comfortable: 40 }
+// Alto real del thead según densidad (h-7 / h-9 / h-12 en DraggableHeader) — se descuenta para que
+// el cartel de vacío/error ocupe EXACTAMENTE el resto y el total dé bodyMinHeight clavado.
+// MANTENER EN SINCRONÍA con DENSITY_ROW y con las clases del <th> en DraggableHeader.
+const HEADER_HEIGHT: Record<DensityMode, number> = { compact: 28, normal: 36, comfortable: 48 }
 
 function toTanstackCols<T extends object>(defs: ColumnDefConfig<T>[]): ColumnDef<T>[] {
   return defs.map((def) => ({
@@ -251,7 +252,7 @@ function DraggableHeader<T extends object>({
       style={style}
       className={cn(
         'relative border-b border-r last:border-r-0 bg-muted/50 select-none group/th',
-        density === 'compact' ? 'h-8 text-xs' : 'h-10 text-xs',
+        density === 'compact' ? 'h-7 text-[11px]' : density === 'normal' ? 'h-9 text-xs' : 'h-12 text-xs',
         isDragging && 'bg-accent z-10',
         isPinned && 'bg-muted/70',
       )}
@@ -614,7 +615,7 @@ export function DataTable<T extends object>({
     left:  columnDefs.filter((d) => d.pin === 'left').map((d) => d.id),
     right: columnDefs.filter((d) => d.pin === 'right').map((d) => d.id),
   }))
-  const [density,           setDensity]           = useState<DensityMode>(defaultDensity ?? 'normal')
+  const [density,           setDensity]           = useState<DensityMode>(defaultDensity ?? 'compact')
   const [pageSize,          setPageSize]          = useState(defaultPageSize ?? 20)
   const [clientPage,        setClientPage]        = useState(0)
 
@@ -964,7 +965,7 @@ export function DataTable<T extends object>({
       left:  columnDefs.filter((d) => d.pin === 'left').map((d) => d.id),
       right: columnDefs.filter((d) => d.pin === 'right').map((d) => d.id),
     })
-    setDensity(defaultDensity ?? 'normal')
+    setDensity(defaultDensity ?? 'compact')
     setPageSize(defaultPageSize ?? 20)
     setGlobalFilter('')
     setRowSelection({})

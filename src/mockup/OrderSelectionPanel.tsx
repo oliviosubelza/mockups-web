@@ -512,6 +512,18 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
 
   const sinSeleccion = activeCanales.length === 0
 
+  // Misma barra en las dos vistas: el Resumen YA se filtraba con estos valores (`coincideFiltros`
+  // alimenta `base`, de donde salen los KPIs y las filas por canal), pero la barra solo se
+  // renderizaba en la tabla de fuera de corte, así que el filtro se aplicaba invisible. Se declara
+  // acá una sola vez para que ambas vistas no puedan divergir.
+  const pedidosFilterBar = (
+    <FilterBar
+      defs={filterDefs}
+      values={filters}
+      onChange={(u) => setFilters((prev) => ({ ...prev, ...u }))}
+    />
+  )
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
       {/* Fila de filtros: una dimensión por botón, cada uno con su propio contador. ORDEN: Ciudad
@@ -649,6 +661,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
             </div>
           ) : (
             <>
+              {pedidosFilterBar}
               {/* Todas las métricas en UNA barra compacta, separadas por divisores. La de fuera de
                   corte seleccionados vive acá al lado y se suma con lo tildado en la tabla. */}
               <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-2">
@@ -737,13 +750,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
             searchKeys={['salesOrder', 'cliente', 'vendedor', 'puntoEntrega', 'company']}
             clientPagination
             defaultPageSize={8}
-            filterBar={
-              <FilterBar
-                defs={filterDefs}
-                values={filters}
-                onChange={(u) => setFilters((prev) => ({ ...prev, ...u }))}
-              />
-            }
+            filterBar={pedidosFilterBar}
           />
         </div>
       )}

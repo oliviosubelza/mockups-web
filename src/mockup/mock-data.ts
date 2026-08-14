@@ -156,7 +156,7 @@ export const DEPOSITO = { nombre: 'Planta Santa Cruz', lat: -17.7712, lng: -63.1
 
 // Dimensiones de filtrado del listado de pedidos (contrato del backend `filterOrders`).
 export type ProductType = 'Frío' | 'Seco'
-export type PaymentType = 'Contado' | 'Crédito' | 'Transferencia'
+export type PaymentType = 'Contado' | 'Crédito' | 'Pronto Pago'
 
 /** Distribuidoras (distributorId): scope OBLIGATORIO del listado — de qué distribuidora son los pedidos. */
 export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(0, VOLUMEN.distribuidoras).map(
@@ -164,7 +164,7 @@ export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(0, VOLUMEN.distribuido
 )
 
 export const PRODUCT_TYPES: ProductType[] = ['Frío', 'Seco']
-export const PAYMENT_TYPES: PaymentType[] = ['Contado', 'Crédito', 'Transferencia']
+export const PAYMENT_TYPES: PaymentType[] = ['Contado', 'Crédito', 'Pronto Pago']
 /** Sociedades/empresas (company) — códigos de sociedad SAP. */
 export const EMPRESAS = [...CODIGOS_EMPRESA]
 
@@ -798,14 +798,52 @@ function construirParadas(pedidos: Pedido[]): Parada[] {
   // todo el rango norte-sur — paradas del mismo viaje separadas ~95 km. El orden FINO dentro de cada
   // ruta lo sigue haciendo el nearest-neighbour del mapa.
   const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
-  const paradasPorCamionTarget = 44
-  const maxTotalAsignables = enRuteo.length * paradasPorCamionTarget
 
-  porCercania.slice(0, maxTotalAsignables).forEach((parada, i) => {
+  // El reparto es POR PESO, a prorrata de la capacidad de cada camión. Antes había un target FIJO de
+  // 44 paradas por camión: con 175 paradas, `Math.floor(i / 44)` solo llegaba al índice 3, así que 4
+  // camiones se comían el dataset entero (~80 t cada uno contra capacidades de 9-29 t → 953% de
+  // ocupación) y los otros 26 quedaban vacíos. Un target por CANTIDAD ignora que las paradas no pesan
+  // lo mismo ni los camiones tienen la misma capacidad; el techo real del camión son los kilos.
+  //
+  // Se llena un camión hasta su cupo antes de pasar al siguiente: recorrer la curva de Hilbert en
+  // orden mantiene la contigüidad geográfica de cada ruta.
+  //
+  // Un TERCIO de los camiones se llena por encima de su capacidad a propósito: es el escenario de
+  // validación de peso que `ORDENES_TRANSPORTE` necesita más abajo ("los camiones cuyas paradas
+  // asignadas ya pesan más que su capacidad reciben TODAS sus paradas y salta la alerta al
+  // unificar"). Si acá se topeara todo al 100%, ese escenario no podría existir en el dataset.
+  // Antes el exceso salía por accidente del reparto por cantidad; ahora es explícito y acotado.
+  const EXCEDE_CADA = 3
+  const FACTOR_EXCEDE = 1.15
+  const capKg = enRuteo.map((c) => c.capacidadPeso * 1000)
+  const excede = enRuteo.map((_, i) => i % EXCEDE_CADA === 0)
+  const demandaKg = porCercania.reduce((acc, p) => acc + p.pesoTotal, 0)
+  // Los que exceden se llevan su cupo fijo; el resto se reparte lo que queda, a prorrata.
+  const cupoExcedidos = capKg.reduce((acc, kg, i) => acc + (excede[i] ? kg * FACTOR_EXCEDE : 0), 0)
+  const capResto = capKg.reduce((acc, kg, i) => acc + (excede[i] ? 0 : kg), 0)
+  const ratioResto =
+    capResto > 0 ? Math.max(0, Math.min(1, (demandaKg - cupoExcedidos) / capResto)) : 0
+  const objetivoKg = capKg.map((kg, i) => (excede[i] ? kg * FACTOR_EXCEDE : kg * ratioResto))
+  let actual = 0
+
+  porCercania.forEach((parada) => {
     // ~5% queda sin asignar a propósito: es el estado "todavía sin camión" que el mockup retrata.
+    // El sorteo se hace UNA vez por parada, igual que antes, para no correr la semilla del dataset.
     if (rand.chance(0.05)) return
-    const camionIndex = Math.min(Math.floor(i / paradasPorCamionTarget), enRuteo.length - 1)
-    parada.camionId = enRuteo[camionIndex].id
+    // Primer camión, desde el actual, donde la parada entra dentro de su cupo.
+    let idx = -1
+    for (let k = 0; k < enRuteo.length; k++) {
+      const i = (actual + k) % enRuteo.length
+      if (objetivoKg[i] >= parada.pesoTotal) {
+        idx = i
+        break
+      }
+    }
+    // No entra en ninguno: queda sin camión en vez de pasarse del cupo.
+    if (idx === -1) return
+    objetivoKg[idx] -= parada.pesoTotal
+    actual = idx
+    parada.camionId = enRuteo[idx].id
   })
 
   // Un puñado de paradas clavadas a mano por el usuario (forced_planning_truck_id).

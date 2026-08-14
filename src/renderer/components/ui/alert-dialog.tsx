@@ -5,6 +5,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { usePortalContainer } from "@/components/ui/portal-container"
 
 function AlertDialog({
   ...props
@@ -23,8 +24,16 @@ function AlertDialogTrigger({
 function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
+  // Mismo criterio que dialog.tsx: sin `container` el overlay se portaliza al body del documento
+  // principal. En una ventana auxiliar (WindowPortal) aparecería detrás y descolocado, y en el
+  // mockup se saldría del marco del tablero — perdiendo además el `.dark` que hereda de él.
+  const portalContainer = usePortalContainer()
   return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+    <AlertDialogPrimitive.Portal
+      data-slot="alert-dialog-portal"
+      container={portalContainer}
+      {...props}
+    />
   )
 }
 

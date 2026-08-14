@@ -23,6 +23,12 @@ export default defineConfig({
     },
   },
   server: {
+    // Por defecto Vite escucha solo en localhost, así que nadie más en la red puede entrar.
+    // true = bind en 0.0.0.0 (todas las interfaces), que es lo que habilita el acceso por IP de LAN.
+    host: true,
+    // Si el puerto está ocupado, Vite se corre al siguiente y la IP que compartiste deja de servir.
+    // Preferimos que falle fuerte antes que servir en un puerto distinto al esperado.
+    strictPort: true,
     // Cuando exponemos el mockup por un túnel (cloudflared), el request llega con el dominio del
     // túnel en el Host header y Vite lo bloquea. MOCKUP_TUNNEL=1 abre el chequeo SOLO para esa corrida.
     allowedHosts: process.env.MOCKUP_TUNNEL ? true : undefined,

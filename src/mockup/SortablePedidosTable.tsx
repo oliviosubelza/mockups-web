@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowUpDown, Eye, Pencil, RotateCw, Route, Trash2 } from 'lucide-react'
 import { arrayMove } from '@dnd-kit/sortable'
+import { toast } from 'sonner'
 import {
   DataTable,
   defineColumns,
@@ -11,6 +12,16 @@ import {
   type ColumnDefConfig,
   type RowAction,
 } from '@/components/data-table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -126,6 +137,10 @@ export function SortablePedidosTable({
   // Modos: reordenar (drag de filas). Habilitado solo para una ruta específica.
   const [editMode, setEditMode] = useState(false)
   const [detallePunto, setDetallePunto] = useState<PuntoEntregaItem | null>(null)
+  // Quitar un punto es DESTRUCTIVO y hasta ahora era un click sin red: el punto desaparecía de la
+  // ruta sin preguntar y sin forma de recuperarlo. Acá se guarda la intención hasta que el usuario
+  // confirme; `null` = no hay nada pendiente.
+  const [quitarPendiente, setQuitarPendiente] = useState<{ pedidoIds: string[]; puntos: number } | null>(null)
 
   // Estado para el recálculo por lotes (cambios pendientes)
   const [lastAppliedOrder, setLastAppliedOrder] = useState<string[]>(() => puntosEntrega.map((p) => p.id))
@@ -259,6 +274,32 @@ export function SortablePedidosTable({
     if (onReorder) onReorder()
   }
 
+  /** Devuelve a la ruta los pedidos quitados. Es el "Deshacer" del aviso posterior. */
+  function deshacerQuitar(pedidoIds: string[]) {
+    setRemovedPedidos((prev) => {
+      const next = new Set(prev)
+      pedidoIds.forEach((id) => next.delete(id))
+      return next
+    })
+    if (onReorder) onReorder()
+  }
+
+  /** Confirma lo pendiente y avisa con opción de deshacer. La confirmación evita el borrado
+   *  accidental; el deshacer cubre el caso de confirmar igual y arrepentirse. */
+  function confirmarQuitar() {
+    if (!quitarPendiente) return
+    const { pedidoIds, puntos } = quitarPendiente
+    quitar(pedidoIds)
+    setQuitarPendiente(null)
+    toast.success(
+      puntos === 1 ? 'Punto de entrega quitado de la ruta' : `${puntos} puntos de entrega quitados de la ruta`,
+      {
+        action: { label: 'Deshacer', onClick: () => deshacerQuitar(pedidoIds) },
+        duration: 8000,
+      },
+    )
+  }
+
   function toggleEdit() {
     if (rutaSel === 'ALL') return
     if (editMode && hasPendingReorder) {
@@ -370,7 +411,7 @@ export function SortablePedidosTable({
       icon: Trash2,
       variant: 'destructive' as const,
       separator: true,
-      onClick: () => quitar(row.pedidosIds),
+      onClick: () => setQuitarPendiente({ pedidoIds: row.pedidosIds, puntos: 1 }),
     },
   ]
 
@@ -379,7 +420,8 @@ export function SortablePedidosTable({
       label: 'Quitar punto de entrega',
       icon: Trash2,
       variant: 'destructive',
-      onClick: (rows) => quitar(rows.flatMap((r) => r.pedidosIds)),
+      onClick: (rows) =>
+        setQuitarPendiente({ pedidoIds: rows.flatMap((r) => r.pedidosIds), puntos: rows.length }),
     },
   ]
 
@@ -583,6 +625,37 @@ export function SortablePedidosTable({
       {paradaDialogData && (
         <PuntoEntregaDialog parada={paradaDialogData} onClose={() => setDetallePunto(null)} />
       )}
+
+      {/* Confirmación de quitar. Se abre por estado (no por trigger) porque la acción nace en el
+          menú de la fila y en la barra de selección, que ya se cerraron para cuando esto aparece.
+          El texto dice cuántos PEDIDOS se van junto al punto: un punto de entrega puede agrupar
+          varios, y ese es justo el dato que hace dudar antes de confirmar. */}
+      <AlertDialog
+        open={quitarPendiente !== null}
+        onOpenChange={(abierto) => { if (!abierto) setQuitarPendiente(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {quitarPendiente?.puntos === 1
+                ? '¿Quitar este punto de entrega?'
+                : `¿Quitar ${quitarPendiente?.puntos ?? 0} puntos de entrega?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {quitarPendiente?.pedidoIds.length === 1
+                ? 'Su pedido sale de la ruta y no entra a la planificación.'
+                : `Sus ${quitarPendiente?.pedidoIds.length ?? 0} pedidos salen de la ruta y no entran a la planificación.`}
+              {' '}Vas a poder deshacerlo desde el aviso.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmarQuitar}>
+              Quitar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -104,8 +104,11 @@ export const APELLIDOS = [
 
 // ── Catálogos y maestros ─────────────────────────────────────────────────────────────────────
 
-/** Sociedades SAP (company). Códigos, no razones sociales: así vienen del maestro. */
-export const CODIGOS_EMPRESA = ['GV05', 'GV02', 'GV07', 'GV11', 'GV14', 'GV20'] as const
+/**
+ * Sociedades (company). Antes eran códigos SAP genéricos (GV05, GV02…); el negocio pidió las
+ * sociedades reales del grupo, así que acá van por nombre y no por código.
+ */
+export const CODIGOS_EMPRESA = ['VENADO', 'VEMASSA', 'FACRULESA'] as const
 
 export const NOMBRES_ALMACEN = [
   'Planta Santa Cruz', 'CD Warnes', 'CD Montero', 'CD Norte', 'CD Sur', 'CD Cotoca',
