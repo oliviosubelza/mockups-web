@@ -23,6 +23,8 @@ import { PlanningView } from './views/PlanningView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
+import { usePlanesStore } from './planes-store'
+import { useTransportOrdersStore } from './transport-orders-store'
 
 /**
  * Un destino navegable. Espejo reducido del `RouteInterface` de mockup-native: la ruta se define
@@ -52,6 +54,7 @@ function PlanificacionesScreen() {
       state="default"
       onNew={() => {
         useDispatchPlanStore.getState().reset()
+        usePlanesStore.getState().beginPlan()
         navigateTo('nueva-planificacion')
       }}
     />
@@ -77,10 +80,26 @@ function ReoptimizarScreen() {
   // paradas unificadas del camión. Como es UN camión, todas las paradas se reasignan a él (un solo
   // color) y al optimizar se dibuja UNA sola ruta — ya no las 4 del plan completo.
   const { camion, paradaIds } = useUnifyStore()
+  const transportOrders = useTransportOrdersStore((store) => store.orders)
   const target = camion ? CAMIONES.find((c) => c.placa === camion) : undefined
+  const operationalStops = useMemo(
+    () => transportOrders.flatMap((order) => order.paradas ?? []),
+    [transportOrders],
+  )
   const scope = useMemo(
-    () => PARADAS.filter((p) => paradaIds.includes(p.id)).map((p) => ({ ...p, camionId: target?.id ?? p.camionId })),
-    [paradaIds, target?.id],
+    () => [...PARADAS, ...operationalStops]
+      .filter((p) => paradaIds.includes(p.id))
+      .map((p) => {
+        const camionId = target?.id ?? p.camionId
+        const rutaId = camionId ? `r-${camionId}` : p.rutaId
+        return {
+          ...p,
+          camionId,
+          rutaId,
+          pedidos: p.pedidos.map((pedido) => ({ ...pedido, camionId, rutaId })),
+        }
+      }),
+    [operationalStops, paradaIds, target?.id],
   )
   // Sin contexto (refresh/URL directa) cae al plan completo.
   if (!camion) return <DispatchFlow state="default" initialFase={1} planningTab="mapa" />

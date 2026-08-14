@@ -59,6 +59,7 @@ export interface ParadaDetalle {
 }
 
 export interface EditarDetalleDialogProps {
+  titulo?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   codigo?: string
@@ -89,6 +90,7 @@ export interface EditarDetalleDialogProps {
 const ENTREGAS_PER_PAGE = 10
 
 export function EditarDetalleDialog({
+  titulo = 'Orden de Transporte',
   open,
   onOpenChange,
   codigo,
@@ -138,7 +140,7 @@ export function EditarDetalleDialog({
           <div className="flex items-start gap-3 pr-8">
             <div className="min-w-0 flex-1">
               <DialogTitle className="flex items-center gap-2 text-base">
-                Orden de Transporte
+                {titulo}
                 <span className="font-mono text-sm text-muted-foreground">{codigo}</span>
               </DialogTitle>
               <DialogDescription>Editá el chofer y el camión asignados</DialogDescription>

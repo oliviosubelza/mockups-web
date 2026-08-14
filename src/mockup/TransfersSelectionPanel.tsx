@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { ChevronsUpDown } from 'lucide-react'
 import { DataTable, FilterBar } from '@/components/data-table'
+import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { buttonVariants } from '@/components/ui/button'
 import {
@@ -63,11 +64,38 @@ const MOVIMIENTOS: {
   { key: 'recojo-devolucion', grupo: 'Recojos', label: 'Devoluciones', base: DEVOLUCIONES_RECOJO.length },
 ]
 
+const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
+const fmtVol = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 2 })
+
+function Kpi({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string
+  value: string
+  emphasis?: boolean
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[11px] leading-tight text-muted-foreground">{label}</span>
+      <span className={cn('text-sm font-semibold leading-tight tabular-nums', emphasis && 'text-primary')}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
 export function TransfersSelectionPanel({ state }: { state: BoardState }) {
   const [mov, setMov] = useState<MovKey>('entrega-traslado')
   const [movOpen, setMovOpen] = useState(false)
   const [transferFilters, setTransferFilters] = useState<Partial<TransferFilters>>({})
   const [devolucionFilters, setDevolucionFilters] = useState<Partial<DevolucionFilters>>({})
+  const [selectedByMov, setSelectedByMov] = useState<Record<MovKey, string[]>>({
+    'entrega-traslado': [],
+    'entrega-devolucion': [],
+    'recojo-devolucion': [],
+  })
 
   const sinDatos = state === 'empty' || state === 'error'
   const actual = MOVIMIENTOS.find((m) => m.key === mov)!
@@ -92,6 +120,17 @@ export function TransfersSelectionPanel({ state }: { state: BoardState }) {
   const devoluciones = sinDatos ? [] : devolucionesBase.filter(filtraDevolucion)
 
   const conteoActivo = mov === 'entrega-traslado' ? transferencias.length : devoluciones.length
+  const selectedIds = selectedByMov[mov]
+  const selectedSet = new Set(selectedIds)
+  const selectedRows = mov === 'entrega-traslado'
+    ? transferencias.filter((row) => selectedSet.has(row.id))
+    : devoluciones.filter((row) => selectedSet.has(row.id))
+  const selectedItems = selectedRows.reduce((acc, row) => acc + row.items, 0)
+  const selectedPeso = selectedRows.reduce((acc, row) => acc + row.peso, 0)
+  const selectedVolumen = selectedRows.reduce((acc, row) => acc + row.volumen, 0)
+
+  const actualizarSeleccion = (rows: { id: string }[]) =>
+    setSelectedByMov((prev) => ({ ...prev, [mov]: rows.map((row) => row.id) }))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
@@ -145,8 +184,27 @@ export function TransfersSelectionPanel({ state }: { state: BoardState }) {
         </Popover>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/10 text-primary">
+            {actual.grupo}
+          </Badge>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium leading-tight">{actual.label}</p>
+            <p className="text-xs text-muted-foreground">
+              Lo seleccionado es lo que se suma a la planificación en este movimiento.
+            </p>
+          </div>
+        </div>
+        <Kpi label="Seleccionadas" value={`${selectedRows.length} de ${conteoActivo}`} emphasis={selectedRows.length > 0} />
+        <Kpi label="Ítems" value={String(selectedItems)} />
+        <Kpi label="Peso" value={`${fmtPeso.format(selectedPeso)} kg`} />
+        <Kpi label="Volumen" value={`${fmtVol.format(selectedVolumen)} m³`} />
+      </div>
+
       {mov === 'entrega-traslado' ? (
         <DataTable
+          key={`transfer-${mov}-${state}`}
           tableId={`mockup-step1-transferencias-${state}`}
           columns={transferColumns}
           data={transferencias}
@@ -159,6 +217,11 @@ export function TransfersSelectionPanel({ state }: { state: BoardState }) {
           emptyMessage="No hay órdenes de transferencia entre sucursales para este plan."
           fillHeight
           selectable
+          defaultSelectedIds={selectedIds}
+          onSelectionChange={actualizarSeleccion}
+          rowClassName={(row) =>
+            selectedSet.has(row.id) ? 'bg-primary/10 ring-1 ring-inset ring-primary/25 hover:bg-primary/15' : ''
+          }
           searchable
           searchPlaceholder="Buscar por código…"
           clientPagination
@@ -173,6 +236,7 @@ export function TransfersSelectionPanel({ state }: { state: BoardState }) {
         />
       ) : (
         <DataTable
+          key={`devolucion-${mov}-${state}`}
           tableId={`mockup-step1-${mov}-${state}`}
           columns={devolucionColumns}
           data={devoluciones}
@@ -189,6 +253,11 @@ export function TransfersSelectionPanel({ state }: { state: BoardState }) {
           }
           fillHeight
           selectable
+          defaultSelectedIds={selectedIds}
+          onSelectionChange={actualizarSeleccion}
+          rowClassName={(row) =>
+            selectedSet.has(row.id) ? 'bg-primary/10 ring-1 ring-inset ring-primary/25 hover:bg-primary/15' : ''
+          }
           searchable
           searchPlaceholder="Buscar por código o cliente…"
           clientPagination

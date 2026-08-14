@@ -46,7 +46,9 @@ import { APELLIDOS, NOMBRES_PILA, PRODUCTOS } from '../mock-pools'
 import { nearestOrder } from '../map/route-optimizer'
 import type { LatLngTuple } from '../map/geo/polyline'
 import type { EstadoEntrega, EstadoViaje } from './monitoreo-estado'
-import { DISTRIBUIDOR_ACTIVO, sembrarViaje, type ItemActual } from './tracking-dynamo'
+import { DISTRIBUIDOR_ACTIVO, sembrarViaje, snapshotDetalle, type ItemActual } from './tracking-dynamo'
+import { useTransportOrdersStore } from '../transport-orders-store'
+import type { OrdenTransporte } from '../mock-data'
 
 const rand = createRand(90210)
 
@@ -994,14 +996,142 @@ const { viajes, ordenes } = construir()
 export const VIAJES_MONITOREO: ViajeMonitoreo[] = viajes
 export const ORDENES_MONITOREO: OrdenMonitoreo[] = ordenes
 
+/** Una OT solo entra al monitor cuando fue despachada/procesada y tiene chofer. */
+export const esOrdenMonitoreable = (orden: OrdenTransporte): boolean =>
+  orden.chofer !== '' && (orden.estado === 'despachada' || orden.estado === 'procesado')
+
+function tripIdOperativo(orderId: string): number {
+  let hash = 0
+  for (let i = 0; i < orderId.length; i++) hash = (hash * 31 + orderId.charCodeAt(i)) >>> 0
+  return 9_000_000 + (hash % 900_000)
+}
+
+function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitoreo; viaje: ViajeMonitoreo } | null {
+  const paradas = nearestOrder(DEPOT, paradasDeOrden(orden))
+  if (paradas.length === 0) return null
+  const tripId = tripIdOperativo(orden.id)
+  const entregas: EntregaMonitoreo[] = paradas.map((parada, index) => {
+    const pedidos: PedidoEntrega[] = parada.pedidos.map((pedido) => ({
+      id: pedido.id,
+      salesOrder: pedido.salesOrder,
+      documento: pedido.id.replace(/^\D+/, ''),
+      canal: pedido.canal,
+      pesoKg: pedido.peso,
+      volumenM3: pedido.volumen,
+      total: pedido.total,
+      formaPago: pedido.paymentType,
+    }))
+    const facturado = pedidos.reduce((total, pedido) => total + pedido.total, 0)
+    return {
+      id: `do-${orden.id}-${parada.id}`,
+      ordenId: orden.id,
+      paradaId: parada.id,
+      secuencia: index + 1,
+      cliente: parada.cliente,
+      puntoEntrega: parada.puntoEntrega,
+      puntoEntregaId: parada.puntoEntregaId,
+      canal: parada.canal,
+      ventana: parada.ventana,
+      pesoKg: parada.pesoTotal,
+      volumenM3: parada.volumenTotal,
+      pedidos,
+      lat: parada.lat,
+      lng: parada.lng,
+      estado: 'pendiente',
+      llegadaAt: null,
+      entregaAt: null,
+      receptor: '',
+      motivo: '',
+      incidencias: [],
+      comprobante: null,
+      cobro: {
+        facturado,
+        aCobrar: facturado,
+        cobrado: 0,
+        enProceso: 0,
+        saldo: facturado,
+        estado: facturado > 0 ? 'pendiente' : 'no_corresponde',
+        pagos: [],
+      },
+      items: [],
+      fueraDeVentana: false,
+      historial: [{ estado: 'pendiente', hora: '—', nota: 'Orden incorporada al monitoreo' }],
+    }
+  })
+  const camion = CAMIONES.find((item) => item.placa === orden.camion)
+  const recorrido: LatLngTuple[] = [
+    DEPOT,
+    ...paradas.map((parada) => [parada.lat, parada.lng] as LatLngTuple),
+    DEPOT,
+  ]
+  const salida = hhmm(SALIDA_MIN)
+  const tracking = snapshotDetalle(DISTRIBUIDOR_ACTIVO, tripId) ?? sembrarViaje({
+    tripId,
+    distributorId: DISTRIBUIDOR_ACTIVO,
+    employeeId: idEmpleado(orden.chofer),
+    camino: [DEPOT, interpolar(DEPOT, recorrido[1], 0.35)],
+    antiguedadMin: rand.int(0, 3),
+    battery: rand.int(54, 98),
+    ahora: Date.now(),
+  })
+  return {
+    orden: {
+      id: orden.id,
+      codigo: orden.codigo,
+      tripId,
+      camion: orden.camion,
+      chofer: orden.chofer,
+      auxiliar: orden.auxiliar,
+      entregas,
+    },
+    viaje: {
+      tripId,
+      camion: orden.camion,
+      chofer: orden.chofer,
+      auxiliar: orden.auxiliar,
+      estado: 'en_ruta',
+      salida,
+      ordenId: orden.id,
+      employeeId: idEmpleado(orden.chofer),
+      color: rutaPorCamionId(camion?.id ?? null)?.color ?? '#2563eb',
+      recorrido,
+      cursor: 0,
+      tracking,
+    },
+  }
+}
+
+export function obtenerMonitoreoOperativo(orders: OrdenTransporte[]) {
+  const result: { ordenes: OrdenMonitoreo[]; viajes: ViajeMonitoreo[] } = { ordenes: [], viajes: [] }
+  for (const order of orders.filter(esOrdenMonitoreable)) {
+    const seeded = ORDENES_MONITOREO.find((item) => item.id === order.id)
+    const seededTrip = seeded ? VIAJES_MONITOREO.find((item) => item.tripId === seeded.tripId) : undefined
+    if (seeded && seededTrip) {
+      result.ordenes.push({ ...seeded, camion: order.camion, chofer: order.chofer, auxiliar: order.auxiliar })
+      result.viajes.push({ ...seededTrip, camion: order.camion, chofer: order.chofer, auxiliar: order.auxiliar })
+      continue
+    }
+    const created = construirOrdenOperativa(order)
+    if (created) {
+      result.ordenes.push(created.orden)
+      result.viajes.push(created.viaje)
+    }
+  }
+  return result
+}
+
 // ── Consultas ────────────────────────────────────────────────────────────────────────────────
 
 /** El viaje por su `trips.id`. Es también la clave con la que se arma la PK de Dynamo. */
 export const viajePorTripId = (tripId: number | null | undefined): ViajeMonitoreo | undefined =>
-  tripId == null ? undefined : VIAJES_MONITOREO.find((v) => v.tripId === tripId)
+  tripId == null
+    ? undefined
+    : obtenerMonitoreoOperativo(useTransportOrdersStore.getState().orders).viajes.find((v) => v.tripId === tripId)
 
 export const ordenPorId = (id: string | null): OrdenMonitoreo | undefined =>
-  id ? ORDENES_MONITOREO.find((o) => o.id === id) : undefined
+  id
+    ? obtenerMonitoreoOperativo(useTransportOrdersStore.getState().orders).ordenes.find((o) => o.id === id)
+    : undefined
 
 /**
  * Entregas del viaje en orden de visita — lo que se pinta en el mapa.
@@ -1010,7 +1140,7 @@ export const ordenPorId = (id: string | null): OrdenMonitoreo | undefined =>
  * falta juntar entregas de varias órdenes ni atenuar las que no son de la que se abrió.
  */
 export const entregasDeViaje = (tripId: number): EntregaMonitoreo[] =>
-  ORDENES_MONITOREO.filter((o) => o.tripId === tripId)
+  obtenerMonitoreoOperativo(useTransportOrdersStore.getState().orders).ordenes.filter((o) => o.tripId === tripId)
     .flatMap((o) => o.entregas)
     .sort((a, b) => a.secuencia - b.secuencia)
 

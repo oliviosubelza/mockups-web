@@ -17,7 +17,6 @@
 import {
   Building,
   Building2,
-  ClipboardCheck,
   Map as MapIcon,
   Route,
   ShoppingBag,
@@ -403,6 +402,8 @@ export interface ItemPedido {
   /** product_id, resuelto a su nombre. Hoy `product_snapshot` (`DB.puml:35-40`) solo trae peso y
    *  volumen: la descripción también hay que pedirla. */
   producto: string
+  /** `true` cuando la línea es regalo/promoción y NO mercadería facturada normal. */
+  esBonificacion?: boolean
   /** Lo que se cuenta (cajas, packs, bolsas). No es dato del esquema. */
   unidad: string
   /** requested_qty — lo que el cliente pidió. */
@@ -412,9 +413,24 @@ export interface ItemPedido {
   confirmado: number
 }
 
+/** Una línea queda pendiente cuando Ventas confirmó menos de lo solicitado. */
+export const itemPorConfirmar = (item: ItemPedido): boolean => item.confirmado < item.solicitado
+
 /** Las líneas que Ventas no confirmó completas: `confirmed_qty < requested_qty`. */
 export const itemsPorConfirmar = (p: Pedido): ItemPedido[] =>
-  p.items.filter((i) => i.confirmado < i.solicitado)
+  p.items.filter(itemPorConfirmar)
+
+/** Regalos/promociones todavía sin stock confirmado. */
+export const bonificacionesPorConfirmar = (p: Pedido): ItemPedido[] =>
+  p.items.filter((item) => item.esBonificacion === true && itemPorConfirmar(item))
+
+/** Si falta una bonificación, el pedido NO se puede tomar en la planificación. */
+export const tieneBonificacionSinConfirmar = (p: Pedido): boolean =>
+  bonificacionesPorConfirmar(p).length > 0
+
+/** Pedido elegible para selección manual/automática dentro del plan. */
+export const pedidoEsSeleccionable = (p: Pedido): boolean =>
+  !tieneBonificacionSinConfirmar(p)
 
 /**
  * Un pedido "con stock a confirmar" es el que tiene AL MENOS una línea corta. Es el criterio que
@@ -422,7 +438,7 @@ export const itemsPorConfirmar = (p: Pedido): ItemPedido[] =>
  * suba al camión puede ser menos de lo que dice el total.
  */
 export const tieneStockPorConfirmar = (p: Pedido): boolean =>
-  p.items.some((i) => i.confirmado < i.solicitado)
+  p.items.some(itemPorConfirmar)
 
 export interface Pedido {
   id: string
@@ -552,20 +568,41 @@ function clientesDeProvincia(cantidad: number, usados: Set<string>) {
  * ~1 de cada 4 pedidos sale con stock a confirmar, y de esos algunos tienen más de una línea corta:
  * hace falta que el caso se vea sin buscarlo, y que el panel tenga que agrupar de verdad.
  */
-function generarItems(pedidoId: string): ItemPedido[] {
-  const catalogo = rand.shuffle(PRODUCTOS).slice(0, rand.int(3, 7))
+function generarItems(pedidoId: string, productType: ProductType): ItemPedido[] {
+  const compatibles = PRODUCTOS.filter(
+    (producto) => producto.temperatura === productType || producto.temperatura === 'Ambos',
+  )
+  const universo = compatibles.length >= 3 ? compatibles : PRODUCTOS
+  const maxItems = Math.min(7, universo.length)
+  const catalogo = rand.shuffle(universo).slice(0, rand.int(3, maxItems))
   // Se decide por PEDIDO, no por línea: si cada línea tirara su propio dado, casi todos los pedidos
   // terminarían con alguna corta y el color dejaría de distinguir nada.
   const conFaltante = rand.chance(0.26)
   const cortas = conFaltante ? rand.int(1, Math.min(2, catalogo.length)) : 0
+  const conBonificacion = rand.chance(0.38)
+  let bonificacionIndex = conBonificacion ? rand.int(0, catalogo.length - 1) : -1
+  // Parte de los faltantes cae justo en la bonificación: ese es el caso bloqueante que el negocio
+  // quiere ver. Si NO bloquea, se mueve la bonificación fuera de las líneas cortas para que el
+  // escenario quede controlado y no aparezca por accidente.
+  const bonificacionSinStock = conFaltante && bonificacionIndex >= 0 && rand.chance(0.6)
+  if (!bonificacionSinStock && bonificacionIndex >= 0 && bonificacionIndex < cortas) {
+    bonificacionIndex = rand.int(cortas, catalogo.length - 1)
+  }
+  const indicesCortos = new Set<number>(Array.from({ length: cortas }, (_, i) => i))
+  if (bonificacionSinStock && bonificacionIndex >= 0 && !indicesCortos.has(bonificacionIndex)) {
+    const [primero] = indicesCortos
+    if (primero !== undefined) indicesCortos.delete(primero)
+    indicesCortos.add(bonificacionIndex)
+  }
 
   return catalogo.map((producto, i) => {
-    const solicitado = rand.int(4, 60)
-    // Las cortas son las primeras del catálogo ya barajado, así que no hay sesgo por producto.
-    const corta = i < cortas
+    const esBonificacion = i === bonificacionIndex
+    const solicitado = esBonificacion ? rand.int(1, 6) : rand.int(4, 60)
+    const corta = indicesCortos.has(i)
     return {
       id: `${pedidoId}-i${i + 1}`,
       producto: producto.nombre,
+      esBonificacion,
       unidad: producto.unidad,
       solicitado,
       // Sin stock nada (confirmado 0) o parcial. El sin-stock total es el caso que más duele en la
@@ -668,7 +705,7 @@ export const PEDIDOS: Pedido[] = (() => {
         ciudad,
         mercado: MERCADO_POR_CIUDAD[ciudad],
         zona,
-        items: generarItems(`p${siguienteId}`),
+        items: generarItems(`p${siguienteId}`, productType),
       })
       siguienteId++
     }
@@ -1011,6 +1048,8 @@ export interface OrdenTransporte {
   estado: EstadoOrden
   /** dispatch_delivery_point ids que cubre la ruta de esta orden. */
   paradaIds: string[]
+  /** Fotografía de las paradas generadas por la planificación. Las órdenes semilla se resuelven por id. */
+  paradas?: Parada[]
 }
 
 /**
@@ -1132,7 +1171,7 @@ export const tripulacionDeCamion = (placa: string): { chofer: string; auxiliar: 
 
 /** Paradas (dispatch_delivery_points) reales que cubre una orden de transporte. */
 export const paradasDeOrden = (o: OrdenTransporte): Parada[] =>
-  PARADAS.filter((p) => o.paradaIds.includes(p.id))
+  o.paradas ?? PARADAS.filter((p) => o.paradaIds.includes(p.id))
 
 /** Peso total (kg) de una orden = suma del peso de sus paradas. */
 export const pesoDeOrden = (o: OrdenTransporte): number =>
@@ -1159,7 +1198,7 @@ export const MAX_PEDIDOS_POR_CAMION = 50
 // (estado) y el maestro `distributors` (distribuidora) — dos lookups. Los conteos NO son agregados:
 // `dispatch_plans` ya los guarda desnormalizados (planned_order_count / planned_truck_count), así que
 // el listado no tiene que sumar sobre planning_truck ni dispatch_delivery_points.
-export type EstadoPlan = 'borrador' | 'optimizado' | 'aprobado'
+export type EstadoPlan = 'borrador' | 'aprobado'
 
 export interface PlanCamion {
   id: string
@@ -1178,6 +1217,8 @@ export interface PlanCamion {
    * sin pedidos y con el botón deshabilitado.
    */
   paradaIds: string[]
+  /** Paradas completas confirmadas para esta ruta; evita reconstruirlas desde otro dataset. */
+  paradas?: Parada[]
   orderCount: number
   cargaKg: number
   cargaVolM3: number
@@ -1218,8 +1259,8 @@ function fechaOffset(dias: number): string {
 }
 
 /**
- * Planes de más nuevo a más viejo. Los de hoy pueden estar en borrador u optimizado; los pasados ya
- * están aprobados — un plan viejo en borrador sería inconsistente (nunca se ejecutó).
+ * Planes de más nuevo a más viejo. Los de hoy pueden estar en borrador; los pasados ya están
+ * aprobados — un plan viejo en borrador sería inconsistente (nunca se ejecutó).
  */
 export const PLANES: Plan[] = []
 
@@ -1323,5 +1364,5 @@ export const FASES: StepItem[] = [
   // dentro del Step 1 (TrucksAndOrdersView). Se deja comentado, no borrado, para poder revertir.
   // { id: 'transferencias', label: 'Traslados', description: 'Y devoluciones', icon: ArrowLeftRight },
   { id: 'planificacion', label: 'Planificación', description: 'Paradas y rutas', icon: Route },
-  { id: 'ordenes', label: 'Órdenes', description: 'Emitir despacho', icon: ClipboardCheck },
+  { id: 'rutas', label: 'Rutas', description: 'Generar rutas', icon: Route },
 ]

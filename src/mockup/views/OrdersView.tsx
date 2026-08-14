@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
-import { OrdenEstadoBadge } from '../estado-badge'
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,6 @@ import {
   RUTAS,
   type OrdenDespacho,
   type Ruta,
-  type EstadoOrden,
 } from '../mock-data'
 import type { BoardState } from '../types'
 import { MoreVertical, BellOff, SquarePen, CheckCircle } from 'lucide-react'
@@ -38,17 +36,12 @@ import { OrdersMap } from '../OrdersMap'
 import { useDispatchPlanSnapshot } from '../dispatch-plan-snapshot'
 import { EditarDetalleDialog, type ParadaDetalle } from './EditarDetalleDialog'
 import { navigateTo } from '../routes'
+import { usePlanesStore } from '../planes-store'
+import { useTransportOrdersStore } from '../transport-orders-store'
 
 interface OrdenFilters extends Record<string, unknown> {
-  estado?: EstadoOrden
   ruta?: string
 }
-
-const ESTADO_OPCIONES = [
-  { value: 'pendiente', label: 'Pendiente' },
-  { value: 'cargando', label: 'Cargando' },
-  { value: 'despachada', label: 'Despachada' },
-]
 
 /**
  * Capacidad de un camión en kg (truck.capacity_weight viene en toneladas).
@@ -74,20 +67,28 @@ const fmtDuracion = (min: number) => {
 export function OrdersView({ state }: { state: BoardState }) {
   const [filters, setFilters] = useState<Partial<OrdenFilters>>({})
   const snapshot = useDispatchPlanSnapshot()
+  const activePlanId = usePlanesStore((store) => store.activePlanId)
+  const activePlan = usePlanesStore((store) =>
+    activePlanId === null ? undefined : store.planes.find((plan) => plan.id === activePlanId),
+  )
+  const updatePlanEstado = usePlanesStore((store) => store.updatePlanEstado)
+  const transportOrders = useTransportOrdersStore((store) => store.orders)
+  const assignDriver = useTransportOrdersStore((store) => store.assignDriver)
+  const reassignTruck = useTransportOrdersStore((store) => store.reassignTruck)
 
   // Estado para el modal
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenDespacho | null>(null)
   const [mapMaximized, setMapMaximized] = useState(false)
-  // Chofer asignado por orden (override local del mockup; arranca vacío y se asigna en el detalle).
-  const [choferPorOrden, setChoferPorOrden] = useState<Record<string, string>>({})
-  const choferDe = (o: OrdenDespacho) => choferPorOrden[o.id] || o.conductor
-  const asignarChofer = (id: string, chofer: string) =>
-    setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
-  // Camión reasignado por orden (mismo patrón que el chofer: override local, el dataset no se muta).
-  const [camionPorOrden, setCamionPorOrden] = useState<Record<string, string>>({})
-  const camionDe = (o: OrdenDespacho) => camionPorOrden[o.id] || o.camionId
-  const reasignarCamion = (id: string, camionId: string) =>
-    setCamionPorOrden((prev) => ({ ...prev, [id]: camionId }))
+  const choferDe = (o: OrdenDespacho) => o.conductor
+  const camionDe = (o: OrdenDespacho) => o.camionId
+  const asignarChofer = (id: string, chofer: string) => {
+    assignDriver(id, chofer)
+    setOrdenSeleccionada((current) => current?.id === id ? { ...current, conductor: chofer } : current)
+  }
+  const reasignarCamion = (id: string, camionId: string) => {
+    reassignTruck(id, camionId)
+    setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId } : current)
+  }
 
   /**
    * Camiones asignables a la orden abierta: capacidad >= peso de la orden.
@@ -107,16 +108,72 @@ export function OrdersView({ state }: { state: BoardState }) {
     const placas = CAMIONES.filter((c) => capacidadKgDe(c.placa) >= pesoKg).map((c) => c.placa)
     if (!placas.includes(actual)) placas.push(actual)
     return placas.sort((a, b) => capacidadKgDe(a) - capacidadKgDe(b))
-  }, [ordenSeleccionada, camionPorOrden])
+  }, [ordenSeleccionada])
   const [canales, setCanales] = useState<Set<CanalId>>(new Set())
   const [tipos, setTipos] = useState<Set<ProductType>>(new Set())
   const [optimized, setOptimized] = useState(false)
   const [rutas, setRutas] = useState<Set<string>>(new Set())
   const [showRoute, setShowRoute] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
-  const paradasBase = snapshot.active ? snapshot.paradas : PARADAS
-  const rutasBase = snapshot.active ? snapshot.rutas : RUTAS
-  const ordenesBase = snapshot.active ? snapshot.ordenes : ORDENES
+  const snapshotParadas = snapshot.active ? snapshot.paradas : PARADAS
+  const rutasConfirmadas = useMemo<Ruta[]>(
+    () =>
+      (activePlan?.camionesDetalle ?? []).map((route) => ({
+        id: route.rutaId,
+        nombre: route.rutaNombre,
+        color: route.rutaColor,
+        camionId: route.camionId,
+      })),
+    [activePlan],
+  )
+  const paradasConfirmadas = useMemo(
+    () =>
+      (activePlan?.camionesDetalle ?? []).flatMap((route) =>
+        route.paradaIds.flatMap((paradaId, index) => {
+          const parada = route.paradas?.find((item) => item.id === paradaId)
+            ?? snapshotParadas.find((item) => item.id === paradaId)
+            ?? PARADAS.find((item) => item.id === paradaId)
+          if (!parada) return []
+          return [{
+            ...parada,
+            rutaId: route.rutaId,
+            camionId: route.camionId,
+            secuencia: index + 1,
+            pedidos: parada.pedidos.map((pedido) => ({
+              ...pedido,
+              rutaId: route.rutaId,
+              camionId: route.camionId,
+              secuencia: index + 1,
+            })),
+          }]
+        }),
+      ),
+    [activePlan, snapshotParadas],
+  )
+  const ordenesConfirmadas = useMemo<OrdenDespacho[]>(
+    () =>
+      (activePlan?.camionesDetalle ?? []).flatMap((route, index) => {
+        const operational = transportOrders.find((order) => order.id === `plan-${activePlan?.id}-${route.rutaId}`)
+        if (!operational) return []
+        const camion = CAMIONES.find((item) => item.id === route.camionId)
+        return [{
+          id: operational.id,
+          codigo: operational.codigo,
+          camionId: operational.camion,
+          rutaId: route.rutaId,
+          conductor: operational.chofer,
+          almacen: camion?.almacen ?? '—',
+          estado: operational.estado,
+          salida: `${String(6 + Math.floor(index / 4)).padStart(2, '0')}:${['00', '15', '30', '45'][index % 4]}`,
+          cargaPct: route.cargaKg,
+          duracionMin: 120 + route.paradaIds.length * 12,
+        }]
+      }),
+    [activePlan, transportOrders],
+  )
+  const paradasBase = activePlan ? paradasConfirmadas : snapshotParadas
+  const rutasBase = activePlan ? rutasConfirmadas : snapshot.active ? snapshot.rutas : RUTAS
+  const ordenesBase = activePlan ? ordenesConfirmadas : snapshot.active ? snapshot.ordenes : ORDENES
   const paradas = state === 'empty' || state === 'error' ? [] : paradasBase
   const rutasPorCamionId = useMemo(
     () => new Map(rutasBase.map((ruta) => [ruta.camionId, ruta])),
@@ -126,7 +183,6 @@ export function OrdersView({ state }: { state: BoardState }) {
   const filterDefs = useMemo(
     () =>
       defineFilters<OrdenFilters>([
-        { type: 'select', id: 'estado', label: 'Estado', options: ESTADO_OPCIONES },
         {
           type: 'select',
           id: 'ruta',
@@ -142,7 +198,7 @@ export function OrdersView({ state }: { state: BoardState }) {
     if (canales.size > 0 && !canales.has(p.canal)) return false
     if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
     if (rutas.size > 0) {
-      const ruta = p.camionId ? rutasPorCamionId.get(p.camionId) : undefined
+      const ruta = p.rutaId ? rutasPorId.get(p.rutaId) : p.camionId ? rutasPorCamionId.get(p.camionId) : undefined
       if (!ruta || !rutas.has(ruta.id)) return false
     }
     return true
@@ -153,7 +209,9 @@ export function OrdersView({ state }: { state: BoardState }) {
     const ruta = rutasPorId.get(ordenSeleccionada.rutaId)
     if (!ruta) return []
     return paradas
-      .filter((parada) => parada.camionId === ruta.camionId)
+      .filter((parada) =>
+        parada.rutaId ? parada.rutaId === ruta.id : parada.camionId === ruta.camionId,
+      )
       .map((parada, index) => ({
         id: parada.id,
         secuencia: index + 1,
@@ -165,7 +223,6 @@ export function OrdersView({ state }: { state: BoardState }) {
   }, [ordenSeleccionada, paradas, rutasPorId])
 
   const columns = useMemo(() => defineColumns<OrdenDespacho>([
-    { id: 'codigo', header: 'Orden', accessorKey: 'codigo', size: 110, pin: 'left' },
     {
       id: 'conductor',
       header: 'Chofer',
@@ -228,13 +285,6 @@ export function OrdersView({ state }: { state: BoardState }) {
       cell: (row) => <span className="tabular-nums text-muted-foreground">{fmtDuracion(row.duracionMin)}</span>,
     },
     {
-      id: 'estado',
-      header: 'Estado',
-      accessorKey: 'estado',
-      size: 130,
-      cell: (row) => <OrdenEstadoBadge estado={row.estado} />,
-    },
-    {
       id: 'acciones',
       header: 'Acciones',
       size: 90,
@@ -242,15 +292,15 @@ export function OrdersView({ state }: { state: BoardState }) {
         <div className="flex justify-center">
           <DropdownMenu>
             {/* TRIGGER: El botón de los 3 puntitos */}
-            <DropdownMenuTrigger >
-              <Button
+            <DropdownMenuTrigger
+              render={<Button
                 variant="ghost"
                 size="icon-sm"
                 className="h-8 w-8 p-0 mx-auto flex hover:bg-muted focus-visible:ring-1"
-              >
+              />}
+            >
                 <MoreVertical className="h-4 w-4 text-muted-foreground" />
                 <span className="sr-only">Abrir menú de acciones</span>
-              </Button>
             </DropdownMenuTrigger>
 
             {/* CONTENT: El menú desplegable con animación */}
@@ -285,20 +335,23 @@ export function OrdersView({ state }: { state: BoardState }) {
         </div>
       )
     }
-  ]), [camionPorOrden, choferPorOrden, rutasPorId])
+  ]), [rutasPorId])
 
   const filtrados = ordenesBase.filter(
     (o) =>
-      (!filters.estado || o.estado === filters.estado) &&
       (!filters.ruta || rutasPorId.get(o.rutaId)?.nombre === filters.ruta),
   )
   const data = state === 'empty' || state === 'error' ? [] : filtrados
+  const handleFinish = () => {
+    if (activePlanId !== null) updatePlanEstado(activePlanId, 'aprobado')
+    navigateTo('planificaciones')
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
-        <h2 className="text-sm font-semibold text-foreground">Órdenes de Transporte</h2>
-        <Button size="sm" className="gap-1.5" onClick={() => navigateTo('planificaciones')}>
+        <h2 className="text-sm font-semibold text-foreground">Rutas generadas</h2>
+        <Button size="sm" className="gap-1.5" onClick={handleFinish}>
           <CheckCircle size={14} />
           Finalizar y ver planificaciones
         </Button>
@@ -311,17 +364,17 @@ export function OrdersView({ state }: { state: BoardState }) {
         getRowId={(row) => row.id}
         isLoading={state === 'loading'}
         isError={state === 'error'}
-        errorMessage="No pudimos traer las órdenes de transporte desde el servidor."
+        errorMessage="No pudimos traer las rutas generadas."
         onRetry={() => { }}
-        emptyTitle="Ninguna orden coincide"
-        emptyMessage="Probá quitando el estado o la ruta para ver más órdenes."
+        emptyTitle="Ninguna ruta coincide"
+        emptyMessage="Probá quitando los filtros para ver más rutas."
         fillHeight
         searchable
-        searchPlaceholder="Buscar por orden, empleado o ruta…"
+        searchPlaceholder="Buscar por chofer, camión o ruta…"
         clientPagination
         defaultPageSize={12}
         exportable
-        exportFilename="ordenes-despacho"
+        exportFilename="rutas-generadas"
         filterBar={
           <FilterBar
             defs={filterDefs}
@@ -332,6 +385,7 @@ export function OrdersView({ state }: { state: BoardState }) {
       />
 
       <EditarDetalleDialog
+        titulo="Ruta"
         open={!!ordenSeleccionada}
         onOpenChange={(o) => { if (!o) setOrdenSeleccionada(null) }}
         codigo={ordenSeleccionada?.codigo}
@@ -342,7 +396,6 @@ export function OrdersView({ state }: { state: BoardState }) {
         onChoferChange={(v) => ordenSeleccionada && asignarChofer(ordenSeleccionada.id, v ?? '')}
         camiones={camionesElegibles}
         camionValue={ordenSeleccionada ? camionDe(ordenSeleccionada) || null : null}
-        // Igual que el chofer: limpiar el campo guarda '' y camionDe vuelve al camión del dataset.
         onCamionChange={(v) => ordenSeleccionada && reasignarCamion(ordenSeleccionada.id, v ?? '')}
         capacidadPorCamion={capacidadKgDe}
         // El peso total de la orden es cargaPct: son kilos, no un porcentaje (ver comentario arriba).

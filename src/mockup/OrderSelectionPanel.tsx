@@ -29,6 +29,7 @@ import {
   MERCADO_META,
   PAYMENT_TYPES,
   PEDIDOS,
+  pedidoEsSeleccionable,
   PRODUCT_TYPES,
   VENDEDORES,
   ZONA_IDS,
@@ -45,7 +46,7 @@ import {
 } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
 import { CanalPedidosDialog } from './CanalPedidosDialog'
-import { estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
+import { entraPorCorte, estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
 import type { BoardState } from './types'
 
 const CANAL_IDS = Object.keys(CANAL_META) as CanalId[]
@@ -462,7 +463,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   )
   const base = state === 'empty' || state === 'error' ? [] : pedidos
   // Los que la regla de corte deja afuera: son los que se tildan a mano en la vista tabla.
-  const fuera = base.filter((p) => !incluidoPorDefecto(p))
+  const fuera = base.filter((p) => !entraPorCorte(p))
 
   // Conjunto que efectivamente entra al plan. `estaIncluido` = decisión manual del usuario si la
   // hay, y si no la regla de corte — el MISMO predicado que usa el diálogo por canal, así el
@@ -732,6 +733,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
             }
             fillHeight
             selectable
+            isRowSelectable={pedidoEsSeleccionable}
             // Tinte MUY tenue (color del ícono de ecommerce, opacidad baja) para distinguir esas filas
             // sin gritar. Subir la opacidad (/10, /15) si se quiere más marcado.
             rowClassName={(p) => (p.canal === 'ecommerce' ? 'bg-[#db2777]/5' : '')}

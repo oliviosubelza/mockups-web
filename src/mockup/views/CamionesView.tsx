@@ -28,16 +28,14 @@ import { openRoute } from '@/core/routing/open-route'
 import { OrdenEstadoBadge } from '../estado-badge'
 import {
   CAMIONES,
-  ORDENES_TRANSPORTE,
   paradasDeOrden,
   pedidosDeOrden,
   pesoDeOrden,
   type Camion,
   type OrdenTransporte,
-  type PlanCamion,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
-import { usePlanesStore } from '../planes-store'
+import { useTransportOrdersStore } from '../transport-orders-store'
 
 const kg = (n: number) => `${n.toLocaleString('es')} kg`
 const m3 = (n: number) => `${n.toLocaleString('es', { maximumFractionDigits: 1 })} m³`
@@ -100,12 +98,12 @@ const tripulacionDe = (ordenes: OrdenTransporte[], campo: 'chofer' | 'auxiliar')
   return nombres.length === 1 ? nombres[0] : `${nombres[0]} +${nombres.length - 1}`
 }
 
-// Se arma UNA sola vez desde el dataset: solo camiones que tienen órdenes de transporte. El resto de
-// la flota (sin órdenes) no aparece en este listado —es una vista de despacho, no el maestro.
-const CAMIONES_RESUMEN: CamionResumen[] = Array.from(
-  new Set(ORDENES_TRANSPORTE.map((o) => o.camion)),
+// Proyección reactiva: solo camiones que tienen órdenes de transporte. El resto de la flota (sin
+// órdenes) no aparece en este listado —es una vista de despacho, no el maestro.
+const resumirOrdenesPorCamion = (transportOrders: OrdenTransporte[]): CamionResumen[] => Array.from(
+  new Set(transportOrders.map((o) => o.camion)),
 ).map((placa) => {
-  const ordenes = ORDENES_TRANSPORTE.filter((o) => o.camion === placa)
+  const ordenes = transportOrders.filter((o) => o.camion === placa)
   const camion = CAMIONES.find((c) => c.placa === placa)
   const capacidadKg = (camion?.capacidadPeso ?? 0) * 1000
   const capacidadVolM3 = camion?.capacidadVolumen ?? 0
@@ -132,11 +130,11 @@ const CAMIONES_RESUMEN: CamionResumen[] = Array.from(
   }
 })
 
-const TIPO_OPCIONES = Array.from(new Set(CAMIONES_RESUMEN.map((c) => c.tipo))).map((t) => ({
+const TIPO_OPCIONES = Array.from(new Set(CAMIONES.map((c) => c.tipo))).map((t) => ({
   label: t,
   value: t,
 }))
-const CLASE_OPCIONES = Array.from(new Set(CAMIONES_RESUMEN.map((c) => c.clase))).map((c) => ({
+const CLASE_OPCIONES = Array.from(new Set(CAMIONES.map((c) => c.clase))).map((c) => ({
   label: c,
   value: c,
 }))
@@ -326,64 +324,15 @@ export function CamionesView() {
   const [seleccion, setSeleccion] = useState<CamionResumen | null>(null)
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set())
   const setUnifyCtx = useUnifyStore((s) => s.set)
-  const planes = usePlanesStore((s) => s.planes)
-
-  /**
-   * Una fila POR CAMIÓN, agrupando todas las rutas que los planes le asignaron — no una fila por ruta.
-   * Antes se hacía `planes.flatMap(p => p.camionesDetalle.map(...))`, o sea una fila por ruta con
-   * `id: ${planId}-${placa}`: dos rutas del MISMO camión en el mismo plan colisionaban en ese id (el
-   * DataTable las ve como la misma fila y sobrevive una sola), y la columna Rutas —un solo nombre—
-   * no tenía cómo expresar "2 rutas". Agrupando por placa, la fila dice cuántas rutas tiene el camión
-   * y "Finalizar" puede unificarlas en un viaje, que es para lo que existe la acción.
-   */
-  const createdTrucks: CamionResumen[] = useMemo(() => {
-    const porPlaca = new Map<string, { camion: PlanCamion; rutas: RutaDeCamion[] }>()
-    for (const plan of planes) {
-      for (const ct of plan.camionesDetalle || []) {
-        const entrada = porPlaca.get(ct.placa) ?? { camion: ct, rutas: [] }
-        entrada.rutas.push({
-          id: `${plan.id}-${ct.rutaId}`,
-          nombre: ct.rutaNombre,
-          color: ct.rutaColor,
-          planId: plan.id,
-          paradaIds: ct.paradaIds ?? [],
-          cargaKg: ct.cargaKg,
-          cargaVolM3: ct.cargaVolM3,
-          pedidos: ct.pedidos,
-        })
-        porPlaca.set(ct.placa, entrada)
-      }
-    }
-    return Array.from(porPlaca.values()).map(({ camion, rutas }) => {
-      // Las paradas se unen por id: dos rutas del mismo camión no deberían compartir parada, pero si
-      // el dataset las repitiera contarlas dos veces inflaría el viaje.
-      const cargaKg = rutas.reduce((acc, r) => acc + r.cargaKg, 0)
-      return {
-        id: camion.placa,
-        placa: camion.placa,
-        tipo: camion.tipo,
-        clase: camion.clase,
-        capacidadKg: camion.capacidadKg,
-        capacidadVolM3: camion.capacidadVolM3,
-        ordenes: [],
-        rutas,
-        orderCount: rutas.length,
-        cargaKg,
-        cargaVolM3: rutas.reduce((acc, r) => acc + r.cargaVolM3, 0),
-        pedidos: rutas.reduce((acc, r) => acc + r.pedidos, 0),
-        chofer: camion.chofer,
-        auxiliar: camion.auxiliar,
-        ocupacionPct: camion.capacidadKg > 0 ? Math.round((cargaKg / camion.capacidadKg) * 100) : 0,
-      }
-    })
-  }, [planes])
+  const transportOrders = useTransportOrdersStore((s) => s.orders)
+  const operationalTrucks = useMemo(() => resumirOrdenesPorCamion(transportOrders), [transportOrders])
 
   const data = useMemo(() => {
-    let list = createdTrucks.length > 0 ? createdTrucks : CAMIONES_RESUMEN
+    let list = operationalTrucks
     if (filters.tipo) list = list.filter((c) => c.tipo === filters.tipo)
     if (filters.clase) list = list.filter((c) => c.clase === filters.clase)
     return list
-  }, [createdTrucks, filters])
+  }, [operationalTrucks, filters])
 
   const abrirSeleccion = (c: CamionResumen) => {
     setSeleccion(c)

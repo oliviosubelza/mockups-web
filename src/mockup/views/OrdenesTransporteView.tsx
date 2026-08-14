@@ -34,7 +34,6 @@ import { OrdenEstadoBadge } from '../estado-badge'
 import {
   CAMIONES,
   CHOFERES,
-  ORDENES_TRANSPORTE,
   paradasDeOrden,
   pedidosDeOrden,
   pesoDeOrden,
@@ -42,6 +41,7 @@ import {
   type OrdenTransporte,
 } from '../mock-data'
 import { useUnifyStore } from '../unify-store'
+import { useTransportOrdersStore } from '../transport-orders-store'
 import { EditarDetalleDialog } from './EditarDetalleDialog'
 
 interface OrdenFilters extends Record<string, unknown> {
@@ -57,13 +57,14 @@ const ESTADO_OPCIONES = [
 ]
 
 // Opciones de camión y chofer derivadas del dataset, así los filtros nunca se desincronizan.
-const CAMION_OPCIONES = Array.from(new Set(ORDENES_TRANSPORTE.map((o) => o.camion))).map((c) => ({
+const CAMION_OPCIONES = CAMIONES.map((c) => ({
+  label: c.placa,
+  value: c.placa,
+}))
+const CHOFER_OPCIONES = CHOFERES.map((c) => ({
   label: c,
   value: c,
 }))
-const CHOFER_OPCIONES = Array.from(
-  new Set(ORDENES_TRANSPORTE.map((o) => o.chofer).filter(Boolean)),
-).map((c) => ({ label: c, value: c }))
 
 const filterDefs = defineFilters<OrdenFilters>([
   { type: 'select', id: 'camion', label: 'Camión', options: CAMION_OPCIONES },
@@ -163,7 +164,10 @@ function OrdenRow({
 }
 
 export function OrdenesTransporteView() {
-  const [ordenes, setOrdenes] = useState<OrdenTransporte[]>(ORDENES_TRANSPORTE)
+  const ordenes = useTransportOrdersStore((s) => s.orders)
+  const assignDriver = useTransportOrdersStore((s) => s.assignDriver)
+  const reassignTruck = useTransportOrdersStore((s) => s.reassignTruck)
+  const changeStatus = useTransportOrdersStore((s) => s.changeStatus)
   const [procesando, setProcesando] = useState<boolean>(false)
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
 
@@ -175,16 +179,7 @@ export function OrdenesTransporteView() {
   const setUnifyCtx = useUnifyStore((s) => s.set)
   // Orden cuyo detalle ("Editar detalles") está abierto (null = diálogo cerrado).
   const [ordenDetalle, setOrdenDetalle] = useState<OrdenTransporte | null>(null)
-  // Chofer asignado por orden (override local del mockup).
-  const [choferPorOrden, setChoferPorOrden] = useState<Record<string, string>>({})
-  const choferDe = (o: OrdenTransporte) => choferPorOrden[o.id] || o.chofer
-  const asignarChofer = (id: string, chofer: string) =>
-    setChoferPorOrden((prev) => ({ ...prev, [id]: chofer }))
-  // Camión reasignado por orden (mismo patrón que el chofer: override local, el dataset no se muta).
-  const [camionPorOrden, setCamionPorOrden] = useState<Record<string, string>>({})
-  const camionDe = (o: OrdenTransporte) => camionPorOrden[o.id] || o.camion
-  const reasignarCamion = (id: string, placa: string) =>
-    setCamionPorOrden((prev) => ({ ...prev, [id]: placa }))
+  const ordenDetalleActual = ordenes.find((o) => o.id === ordenDetalle?.id) ?? null
 
   /**
    * Camiones que se le pueden asignar a la orden abierta: capacidad >= peso de la orden. El camión
@@ -195,11 +190,11 @@ export function OrdenesTransporteView() {
   const camionesElegibles = useMemo(() => {
     if (!ordenDetalle) return []
     const pesoKg = pesoDeOrden(ordenDetalle)
-    const actual = camionDe(ordenDetalle)
+    const actual = ordenDetalleActual?.camion ?? ''
     const placas = CAMIONES.filter((c) => capacidadKgDe(c.placa) >= pesoKg).map((c) => c.placa)
     if (!placas.includes(actual)) placas.push(actual)
     return placas.sort((a, b) => capacidadKgDe(a) - capacidadKgDe(b))
-  }, [ordenDetalle, camionPorOrden])
+  }, [ordenDetalle, ordenDetalleActual?.camion])
 
   const data = useMemo(
     () =>
@@ -216,13 +211,7 @@ export function OrdenesTransporteView() {
     setProcessingIds((prev) => new Set(prev).add(transportOrder.id))
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000))
-      setOrdenes((prevOrdenes) =>
-        prevOrdenes.map((orden) =>
-          orden.id === transportOrder.id
-            ? { ...orden, estado: 'procesado' }
-            : orden,
-        ),
-      )
+      changeStatus(transportOrder.id, 'procesado')
     } finally { 
       setProcessingIds((prev) => {
         const next = new Set(prev)
@@ -242,7 +231,7 @@ export function OrdenesTransporteView() {
       cell: (row) => (
         <span className="flex items-center gap-2">
           <Truck className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{camionDe(row)}</span>
+          <span className="truncate font-medium">{row.camion}</span>
         </span>
       ),
     },
@@ -252,7 +241,7 @@ export function OrdenesTransporteView() {
       accessorKey: 'chofer',
       size: 190,
       cell: (row) => {
-        const chofer = choferDe(row)
+        const chofer = row.chofer
         return chofer ? (
           <span className="truncate">{chofer}</span>
         ) : (
@@ -288,15 +277,15 @@ export function OrdenesTransporteView() {
       cell: (row) => (
         <div className="flex justify-center">
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button
+            <DropdownMenuTrigger
+              render={<Button
                 variant="ghost"
                 size="icon-sm"
                 className="h-8 w-8 p-0 mx-auto flex hover:bg-muted focus-visible:ring-1"
-              >
+              />}
+            >
                 <MoreVertical className="h-4 w-4 text-muted-foreground" />
                 <span className="sr-only">Abrir menú de acciones</span>
-              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 shadow-md">
               <DropdownMenuItem
@@ -319,7 +308,7 @@ export function OrdenesTransporteView() {
         </div>
       ),
     },
-  ]), [choferPorOrden, camionPorOrden])
+  ]), [changeStatus])
 
   const bulkActions: BulkAction<OrdenTransporte>[] = [
     {
@@ -341,10 +330,9 @@ export function OrdenesTransporteView() {
 
   // Solo las INCLUIDAS cuentan para la validación y la unificación.
   const incluidas = unificar?.filter((o) => !excluidas.has(o.id)) ?? []
-  // La unificación mira el camión REASIGNADO (camionDe), no el del dataset: mismo criterio que ya se
-  // usaba con el chofer (choferDe) al armar el contexto. Si no, se validaría la capacidad de un camión
-  // que la orden ya no tiene y se mandaría al optimizador una placa vieja.
-  const camiones = Array.from(new Set(incluidas.map((o) => camionDe(o))))
+  // La unificación lee la asignación vigente de la orden compartida. Así valida la capacidad del camión
+  // actual y nunca manda al optimizador una placa anterior.
+  const camiones = Array.from(new Set(incluidas.map((o) => o.camion)))
   const mismoCamion = camiones.length === 1
   const suficientes = incluidas.length >= 2
   const capacidadKg = mismoCamion ? capacidadKgDe(camiones[0]) : 0
@@ -358,13 +346,13 @@ export function OrdenesTransporteView() {
     // Unión real de paradas de las INCLUIDAS → lo que recibe el optimizador.
     const paradaIds = Array.from(new Set(incluidas.flatMap((o) => o.paradaIds)))
     // La tripulación sale de la primera orden incluida: acá ya se validó mismoCamion, y chofer/auxiliar
-    // son consistentes por camión. El chofer respeta la asignación local del mockup (choferDe).
+    // son consistentes por camión. El chofer sale de la asignación operativa compartida.
     const primera = incluidas[0]
     setUnifyCtx({
       camion: camiones[0],
       paradaIds,
       ordenes: incluidas.map((o) => o.codigo),
-      chofer: choferDe(primera),
+      chofer: primera.chofer,
       auxiliar: primera.auxiliar,
       pedidos: incluidas.reduce((acc, o) => acc + pedidosDeOrden(o), 0),
       cargaKg: usadoKg,
@@ -499,18 +487,17 @@ export function OrdenesTransporteView() {
       <EditarDetalleDialog
         open={!!ordenDetalle}
         onOpenChange={(o) => { if (!o) setOrdenDetalle(null) }}
-        codigo={ordenDetalle?.codigo}
-        estado={ordenDetalle?.estado}
-        paradas={ordenDetalle ? paradasDeOrden(ordenDetalle).map((p, i) => ({ id: p.id, secuencia: p.secuencia ?? i + 1, cliente: p.cliente, direccion: p.puntoEntrega, ventana: p.ventana })) : []}
+        codigo={ordenDetalleActual?.codigo}
+        estado={ordenDetalleActual?.estado}
+        paradas={ordenDetalleActual ? paradasDeOrden(ordenDetalleActual).map((p, i) => ({ id: p.id, secuencia: p.secuencia ?? i + 1, cliente: p.cliente, direccion: p.puntoEntrega, ventana: p.ventana })) : []}
         choferes={CHOFERES}
-        choferValue={ordenDetalle ? choferDe(ordenDetalle) || null : null}
-        onChoferChange={(v) => ordenDetalle && asignarChofer(ordenDetalle.id, v)}
+        choferValue={ordenDetalleActual?.chofer || null}
+        onChoferChange={(v) => ordenDetalleActual && assignDriver(ordenDetalleActual.id, v)}
         camiones={camionesElegibles}
-        camionValue={ordenDetalle ? camionDe(ordenDetalle) || null : null}
-        // Igual que el chofer: limpiar el campo guarda '' y camionDe vuelve al camión del dataset.
-        onCamionChange={(v) => ordenDetalle && reasignarCamion(ordenDetalle.id, v)}
+        camionValue={ordenDetalleActual?.camion || null}
+        onCamionChange={(v) => ordenDetalleActual && reassignTruck(ordenDetalleActual.id, v)}
         capacidadPorCamion={capacidadKgDe}
-        pesoOrdenKg={ordenDetalle ? pesoDeOrden(ordenDetalle) : undefined}
+        pesoOrdenKg={ordenDetalleActual ? pesoDeOrden(ordenDetalleActual) : undefined}
         onGuardar={() => setOrdenDetalle(null)}
       />
     </div>
