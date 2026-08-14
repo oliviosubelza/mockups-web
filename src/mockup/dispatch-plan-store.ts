@@ -14,6 +14,7 @@ import {
   ciudadDe,
   finVentana,
   mercadoDe,
+  pedidoEsSeleccionable,
   zonaDe,
   type Camion,
   type CanalId,
@@ -35,16 +36,21 @@ export { aMinutos, finVentana }
 export const dentroDelCorte = (p: Pedido, corte: string) =>
   aMinutos(finVentana(p.ventana)) <= aMinutos(corte)
 
+/** Regla base del canal: si cierra antes del corte, entra por horario. */
+export const entraPorCorte = (p: Pedido) => dentroDelCorte(p, CANAL_META[p.canal].timeOff)
+
 /** ¿El pedido entra al plan POR DEFECTO? (o sea, sin que el usuario haya decidido nada todavía). */
-export const incluidoPorDefecto = (p: Pedido) => dentroDelCorte(p, CANAL_META[p.canal].timeOff)
+export const incluidoPorDefecto = (p: Pedido) => pedidoEsSeleccionable(p) && entraPorCorte(p)
 
 /**
  * ¿El pedido entra al plan? Gana la decisión EXPLÍCITA del usuario si existe; si no, la regla de
  * corte. Un único predicado para todas las superficies (resumen, tabla de fuera de corte, diálogo
  * por canal), así no puede haber dos definiciones de "incluido" que se contradigan.
  */
-export const estaIncluido = (p: Pedido, overrides: OrderOverrides): boolean =>
-  overrides[p.id] ?? incluidoPorDefecto(p)
+export const estaIncluido = (p: Pedido, overrides: OrderOverrides): boolean => {
+  if (!pedidoEsSeleccionable(p)) return false
+  return overrides[p.id] ?? incluidoPorDefecto(p)
+}
 
 /**
  * Decisiones MANUALES del usuario, por id de pedido: `true` = lo mete al plan, `false` = lo saca.
@@ -151,6 +157,14 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
       for (const id of scopeIds) {
         const pedido = PEDIDOS.find((p) => p.id === id)
         if (!pedido) continue
+        // Si una bonificación quedó sin stock, el pedido no puede entrar al plan por ninguna vía.
+        if (!pedidoEsSeleccionable(pedido)) {
+          if (id in next) {
+            delete next[id]
+            changed = true
+          }
+          continue
+        }
         // Solo se persiste la desviación: si la decisión del usuario coincide con lo que ya hacía la
         // regla de corte, se borra el override en vez de guardar una redundancia.
         const shouldDelete = incluidos.has(id) === incluidoPorDefecto(pedido)

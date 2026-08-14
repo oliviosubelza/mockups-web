@@ -38,13 +38,16 @@ import { OrdersMap } from '../OrdersMap'
 import { UnifyMapStats } from '../map/UnifyMapStats'
 import { SortablePedidosTable } from '../SortablePedidosTable'
 import { usePlanesStore } from '../planes-store'
+import { useTransportOrdersStore } from '../transport-orders-store'
 import { useDispatchPlanStore, selectIncludedOrders, selectSelectedTrucks } from '../dispatch-plan-store'
 import { ordenarPorCercania } from '../map/geo/hilbert'
 import { nearestOrder } from '../map/route-optimizer'
 import {
+  AUXILIARES,
   CAMIONES,
   CANAL_META,
   CANALES,
+  CHOFERES,
   DEPOSITO,
   PARADAS,
   PRODUCT_TYPES,
@@ -332,9 +335,14 @@ export function PlanningView({
   // Camiones seleccionados en la fase anterior (o fallback a los primeros 3 camiones activos)
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const selectedTrucks = useMemo(() => {
+    if (singleRoute && paradasScope) {
+      const scopedTruckIds = new Set(paradasScope.map((parada) => parada.camionId).filter(Boolean))
+      const scopedTruck = CAMIONES.find((camion) => scopedTruckIds.has(camion.id))
+      if (scopedTruck) return [scopedTruck]
+    }
     const sel = CAMIONES.filter((c) => selectedTruckIds.includes(c.id))
     return sel.length > 0 ? sel : CAMIONES.filter((c) => c.enRuteo).slice(0, 3)
-  }, [selectedTruckIds])
+  }, [paradasScope, selectedTruckIds, singleRoute])
 
   const [customRutaNombres, setCustomRutaNombres] = useState<Record<string, string>>({})
 
@@ -849,6 +857,14 @@ export function PlanningView({
 
       const camionesDetalle: PlanCamion[] = rutasAProcesar.map((ruta) => {
         const truck = ruta.camion
+        const baseTripulacion = tripulacionDeCamion(truck.placa)
+        const truckIndex = CAMIONES.findIndex((camion) => camion.id === truck.id)
+        const tripulacion = baseTripulacion.chofer
+          ? baseTripulacion
+          : {
+              chofer: CHOFERES[truckIndex % CHOFERES.length] ?? '',
+              auxiliar: AUXILIARES[truckIndex % AUXILIARES.length] ?? '',
+            }
         const paradasDeRuta = paradas.filter(
           (p) => (p.rutaId || (p.camionId ? `r-${p.camionId}` : undefined)) === ruta.id,
         )
@@ -858,7 +874,6 @@ export function PlanningView({
         const capacidadKg = (truck.capacidadPeso ?? 0) * 1000
         const capacidadVolM3 = truck.capacidadVolumen ?? 0
         const ocupacionPct = capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0
-        const tripulacion = tripulacionDeCamion(truck.placa)
 
         return {
           id: truck.id,
@@ -872,23 +887,29 @@ export function PlanningView({
           rutaId: ruta.id,
           rutaColor: ruta.color,
           paradaIds: paradasDeRuta.map((p) => p.id),
+          paradas: paradasDeRuta.map((parada) => ({
+            ...parada,
+            pedidos: parada.pedidos.map((pedido) => ({ ...pedido })),
+          })),
           orderCount: 1,
           cargaKg,
           cargaVolM3,
           pedidos: pedidosCount,
-          // La dupla viaja con el camión: se resuelve por placa contra el dataset, no se inventa.
+          // En producción esto lo termina disparando el chofer desde mobile. En el mock lo dejamos
+          // listo para monitoreo desde que se generan las rutas.
           chofer: tripulacion.chofer,
           auxiliar: tripulacion.auxiliar,
           ocupacionPct,
         }
       })
 
-      usePlanesStore.getState().addPlan({
+      const plan = usePlanesStore.getState().saveActivePlan({
         pedidos: includedOrders.length > 0 ? includedOrders.length : paradas.flatMap((p) => p.pedidos).length,
         camiones: camionesDetalle.length,
-        estado: 'optimizado',
+        estado: 'aprobado',
         camionesDetalle,
       })
+      useTransportOrdersStore.getState().createForPlan(plan)
     }
     onNext()
   }
@@ -963,14 +984,14 @@ export function PlanningView({
             Nueva ruta
           </Button>
         )}
-        {/* Solo se habilita una vez optimizadas las rutas: sin optimización no hay órdenes que generar. */}
+        {/* Solo se habilita una vez optimizadas las rutas: después se confirma su distribución. */}
         <Button
           size="sm"
           disabled={!optimized}
-          title={optimized ? 'Generar órdenes de transporte' : 'Primero optimizar las rutas'}
+          title={optimized ? 'Generar rutas' : 'Primero optimizar las rutas'}
           onClick={handleCreateRoutes}
         >
-          Crear {(scopeLabel?.includes('Reoptimizando')) ? 'órdenes de Transporte' : 'Rutas '}
+          Generar rutas
         </Button>
       </div>
 

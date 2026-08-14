@@ -143,23 +143,60 @@ export const LETRAS_PLACA = [
 export const COLOR_CAMION_INACTIVO = '#64748b'
 
 /**
- * Catálogo de productos (`delivery_order_items.product_id`). Existe solo para el detalle de entrega
- * del monitoreo: sin nombre de producto, la pestaña "Pedido" no puede mostrar planificado vs
- * entregado vs devuelto. `unidad` es lo que se cuenta, no un dato del esquema.
+ * Catalogo de productos (`delivery_order_items.product_id`) CURADO para el mockup de Venado.
+ *
+ * Base: `../venado-productos.md` (fuentes oficiales de Grupo Venado / IVSA / VEMASSA / FACRULESA).
+ * Se guarda una muestra utilizable para UI, no el documento entero: nombres visibles en tablas y
+ * dialogos, mas metadata minima para no mezclar "Frio" y "Seco" de forma arbitraria.
  */
 export const PRODUCTOS = [
-  { nombre: 'Aceite girasol 900 ml', unidad: 'cajas' },
-  { nombre: 'Arroz grano largo 5 kg', unidad: 'bolsas' },
-  { nombre: 'Azúcar blanca 1 kg', unidad: 'bolsas' },
-  { nombre: 'Fideo spaghetti 400 g', unidad: 'cajas' },
-  { nombre: 'Gaseosa cola 2 L', unidad: 'packs' },
-  { nombre: 'Agua sin gas 2 L', unidad: 'packs' },
-  { nombre: 'Leche entera 1 L', unidad: 'cajas' },
-  { nombre: 'Yogur bebible 1 L', unidad: 'cajas' },
-  { nombre: 'Harina 000 1 kg', unidad: 'bolsas' },
-  { nombre: 'Margarina 250 g', unidad: 'cajas' },
-  { nombre: 'Atún lomito 170 g', unidad: 'cajas' },
-  { nombre: 'Galleta surtida 300 g', unidad: 'cajas' },
-  { nombre: 'Jabón en polvo 800 g', unidad: 'bolsas' },
-  { nombre: 'Papel higiénico x4', unidad: 'packs' },
+  { nombre: 'Mayonesa Real doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
+  { nombre: 'Ketchup Real doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
+  { nombre: 'Mostaza doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Salsa golf doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Extracto de tomate doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Llajua picante doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
+  { nombre: 'Picante sabor gallina doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Atun en aceite vegetal', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Caldo de gallina cubitos', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Sopa de pollo con fideo sobre', unidad: 'sobres', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Crema de champinones sobre', unidad: 'sobres', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Maicena en caja', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Kriskao clasico', unidad: 'cajas', empresa: 'IVSA', marca: 'Kriskao', temperatura: 'Seco' },
+  { nombre: 'Corn Flakes caja', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Avena instantanea', unidad: 'bolsas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Gelatina frutilla bolsa', unidad: 'bolsas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Flan vainilla', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Pudin chocolate', unidad: 'cajas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Refresco Real naranja', unidad: 'sobres', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
+  { nombre: 'Refresco Real mocochinchi', unidad: 'sobres', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
+  { nombre: 'Nectar en polvo mango sobres', unidad: 'sobres', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Bebida isotonica naranja sobre', unidad: 'sobres', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Polvo para hornear Fleischmann', unidad: 'cajas', empresa: 'IVSA', marca: 'Fleischmann', temperatura: 'Seco' },
+  { nombre: 'Mejorador de masa', unidad: 'bolsas', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
+  { nombre: 'Detergente polvo limon', unidad: 'bolsas', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Lavavajillas limon', unidad: 'botellas', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Limpia pisos lavanda', unidad: 'botellas', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Limpia vidrios original', unidad: 'botellas', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Lavandina Bristar sachet', unidad: 'sachets', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Jabon liquido antibacterial', unidad: 'botellas', empresa: 'IVSA', marca: 'Bristar', temperatura: 'Seco' },
+  { nombre: 'Alcohol en gel Shabay', unidad: 'botellas', empresa: 'IVSA', marca: 'Shabay', temperatura: 'Seco' },
+  { nombre: 'Frussion Durazno', unidad: 'packs', empresa: 'VEMASSA', marca: 'Frussion', temperatura: 'Ambos' },
+  { nombre: 'Frussion Manzana', unidad: 'packs', empresa: 'VEMASSA', marca: 'Frussion', temperatura: 'Ambos' },
+  { nombre: 'Frussion Naranja nectar/pulpa', unidad: 'packs', empresa: 'VEMASSA', marca: 'Frussion', temperatura: 'Ambos' },
+  { nombre: 'Frussion Mango', unidad: 'packs', empresa: 'VEMASSA', marca: 'Frussion', temperatura: 'Ambos' },
+  { nombre: 'Mocochinchi', unidad: 'packs', empresa: 'VEMASSA', marca: 'Mocochinchi', temperatura: 'Ambos' },
+  { nombre: 'Chicha Camba', unidad: 'packs', empresa: 'VEMASSA', marca: 'Chicha Camba', temperatura: 'Ambos' },
+  { nombre: 'Agua Speranza', unidad: 'packs', empresa: 'VEMASSA', marca: 'Speranza', temperatura: 'Ambos' },
+  { nombre: 'Agua Esperanza', unidad: 'packs', empresa: 'VEMASSA', marca: 'Esperanza', temperatura: 'Ambos' },
+  { nombre: 'Energizante Raptor', unidad: 'packs', empresa: 'VEMASSA', marca: 'Raptor', temperatura: 'Ambos' },
+  { nombre: 'De La Granja Pomelo con pulpa natural', unidad: 'packs', empresa: 'VEMASSA', marca: 'De La Granja', temperatura: 'Ambos' },
+  { nombre: 'Crema Whip Topping Base', unidad: 'cajas', empresa: 'IVSA', marca: "Rich's", temperatura: 'Frío' },
+  { nombre: 'Crema Ultra Rich UHT', unidad: 'cajas', empresa: 'IVSA', marca: 'Ultra Rich', temperatura: 'Frío' },
+  { nombre: 'Crema Bettercreme Chocolate', unidad: 'cajas', empresa: 'IVSA', marca: 'Bettercreme', temperatura: 'Frío' },
+  { nombre: 'Crema Bettercreme Vainilla', unidad: 'cajas', empresa: 'IVSA', marca: 'Bettercreme', temperatura: 'Frío' },
+  { nombre: 'Crema Bettercreme Dulce de Leche', unidad: 'cajas', empresa: 'IVSA', marca: 'Bettercreme', temperatura: 'Frío' },
+  { nombre: 'Levadura fresca', unidad: 'cajas', empresa: 'FACRULESA', marca: 'Fleischmann', temperatura: 'Frío' },
+  { nombre: 'Levadura seca', unidad: 'cajas', empresa: 'FACRULESA', marca: 'Fleischmann', temperatura: 'Seco' },
+  { nombre: 'Levadura seca instantanea masa dulce', unidad: 'cajas', empresa: 'FACRULESA', marca: 'Royal', temperatura: 'Seco' },
 ] as const

@@ -46,12 +46,14 @@ import { useEffect, useState } from 'react'
 import { createRand } from '../mock-random'
 import type { LatLngTuple } from '../map/geo/polyline'
 import {
-  ORDENES_MONITOREO,
+  obtenerMonitoreoOperativo,
   resumenEntregas,
   tiemposConUnaMas,
   viajePorTripId,
   type ResumenEntregas,
 } from './monitoreo-data'
+import { useTransportOrdersStore } from '../transport-orders-store'
+import type { OrdenTransporte } from '../mock-data'
 import type { EstadoViaje } from './monitoreo-estado'
 import {
   DISTRIBUIDOR_ACTIVO,
@@ -129,15 +131,17 @@ const interpolar = (a: LatLngTuple, b: LatLngTuple, t: number): LatLngTuple => [
  * El merge se hace con un índice por `tripId` y no buscando en el array por cada orden: es la misma
  * razón por la que el ítem ACTUAL existe — una Query, un recorrido, y no N búsquedas.
  */
-function snapshotFlota(distributorId: number): FilaMonitoreo[] {
+function snapshotFlota(distributorId: number, transportOrders: OrdenTransporte[]): FilaMonitoreo[] {
   const porTripId = new Map<number, ItemActual>()
   for (const item of queryFlota(distributorId)) {
     const tripId = tripIdDeSk(item.sk)
     if (tripId !== null) porTripId.set(tripId, item)
   }
 
-  return ORDENES_MONITOREO.map((orden) => {
-    const viaje = viajePorTripId(orden.tripId)
+  const monitoring = obtenerMonitoreoOperativo(transportOrders)
+  const viajesPorId = new Map(monitoring.viajes.map((viaje) => [viaje.tripId, viaje]))
+  return monitoring.ordenes.map((orden) => {
+    const viaje = viajesPorId.get(orden.tripId)
     return {
       id: orden.id,
       codigo: orden.codigo,
@@ -209,15 +213,16 @@ export interface FlotaViva {
  * que no cambiaron conservan su identidad referencial.
  */
 export function useFlotaViva(distributorId: number = DISTRIBUIDOR_ACTIVO): FlotaViva {
+  const transportOrders = useTransportOrdersStore((state) => state.orders)
   const [estado, setEstado] = useState(() => ({
-    filas: snapshotFlota(distributorId),
+    filas: snapshotFlota(distributorId, transportOrders),
     actualizadoAt: Date.now(),
   }))
 
   useEffect(() => {
     // Re-pedir el snapshot es también lo que pasa al RECONECTAR, así que el mismo camino sirve para las
     // dos cosas: montar la pantalla y volver de un corte.
-    const filas = snapshotFlota(distributorId)
+    const filas = snapshotFlota(distributorId, transportOrders)
     setEstado({ filas, actualizadoAt: Date.now() })
 
     /** Parcheo por id. Devuelve la MISMA fila si el evento no la cambió. */
@@ -334,7 +339,7 @@ export function useFlotaViva(distributorId: number = DISTRIBUIDOR_ACTIVO): Flota
       clearInterval(idFlush)
       clearInterval(idEstado)
     }
-  }, [distributorId])
+  }, [distributorId, transportOrders])
 
   return estado
 }

@@ -15,6 +15,7 @@
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react'
 import { DataTable, defineColumns } from '@/components/data-table'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,17 +25,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { cn } from '@/lib/utils'
 import {
   CANAL_META,
   itemsPorConfirmar,
+  pedidoEsSeleccionable,
   tieneStockPorConfirmar,
   type CanalId,
   type ItemPedido,
   type Pedido,
 } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
-import { estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
+import { entraPorCorte, estaIncluido, incluidoPorDefecto, useDispatchPlanStore } from './dispatch-plan-store'
 
 // Mismos formatos que el resto del paso (convención del proyecto: cada vista declara los suyos).
 const fmtMoneda = new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' })
@@ -109,7 +112,16 @@ function ItemFila({ item }: { item: ItemPedido }) {
   const corta = item.confirmado < item.solicitado
   return (
     <li className="flex items-start justify-between gap-2 py-1.5">
-      <span className="min-w-0 flex-1 text-xs leading-snug">{item.producto}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="min-w-0 flex-1 text-xs leading-snug">{item.producto}</span>
+          {item.esBonificacion && (
+            <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/10 text-primary">
+              Bonificación
+            </Badge>
+          )}
+        </div>
+      </div>
       <span
         className={cn(
           'shrink-0 text-xs tabular-nums',
@@ -134,7 +146,7 @@ function StockPanel({ pedido, onClose }: { pedido: Pedido; onClose: () => void }
   const confirmados = pedido.items.filter((i) => i.confirmado >= i.solicitado)
 
   return (
-    <aside className="flex w-[240px] shrink-0 flex-col overflow-hidden rounded-md border bg-muted/20">
+    <aside className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-md border bg-muted/20">
       <header className="flex items-start justify-between gap-2 border-b bg-background/60 px-3 py-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold leading-tight">Pedido {pedido.salesOrder}</p>
@@ -274,12 +286,12 @@ export function CanalPedidosDialog({
 
   // Solo los de DENTRO del corte: los de fuera ya tienen su propia pestaña ("Seleccionar fuera de
   // corte") y mostrarlos acá duplicaba el mismo control en dos lugares.
-  const dentro = pedidos.filter(incluidoPorDefecto)
+  const dentro = pedidos.filter(entraPorCorte)
   // El scope que se manda al store son SOLO los listados: así destildar acá no puede tocar las
   // decisiones tomadas en la pestaña de fuera de corte.
   const scopeIds = dentro.map((p) => p.id)
   const incluidos = dentro.filter((p) => estaIncluido(p, orderOverrides))
-  const quitados = dentro.length - incluidos.length
+  const quitados = dentro.filter((p) => incluidoPorDefecto(p) && !estaIncluido(p, orderOverrides)).length
 
   const totalMonto = incluidos.reduce((acc, p) => acc + p.total, 0)
   const totalPeso = incluidos.reduce((acc, p) => acc + p.peso, 0)
@@ -288,7 +300,7 @@ export function CanalPedidosDialog({
   // sin este dato el pie diría "entran 2" mientras la fila del resumen dice 3, y no habría forma de
   // entender la diferencia.
   const fueraAgregados = pedidos.filter(
-    (p) => !incluidoPorDefecto(p) && estaIncluido(p, orderOverrides),
+    (p) => !entraPorCorte(p) && estaIncluido(p, orderOverrides),
   ).length
 
   // Se resuelve contra la lista: si el pedido dejó de estar (cambió el filtro del panel de atrás),
@@ -303,9 +315,12 @@ export function CanalPedidosDialog({
   // Lo que la tabla realmente muestra. Con el filtro activo las demás filas salen del row model.
   const visibles = soloPendientes ? dentro.filter(tieneStockPorConfirmar) : dentro
 
-  // Todos los listados están dentro del corte, así que el default es "entran todos".
+  // Restablece la regla base: entran los del corte que además sean seleccionables.
   const restablecer = () => {
-    setOrdersIncluded(scopeIds, scopeIds)
+    setOrdersIncluded(
+      scopeIds,
+      dentro.filter(incluidoPorDefecto).map((pedido) => pedido.id),
+    )
     setSeedNonce((n) => n + 1)
   }
 
@@ -314,12 +329,7 @@ export function CanalPedidosDialog({
       {/* Solo se pisa el breakpoint `sm`: el `max-w-[calc(100%-2rem)]` del DialogContent se conserva
           para que en pantallas chicas el diálogo no se salga del viewport. */}
       <DialogContent
-        className={cn(
-          'flex max-h-[85vh] flex-col gap-3 transition-[max-width]',
-          // El diálogo se ensancha al abrir el detalle: si mantuviera el ancho, el panel le comería
-          // su espacio a la tabla y las columnas de la izquierda quedarían apretadas.
-          detalle ? 'sm:max-w-7xl' : 'sm:max-w-5xl',
-        )}
+        className="flex max-h-[85vh] flex-col gap-3 overflow-hidden sm:max-w-7xl"
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -338,69 +348,127 @@ export function CanalPedidosDialog({
         {/* `overflow-auto` y no `fillHeight` en la tabla: con 3-4 pedidos la tabla crece con su
             contenido (fillHeight la estiraría vacía hasta el 85vh), y si la lista es larga scrollea
             acá dentro en vez de recortarse contra el alto máximo del diálogo. */}
-        <div className="flex min-h-0 flex-1 gap-3">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-            <DataTable
-              // El nonce fuerza el remonte tras "Restablecer" para que la siembra vuelva a correr.
-              key={`${canal}-${seedNonce}`}
-              tableId="mockup-canal-pedidos"
-              columns={columns}
-              data={visibles}
-              getRowId={(row) => row.id}
-              emptyTitle={soloPendientes ? 'Sin stock pendiente' : 'Nada dentro del corte'}
-              emptyMessage={
-                soloPendientes
-                  ? 'Todos los pedidos de este canal tienen el stock confirmado.'
-                  : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
-              }
-              bodyMinHeight={280}
-              selectable
-              defaultSelectedIds={incluidos.map((p) => p.id)}
-              // El scope son los ids VISIBLES y no todos los de dentro del corte: con el filtro
-              // activo las filas escondidas salen del row model y `onSelectionChange` las reporta
-              // como no tildadas, así que un scope más amplio las daría por quitadas del plan.
-              onSelectionChange={(rows) =>
-                setOrdersIncluded(
-                  visibles.map((p) => p.id),
-                  rows.map((r) => r.id),
-                )
-              }
-              searchable
-              searchPlaceholder="Buscar por código, cliente, vendedor…"
-              searchKeys={[...SEARCH_KEYS]}
-              clientPagination
-              defaultPageSize={8}
-              // El filtro va en el toolbar de la tabla, al lado del buscador: es otra forma de
-              // acotar la misma lista, no una acción del diálogo.
-              toolbar={
-                pendientesTotal > 0 ? (
-                  <FiltroStockPendiente
-                    activo={soloPendientes}
-                    count={pendientesTotal}
-                    onToggle={() => setSoloPendientes((v) => !v)}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {detalle ? (
+            <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+              <ResizablePanel defaultSize={72} minSize={48}>
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pr-3">
+                  <DataTable
+                    // El nonce fuerza el remonte tras "Restablecer" para que la siembra vuelva a correr.
+                    key={`${canal}-${seedNonce}`}
+                    tableId="mockup-canal-pedidos"
+                    columns={columns}
+                    data={visibles}
+                    getRowId={(row) => row.id}
+                    emptyTitle={soloPendientes ? 'Sin stock pendiente' : 'Nada dentro del corte'}
+                    emptyMessage={
+                      soloPendientes
+                        ? 'Todos los pedidos de este canal tienen el stock confirmado.'
+                        : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
+                    }
+                    bodyMinHeight={280}
+                    selectable
+                    isRowSelectable={pedidoEsSeleccionable}
+                    defaultSelectedIds={incluidos.map((p) => p.id)}
+                    // El scope son los ids VISIBLES y no todos los de dentro del corte: con el filtro
+                    // activo las filas escondidas salen del row model y `onSelectionChange` las reporta
+                    // como no tildadas, así que un scope más amplio las daría por quitadas del plan.
+                    onSelectionChange={(rows) =>
+                      setOrdersIncluded(
+                        visibles.map((p) => p.id),
+                        rows.map((r) => r.id),
+                      )
+                    }
+                    searchable
+                    searchPlaceholder="Buscar por código, cliente, vendedor…"
+                    searchKeys={[...SEARCH_KEYS]}
+                    clientPagination
+                    defaultPageSize={8}
+                    // El filtro va en el toolbar de la tabla, al lado del buscador: es otra forma de
+                    // acotar la misma lista, no una acción del diálogo.
+                    toolbar={
+                      pendientesTotal > 0 ? (
+                        <FiltroStockPendiente
+                          activo={soloPendientes}
+                          count={pendientesTotal}
+                          onToggle={() => setSoloPendientes((v) => !v)}
+                        />
+                      ) : undefined
+                    }
+                    // Click en la fila abre el detalle; el checkbox corta la propagación, así que tildar y
+                    // mirar el detalle siguen siendo dos gestos distintos. Re-clickear el mismo cierra.
+                    onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
+                    rowClassName={(row) =>
+                      cn(
+                        // Ámbar = stock pendiente. Con el filtro activo no se pinta porque, si todas las
+                        // filas son pendientes, la banda deja de distinguir algo útil.
+                        !soloPendientes &&
+                          tieneStockPorConfirmar(row) &&
+                          'bg-amber-500/10 hover:bg-amber-500/15',
+                        row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
+                      )
+                    }
                   />
-                ) : undefined
-              }
-              // Click en la fila abre el detalle; el checkbox corta la propagación, así que tildar y
-              // mirar el detalle siguen siendo dos gestos distintos. Re-clickear el mismo cierra.
-              onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
-              rowClassName={(row) =>
-                cn(
-                  // Ámbar = atención, la misma convención que los badges de estado del mockup. Va
-                  // sobre el `bg-primary/5` de fila seleccionada porque `rowClassName` se aplica
-                  // último: un pedido incluido CON stock pendiente tiene que verse como pendiente.
-                  // Con el filtro activo NO se pinta: si todas las filas son pendientes, la banda
-                  // ámbar deja de distinguir nada y solo ensucia la lectura.
-                  !soloPendientes &&
-                    tieneStockPorConfirmar(row) &&
-                    'bg-amber-500/10 hover:bg-amber-500/15',
-                  row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
-                )
-              }
-            />
-          </div>
-
-          {detalle && <StockPanel pedido={detalle} onClose={() => setDetalleId(null)} />}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={28} minSize={20}>
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden pl-3">
+                  <StockPanel pedido={detalle} onClose={() => setDetalleId(null)} />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <DataTable
+                // El nonce fuerza el remonte tras "Restablecer" para que la siembra vuelva a correr.
+                key={`${canal}-${seedNonce}`}
+                tableId="mockup-canal-pedidos"
+                columns={columns}
+                data={visibles}
+                getRowId={(row) => row.id}
+                emptyTitle={soloPendientes ? 'Sin stock pendiente' : 'Nada dentro del corte'}
+                emptyMessage={
+                  soloPendientes
+                    ? 'Todos los pedidos de este canal tienen el stock confirmado.'
+                    : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
+                }
+                bodyMinHeight={280}
+                selectable
+                isRowSelectable={pedidoEsSeleccionable}
+                defaultSelectedIds={incluidos.map((p) => p.id)}
+                onSelectionChange={(rows) =>
+                  setOrdersIncluded(
+                    visibles.map((p) => p.id),
+                    rows.map((r) => r.id),
+                  )
+                }
+                searchable
+                searchPlaceholder="Buscar por código, cliente, vendedor…"
+                searchKeys={[...SEARCH_KEYS]}
+                clientPagination
+                defaultPageSize={8}
+                toolbar={
+                  pendientesTotal > 0 ? (
+                    <FiltroStockPendiente
+                      activo={soloPendientes}
+                      count={pendientesTotal}
+                      onToggle={() => setSoloPendientes((v) => !v)}
+                    />
+                  ) : undefined
+                }
+                onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
+                rowClassName={(row) =>
+                  cn(
+                    !soloPendientes &&
+                      tieneStockPorConfirmar(row) &&
+                      'bg-amber-500/10 hover:bg-amber-500/15',
+                    row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
+                  )
+                }
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter className="items-center sm:justify-between">

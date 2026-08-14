@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
-import { DISTRIBUIDORAS, type EstadoPlan, type Plan } from '../mock-data'
-import { usePlanesStore } from '../planes-store'
+import { type EstadoPlan, type Plan } from '../mock-data'
+import { PLAN_DISTRIBUIDORA_UNICA, usePlanesStore } from '../planes-store'
 import type { BoardState } from '../types'
 
 /** ISO (YYYY-MM-DD…) → DD/MM/YYYY para mostrar. */
@@ -18,12 +18,10 @@ const fmtFecha = (iso: string) => {
 
 const ESTADO: Record<EstadoPlan, { label: string; className: string }> = {
   borrador: { label: 'Borrador', className: 'border-border bg-muted text-muted-foreground' },
-  optimizado: {
-    label: 'Optimizado',
-    className: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  },
   aprobado: { label: 'Aprobado', className: 'border-primary/30 bg-primary/10 text-primary' },
 }
+
+const ESTADO_FILTER_OPTIONS: EstadoPlan[] = ['borrador', 'aprobado']
 
 interface PlanFilters extends Record<string, unknown> {
   distribuidora?: string
@@ -88,13 +86,13 @@ const filterDefs = defineFilters<PlanFilters>([
     type: 'select',
     id: 'estado',
     label: 'Estado',
-    options: (Object.keys(ESTADO) as EstadoPlan[]).map((e) => ({ label: ESTADO[e].label, value: e })),
+    options: ESTADO_FILTER_OPTIONS.map((e) => ({ label: ESTADO[e].label, value: e })),
   },
   {
     type: 'select',
     id: 'distribuidora',
     label: 'Distribuidora',
-    options: DISTRIBUIDORAS.map((d) => ({ label: d.nombre, value: d.nombre })),
+    options: [{ label: PLAN_DISTRIBUIDORA_UNICA, value: PLAN_DISTRIBUIDORA_UNICA }],
   },
   { type: 'daterange', id: 'fecha', label: 'Fecha', fromKey: 'fechaDesde', toKey: 'fechaHasta' },
 ])
@@ -163,4 +161,3 @@ export function PlansView({ state, onNew }: { state: BoardState; onNew?: () => v
     </div>
   )
 }
-

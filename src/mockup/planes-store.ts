@@ -1,16 +1,31 @@
 // Store de planificaciones guardadas en memoria/session (planes_store)
 // Mantiene el listado de planes creados durante la sesión para el flujo de demostración.
 import { create } from 'zustand'
-import { DISTRIBUIDORAS, type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
+import { type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
 
 const STORAGE_KEY = 'mockups-web:planes'
+export const PLAN_DISTRIBUIDORA_UNICA = 'DISCRUZ'
+
+type StoredPlan = Omit<Plan, 'estado'> & { estado?: string }
+
+function normalizePlanEstado(estado?: string): EstadoPlan {
+  return estado === 'aprobado' ? 'aprobado' : 'borrador'
+}
+
+function normalizeStoredPlan(plan: StoredPlan): Plan {
+  return {
+    ...plan,
+    estado: normalizePlanEstado(plan.estado),
+    distribuidora: PLAN_DISTRIBUIDORA_UNICA,
+  }
+}
 
 function readStoredPlanes(): Plan[] {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    return Array.isArray(parsed) ? parsed.map((plan) => normalizeStoredPlan(plan as StoredPlan)) : []
   } catch {
     return []
   }
@@ -36,7 +51,11 @@ export interface CreatePlanInput {
 
 interface PlanesState {
   planes: Plan[]
+  activePlanId: number | null
   addPlan: (input?: CreatePlanInput) => Plan
+  saveActivePlan: (input?: CreatePlanInput) => Plan
+  updatePlanEstado: (id: number, estado: EstadoPlan) => void
+  beginPlan: () => Plan
   clearPlanes: () => void
   removePlan: (id: number) => void
 }
@@ -50,8 +69,13 @@ function fechaHoy(): string {
   return `${y}-${m}-${day}`
 }
 
+function resolvePlanCount(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && value >= 0 ? value : fallback
+}
+
 export const usePlanesStore = create<PlanesState>((set, get) => ({
   planes: readStoredPlanes(),
+  activePlanId: null,
 
   addPlan: (input) => {
     const currentPlanes = get().planes
@@ -62,28 +86,68 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
     const newPlan: Plan = {
       id: newId,
       fecha: fechaHoy(),
-      estado: input?.estado ?? 'optimizado',
-      distribuidora: input?.distribuidora || DISTRIBUIDORAS[0]?.nombre || 'Distribuidora Central',
-      pedidos: input?.pedidos && input.pedidos > 0 ? input.pedidos : 24,
-      camiones: input?.camiones && input.camiones > 0 ? input.camiones : 6,
+      estado: input?.estado ?? 'borrador',
+      distribuidora: PLAN_DISTRIBUIDORA_UNICA,
+      pedidos: resolvePlanCount(input?.pedidos, 24),
+      camiones: resolvePlanCount(input?.camiones, 6),
       creadoPor: input?.creadoPor || 'Juan Pérez',
       camionesDetalle: input?.camionesDetalle?.map((c) => ({ ...c, planId: newId })),
     }
 
     const updated = [newPlan, ...currentPlanes]
     writeStoredPlanes(updated)
-    set({ planes: updated })
+    set({ planes: updated, activePlanId: newId })
     return newPlan
   },
 
+  saveActivePlan: (input) => {
+    const { activePlanId, planes } = get()
+    if (activePlanId === null) return get().addPlan(input)
+
+    const current = planes.find((plan) => plan.id === activePlanId)
+    if (!current) return get().addPlan(input)
+
+    const updatedPlan: Plan = {
+      ...current,
+      fecha: fechaHoy(),
+      estado: input?.estado ?? current.estado,
+      distribuidora: PLAN_DISTRIBUIDORA_UNICA,
+      pedidos: resolvePlanCount(input?.pedidos, current.pedidos),
+      camiones: resolvePlanCount(input?.camiones, current.camiones),
+      creadoPor: input?.creadoPor || current.creadoPor || 'Juan Pérez',
+      camionesDetalle: input?.camionesDetalle
+        ? input.camionesDetalle.map((camion) => ({ ...camion, planId: activePlanId }))
+        : current.camionesDetalle,
+    }
+
+    const updated = planes.map((plan) => (plan.id === activePlanId ? updatedPlan : plan))
+    writeStoredPlanes(updated)
+    set({ planes: updated, activePlanId })
+    return updatedPlan
+  },
+
+  updatePlanEstado: (id, estado) => {
+    const updated = get().planes.map((plan) => (plan.id === id ? { ...plan, estado } : plan))
+    writeStoredPlanes(updated)
+    set({ planes: updated })
+  },
+
+  beginPlan: () =>
+    get().addPlan({
+      estado: 'borrador',
+      pedidos: 0,
+      camiones: 0,
+      camionesDetalle: [],
+    }),
+
   clearPlanes: () => {
     writeStoredPlanes([])
-    set({ planes: [] })
+    set({ planes: [], activePlanId: null })
   },
 
   removePlan: (id) => {
     const updated = get().planes.filter((p) => p.id !== id)
     writeStoredPlanes(updated)
-    set({ planes: updated })
+    set((state) => ({ planes: updated, activePlanId: state.activePlanId === id ? null : state.activePlanId }))
   },
 }))
