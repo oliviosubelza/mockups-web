@@ -266,12 +266,12 @@ export function SortablePedidosTable({
       pedidoIds.forEach((id) => next.set(id, rutaId))
       return next
     })
-    if (onReorder) onReorder()
+    if (onReorder) onReorder(rutaId, order)
   }
 
   function quitar(pedidoIds: string[]) {
     setRemovedPedidos((prev) => new Set([...prev, ...pedidoIds]))
-    if (onReorder) onReorder()
+    if (onReorder) onReorder(rutaSel, order)
   }
 
   /** Devuelve a la ruta los pedidos quitados. Es el "Deshacer" del aviso posterior. */
@@ -281,7 +281,7 @@ export function SortablePedidosTable({
       pedidoIds.forEach((id) => next.delete(id))
       return next
     })
-    if (onReorder) onReorder()
+    if (onReorder) onReorder(rutaSel, order)
   }
 
   /** Confirma lo pendiente y avisa con opción de deshacer. La confirmación evita el borrado
