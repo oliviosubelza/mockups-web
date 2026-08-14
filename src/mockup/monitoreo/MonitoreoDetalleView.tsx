@@ -210,12 +210,13 @@ export function MonitoreoDetalleView() {
   const [filtro, setFiltro] = useState<FiltroParadas>('todas')
 
   const orden = ordenPorId(ordenId ?? null)
+  const tripId = orden?.tripId ?? null
   // El puente orden → viaje es `transport_order.trip_id`, que la fila de Postgres ya trae: navegar por
   // orden y trackear por viaje no cuesta una consulta extra.
-  const viaje = viajePorTripId(orden?.tripId)
+  const viaje = useMemo(() => (tripId === null ? undefined : viajePorTripId(tripId)), [tripId])
 
   // Las entregas de esta orden, en orden de visita. Un viaje = una carga = una orden.
-  const base = useMemo(() => (viaje ? entregasDeViaje(viaje.tripId) : []), [viaje])
+  const base = useMemo(() => (tripId === null ? [] : entregasDeViaje(tripId)), [tripId])
 
   // La simulación en vivo es la única fuente del estado actual: devuelve las entregas ya mutadas y el
   // último ítem ACTUAL crudo (la posición y la batería se derivan de él, no se guardan).

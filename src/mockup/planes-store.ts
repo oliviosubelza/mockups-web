@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
 
 const STORAGE_KEY = 'mockups-web:planes'
+const ACTIVE_PLAN_STORAGE_KEY = 'mockups-web:planes:active-id'
 export const PLAN_DISTRIBUIDORA_UNICA = 'DISCRUZ'
 
 type StoredPlan = Omit<Plan, 'estado'> & { estado?: string }
@@ -40,6 +41,38 @@ function writeStoredPlanes(planes: Plan[]): void {
   }
 }
 
+function readStoredActivePlanId(): number | null {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredActivePlanId(activePlanId: number | null): void {
+  try {
+    if (activePlanId === null) {
+      sessionStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
+      localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
+      return
+    }
+    const value = String(activePlanId)
+    sessionStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, value)
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, value)
+  } catch {
+    // Si el storage falla, Zustand sigue manteniendo el plan activo en memoria durante la sesión.
+  }
+}
+
+function resolveInitialActivePlanId(planes: Plan[]): number | null {
+  const stored = readStoredActivePlanId()
+  if (stored !== null && planes.some((plan) => plan.id === stored)) return stored
+  return planes[0]?.id ?? null
+}
+
 export interface CreatePlanInput {
   distribuidora?: string
   pedidos?: number
@@ -55,6 +88,7 @@ interface PlanesState {
   addPlan: (input?: CreatePlanInput) => Plan
   saveActivePlan: (input?: CreatePlanInput) => Plan
   updatePlanEstado: (id: number, estado: EstadoPlan) => void
+  updateActivePlanCamion: (rutaId: string, patch: Partial<PlanCamion>) => void
   beginPlan: () => Plan
   clearPlanes: () => void
   removePlan: (id: number) => void
@@ -75,7 +109,7 @@ function resolvePlanCount(value: number | undefined, fallback: number): number {
 
 export const usePlanesStore = create<PlanesState>((set, get) => ({
   planes: readStoredPlanes(),
-  activePlanId: null,
+  activePlanId: resolveInitialActivePlanId(readStoredPlanes()),
 
   addPlan: (input) => {
     const currentPlanes = get().planes
@@ -96,6 +130,7 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
 
     const updated = [newPlan, ...currentPlanes]
     writeStoredPlanes(updated)
+    writeStoredActivePlanId(newId)
     set({ planes: updated, activePlanId: newId })
     return newPlan
   },
@@ -122,6 +157,7 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
 
     const updated = planes.map((plan) => (plan.id === activePlanId ? updatedPlan : plan))
     writeStoredPlanes(updated)
+    writeStoredActivePlanId(activePlanId)
     set({ planes: updated, activePlanId })
     return updatedPlan
   },
@@ -130,6 +166,24 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
     const updated = get().planes.map((plan) => (plan.id === id ? { ...plan, estado } : plan))
     writeStoredPlanes(updated)
     set({ planes: updated })
+  },
+
+  updateActivePlanCamion: (rutaId, patch) => {
+    const { activePlanId, planes } = get()
+    if (activePlanId === null) return
+
+    const updated = planes.map((plan) => {
+      if (plan.id !== activePlanId) return plan
+      return {
+        ...plan,
+        camionesDetalle: plan.camionesDetalle?.map((camion) =>
+          camion.rutaId === rutaId ? { ...camion, ...patch } : camion,
+        ),
+      }
+    })
+    writeStoredPlanes(updated)
+    writeStoredActivePlanId(activePlanId)
+    set({ planes: updated, activePlanId })
   },
 
   beginPlan: () =>
@@ -142,12 +196,15 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
 
   clearPlanes: () => {
     writeStoredPlanes([])
+    writeStoredActivePlanId(null)
     set({ planes: [], activePlanId: null })
   },
 
   removePlan: (id) => {
     const updated = get().planes.filter((p) => p.id !== id)
+    const nextActivePlanId = get().activePlanId === id ? (updated[0]?.id ?? null) : get().activePlanId
     writeStoredPlanes(updated)
-    set((state) => ({ planes: updated, activePlanId: state.activePlanId === id ? null : state.activePlanId }))
+    writeStoredActivePlanId(nextActivePlanId)
+    set({ planes: updated, activePlanId: nextActivePlanId })
   },
 }))

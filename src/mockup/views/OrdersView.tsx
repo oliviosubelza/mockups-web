@@ -72,7 +72,7 @@ export function OrdersView({ state }: { state: BoardState }) {
     activePlanId === null ? undefined : store.planes.find((plan) => plan.id === activePlanId),
   )
   const updatePlanEstado = usePlanesStore((store) => store.updatePlanEstado)
-  const transportOrders = useTransportOrdersStore((store) => store.orders)
+  const updateActivePlanCamion = usePlanesStore((store) => store.updateActivePlanCamion)
   const assignDriver = useTransportOrdersStore((store) => store.assignDriver)
   const reassignTruck = useTransportOrdersStore((store) => store.reassignTruck)
 
@@ -82,10 +82,29 @@ export function OrdersView({ state }: { state: BoardState }) {
   const choferDe = (o: OrdenDespacho) => o.conductor
   const camionDe = (o: OrdenDespacho) => o.camionId
   const asignarChofer = (id: string, chofer: string) => {
+    if (activePlan) {
+      updateActivePlanCamion(id, { chofer })
+      setOrdenSeleccionada((current) => current?.id === id ? { ...current, conductor: chofer } : current)
+      return
+    }
     assignDriver(id, chofer)
     setOrdenSeleccionada((current) => current?.id === id ? { ...current, conductor: chofer } : current)
   }
   const reasignarCamion = (id: string, camionId: string) => {
+    if (activePlan) {
+      const camion = CAMIONES.find((item) => item.placa === camionId)
+      const actual = activePlan.camionesDetalle?.find((item) => item.rutaId === id)
+      updateActivePlanCamion(id, {
+        camionId: camion?.id ?? actual?.camionId ?? '',
+        placa: camionId,
+        tipo: camion?.tipo ?? actual?.tipo,
+        clase: camion?.clase ?? actual?.clase,
+        capacidadKg: camion ? camion.capacidadPeso * 1000 : actual?.capacidadKg,
+        capacidadVolM3: camion?.capacidadVolumen ?? actual?.capacidadVolM3,
+      })
+      setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId } : current)
+      return
+    }
     reassignTruck(id, camionId)
     setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId } : current)
   }
@@ -152,24 +171,22 @@ export function OrdersView({ state }: { state: BoardState }) {
   )
   const ordenesConfirmadas = useMemo<OrdenDespacho[]>(
     () =>
-      (activePlan?.camionesDetalle ?? []).flatMap((route, index) => {
-        const operational = transportOrders.find((order) => order.id === `plan-${activePlan?.id}-${route.rutaId}`)
-        if (!operational) return []
+      (activePlan?.camionesDetalle ?? []).map((route, index) => {
         const camion = CAMIONES.find((item) => item.id === route.camionId)
-        return [{
-          id: operational.id,
-          codigo: operational.codigo,
-          camionId: operational.camion,
+        return {
+          id: route.rutaId,
+          codigo: String(index + 1),
+          camionId: route.placa,
           rutaId: route.rutaId,
-          conductor: operational.chofer,
+          conductor: route.chofer,
           almacen: camion?.almacen ?? '—',
-          estado: operational.estado,
+          estado: 'pendiente',
           salida: `${String(6 + Math.floor(index / 4)).padStart(2, '0')}:${['00', '15', '30', '45'][index % 4]}`,
           cargaPct: route.cargaKg,
           duracionMin: 120 + route.paradaIds.length * 12,
-        }]
+        }
       }),
-    [activePlan, transportOrders],
+    [activePlan],
   )
   const paradasBase = activePlan ? paradasConfirmadas : snapshotParadas
   const rutasBase = activePlan ? rutasConfirmadas : snapshot.active ? snapshot.rutas : RUTAS

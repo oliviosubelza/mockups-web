@@ -13,8 +13,14 @@ import { create } from 'zustand'
 interface UnifyState {
   /** Placa del camión destino (null = no hay unificación en curso). */
   camion: string | null
+  /** Id interno del camión destino (null = no hay contexto o el dato no aplica). */
+  camionId: string | null
+  /** Plan del que sale la unificación (null = la unificación parte de OT ya existentes). */
+  planId: number | null
   /** dispatch_delivery_point ids de la unión de las órdenes seleccionadas. */
   paradaIds: string[]
+  /** Órdenes de transporte incluidas en la unificación (vacío = todavía no existen OT, viene del plan). */
+  orderIds: string[]
   /** Códigos de las órdenes que se unificaron (para mostrar contexto). */
   ordenes: string[]
   /** Chofer del viaje ('' = sin asignar). */
@@ -29,7 +35,10 @@ interface UnifyState {
   capacidadKg: number
   set: (ctx: {
     camion: string
+    camionId: string | null
+    planId: number | null
     paradaIds: string[]
+    orderIds: string[]
     ordenes: string[]
     chofer: string
     auxiliar: string
@@ -42,7 +51,10 @@ interface UnifyState {
 
 const VACIO = {
   camion: null,
+  camionId: null,
+  planId: null,
   paradaIds: [],
+  orderIds: [],
   ordenes: [],
   chofer: '',
   auxiliar: '',

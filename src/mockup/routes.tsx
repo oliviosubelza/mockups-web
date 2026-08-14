@@ -79,8 +79,9 @@ function ReoptimizarScreen() {
   // Destino tras unificar (opción B del doc 11): el planificador directo en el MAPA, scopeado a las
   // paradas unificadas del camión. Como es UN camión, todas las paradas se reasignan a él (un solo
   // color) y al optimizar se dibuja UNA sola ruta — ya no las 4 del plan completo.
-  const { camion, paradaIds } = useUnifyStore()
+  const { camion, camionId, planId, paradaIds, orderIds, chofer, auxiliar } = useUnifyStore()
   const transportOrders = useTransportOrdersStore((store) => store.orders)
+  const finalizeConfirmedTrip = useTransportOrdersStore((store) => store.finalizeConfirmedTrip)
   const target = camion ? CAMIONES.find((c) => c.placa === camion) : undefined
   const operationalStops = useMemo(
     () => transportOrders.flatMap((order) => order.paradas ?? []),
@@ -112,6 +113,19 @@ function ReoptimizarScreen() {
         singleRoute
         routeColor={target?.color}
         readOnly
+        readOnlyActionLabel="Iniciar despacho"
+        onReadOnlyConfirm={() =>
+          finalizeConfirmedTrip({
+            planId,
+            camionId: camionId ?? target?.id ?? null,
+            camion,
+            chofer,
+            auxiliar,
+            paradaIds,
+            paradas: scope,
+            orderIds,
+          })
+        }
         onNext={() => navigateTo('camiones')}
       />
     </div>
