@@ -27,6 +27,7 @@ import {
   ClipboardList,
   Loader2,
   MapPinned,
+  PackageX,
   Plus,
   Route,
   Truck,
@@ -71,6 +72,7 @@ import { PlannerMapa } from './PlannerMapa'
 import { RutasPanel } from './RutasPanel'
 import {
   aplicarAsignaciones,
+  cargaDeRuta,
   construirParadas,
   construirRutas,
   optimizar as repartir,
@@ -180,6 +182,10 @@ export function PlannerView() {
   const paradas = useMemo(
     () => aplicarAsignaciones(paradasBase, asignaciones, rutas),
     [asignaciones, paradasBase, rutas],
+  )
+  const paradasSinAsignar = useMemo(
+    () => paradas.filter((p) => !p.rutaId).length,
+    [paradas],
   )
 
   const disponible = useMemo(
@@ -331,6 +337,10 @@ export function PlannerView() {
   // Generar rutas: mismo contrato que el paso 2 actual (guarda el plan con su detalle por camión) para
   // que la propuesta se pueda seguir hasta el listado de planificaciones sin flujos a medias.
   const generar = () => {
+    if (paradasSinAsignar > 0) {
+      toast.error(`Hay ${paradasSinAsignar} punto(s) de entrega sin asignar a una ruta`)
+      return
+    }
     const camionesDetalle: PlanCamion[] = rutas.map((ruta) => {
       const truck = ruta.camion
       const base = tripulacionDeCamion(truck.placa)
@@ -377,8 +387,8 @@ export function PlannerView() {
       camiones: conParadas.length,
       camionesDetalle: conParadas,
     })
-    toast.success(`Plan guardado con ${conParadas.length} ruta(s)`)
-    openRoute('planificaciones')
+    toast.success(`Plan generado con ${conParadas.length} ruta(s)`)
+    openRoute('rutas-creadas')
   }
 
   /**
@@ -552,6 +562,18 @@ export function PlannerView() {
         style={{ paddingLeft: margenIzq, paddingRight: margenDer }}
       >
         <div className="pointer-events-auto flex h-11 shrink-0 items-center gap-1 rounded-xl border border-border bg-card/95 px-2 shadow-xl backdrop-blur-sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => openRoute('planificacion-mapa')}
+            title="Volver a la lista de planificaciones"
+          >
+            <ChevronLeft size={14} />
+            <span className="hidden sm:inline">Volver</span>
+          </Button>
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
+
           {HERRAMIENTAS.map(({ id, label, icon: Icon }) => {
             const activo = panel === id && dockAbierto
             return (
@@ -604,6 +626,7 @@ export function PlannerView() {
               <PlannerHud
                 camionesElegidos={selectedTruckIds.length}
                 paradas={paradas.length}
+                paradasSinAsignar={paradasSinAsignar}
                 hayDeficit={hayDeficit}
                 optimizado={optimizado}
                 optimizando={optimizando}
@@ -630,6 +653,7 @@ export function PlannerView() {
           <ParadaDetalle
             parada={foco}
             rutas={rutas}
+            paradas={paradas}
             onCerrar={() => setParadaFoco(null)}
             onVerFicha={() => abrirFicha(foco.id)}
             onMover={(rutaId) =>
@@ -672,21 +696,36 @@ export function PlannerView() {
           </span>
 
           <Select value={destinoMasivo ?? ''} onValueChange={(v) => v && setDestinoMasivo(v)}>
-            <SelectTrigger className="h-7 w-44 text-xs">
+            <SelectTrigger className="h-7 w-52 text-xs">
               <SelectValue placeholder="Mover a…" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="sin-asignar">
-                <span className="text-xs">Sin asignar</span>
+                <span className="flex items-center gap-2 text-xs">
+                  <PackageX size={12} className="text-muted-foreground" />
+                  Sin asignar
+                </span>
               </SelectItem>
-              {rutas.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  <span className="flex items-center gap-2 text-xs">
-                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                    {r.nombre}
-                  </span>
-                </SelectItem>
-              ))}
+              {rutas.map((r) => {
+                const c = cargaDeRuta(paradas, r)
+                return (
+                  <SelectItem key={r.id} value={r.id}>
+                    <span className="flex w-full items-center gap-2 text-xs">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                      <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.camion.placa}</span>
+                      <span
+                        className={cn(
+                          'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                          c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                        )}
+                      >
+                        {c.ocupacionPct}%
+                      </span>
+                    </span>
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
 
@@ -728,6 +767,7 @@ export function PlannerView() {
         <ParadaMenu
           parada={paradaMenu}
           rutas={rutas}
+          paradas={paradas}
           x={menuParada.x}
           y={menuParada.y}
           marcada={seleccion.includes(paradaMenu.id)}
@@ -762,6 +802,7 @@ export function PlannerView() {
       <ParadaDialog
         parada={fichaAbierta ? foco : null}
         rutas={rutas}
+        paradas={paradas}
         onCerrar={cerrarFicha}
         onMover={(rutaId) => {
           if (!foco) return

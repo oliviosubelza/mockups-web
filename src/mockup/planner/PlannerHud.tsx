@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 export function PlannerHud({
   camionesElegidos,
   paradas,
+  paradasSinAsignar = 0,
   hayDeficit,
   optimizado,
   optimizando,
@@ -22,6 +23,7 @@ export function PlannerHud({
   /** No se dibujan: alimentan el gate de los botones y los mensajes de por qué están bloqueados. */
   camionesElegidos: number
   paradas: number
+  paradasSinAsignar?: number
   /** Lo necesario supera a lo disponible en peso o en volumen. Lo calcula la vista, no esta barra. */
   hayDeficit: boolean
   optimizado: boolean
@@ -31,18 +33,19 @@ export function PlannerHud({
 }) {
   const puedeOptimizar = camionesElegidos > 0 && paradas > 0 && !optimizando
 
-  // El gate es el mismo del flujo actual: sin camión, sin paradas o con déficit, generar rutas
-  // produciría un plan que no se puede despachar. El `title` dice CUÁL de las cuatro cosas falta —
-  // un botón deshabilitado sin explicación es una pared.
+  // El gate es el mismo del flujo actual: sin camión, sin paradas, con paradas sin asignar o con déficit,
+  // generar rutas produciría un plan incompleto o inviable. El `title` dice por qué está bloqueado.
   const motivoBloqueo = !optimizado
     ? 'Primero optimizá el reparto'
     : camionesElegidos === 0
       ? 'Elegí al menos un camión'
       : paradas === 0
         ? 'No hay paradas para planificar'
-        : hayDeficit
-          ? 'Capacidad excedida: la carga supera lo disponible'
-          : undefined
+        : paradasSinAsignar > 0
+          ? `${paradasSinAsignar} punto${paradasSinAsignar !== 1 ? 's' : ''} de entrega sin asignar a una ruta`
+          : hayDeficit
+            ? 'Capacidad excedida: la carga supera lo disponible'
+            : undefined
 
   return (
     // Fragmento, NO una tarjeta propia: estos dos botones viven adentro de la barra superior, al lado
@@ -60,9 +63,11 @@ export function PlannerHud({
             ? 'Elegí al menos un camión'
             : paradas === 0
               ? 'No hay paradas para repartir'
-              : optimizado
-                ? 'Volver a repartir las paradas entre los camiones elegidos'
-                : 'Repartir las paradas entre los camiones elegidos'
+              : paradasSinAsignar > 0
+                ? `Repartir ${paradasSinAsignar} punto${paradasSinAsignar !== 1 ? 's' : ''} de entrega sin asignar`
+                : optimizado
+                  ? 'Volver a repartir las paradas entre los camiones elegidos'
+                  : 'Repartir las paradas entre los camiones elegidos'
         }
       >
         {optimizando ? (

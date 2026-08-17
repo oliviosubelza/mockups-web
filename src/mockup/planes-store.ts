@@ -1,7 +1,16 @@
 // Store de planificaciones guardadas en memoria/session (planes_store)
 // Mantiene el listado de planes creados durante la sesión para el flujo de demostración.
 import { create } from 'zustand'
-import { CAMIONES, type EstadoPlan, type Plan, type PlanCamion } from './mock-data'
+import {
+  AUXILIARES,
+  CAMIONES,
+  CHOFERES,
+  PARADAS,
+  RUTAS,
+  type EstadoPlan,
+  type Plan,
+  type PlanCamion,
+} from './mock-data'
 
 const STORAGE_KEY = 'mockups-web:planes'
 const ACTIVE_PLAN_STORAGE_KEY = 'mockups-web:planes:active-id'
@@ -21,14 +30,73 @@ function normalizeStoredPlan(plan: StoredPlan): Plan {
   }
 }
 
+function defaultPlanesSeed(): Plan[] {
+  const rutasDetalle: PlanCamion[] = RUTAS.map((r, i) => {
+    const truck = CAMIONES.find((c) => c.id === r.camionId) ?? CAMIONES[i % CAMIONES.length]
+    const paradasDeRuta = PARADAS.filter((p) => p.rutaId === r.id || p.camionId === r.camionId)
+    const cargaKg = paradasDeRuta.reduce((acc, p) => acc + p.pesoTotal, 0)
+    const capKg = (truck.capacidadPeso ?? 0) * 1000
+    return {
+      id: r.id,
+      camionId: truck.id,
+      placa: truck.placa,
+      tipo: truck.tipo,
+      clase: truck.clase,
+      capacidadKg: capKg,
+      capacidadVolM3: truck.capacidadVolumen ?? 0,
+      rutaNombre: r.nombre,
+      rutaId: r.id,
+      rutaColor: r.color,
+      paradaIds: paradasDeRuta.map((p) => p.id),
+      paradas: paradasDeRuta,
+      orderCount: 1,
+      cargaKg,
+      cargaVolM3: paradasDeRuta.reduce((acc, p) => acc + p.volumenTotal, 0),
+      pedidos: paradasDeRuta.reduce((acc, p) => acc + p.pedidos.length, 0),
+      chofer: CHOFERES[i % CHOFERES.length] ?? 'Juan Pérez',
+      auxiliar: AUXILIARES[i % AUXILIARES.length] ?? 'Carlos Vega',
+      ocupacionPct: capKg > 0 ? Math.round((cargaKg / capKg) * 100) : 75,
+    }
+  })
+
+  return [
+    {
+      id: 148,
+      fecha: fechaHoy(),
+      estado: 'aprobado',
+      distribuidora: PLAN_DISTRIBUIDORA_UNICA,
+      pedidos: 24,
+      camiones: 4,
+      creadoPor: 'Juan Pérez',
+      camionesDetalle: rutasDetalle,
+    },
+    {
+      id: 147,
+      fecha: fechaHoy(),
+      estado: 'aprobado',
+      distribuidora: PLAN_DISTRIBUIDORA_UNICA,
+      pedidos: 18,
+      camiones: 3,
+      creadoPor: 'María Gonzales',
+      camionesDetalle: rutasDetalle.slice(0, 3),
+    },
+  ]
+}
+
 function readStoredPlanes(): Plan[] {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
+    if (!raw) {
+      const seed = defaultPlanesSeed()
+      writeStoredPlanes(seed)
+      return seed
+    }
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.map((plan) => normalizeStoredPlan(plan as StoredPlan)) : []
+    return Array.isArray(parsed) && parsed.length > 0
+      ? parsed.map((plan) => normalizeStoredPlan(plan as StoredPlan))
+      : defaultPlanesSeed()
   } catch {
-    return []
+    return defaultPlanesSeed()
   }
 }
 
@@ -93,6 +161,7 @@ interface PlanesState {
     rutaId: string,
     updates: { chofer?: string; camionPlaca?: string },
   ) => void
+  updateActivePlanCamion: (rutaId: string, patch: Partial<PlanCamion>) => void
   beginPlan: () => Plan
   clearPlanes: () => void
   removePlan: (id: number) => void
@@ -212,7 +281,7 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
     set({ planes: updatedPlanes })
   },
 
-  updateActivePlanCamion: (rutaId, patch) => {
+  updateActivePlanCamion: (rutaId: string, patch: Partial<PlanCamion>) => {
     const { activePlanId, planes } = get()
     if (activePlanId === null) return
 
@@ -239,9 +308,10 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
     }),
 
   clearPlanes: () => {
-    writeStoredPlanes([])
-    writeStoredActivePlanId(null)
-    set({ planes: [], activePlanId: null })
+    const seed = defaultPlanesSeed()
+    writeStoredPlanes(seed)
+    writeStoredActivePlanId(seed[0]?.id ?? null)
+    set({ planes: seed, activePlanId: seed[0]?.id ?? null })
   },
 
   removePlan: (id) => {

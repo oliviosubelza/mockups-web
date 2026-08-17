@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
-import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
+import { DataTable, defineColumns } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -9,12 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +42,7 @@ import {
   BellOff,
   SquarePen,
   CheckCircle,
+  ChevronLeft,
   MapPin,
   Route,
   Truck,
@@ -68,10 +63,6 @@ import { usePlanesStore } from '../planes-store'
 import { useTransportOrdersStore } from '../transport-orders-store'
 import { cn } from '@/lib/utils'
 
-interface OrdenFilters extends Record<string, unknown> {
-  ruta?: string
-}
-
 /**
  * Capacidad de un camión en kg (truck.capacity_weight viene en toneladas).
  */
@@ -89,7 +80,6 @@ const fmtDuracion = (min: number) => {
 }
 
 export function OrdersView({ state }: { state: BoardState }) {
-  const [filters, setFilters] = useState<Partial<OrdenFilters>>({})
   const snapshot = useDispatchPlanSnapshot()
   const activePlanId = usePlanesStore((store) => store.activePlanId)
   const activePlan = usePlanesStore((store) =>
@@ -100,6 +90,7 @@ export function OrdersView({ state }: { state: BoardState }) {
   const updateActivePlanCamion = usePlanesStore((store) => store.updateActivePlanCamion)
   const assignDriver = useTransportOrdersStore((store) => store.assignDriver)
   const reassignTruck = useTransportOrdersStore((store) => store.reassignTruck)
+  const transportOrders = useTransportOrdersStore((store) => store.orders)
 
   // Estado para el modal de edición de chofer/camión
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenDespacho | null>(null)
@@ -135,17 +126,22 @@ export function OrdersView({ state }: { state: BoardState }) {
 
   const reasignarCamion = (id: string, camionPlaca: string) => {
     if (activePlan) {
-      const camion = CAMIONES.find((item) => item.placa === camionId)
+      const camion = CAMIONES.find((item) => item.placa === camionPlaca)
       const actual = activePlan.camionesDetalle?.find((item) => item.rutaId === id)
       updateActivePlanCamion(id, {
         camionId: camion?.id ?? actual?.camionId ?? '',
-        placa: camionId,
+        placa: camionPlaca,
         tipo: camion?.tipo ?? actual?.tipo,
         clase: camion?.clase ?? actual?.clase,
         capacidadKg: camion ? camion.capacidadPeso * 1000 : actual?.capacidadKg,
         capacidadVolM3: camion?.capacidadVolumen ?? actual?.capacidadVolM3,
       })
-      setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId } : current)
+      if (activePlanId !== null) {
+        updateCamionDetalle(activePlanId, id, { camionPlaca })
+      }
+      setOrdenSeleccionada((current) => current?.id === id ? { ...current, camionId: camionPlaca } : current)
+      setMapOrdenSeleccionada((current) => (current?.id === id ? { ...current, camionId: camionPlaca } : current))
+      toast.success(`Camión "${camionPlaca}" reasignado correctamente`)
       return
     }
     reassignTruck(id, camionPlaca)
@@ -184,8 +180,8 @@ export function OrdersView({ state }: { state: BoardState }) {
 
   const paradasConfirmadas = useMemo(
     () =>
-      (activePlan?.camionesDetalle ?? []).flatMap((route) =>
-        route.paradaIds.flatMap((paradaId, index) => {
+      (activePlan?.camionesDetalle ?? []).flatMap((route, index) =>
+        route.paradaIds.flatMap((paradaId, stopIndex) => {
           const parada =
             route.paradas?.find((item) => item.id === paradaId) ??
             snapshotParadas.find((item) => item.id === paradaId) ??
@@ -196,12 +192,12 @@ export function OrdersView({ state }: { state: BoardState }) {
               ...parada,
               rutaId: route.rutaId,
               camionId: route.camionId,
-              secuencia: index + 1,
+              secuencia: stopIndex + 1,
               pedidos: parada.pedidos.map((pedido) => ({
                 ...pedido,
                 rutaId: route.rutaId,
                 camionId: route.camionId,
-                secuencia: index + 1,
+                secuencia: stopIndex + 1,
               })),
             },
           ]
@@ -212,26 +208,23 @@ export function OrdersView({ state }: { state: BoardState }) {
 
   const ordenesConfirmadas = useMemo<OrdenDespacho[]>(
     () =>
-      (activePlan?.camionesDetalle ?? []).flatMap((route, index) => {
+      (activePlan?.camionesDetalle ?? []).map((route, index) => {
         const operational = transportOrders.find((order) => order.id === `plan-${activePlan?.id}-${route.rutaId}`)
-        if (!operational) return []
-        const camion = CAMIONES.find((item) => item.id === route.camionId || item.placa === operational.camion)
-        return [
-          {
-            id: operational.id,
-            codigo: operational.codigo,
-            camionId: operational.camion,
-            rutaId: route.rutaId,
-            conductor: operational.chofer,
-            almacen: camion?.almacen ?? 'Almacén Central',
-            estado: operational.estado,
-            salida: `${String(6 + Math.floor(index / 4)).padStart(2, '0')}:${['00', '15', '30', '45'][index % 4]}`,
-            cargaPct: route.cargaKg,
-            duracionMin: 120 + route.paradaIds.length * 12,
-          },
-        ]
+        const camion = CAMIONES.find((item) => item.id === route.camionId || item.placa === route.placa)
+        return {
+          id: route.rutaId || `ruta-${index + 1}`,
+          codigo: operational?.codigo ?? `ORD-${activePlan?.id ?? 100}-${String(index + 1).padStart(2, '0')}`,
+          camionId: route.placa || camion?.placa || operational?.camion || route.camionId,
+          rutaId: route.rutaId,
+          conductor: route.chofer || operational?.chofer || 'Sin asignar',
+          almacen: camion?.almacen ?? 'Almacén Central',
+          estado: operational?.estado ?? 'pendiente',
+          salida: `${String(6 + Math.floor(index / 4)).padStart(2, '0')}:${['00', '15', '30', '45'][index % 4]}`,
+          cargaPct: route.cargaKg,
+          duracionMin: 120 + (route.paradaIds?.length ?? 0) * 12,
+        }
       }),
-    [activePlan],
+    [activePlan, transportOrders],
   )
 
   const paradasBase = activePlan ? paradasConfirmadas : snapshotParadas
@@ -244,19 +237,6 @@ export function OrdersView({ state }: { state: BoardState }) {
     [rutasBase],
   )
   const rutasPorId = useMemo(() => new Map(rutasBase.map((ruta) => [ruta.id, ruta])), [rutasBase])
-
-  const filterDefs = useMemo(
-    () =>
-      defineFilters<OrdenFilters>([
-        {
-          type: 'select',
-          id: 'ruta',
-          label: 'Ruta',
-          options: rutasBase.map((ruta) => ({ label: ruta.nombre, value: ruta.nombre })),
-        },
-      ]),
-    [rutasBase],
-  )
 
   const paradasDetalle = useMemo<ParadaDetalle[]>(() => {
     if (!ordenSeleccionada) return []
@@ -402,30 +382,9 @@ export function OrdersView({ state }: { state: BoardState }) {
         {
           id: 'acciones',
           header: 'Acciones',
-          size: 130,
+          size: 80,
           cell: (row) => (
-            <div className="flex items-center justify-center gap-1">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-8 w-8 text-primary hover:bg-primary/10 hover:text-primary transition-colors"
-                        onClick={() => abrirMapaDeOrden(row)}
-                      />
-                    }
-                  >
-                    <MapPin className="h-4 w-4" />
-                    <span className="sr-only">Ver en mapa</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Ver trazado y secuencia en mapa</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
+            <div className="flex items-center justify-center">
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -470,10 +429,7 @@ export function OrdersView({ state }: { state: BoardState }) {
     [rutasPorId, abrirMapaDeOrden],
   )
 
-  const filtrados = ordenesBase.filter(
-    (o) => !filters.ruta || rutasPorId.get(o.rutaId)?.nombre === filters.ruta,
-  )
-  const data = state === 'empty' || state === 'error' ? [] : filtrados
+  const data = state === 'empty' || state === 'error' ? [] : ordenesBase
 
   const handleFinish = () => {
     if (activePlanId !== null) {
@@ -482,21 +438,47 @@ export function OrdersView({ state }: { state: BoardState }) {
     } else {
       toast.success('Planificación aprobada con éxito')
     }
-    navigateTo('planificaciones')
+    navigateTo('planificacion-mapa')
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Rutas generadas</h2>
-          <p className="text-xs text-muted-foreground">
-            Revisá el trazado, la secuencia de entregas y confirmá los choferes y camiones asignados.
-          </p>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => navigateTo('planificacion-mapa')}
+            title="Volver a la lista de planificaciones"
+          >
+            <ChevronLeft size={16} />
+          </Button>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              Rutas generadas {activePlan?.id ? `· Plan #${activePlan.id}` : ''}
+              {activePlan?.estado && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[10px] font-medium py-0 px-1.5',
+                    activePlan.estado === 'aprobado'
+                      ? 'border-primary/30 bg-primary/10 text-primary'
+                      : 'border-border bg-muted text-muted-foreground',
+                  )}
+                >
+                  {activePlan.estado === 'aprobado' ? 'Aprobado' : 'Borrador'}
+                </Badge>
+              )}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Revisá el trazado, la secuencia de entregas y confirmá los choferes y camiones asignados.
+            </p>
+          </div>
         </div>
         <Button size="sm" className="gap-1.5 shadow-sm" onClick={handleFinish}>
           <CheckCircle size={14} />
-          Finalizar y ver planificaciones
+          Ver planificaciones
         </Button>
       </div>
 
@@ -518,13 +500,6 @@ export function OrdersView({ state }: { state: BoardState }) {
         defaultPageSize={12}
         exportable
         exportFilename="rutas-generadas"
-        filterBar={
-          <FilterBar
-            defs={filterDefs}
-            values={filters}
-            onChange={(u) => setFilters((prev) => ({ ...prev, ...u }))}
-          />
-        }
       />
 
       {/* Diálogo para editar Chofer y Camión */}
@@ -698,7 +673,7 @@ export function OrdersView({ state }: { state: BoardState }) {
                           06:00
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground truncate">{DEPOSITO.direccion}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">Almacén Central / Despacho</p>
                       <span className="text-[10px] text-primary font-semibold">Punto de partida</span>
                     </div>
                   </div>

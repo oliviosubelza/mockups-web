@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 import { CanalGlyph } from '../canal-glyph'
 import { CANAL_META, tieneStockPorConfirmar, type Parada } from '../mock-data'
-import type { RutaPlan } from './planner-model'
+import { cargaDeRuta, type RutaPlan } from './planner-model'
 
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 const fmtMoneda = new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' })
@@ -31,12 +31,14 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
 export function ParadaDetalle({
   parada,
   rutas,
+  paradas = [],
   onCerrar,
   onMover,
   onVerFicha,
 }: {
   parada: Parada
   rutas: RutaPlan[]
+  paradas?: Parada[]
   onCerrar: () => void
   /** `null` la saca de su ruta y la devuelve al grupo "Sin asignar". */
   onMover: (rutaId: string | null) => void
@@ -45,6 +47,7 @@ export function ParadaDetalle({
 }) {
   const meta = CANAL_META[parada.canal]
   const ruta = rutas.find((r) => r.id === parada.rutaId) ?? null
+  const rutaCarga = ruta && paradas.length > 0 ? cargaDeRuta(paradas, ruta) : null
   const total = parada.pedidos.reduce((acc, p) => acc + p.total, 0)
 
   return (
@@ -111,10 +114,20 @@ export function ParadaDetalle({
                   id crudo de la ruta hasta que alguien abría el popup. */}
               <SelectValue>
                 {ruta ? (
-                  <span className="flex items-center gap-2">
+                  <span className="flex w-full items-center gap-2">
                     <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />
-                    {ruta.nombre}
-                    <span className="font-mono text-muted-foreground">{ruta.camion.placa}</span>
+                    <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
+                    <span className="shrink-0 font-mono text-muted-foreground">{ruta.camion.placa}</span>
+                    {rutaCarga && (
+                      <span
+                        className={cn(
+                          'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                          rutaCarga.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                        )}
+                      >
+                        {rutaCarga.ocupacionPct}%
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">Sin asignar</span>
@@ -128,15 +141,28 @@ export function ParadaDetalle({
                   Sin asignar
                 </span>
               </SelectItem>
-              {rutas.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  <span className="flex items-center gap-2 text-xs">
-                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                    {r.nombre}
-                    <span className="font-mono text-muted-foreground">{r.camion.placa}</span>
-                  </span>
-                </SelectItem>
-              ))}
+              {rutas.map((r) => {
+                const c = paradas.length > 0 ? cargaDeRuta(paradas, r) : null
+                return (
+                  <SelectItem key={r.id} value={r.id}>
+                    <span className="flex w-full items-center gap-2 text-xs">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                      <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                      <span className="shrink-0 font-mono text-muted-foreground">{r.camion.placa}</span>
+                      {c && (
+                        <span
+                          className={cn(
+                            'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                            c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                          )}
+                        >
+                          {c.ocupacionPct}%
+                        </span>
+                      )}
+                    </span>
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
           {ruta && parada.secuencia > 0 && (

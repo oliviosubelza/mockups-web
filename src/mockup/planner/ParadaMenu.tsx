@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { Check, Crosshair, ImageIcon, PackageX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Parada } from '../mock-data'
-import type { RutaPlan } from './planner-model'
+import { cargaDeRuta, type RutaPlan } from './planner-model'
 
 /** Margen mínimo al borde del mapa cuando el menú se voltea para no salirse. */
 const MARGEN_PX = 8
@@ -47,6 +47,7 @@ function Opcion({
 export function ParadaMenu({
   parada,
   rutas,
+  paradas = [],
   x,
   y,
   marcada,
@@ -58,6 +59,7 @@ export function ParadaMenu({
 }: {
   parada: Parada
   rutas: RutaPlan[]
+  paradas?: Parada[]
   /** Píxeles dentro del contenedor del mapa (`containerPoint` de Leaflet). */
   x: number
   y: number
@@ -103,7 +105,7 @@ export function ParadaMenu({
     <div
       ref={ref}
       // `z-20`: por encima de los flotantes de la pantalla (z-10) y por debajo del velo de trabajo.
-      className="absolute z-20 w-56 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-xl"
+      className="absolute z-20 w-60 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-xl"
       style={{ left: x, top: y }}
       role="menu"
     >
@@ -149,27 +151,40 @@ export function ParadaMenu({
           Mover a
         </p>
         <div className="max-h-48 overflow-y-auto">
-          {rutas.map((ruta) => (
-            <Opcion
-              key={ruta.id}
-              onClick={() => {
-                onMover(ruta.id)
-                onCerrar()
-              }}
-            >
-              <span className="flex items-center gap-2">
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ background: ruta.color }}
-                  aria-hidden
-                />
-                {ruta.nombre}
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {ruta.camion.placa}
+          {rutas.map((ruta) => {
+            const c = paradas.length > 0 ? cargaDeRuta(paradas, ruta) : null
+            return (
+              <Opcion
+                key={ruta.id}
+                onClick={() => {
+                  onMover(ruta.id)
+                  onCerrar()
+                }}
+              >
+                <span className="flex w-full items-center gap-2">
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: ruta.color }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {ruta.camion.placa}
+                  </span>
+                  {c && (
+                    <span
+                      className={cn(
+                        'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                        c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                      )}
+                    >
+                      {c.ocupacionPct}%
+                    </span>
+                  )}
                 </span>
-              </span>
-            </Opcion>
-          ))}
+              </Opcion>
+            )
+          })}
           {/* Solo si ya tiene ruta: "sacar de la ruta" sobre una parada sin asignar es una opción muerta. */}
           {parada.rutaId && (
             <Opcion
