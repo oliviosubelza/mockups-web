@@ -6,8 +6,10 @@
 // ruta —¿este recorrido tiene sentido?, ¿en qué orden visita?— y para eso las otras cinco son ruido.
 //
 // El select-search resuelve las dos cosas que la lista sí hacía bien: se ve el conjunto completo al
-// abrirlo (con su color, su placa y su ocupación) y se salta a cualquiera escribiendo. Lo que era el
-// "ojo" de cada tarjeta ahora es una herramienta al lado del select, y aplica a la ruta elegida.
+// abrirlo (con su color, su placa y su ocupación) y se salta a cualquiera escribiendo. El "ojo" de
+// cada tarjeta también vive ahí, uno por opción: prender y apagar rutas es comparar el mapa contra
+// varias a la vez, así que el select NO se cierra al tocarlo —solo el cuerpo de la opción elige y
+// cierra—. El ojo de al lado del select queda como atajo para la ruta que ya estás mirando.
 import { useEffect, useMemo, useState } from 'react'
 import {
   closestCenter,
@@ -130,6 +132,46 @@ function FilaParada({
         </span>
       </button>
     </div>
+  )
+}
+
+/**
+ * Ojo de visibilidad de UNA ruta, pensado para vivir DENTRO de una opción del select.
+ *
+ * El detalle que lo hace funcionar es cortar la propagación: `CommandItem` de cmdk dispara su
+ * `onSelect` desde el `onClick` del div, así que sin `stopPropagation` cada click en el ojo también
+ * elegiría la ruta y cerraría el popover. Con el corte, el cuerpo de la opción sigue siendo lo único
+ * que selecciona y cierra; el ojo solo prende y apaga el dibujo en el mapa, y el select queda abierto
+ * para seguir encendiendo y apagando rutas de a una sin reabrirlo.
+ */
+function OjoRuta({
+  oculta,
+  nombre,
+  onToggle,
+}: {
+  oculta: boolean
+  nombre: string
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      // El pointerdown también se corta: sin esto el gesto empieza a "elegir" la fila antes del click.
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      title={oculta ? `Mostrar ${nombre} en el mapa` : `Ocultar ${nombre} del mapa`}
+      aria-label={oculta ? `Mostrar ${nombre} en el mapa` : `Ocultar ${nombre} del mapa`}
+      aria-pressed={!oculta}
+      className={cn(
+        'flex size-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-background hover:text-foreground',
+        oculta ? 'text-muted-foreground' : 'text-foreground',
+      )}
+    >
+      {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
+    </button>
   )
 }
 
@@ -309,6 +351,7 @@ export function RutasPanel({
                   <CommandGroup>
                     {rutas.map((r) => {
                       const c = cargaDeRuta(paradasAsignadas, r)
+                      const rOculta = rutasOcultas.includes(r.id)
                       return (
                         <CommandItem
                           key={r.id}
@@ -318,25 +361,39 @@ export function RutasPanel({
                             setRutaFoco(r.id)
                             setAbierto(false)
                           }}
-                          className="gap-2 text-xs"
+                          className="gap-2 pr-1 text-xs"
                         >
-                          <span
-                            className="size-2.5 shrink-0 rounded-full"
-                            style={{ background: r.color }}
-                            aria-hidden
-                          />
-                          <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
-                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                            {r.camion.placa}
-                          </span>
+                          {/* Una ruta apagada se lee apagada: mismo dato, menos tinta. Sin esta señal
+                              el ojo sería el único indicio y habría que recorrerlos uno por uno. */}
                           <span
                             className={cn(
-                              'w-9 shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                              c.ocupacionPct >= 90 && 'text-amber-600 dark:text-amber-400',
+                              'flex min-w-0 flex-1 items-center gap-2 transition-opacity',
+                              rOculta && 'opacity-45',
                             )}
                           >
-                            {c.ocupacionPct}%
+                            <span
+                              className="size-2.5 shrink-0 rounded-full"
+                              style={{ background: r.color }}
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                              {r.camion.placa}
+                            </span>
+                            <span
+                              className={cn(
+                                'w-9 shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                                c.ocupacionPct >= 90 && 'text-amber-600 dark:text-amber-400',
+                              )}
+                            >
+                              {c.ocupacionPct}%
+                            </span>
                           </span>
+                          <OjoRuta
+                            oculta={rOculta}
+                            nombre={r.nombre}
+                            onToggle={() => toggleRutaVisible(r.id)}
+                          />
                         </CommandItem>
                       )
                     })}
@@ -368,8 +425,9 @@ export function RutasPanel({
             </PopoverContent>
           </Popover>
 
-          {/* Herramientas de la ruta elegida. Antes vivían una por tarjeta; acá son dos botones que
-              siempre significan lo mismo, aplicados a lo que estés mirando. */}
+          {/* Herramientas de la ruta elegida: dos botones que siempre significan lo mismo, aplicados
+              a lo que estés mirando. El ojo duplica al de la opción a propósito —apagar la ruta que
+              ya tenés al frente no debería obligarte a abrir el select—. */}
           <Button
             variant="ghost"
             size="icon"

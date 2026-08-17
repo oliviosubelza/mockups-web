@@ -75,6 +75,12 @@ interface PlannerState {
   verDeposito: boolean
   /** Rutas ocultas del mapa (el "ojo" de la lista de rutas). Vacío = se ven todas. */
   rutasOcultas: string[]
+  /**
+   * Nombres puestos a mano, por id de ruta. Solo están los que alguien escribió: el resto cae al
+   * `Ruta N` por defecto de `construirRutas`. Es un mapa y no un campo dentro de la ruta porque las
+   * rutas se rederivan de los camiones elegidos en cada render.
+   */
+  nombresRuta: Record<string, string>
   asignaciones: Asignaciones
   optimizado: boolean
   optimizando: boolean
@@ -112,6 +118,7 @@ interface PlannerState {
   setVerTrazos: (v: boolean) => void
   setVerDeposito: (v: boolean) => void
   toggleRutaVisible: (rutaId: string) => void
+  setNombreRuta: (rutaId: string, nombre: string) => void
   setAsignaciones: (a: Asignaciones) => void
   setOptimizado: (v: boolean) => void
   setOptimizando: (v: boolean) => void
@@ -153,6 +160,7 @@ const INICIAL = {
   verTrazos: true,
   verDeposito: true,
   rutasOcultas: [] as string[],
+  nombresRuta: {} as Record<string, string>,
   asignaciones: {} as Asignaciones,
   optimizado: false,
   optimizando: false,
@@ -198,6 +206,16 @@ export const usePlannerStore = create<PlannerState>((set) => ({
         ? s.rutasOcultas.filter((id) => id !== rutaId)
         : [...s.rutasOcultas, rutaId],
     })),
+  // Un nombre vacío BORRA la entrada en vez de guardar "": así la ruta vuelve al `Ruta N` por defecto
+  // y no queda con una etiqueta en blanco que no se puede deshacer desde la pantalla.
+  setNombreRuta: (rutaId, nombre) =>
+    set((s) => {
+      const limpio = nombre.trim()
+      const next = { ...s.nombresRuta }
+      if (limpio) next[rutaId] = limpio
+      else delete next[rutaId]
+      return { nombresRuta: next }
+    }),
   setAsignaciones: (asignaciones) => set({ asignaciones }),
   setOptimizado: (optimizado) => set({ optimizado }),
   setOptimizando: (optimizando) => set({ optimizando }),

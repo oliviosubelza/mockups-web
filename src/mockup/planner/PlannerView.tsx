@@ -27,6 +27,7 @@ import {
   ClipboardList,
   Loader2,
   MapPinned,
+  Plus,
   Route,
   Truck,
   X,
@@ -57,6 +58,7 @@ import {
 } from '../mock-data'
 import { kgToTons } from '../unit-conversion'
 import { FlotaPanel } from './FlotaPanel'
+import { NuevaRutaDialog } from './NuevaRutaDialog'
 import { ParadaDetalle } from './ParadaDetalle'
 import { ParadaDialog } from './ParadaDialog'
 import { ParadaMenu } from './ParadaMenu'
@@ -74,6 +76,7 @@ import {
   optimizar as repartir,
   reordenarRuta,
   resecuenciar,
+  rutaIdDeCamion,
 } from './planner-model'
 import { usePlannerStore, type PanelId } from './planner-store'
 
@@ -106,7 +109,8 @@ const HERRAMIENTAS: { id: PanelId; label: string; icon: typeof Truck }[] = [
 ]
 
 /** Camiones elegibles. Constante de módulo: `CAMIONES` es un dataset fijo, no cambia en runtime. */
-const ELEGIBLES = CAMIONES.filter((c) => c.estado === 'disponible').length
+const DISPONIBLES = CAMIONES.filter((c) => c.estado === 'disponible')
+const ELEGIBLES = DISPONIBLES.length
 
 const TITULOS: Record<PanelId, string> = {
   pedidos: 'Pedidos y filtros',
@@ -116,6 +120,7 @@ const TITULOS: Record<PanelId, string> = {
 
 export function PlannerView() {
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
+  const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
   // Suscripción, no `getState()`: el mensaje del estado vacío cambia con el filtro, así que tiene que
   // re-renderizar cuando el canal cambia.
   const sinCanal = useDispatchPlanStore((s) => s.activeCanales.length === 0)
@@ -158,7 +163,12 @@ export function PlannerView() {
   const setHerramienta = usePlannerStore((s) => s.setHerramienta)
   const resetPlanner = usePlannerStore((s) => s.reset)
 
+  const nombresRuta = usePlannerStore((s) => s.nombresRuta)
+  const setNombreRuta = usePlannerStore((s) => s.setNombreRuta)
+  const setRutaFoco = usePlannerStore((s) => s.setRutaFoco)
+
   const [destinoMasivo, setDestinoMasivo] = useState<string | null>(null)
+  const [nuevaRutaAbierta, setNuevaRutaAbierta] = useState(false)
 
   // Estado de PANTALLA, no del plan: se limpia al salir para que volver a entrar no arranque con las
   // rutas dibujadas de la visita anterior. La selección de camiones y pedidos SÍ se conserva — es del
@@ -166,7 +176,7 @@ export function PlannerView() {
   useEffect(() => resetPlanner, [resetPlanner])
 
   const paradasBase = useMemo(() => construirParadas(pedidos), [pedidos])
-  const rutas = useMemo(() => construirRutas(camiones), [camiones])
+  const rutas = useMemo(() => construirRutas(camiones, nombresRuta), [camiones, nombresRuta])
   const paradas = useMemo(
     () => aplicarAsignaciones(paradasBase, asignaciones, rutas),
     [asignaciones, paradasBase, rutas],
@@ -248,6 +258,34 @@ export function PlannerView() {
       toast.success(`Paradas repartidas entre ${rutas.length} ruta(s)`)
     }, 2000)
     timers.current.push(id)
+  }
+
+  /** Camiones que todavía no son una ruta: los únicos con los que se puede crear una nueva. */
+  const camionesLibres = useMemo(
+    () => DISPONIBLES.filter((c) => !selectedTruckIds.includes(c.id)),
+    [selectedTruckIds],
+  )
+
+  /**
+   * Crea una ruta VACÍA a mano.
+   *
+   * NO inventa una lista de rutas paralela: suma el camión al plan (mismo store que el panel de Flota)
+   * y le guarda el nombre. Todo lo que ya existe —el mapa, "Mover a…", optimizar, generar— sigue
+   * leyendo `rutas`, que se deriva de los camiones elegidos, así que la ruta nueva es una ruta más
+   * desde el primer frame y no un caso especial que haya que contemplar en cada lugar.
+   *
+   * Sin velo de "procesando": acá no hay reparto que simular, la ruta nace vacía.
+   */
+  const crearRuta = (camionId: string, nombre: string) => {
+    const rutaId = rutaIdDeCamion(camionId)
+    toggleTruck(camionId)
+    setNombreRuta(rutaId, nombre)
+    setNuevaRutaAbierta(false)
+    // Se abre el panel de Rutas con la nueva ya elegida: lo siguiente que va a hacer quien la creó es
+    // mandarle paradas, y para eso tiene que verla.
+    mostrarPanel('rutas')
+    setRutaFoco(rutaId)
+    toast.success(`${nombre} creada — vacía, movele paradas`)
   }
 
   /** Mueve un conjunto de paradas a una ruta (o las devuelve a "sin asignar") y resecuencia. */
@@ -543,6 +581,26 @@ export function PlannerView() {
           {verAcciones && (
             <>
               <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
+              {/* "Nueva ruta" va ANTES de Optimizar y no dentro del HUD: el HUD son las dos acciones
+                  que hacen AVANZAR el plan (repartir, guardar), y esto es armarlo. Sirve en los dos
+                  momentos —antes de repartir, para dejar un camión de refuerzo listo; y sobre todo
+                  después, cuando mirando el reparto decidís que ese grupo de puntos merece su propio
+                  recorrido y necesitás un destino al que mandarlos. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+                disabled={camionesLibres.length === 0}
+                onClick={() => setNuevaRutaAbierta(true)}
+                title={
+                  camionesLibres.length === 0
+                    ? 'Todos los camiones disponibles ya son una ruta de este plan'
+                    : 'Crear una ruta vacía para moverle paradas'
+                }
+              >
+                <Plus size={14} />
+                Nueva ruta
+              </Button>
               <PlannerHud
                 camionesElegidos={selectedTruckIds.length}
                 paradas={paradas.length}
@@ -690,6 +748,14 @@ export function PlannerView() {
       )}
 
       <AtajosDialog abierto={atajosAbiertos} onCerrar={() => setAtajosAbiertos(false)} />
+
+      <NuevaRutaDialog
+        abierto={nuevaRutaAbierta}
+        onOpenChange={setNuevaRutaAbierta}
+        camionesLibres={camionesLibres}
+        nombreSugerido={`Ruta ${rutas.length + 1}`}
+        onCrear={crearRuta}
+      />
 
       {/* Ficha del punto. Se abre clickeando su marcador en el mapa o desde el panel lateral; el panel
           queda debajo, así que cerrarla devuelve a donde se estaba. */}

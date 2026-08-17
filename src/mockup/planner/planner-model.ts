@@ -67,14 +67,27 @@ export function construirParadas(pedidos: Pedido[]): Parada[] {
   })
 }
 
-/** Una ruta por camión seleccionado, en el orden en que el usuario los fue eligiendo. */
-export function construirRutas(camiones: Camion[]): RutaPlan[] {
-  return camiones.map((camion, i) => ({
-    id: rutaIdDeCamion(camion.id),
-    nombre: `Ruta ${i + 1}`,
-    color: camion.color,
-    camion,
-  }))
+/**
+ * Una ruta por camión seleccionado, en el orden en que el usuario los fue eligiendo.
+ *
+ * `nombres` son los nombres puestos A MANO (al crear una ruta desde la barra superior). Se aplican
+ * acá y no se guardan dentro de la ruta porque las rutas se REDERIVAN de los camiones elegidos en
+ * cada cambio: si el nombre viviera adentro, deseleccionar un camión y volver a elegirlo lo borraría.
+ * Es la misma razón por la que las asignaciones viven aparte (ver `Asignacion`).
+ */
+export function construirRutas(
+  camiones: Camion[],
+  nombres: Record<string, string> = {},
+): RutaPlan[] {
+  return camiones.map((camion, i) => {
+    const id = rutaIdDeCamion(camion.id)
+    return {
+      id,
+      nombre: nombres[id] ?? `Ruta ${i + 1}`,
+      color: camion.color,
+      camion,
+    }
+  })
 }
 
 /**
