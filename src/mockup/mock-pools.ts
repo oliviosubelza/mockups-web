@@ -149,7 +149,7 @@ export const COLOR_CAMION_INACTIVO = '#64748b'
  * Se guarda una muestra utilizable para UI, no el documento entero: nombres visibles en tablas y
  * dialogos, mas metadata minima para no mezclar "Frio" y "Seco" de forma arbitraria.
  */
-export const PRODUCTOS = [
+const CATALOGO = [
   { nombre: 'Mayonesa Real doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
   { nombre: 'Ketchup Real doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Real', temperatura: 'Seco' },
   { nombre: 'Mostaza doypack', unidad: 'doypacks', empresa: 'IVSA', marca: 'Kris', temperatura: 'Seco' },
@@ -200,3 +200,18 @@ export const PRODUCTOS = [
   { nombre: 'Levadura seca', unidad: 'cajas', empresa: 'FACRULESA', marca: 'Fleischmann', temperatura: 'Seco' },
   { nombre: 'Levadura seca instantanea masa dulce', unidad: 'cajas', empresa: 'FACRULESA', marca: 'Royal', temperatura: 'Seco' },
 ] as const
+
+/**
+ * Catálogo con su CÓDIGO SAP (`material` / `product_id` del snapshot de Ventas).
+ *
+ * El código se deriva de la posición en el catálogo y no se escribe a mano en cada entrada: son
+ * sesenta productos, y una lista de sesenta números tipeados es una lista con un duplicado esperando.
+ * Al derivarlo, agregar un producto no puede colisionar con otro.
+ *
+ * OJO CON ESTO CUANDO SE CONECTE DE VERDAD: el código real viene de SAP y NO es correlativo. Acá es
+ * un stand-in con el formato correcto (8 dígitos), no un dato que se pueda cruzar con nada.
+ */
+export const PRODUCTOS = CATALOGO.map((producto, i) => ({
+  ...producto,
+  codigo: `4001${String((i + 1) * 13).padStart(4, '0')}`,
+}))

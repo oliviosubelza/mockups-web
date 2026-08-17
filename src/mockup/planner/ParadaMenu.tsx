@@ -9,10 +9,10 @@
 // trigger. Lo único que llega del click es una coordenada, y anclar un menú de Base UI a un punto
 // arbitrario cuesta más que estas 40 líneas.
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { Check, Crosshair, ImageIcon, PackageX } from 'lucide-react'
+import { Check, Crosshair, ImageIcon, PackageX, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Parada } from '../mock-data'
-import { cargaDeRuta, type RutaPlan } from './planner-model'
+import { TEXTO_OCUPACION, cargaDeRuta, type RutaPlan } from './planner-model'
 
 /** Margen mínimo al borde del mapa cuando el menú se voltea para no salirse. */
 const MARGEN_PX = 8
@@ -22,11 +22,14 @@ function Opcion({
   children,
   onClick,
   destacada = false,
+  peligrosa = false,
 }: {
   icon?: typeof Check
   children: React.ReactNode
   onClick: () => void
   destacada?: boolean
+  /** Saca algo del plan. Se pinta distinto para que no se elija por inercia bajando por el menú. */
+  peligrosa?: boolean
 }) {
   return (
     <button
@@ -36,6 +39,7 @@ function Opcion({
         'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
         'hover:bg-accent hover:text-accent-foreground',
         destacada && 'text-primary',
+        peligrosa && 'text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400',
       )}
     >
       {Icon ? <Icon size={13} className="shrink-0" /> : <span className="size-3.5 shrink-0" />}
@@ -56,6 +60,7 @@ export function ParadaMenu({
   onAlternarSeleccion,
   onCentrar,
   onMover,
+  onQuitar,
 }: {
   parada: Parada
   rutas: RutaPlan[]
@@ -69,6 +74,8 @@ export function ParadaMenu({
   onAlternarSeleccion: () => void
   onCentrar: () => void
   onMover: (rutaId: string | null) => void
+  /** Saca el punto de entrega del plan entero. Reversible desde la lista de "Quitados". */
+  onQuitar: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -142,6 +149,20 @@ export function ParadaMenu({
         >
           Centrar en el mapa
         </Opcion>
+        {/* QUITAR ≠ "Sin asignar", y la diferencia es la que más se confunde: sin asignar el punto
+            sigue en el plan esperando camión —y el HUD lo cuenta como pendiente—; quitado sale del
+            plan entero y deja de aparecer en el mapa. Por eso está acá arriba, junto a las acciones
+            sobre el punto, y no abajo entre las rutas a las que se lo puede mandar. */}
+        <Opcion
+          icon={Trash2}
+          peligrosa
+          onClick={() => {
+            onQuitar()
+            onCerrar()
+          }}
+        >
+          Quitar del plan
+        </Opcion>
       </div>
 
       {/* Mover de ruta: lista PLANA y no un submenú. Con hasta ~10 rutas un submenú agrega un hover y
@@ -175,7 +196,7 @@ export function ParadaMenu({
                     <span
                       className={cn(
                         'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                        c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                        TEXTO_OCUPACION[c.nivel],
                       )}
                     >
                       {c.ocupacionPct}%

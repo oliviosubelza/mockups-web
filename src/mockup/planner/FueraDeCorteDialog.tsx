@@ -1,5 +1,8 @@
-// Diálogo de los pedidos FUERA DEL CORTE: los que cierran después de la hora de corte de su canal y
-// por lo tanto NO entran solos a la planificación.
+// Diálogo de los pedidos FUERA DEL CORTE: los que cierran después de la hora de corte de su canal.
+//
+// ENTRAN POR DEFECTO, igual que el resto (ver `incluidoPorDefecto`). Esta lista NO es un trámite de
+// alta: es el lugar donde SACARLOS si ese día el recorrido no llega. Por eso la tabla abre con todo
+// tildado y lo que se hace acá es destildar, no tildar.
 //
 // Es un diálogo con DataTable y no una lista dentro del panel por una razón de ancho: la decisión de
 // meter un pedido tardío se toma mirando el vendedor, la ventana horaria, el monto y el peso a la vez.
@@ -106,8 +109,8 @@ export function FueraDeCorteDialog({
             Pedidos fuera del corte
           </DialogTitle>
           <DialogDescription>
-            Cierran después de la hora de corte de su canal, así que NO entran solos. Lo que quede sin
-            tildar se queda afuera de la planificación.
+            Cierran después de la hora de corte de su canal: entran igual, pero son los que más
+            riesgo tienen de no llegar. Destildá los que este día prefieras dejar afuera.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +147,7 @@ export function FueraDeCorteDialog({
           {/* El pie cierra los números contra la fila del panel: cuántos se metieron y cuánto pesan. */}
           <span className="text-xs text-muted-foreground">
             <span className="font-semibold tabular-nums text-foreground">{elegidos.length}</span> de{' '}
-            <span className="tabular-nums">{pedidos.length}</span> elegidos ·{' '}
+            <span className="tabular-nums">{pedidos.length}</span> entran ·{' '}
             <span className="tabular-nums">{fmtPeso.format(pesoElegido)} kg</span>
           </span>
           <Button variant="outline" size="sm" onClick={onClose}>

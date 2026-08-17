@@ -1,6 +1,6 @@
-// Panel derecho del paso combinado (fase 0): qué canales entran en esta corrida + selección
-// manual de los pedidos fuera de corte. Los pedidos "dentro" del corte entran solos a la
-// planificación (no se listan, son informativos); los de "fuera" son opcionales y se tildan acá.
+// Panel derecho del paso combinado (fase 0): qué canales entran en esta corrida + revisión de los
+// pedidos fuera de corte. TODOS entran por defecto (ver `incluidoPorDefecto`); la pestaña de fuera de
+// corte es donde se SACAN los tardíos que ese día no van a llegar, no donde se dan de alta.
 //
 // Nota de modelo: hoy el canal NO existe en la BD (ni en candidate_order ni en delivery_point).
 // Este mockup asume `channel_id` en candidate_order y una tabla dispatch_plan_channel para
@@ -143,8 +143,8 @@ const agregar = (items: Pedido[]): Agregado => ({
 /**
  * Progreso de selección de los pedidos fuera de corte, sobre la pestaña que los lista: "3/25".
  *
- * Por qué existe: los pedidos fuera de corte NO entran solos, hay que elegirlos a mano. Con la
- * pestaña pelada nadie se enteraba de que había algo pendiente ahí y se planificaba de menos.
+ * Por qué existe: los pedidos fuera de corte cierran tarde y son los que más riesgo tienen de no
+ * llegar. Entran solos, pero la pestaña pelada no dejaba ver cuántos son ni cuántos siguen adentro.
  *
  * Es una FRACCIÓN y no un total, porque las dos mitades del dato importan: cuántos hay para revisar
  * y cuántos ya se decidieron. Con solo el total no se distingue "no lo miré" de "lo miré y elegí 0".
@@ -675,7 +675,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
                 <Kpi
                   label="Fuera de corte"
                   value={`${fueraSeleccionados.length} de ${fuera.length}`}
-                  title="Pedidos fuera de corte seleccionados — los demás no entran a la planificación"
+                  title="Pedidos fuera de corte que siguen en el plan — los demás se sacaron a mano"
                   tone={fueraSeleccionados.length > 0 ? 'warning' : 'default'}
                 />
                 <Kpi

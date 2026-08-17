@@ -26,9 +26,16 @@ import {
   type ZonaId,
 } from './mock-data'
 
-// ── Corte de hora (dentro/fuera) — regla de negocio preservada VERBATIM desde ChannelsView.tsx ──
-// Los pedidos cuya ventana TERMINA a más tardar a la hora de corte de su canal entran directo
-// (dentro); los que cierran después quedan fuera del corte (opcionales, requieren selección manual).
+// ── Corte de hora (dentro/fuera) ──
+// Los pedidos cuya ventana TERMINA a más tardar a la hora de corte de su canal están DENTRO del
+// corte; los que cierran después, fuera.
+//
+// EL CORTE CLASIFICA, YA NO EXCLUYE. Antes fuera de corte significaba "no entra salvo que alguien lo
+// tilde", y el resultado práctico era que todos los días había que ir a tildarlos: nadie deja pedidos
+// afuera porque cierran tarde, se sale igual y se acomoda el recorrido. Una regla que en la práctica
+// siempre se desactiva a mano no es una regla, es un trámite. Ahora entran todos por defecto y el
+// corte queda como lo que de verdad es: una ADVERTENCIA de que ese pedido cierra tarde, con su lista
+// aparte para poder sacarlo si ese día no da.
 //
 // `aMinutos` y `finVentana` se movieron a mock-data porque la GENERACIÓN del dataset los necesita
 // (garantizar pedidos dentro Y fuera del corte en cada canal). Se re-exportan acá para no cambiarle
@@ -41,8 +48,14 @@ export const dentroDelCorte = (p: Pedido, corte: string) =>
 /** Regla base del canal: si cierra antes del corte, entra por horario. */
 export const entraPorCorte = (p: Pedido) => dentroDelCorte(p, CANAL_META[p.canal].timeOff)
 
-/** ¿El pedido entra al plan POR DEFECTO? (o sea, sin que el usuario haya decidido nada todavía). */
-export const incluidoPorDefecto = (p: Pedido) => pedidoEsSeleccionable(p) && entraPorCorte(p)
+/**
+ * ¿El pedido entra al plan POR DEFECTO? (o sea, sin que el usuario haya decidido nada todavía).
+ *
+ * Lo único que lo deja afuera es no ser seleccionable —bonificación sin stock confirmado—, porque eso
+ * NO es una decisión de Logística: lo destraba Ventas. La hora de corte ya no interviene acá; ver la
+ * nota de arriba.
+ */
+export const incluidoPorDefecto = (p: Pedido) => pedidoEsSeleccionable(p)
 
 /**
  * ¿El pedido entra al plan? Gana la decisión EXPLÍCITA del usuario si existe; si no, la regla de

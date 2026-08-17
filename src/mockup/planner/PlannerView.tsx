@@ -30,6 +30,7 @@ import {
   PackageX,
   Plus,
   Route,
+  Trash2,
   Truck,
   X,
 } from 'lucide-react'
@@ -58,6 +59,8 @@ import {
   type PlanCamion,
 } from '../mock-data'
 import { kgToTons } from '../unit-conversion'
+import { AlertasPanel } from './AlertasPanel'
+import { calcularAlertas } from './planner-alertas'
 import { FlotaPanel } from './FlotaPanel'
 import { NuevaRutaDialog } from './NuevaRutaDialog'
 import { ParadaDetalle } from './ParadaDetalle'
@@ -73,6 +76,7 @@ import { RutasPanel } from './RutasPanel'
 import {
   aplicarAsignaciones,
   cargaDeRuta,
+  TEXTO_OCUPACION,
   construirParadas,
   construirRutas,
   optimizar as repartir,
@@ -102,11 +106,24 @@ const DESLIZA = 'transition-transform duration-300 ease-out'
 const FLOTANTE =
   'absolute z-10 flex flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-xl backdrop-blur-sm'
 
+// ORDEN = ORDEN DE LA DECISIÓN, de izquierda a derecha: con qué salgo → qué llevo → cómo queda
+// repartido. Flota va primera porque sin camiones elegidos no hay plan posible: el gate de Optimizar
+// los exige, y abrir en Pedidos hacía que lo primero que armabas fuera lo único que todavía no podías
+// usar.
 const HERRAMIENTAS: { id: PanelId; label: string; icon: typeof Truck }[] = [
+  { id: 'flota', label: 'Flota', icon: Truck },
+  // DICE "PUNTOS" Y NO "PEDIDOS", y el cambio no es cosmético: el contador de este botón siempre
+  // mostró `paradas.length` —54 puntos de entrega—, pero la etiqueta decía "Pedidos", que son otra
+  // cosa y son 71. O sea que el número y la palabra nunca hablaron del mismo objeto. Adentro, el
+  // buscador remataba la confusión llamándolos "paradas". Tres nombres para una sola lista.
+  //
+  // El vocabulario ahora es uno solo: PEDIDO es la orden de venta; PUNTO DE ENTREGA es el lugar (y
+  // agrupa de 1 a n pedidos); PARADA es ese mismo punto YA metido en el recorrido de un camión, con
+  // su número de orden. Por eso "paradas" solo se usa en el panel de Rutas, que es donde existen.
+  //
   // `ClipboardList` y no una caja: lo que se elige acá son ÓRDENES (un documento con líneas), no
   // bultos. El paquete sugería mercadería física, que es justo lo que esta pantalla no maneja.
-  { id: 'pedidos', label: 'Pedidos', icon: ClipboardList },
-  { id: 'flota', label: 'Flota', icon: Truck },
+  { id: 'pedidos', label: 'Puntos', icon: ClipboardList },
   { id: 'rutas', label: 'Rutas', icon: Route },
 ]
 
@@ -115,14 +132,15 @@ const DISPONIBLES = CAMIONES.filter((c) => c.estado === 'disponible')
 const ELEGIBLES = DISPONIBLES.length
 
 const TITULOS: Record<PanelId, string> = {
-  pedidos: 'Pedidos y filtros',
-  flota: 'Flota',
+  flota: 'Flota del plan',
+  pedidos: 'Puntos de entrega',
   rutas: 'Rutas del plan',
 }
 
 export function PlannerView() {
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
+  const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
   // Suscripción, no `getState()`: el mensaje del estado vacío cambia con el filtro, así que tiene que
   // re-renderizar cuando el canal cambia.
   const sinCanal = useDispatchPlanStore((s) => s.activeCanales.length === 0)
@@ -294,6 +312,35 @@ export function PlannerView() {
     toast.success(`${nombre} creada — vacía, movele paradas`)
   }
 
+  /**
+   * Saca puntos de entrega del plan.
+   *
+   * NO INVENTA UN SEGUNDO MECANISMO DE EXCLUSIÓN. Quitar un punto es marcar sus pedidos como no
+   * incluidos en `dispatch-plan-store`, que es el MISMO interruptor que usan el diálogo por canal y
+   * el de fuera de corte. Como las paradas se derivan de los pedidos incluidos, el punto desaparece
+   * solo del mapa y de las tres listas, sin que nadie tenga que acordarse de filtrarlo.
+   *
+   * Un mecanismo aparte —una lista de "ids ocultos" en el estado de pantalla— habría sido más rápido
+   * de escribir y habría creado la peor clase de bug: dos definiciones de "está en el plan" que se
+   * contradicen, con el HUD contando una cosa y el mapa dibujando otra.
+   *
+   * Es REVERSIBLE y por eso no pregunta: se devuelven desde la card "Quitados" del panel de Pedidos.
+   */
+  const quitarParadas = (paradaIds: string[]) => {
+    const objetivo = new Set(paradaIds)
+    const pedidoIds = paradas.filter((p) => objetivo.has(p.id)).flatMap((p) => p.pedidos.map((x) => x.id))
+    if (pedidoIds.length === 0) return
+    setOrdersIncluded(pedidoIds, [])
+    setSeleccion([])
+    setParadaFoco(null)
+    toast.success(
+      paradaIds.length === 1
+        ? `${paradas.find((p) => objetivo.has(p.id))?.cliente ?? 'Punto'} salió del plan`
+        : `${paradaIds.length} puntos salieron del plan`,
+      { description: 'Se devuelven desde “Quitados”, en el panel de Pedidos.' },
+    )
+  }
+
   /** Mueve un conjunto de paradas a una ruta (o las devuelve a "sin asignar") y resecuencia. */
   const mover = (paradaIds: string[], rutaId: string | null, etiqueta: string) => {
     if (paradaIds.length === 0) return
@@ -428,6 +475,18 @@ export function PlannerView() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [dockAbierto, panel, paradas, rutasOcultas, optimizado, optimizando, rutas],
     ),
+  )
+
+  /**
+   * Los problemas del plan, en un solo lugar.
+   *
+   * Se recalcula en cada render porque TODO lo que entra puede cambiar en cualquier momento (un
+   * camión que se suma, una parada que se mueve, un pedido que se saca). Es una función pura sobre
+   * arrays que ya están en memoria; el costo es irrelevante al lado de redibujar el mapa.
+   */
+  const alertas = useMemo(
+    () => calcularAlertas({ pedidos, camiones, rutas, paradasAsignadas: paradas, optimizado }),
+    [camiones, optimizado, paradas, pedidos, rutas],
   )
 
   const paradasMarcadas = useMemo(
@@ -603,26 +662,37 @@ export function PlannerView() {
           {verAcciones && (
             <>
               <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
-              {/* "Nueva ruta" va ANTES de Optimizar y no dentro del HUD: el HUD son las dos acciones
-                  que hacen AVANZAR el plan (repartir, guardar), y esto es armarlo. Sirve en los dos
-                  momentos —antes de repartir, para dejar un camión de refuerzo listo; y sobre todo
-                  después, cuando mirando el reparto decidís que ese grupo de puntos merece su propio
-                  recorrido y necesitás un destino al que mandarlos. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                disabled={camionesLibres.length === 0}
-                onClick={() => setNuevaRutaAbierta(true)}
-                title={
-                  camionesLibres.length === 0
-                    ? 'Todos los camiones disponibles ya son una ruta de este plan'
-                    : 'Crear una ruta vacía para moverle paradas'
-                }
-              >
-                <Plus size={14} />
-                Nueva ruta
-              </Button>
+
+              {/* Los avisos van PRIMEROS del grupo de acciones. La barra se lee de izquierda a
+                  derecha como el trabajo: qué está mal → armar → repartir → guardar. Un contador de
+                  problemas después del botón de guardar llega tarde. */}
+              <AlertasPanel alertas={alertas} onIrA={mostrarPanel} />
+
+              {/* "Nueva ruta" SOLO existe con el reparto hecho, y no está deshabilitado antes: está
+                  ausente. Antes de optimizar no hay rutas —hay camiones elegidos y paradas sueltas—,
+                  así que "crear una ruta más" no significa nada todavía; para sumar capacidad en ese
+                  momento el lugar es Flota. Su momento es DESPUÉS: mirás el reparto, decidís que ese
+                  grupo de puntos merece su propio recorrido, y necesitás un destino al que mandarlos.
+
+                  Va antes de Optimizar y fuera del HUD: el HUD son las dos acciones que hacen AVANZAR
+                  el plan (repartir, guardar), y esto es corregirlo. */}
+              {optimizado && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  disabled={camionesLibres.length === 0}
+                  onClick={() => setNuevaRutaAbierta(true)}
+                  title={
+                    camionesLibres.length === 0
+                      ? 'Todos los camiones disponibles ya son una ruta de este plan'
+                      : 'Crear una ruta vacía para moverle paradas'
+                  }
+                >
+                  <Plus size={14} />
+                  Nueva ruta
+                </Button>
+              )}
               <PlannerHud
                 camionesElegidos={selectedTruckIds.length}
                 paradas={paradas.length}
@@ -655,6 +725,7 @@ export function PlannerView() {
             rutas={rutas}
             paradas={paradas}
             onCerrar={() => setParadaFoco(null)}
+            onQuitar={() => quitarParadas([foco.id])}
             onVerFicha={() => abrirFicha(foco.id)}
             onMover={(rutaId) =>
               mover(
@@ -717,7 +788,7 @@ export function PlannerView() {
                       <span
                         className={cn(
                           'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                          c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                          TEXTO_OCUPACION[c.nivel],
                         )}
                       >
                         {c.ocupacionPct}%
@@ -745,6 +816,22 @@ export function PlannerView() {
           >
             Mover
           </Button>
+
+          {/* QUITAR es la otra mitad de esta barra: marcás un área y o la mandás a otra ruta, o la
+              sacás del plan. No es una herramienta de puntero aparte —un modo "goma" que borra al
+              hacer click— porque el rectángulo y el lazo YA son la forma de elegir qué; sumar un
+              quinto modo destructivo solo agrega una manera de borrar sin querer. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
+            onClick={() => quitarParadas(paradasMarcadas.map((p) => p.id))}
+            title="Sacar del plan los puntos marcados — se devuelven desde “Quitados”"
+          >
+            <Trash2 size={13} />
+            Quitar
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -775,6 +862,7 @@ export function PlannerView() {
           onVerFicha={() => abrirFicha(paradaMenu.id)}
           onAlternarSeleccion={() => alternarSeleccion(paradaMenu.id)}
           onCentrar={() => pedirEncuadre('foco')}
+          onQuitar={() => quitarParadas([paradaMenu.id])}
           onMover={(rutaId) =>
             mover(
               [paradaMenu.id],

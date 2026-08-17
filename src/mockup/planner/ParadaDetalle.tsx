@@ -5,13 +5,13 @@
 // código, monto y peso. No hay ETA, ni distancia, ni tiempo de atención — esos datos no existen en
 // esta etapa (recién aparecen en monitoreo, con el viaje andando), y ponerlos acá sería prometer una
 // pantalla que después no se puede construir.
-import { ImageIcon, PackageX, Truck, X } from 'lucide-react'
+import { ImageIcon, PackageX, Trash2, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { CanalGlyph } from '../canal-glyph'
 import { CANAL_META, tieneStockPorConfirmar, type Parada } from '../mock-data'
-import { cargaDeRuta, type RutaPlan } from './planner-model'
+import { TEXTO_OCUPACION, cargaDeRuta, type RutaPlan } from './planner-model'
 
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 const fmtMoneda = new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' })
@@ -33,6 +33,7 @@ export function ParadaDetalle({
   rutas,
   paradas = [],
   onCerrar,
+  onQuitar,
   onMover,
   onVerFicha,
 }: {
@@ -40,6 +41,8 @@ export function ParadaDetalle({
   rutas: RutaPlan[]
   paradas?: Parada[]
   onCerrar: () => void
+  /** Saca el punto de entrega del plan. Reversible desde la card "Quitados". */
+  onQuitar: () => void
   /** `null` la saca de su ruta y la devuelve al grupo "Sin asignar". */
   onMover: (rutaId: string | null) => void
   /** Abre la ficha del punto (el diálogo con la foto). */
@@ -122,7 +125,7 @@ export function ParadaDetalle({
                       <span
                         className={cn(
                           'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                          rutaCarga.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                          TEXTO_OCUPACION[rutaCarga.nivel],
                         )}
                       >
                         {rutaCarga.ocupacionPct}%
@@ -153,7 +156,7 @@ export function ParadaDetalle({
                         <span
                           className={cn(
                             'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                            c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                            TEXTO_OCUPACION[c.nivel],
                           )}
                         >
                           {c.ocupacionPct}%
@@ -171,6 +174,20 @@ export function ParadaDetalle({
               Parada #{parada.secuencia} del recorrido de {ruta.camion.placa}
             </p>
           )}
+
+          {/* QUITAR vive debajo del selector de ruta y no arriba junto a "Ver ficha", porque pertenece
+              a la misma pregunta que el selector: dónde va este punto. "Sin asignar" lo deja en el
+              plan esperando camión; "Quitar" lo saca del plan. Son las dos salidas del mismo control,
+              y tenerlas juntas es lo que hace evidente que no significan lo mismo. */}
+          <button
+            type="button"
+            onClick={onQuitar}
+            title="Sacar este punto del plan — se devuelve desde “Quitados”, en el panel de Pedidos"
+            className="flex w-full items-center justify-center gap-1.5 rounded-md py-1 text-[11px] text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
+          >
+            <Trash2 size={12} />
+            Quitar del plan
+          </button>
         </div>
 
         {/* Los pedidos que se unifican en este punto. Es el dato que justifica que la parada exista:

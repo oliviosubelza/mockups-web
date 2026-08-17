@@ -6,8 +6,11 @@
 //
 // TRES BLOQUES, EN ORDEN DE DECISIÓN:
 //   1. Filtros    → de dónde salen los pedidos.
-//   2. Canales    → un select-search. Elegir uno abre su DIÁLOGO con la tabla completa para decidir
-//                   pedido por pedido. Es el mismo gesto (y el mismo componente) del paso 1.
+//   2. Composición → la barra apilada con el color de cada canal y los totales (se VIGILA, no se
+//                   toca), y debajo tres cards iguales que abren las tres listas: Canales (el
+//                   desglose), Fuera de corte (los tardíos que entran igual y se pueden sacar) y
+//                   Bloqueados (lo que Ventas tiene que destrabar). Tres puertas iguales, tres
+//                   preguntas.
 //   3. Paradas    → lo que el camión va a visitar, ya unificado por punto de entrega, paginado.
 //
 // POR QUÉ EL DESGLOSE POR CANAL Y NO UNA LISTA PLANA DE PEDIDOS. Antes las 59 paradas iban todas
@@ -19,24 +22,15 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   AlertTriangle,
   Building2,
-  ChevronsUpDown,
   Globe,
+  Lock,
   MapPin,
+  Trash2,
   Search,
   Store,
   User,
 } from 'lucide-react'
-import { buttonVariants } from '@/components/ui/button'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { CanalGlyph } from '../canal-glyph'
 import { CanalPedidosDialog } from '../CanalPedidosDialog'
@@ -53,6 +47,7 @@ import {
   CIUDAD_META,
   MERCADO_IDS,
   MERCADO_META,
+  pedidoEsSeleccionable,
   VENDEDORES,
   ZONA_IDS,
   ZONA_META,
@@ -62,6 +57,9 @@ import {
   type Parada,
   type ZonaId,
 } from '../mock-data'
+import { BloqueadosDialog } from './BloqueadosDialog'
+import { agruparQuitados, QuitadosDialog } from './QuitadosDialog'
+import { BarraCanales, CanalesDialog } from './CanalesDialog'
 import { FiltroPopover } from './FiltroPopover'
 import { FueraDeCorteDialog } from './FueraDeCorteDialog'
 import { Paginador, usePagina } from './Paginador'
@@ -70,6 +68,76 @@ import type { RutaPlan } from './planner-model'
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 
 const POR_PAGINA = 10
+
+/**
+ * Card cuadrada que abre una lista. Las tres del panel son la misma pieza con distinto contenido, y
+ * eso es deliberado: si "canales", "fuera de corte" y "bloqueados" tuvieran cada una su forma, habría
+ * que aprender tres controles para hacer siempre lo mismo —abrir una lista—.
+ *
+ * EL NÚMERO MANDA. Va grande y arriba porque es el dato por el que se mira la card; la etiqueta abajo,
+ * chica, solo dice de qué es ese número. Al revés (etiqueta grande, número escondido) obliga a leer
+ * palabras para enterarse de algo que se contesta con un vistazo.
+ *
+ * En cero se APAGA y se deshabilita, pero NO desaparece: la grilla se queda quieta y quien la usa
+ * aprende dónde está cada puerta. Además "0 bloqueados" es información — no es lo mismo que no saber.
+ */
+function CardConsulta({
+  icon: Icon,
+  valor,
+  etiqueta,
+  titulo,
+  tono = 'neutro',
+  onClick,
+}: {
+  icon: typeof Store
+  valor: number
+  etiqueta: string
+  titulo: string
+  /** Color del estado. `neutro` incluye el caso "ya está resuelto", que no necesita gritar. */
+  tono?: 'neutro' | 'ambar' | 'rojo'
+  onClick: () => void
+}) {
+  const vacio = valor === 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={vacio}
+      title={titulo}
+      className={cn(
+        'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+        vacio
+          ? 'cursor-default border-border/60 bg-muted/20 opacity-60'
+          : tono === 'ambar'
+            ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'
+            : tono === 'rojo'
+              ? 'border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20'
+              : 'border-border hover:bg-muted/60',
+      )}
+    >
+      <span className="flex w-full items-center gap-1">
+        <Icon
+          size={12}
+          className={cn(
+            'shrink-0',
+            vacio
+              ? 'text-muted-foreground'
+              : tono === 'ambar'
+                ? 'text-amber-600 dark:text-amber-400'
+                : tono === 'rojo'
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : 'text-muted-foreground',
+          )}
+        />
+        <span className="ml-auto text-sm font-semibold leading-none tabular-nums">{valor}</span>
+      </span>
+      {/* `leading-tight` y dos líneas permitidas: "Fuera de corte" no entra en 90 px de una sola, y
+          cortarlo con puntos suspensivos dejaría tres cards diciendo "Fuera d…". */}
+      <span className="w-full text-[10px] leading-tight text-muted-foreground">{etiqueta}</span>
+    </button>
+  )
+}
 
 export function PedidosPanel({
   paradas,
@@ -91,14 +159,17 @@ export function PedidosPanel({
   const activeVendedores = useDispatchPlanStore((s) => s.activeVendedores)
   const orderOverrides = useDispatchPlanStore((s) => s.orderOverrides)
   const applySelection = useDispatchPlanStore((s) => s.applySelection)
+  const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
   // `useShallow`: el selector deriva un array NUEVO en cada llamada y sin igualdad shallow Zustand v5
   // lo ve como snapshot cambiante en cada render (bucle infinito).
   const enScope = useDispatchPlanStore(useShallow(selectScopedOrders))
 
   const [busqueda, setBusqueda] = useState('')
-  const [canalPickerAbierto, setCanalPickerAbierto] = useState(false)
+  const [canalesAbierto, setCanalesAbierto] = useState(false)
   const [canalDetalle, setCanalDetalle] = useState<CanalId | null>(null)
   const [fueraAbierto, setFueraAbierto] = useState(false)
+  const [bloqueadosAbierto, setBloqueadosAbierto] = useState(false)
+  const [quitadosAbierto, setQuitadosAbierto] = useState(false)
 
   // El estado del filtro vive SOLO en el store: acá no hay draft local. En el paso 1 el draft existía
   // para juntar varios toggles en un fetch; sobre el mapa el efecto tiene que verse en el toggle, que
@@ -131,6 +202,42 @@ export function PedidosPanel({
   const fueraIncluidos = useMemo(
     () => fuera.filter((p) => estaIncluido(p, orderOverrides)),
     [fuera, orderOverrides],
+  )
+  /**
+   * Hay pedidos tardíos DENTRO del plan. Eso es lo que amerita el ámbar.
+   *
+   * Antes la alerta era "quedan sin decidir", porque fuera de corte no entraba solo. Ahora entran
+   * todos por defecto, así que "sin decidir" ya no existe — y la pregunta que sí importa pasó a ser
+   * la inversa: cuántos de los que estoy por despachar cierran después del corte.
+   */
+  const llevaTardios = fueraIncluidos.length > 0
+
+  /**
+   * Los que la regla de bonificaciones deja afuera del plan (`pedidoEsSeleccionable`).
+   *
+   * No se cruzan con "fuera de corte": son dos exclusiones por motivos distintos y con destinos
+   * distintos —el de corte se DECIDE acá, el bloqueado lo destraba Ventas—. Un pedido puede estar en
+   * las dos listas, y está bien: cada una contesta su propia pregunta.
+   */
+  const bloqueados = useMemo(
+    () => enScope.filter((p) => !pedidoEsSeleccionable(p)),
+    [enScope],
+  )
+
+  /**
+   * Puntos que alguien SACÓ del plan: son seleccionables (nada los bloquea) y aun así no entran.
+   *
+   * La definición es "podría entrar y no entra", así que junta todo lo que se destildó, venga de la
+   * herramienta de quitar del mapa, del diálogo por canal o del de fuera de corte. Eso es lo correcto:
+   * son un solo interruptor (`orderOverrides`), y tener tres listas de "lo que saqué" según por dónde
+   * lo saqué sería inventar diferencias que el estado no tiene.
+   */
+  const quitados = useMemo(
+    () =>
+      agruparQuitados(
+        enScope.filter((p) => pedidoEsSeleccionable(p) && !estaIncluido(p, orderOverrides)),
+      ),
+    [enScope, orderOverrides],
   )
 
   /**
@@ -248,108 +355,94 @@ export function PedidosPanel({
         </div>
       ) : (
         <>
-          {/* ── 2. Pedidos por canal (select-search) ──
-              ANTES ERA UNA LISTA DE FILAS, una por canal. Funcionaba con seis, pero crece: cada canal
-              nuevo le come 28 px al panel para siempre, aunque nadie lo esté mirando, y con diez la
-              lista de paradas —que es lo que se usa a cada rato— quedaba empujada abajo del pliegue.
+          {/* ── 2. Composición del plan y sus tres consultas ──
+              LA BARRA ES EL RESUMEN, LAS CARDS SON LAS PUERTAS. Antes esto era un select-search que no
+              seleccionaba nada (abría diálogos) y, debajo, una fila ancha para "fuera de corte". Dos
+              controles de ancho completo, con dos formas distintas, para tres cosas que son la misma:
+              abrir una lista. Alineados en una grilla de tres se leen de un vistazo, y cada uno lleva
+              su número adelante — que es el dato por el que se los mira.
 
-              El select-search ocupa 28 px FIJOS sea cual sea la cantidad de canales, y adentro tiene
-              lo que la lista mostraba (glifo, pedidos, peso) más un buscador que la lista no tenía.
-              Elegir uno abre su diálogo con la tabla completa: el select no filtra el mapa, ABRE. */}
-          <div className="shrink-0 space-y-1.5 border-b border-border px-2 py-2">
-            <Popover open={canalPickerAbierto} onOpenChange={setCanalPickerAbierto}>
-              <PopoverTrigger
-                className={cn(
-                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'h-7 w-full justify-start gap-1.5 px-2 text-xs',
-                )}
-              >
-                <Store size={13} className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-left">Ver pedidos por canal</span>
-                {/* La advertencia viaja al trigger: si los pedidos fuera de corte quedaran solo dentro
-                    del popover, nadie se enteraría de que hay algo pendiente sin abrirlo. */}
-                {fuera.length > fueraIncluidos.length && (
-                  <AlertTriangle size={12} className="shrink-0 text-amber-500" />
-                )}
-                <ChevronsUpDown size={12} className="shrink-0 opacity-50" />
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-72 p-0">
-                <Command>
-                  <CommandInput placeholder="Buscar canal…" className="h-8 text-xs" />
-                  <CommandList>
-                    <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
-                      Sin canales
-                    </CommandEmpty>
-                    <CommandGroup heading="Entra al plan">
-                      {porCanal.map((fila) => {
-                        const meta = CANAL_META[fila.canal]
-                        return (
-                          <CommandItem
-                            key={fila.canal}
-                            value={meta.label}
-                            onSelect={() => {
-                              setCanalPickerAbierto(false)
-                              setCanalDetalle(fila.canal)
-                            }}
-                            className="gap-2 text-xs"
-                            title={`${fila.pedidos} de ${fila.total} pedidos · ${fila.clientes} clientes · corte ${meta.timeOff}`}
-                          >
-                            <span className="shrink-0" style={{ color: meta.color }}>
-                              <CanalGlyph canal={fila.canal} size={14} />
-                            </span>
-                            <span className="min-w-0 flex-1 truncate">{meta.label}</span>
-                            <span className="shrink-0 tabular-nums">{fila.pedidos}</span>
-                            <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                              {fmtPeso.format(fila.pesoKg)} kg
-                            </span>
-                          </CommandItem>
-                        )
-                      })}
-                    </CommandGroup>
+              La barra apilada queda arriba y NO es un botón: es el estado del plan, se vigila. Sus
+              colores son los mismos con los que cada canal se dibuja en el mapa. */}
+          <div className="shrink-0 space-y-2 border-b border-border px-2 py-2">
+            <div className="space-y-1">
+              <BarraCanales filas={porCanal} />
+              <div className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
+                {/* LOS DOS NÚMEROS JUNTOS, y en este orden. Es la única línea de la pantalla que
+                    dice de qué está hecha la lista de abajo: 54 lugares a los que hay que ir, 71
+                    pedidos para repartir entre ellos. Sin verlos al lado, "54" y "71" aparecían en
+                    pantallas distintas y no había forma de deducir que un punto agrupa varios
+                    pedidos — que es exactamente la regla que ordena todo lo demás. */}
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {paradas.length}
+                  </span>{' '}
+                  puntos ·{' '}
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {totales.pedidos}
+                  </span>{' '}
+                  pedidos
+                </span>
+                <span className="shrink-0 tabular-nums">{fmtPeso.format(totales.pesoKg)} kg</span>
+              </div>
+            </div>
 
-                    {/* Fuera de corte va en su propio grupo y en ámbar: no es un canal, es una
-                        ADVERTENCIA —"hay pedidos que se van a quedar afuera"—. */}
-                    {fuera.length > 0 && (
-                      <CommandGroup heading="Requiere decisión">
-                        <CommandItem
-                          value="Fuera de corte"
-                          onSelect={() => {
-                            setCanalPickerAbierto(false)
-                            setFueraAbierto(true)
-                          }}
-                          className="gap-2 text-xs"
-                        >
-                          <AlertTriangle size={13} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                          <span className="min-w-0 flex-1 truncate">Fuera de corte</span>
-                          {/* Fracción y no total: las dos mitades importan. Con solo el total no se
-                              distingue "no lo miré" de "lo miré y no elegí ninguno". */}
-                          <span
-                            className={cn(
-                              'shrink-0 rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
-                              fueraIncluidos.length > 0
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-amber-500 text-white',
-                            )}
-                          >
-                            {fueraIncluidos.length}/{fuera.length}
-                          </span>
-                        </CommandItem>
-                      </CommandGroup>
-                    )}
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            {/* Cuatro cards iguales en 2×2, y no en una fila de cuatro: en 284 px una fila deja 66 px
+                por card y "Fuera de corte" se parte en tres renglones. Con dos columnas cada una tiene
+                139 px, la etiqueta entra en una línea y las cards quedan efectivamente cuadradas.
 
-            {/* Totales del plan. Es lo único de la lista de canales que SÍ tiene que estar siempre a la
-                vista: el desglose se consulta, el total se vigila. */}
-            <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-              <span>
-                <span className="font-semibold tabular-nums text-foreground">{totales.pedidos}</span>{' '}
-                pedidos en <span className="tabular-nums">{porCanal.length}</span> canal
-                {porCanal.length === 1 ? '' : 'es'}
-              </span>
-              <span className="tabular-nums">{fmtPeso.format(totales.pesoKg)} kg</span>
+                La grilla NO se reacomoda cuando un conteo cae a cero: la card se apaga y se
+                deshabilita, pero se queda. Que las puertas cambien de lugar según el día es la forma
+                más rápida de que nadie aprenda dónde están.
+
+                ORDEN: primero lo que describe el plan (Canales), después las tres formas en que un
+                pedido puede no estar entrando — por horario, porque lo sacaste, o porque Ventas lo
+                tiene trabado. */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <CardConsulta
+                icon={Store}
+                valor={porCanal.length}
+                etiqueta={`Canal${porCanal.length === 1 ? '' : 'es'}`}
+                titulo="Ver el desglose por canal"
+                onClick={() => setCanalesAbierto(true)}
+              />
+              <CardConsulta
+                icon={AlertTriangle}
+                valor={fuera.length}
+                etiqueta="Fuera de corte"
+                // Ámbar mientras el plan lleve alguno adentro. Sacándolos todos se apaga: ahí ya no
+                // hay nada tardío que pueda no llegar.
+                tono={llevaTardios ? 'ambar' : 'neutro'}
+                titulo={
+                  fuera.length === 0
+                    ? 'No hay pedidos fuera del horario de corte'
+                    : `${fueraIncluidos.length} de ${fuera.length} entran al plan — destildá los que no lleguen`
+                }
+                onClick={() => setFueraAbierto(true)}
+              />
+              <CardConsulta
+                icon={Trash2}
+                valor={quitados.length}
+                etiqueta="Quitados"
+                titulo={
+                  quitados.length === 0
+                    ? 'No sacaste ningún punto del plan'
+                    : 'Puntos que sacaste a mano — se pueden devolver'
+                }
+                onClick={() => setQuitadosAbierto(true)}
+              />
+              <CardConsulta
+                icon={Lock}
+                valor={bloqueados.length}
+                etiqueta="Bloqueados"
+                tono={bloqueados.length > 0 ? 'rojo' : 'neutro'}
+                titulo={
+                  bloqueados.length === 0
+                    ? 'Ningún pedido bloqueado'
+                    : 'Les falta stock de una bonificación: no se pueden planificar'
+                }
+                onClick={() => setBloqueadosAbierto(true)}
+              />
             </div>
           </div>
 
@@ -362,9 +455,9 @@ export function PedidosPanel({
               <Input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder={`Buscar en ${paradas.length} paradas`}
+                placeholder={`Buscar en ${paradas.length} puntos`}
                 className="h-7 pl-7 text-xs"
-                aria-label="Buscar parada"
+                aria-label="Buscar punto de entrega"
               />
             </div>
           </div>
@@ -386,7 +479,9 @@ export function PedidosPanel({
                     key={parada.id}
                     type="button"
                     onClick={() => onFoco(parada.id)}
-                    title={`${parada.cliente} · ${parada.puntoEntrega} · ${parada.ventana}`}
+                    // El título dice el "1 a n" en palabras. La fila lo comprime a "3p" por ancho,
+                    // pero esa abreviatura solo se entiende si en algún lado está escrita entera.
+                    title={`${parada.cliente} · ${parada.puntoEntrega} · ${parada.pedidos.length} pedido${parada.pedidos.length !== 1 ? 's' : ''} en este punto · ${parada.ventana}`}
                     className={cn(
                       'flex h-7 w-full items-center gap-2 px-2 text-left text-xs transition-colors',
                       enFoco ? 'bg-primary/10' : 'hover:bg-muted/70',
@@ -421,6 +516,17 @@ export function PedidosPanel({
 
       {/* Diálogos. `CanalPedidosDialog` es el MISMO del paso 1: mismo componente, mismo store, misma
           convención de guardado instantáneo — la propuesta no reimplementa lo que ya funciona. */}
+      <CanalesDialog
+        abierto={canalesAbierto}
+        onOpenChange={setCanalesAbierto}
+        filas={porCanal}
+        onElegirCanal={(canal) => {
+          // Se CIERRA el desglose antes de abrir el detalle en vez de apilar un diálogo sobre otro:
+          // dos capas modales encima del mapa dejan al usuario sin saber qué cierra Escape.
+          setCanalesAbierto(false)
+          setCanalDetalle(canal)
+        }}
+      />
       <CanalPedidosDialog
         canal={canalDetalle}
         pedidos={canalDetalle ? enScope.filter((p) => p.canal === canalDetalle) : []}
@@ -430,6 +536,17 @@ export function PedidosPanel({
         abierto={fueraAbierto}
         pedidos={fuera}
         onClose={() => setFueraAbierto(false)}
+      />
+      <BloqueadosDialog
+        abierto={bloqueadosAbierto}
+        onOpenChange={setBloqueadosAbierto}
+        pedidos={bloqueados}
+      />
+      <QuitadosDialog
+        abierto={quitadosAbierto}
+        onOpenChange={setQuitadosAbierto}
+        puntos={quitados}
+        onDevolver={(ids) => setOrdersIncluded(ids, ids)}
       />
     </div>
   )

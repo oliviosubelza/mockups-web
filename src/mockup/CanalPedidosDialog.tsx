@@ -13,7 +13,7 @@
 // La decisión se guarda en el store al instante (misma convención que la tabla de fuera de corte:
 // no hay Aceptar/Cancelar). Cerrar solo cierra.
 import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Lock, X } from 'lucide-react'
 import { DataTable, defineColumns } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import {
   CANAL_META,
   itemsPorConfirmar,
   pedidoEsSeleccionable,
+  tieneBonificacionSinConfirmar,
   tieneStockPorConfirmar,
   type CanalId,
   type ItemPedido,
@@ -81,18 +82,45 @@ const columns = defineColumns<Pedido>([
   // Sin `accessorKey`: el dato no es un campo del pedido sino la cuenta de líneas cortas, y por eso
   // tampoco ordena (TanStack necesita un accessor). El caso se hace visible por otro lado: fondo
   // ámbar en la fila y el filtro "Sin stock confirmado" del toolbar, que aísla justo estos pedidos.
+  //
+  // ESTA COLUMNA DISTINGUE DOS COSAS QUE ANTES CONTABA JUNTAS, y esa era la razón de una confusión
+  // real: `itemsPorConfirmar` incluye las bonificaciones, así que un pedido bloqueado y uno que solo
+  // avisa mostraban EXACTAMENTE lo mismo ("1 a confirmar", en ámbar) mientras uno tildaba y el otro
+  // no. El único indicio de la diferencia era un checkbox gris sin explicación —imposible de
+  // adivinar sin abrir el detalle y buscar cuál de las líneas cortas tenía el badge "Bonificación"—.
+  //
+  //   · Falta stock de una BONIFICACIÓN → el pedido NO se puede tomar (`pedidoEsSeleccionable`).
+  //   · Falta stock de una línea normal → entra igual; puede subir menos de lo que dice el total.
   {
     id: 'stock',
     header: 'Stock',
-    size: 118,
+    size: 176,
     enableSorting: false,
     cell: (row) => {
       const faltan = itemsPorConfirmar(row).length
       if (faltan === 0) {
         return <span className="text-xs text-muted-foreground">Confirmado</span>
       }
+
+      // El caso BLOQUEANTE se dice con palabras y con otro ícono. El candado no es decorativo: es la
+      // única señal de por qué esa fila no se deja tildar, y tiene que leerse sin pasar el mouse.
+      if (tieneBonificacionSinConfirmar(row)) {
+        return (
+          <span
+            title="No se puede planificar: Ventas todavía no confirmó el stock de una línea de bonificación. Se destraba cuando la confirme."
+            className="inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400"
+          >
+            <Lock size={12} className="shrink-0" />
+            <span className="truncate">Bonificación sin stock</span>
+          </span>
+        )
+      }
+
       return (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+        <span
+          title={`${faltan} línea(s) con menos stock del pedido. El pedido entra igual, pero puede subir menos de lo que dice el total.`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+        >
           <AlertTriangle size={12} className="shrink-0" />
           {faltan} a confirmar
         </span>
@@ -100,6 +128,25 @@ const columns = defineColumns<Pedido>([
     },
   },
 ])
+
+/**
+ * Clase de la fila. Vive acá afuera porque la tabla se monta en DOS lugares (con y sin el panel de
+ * detalle abierto) y tener la regla duplicada es la forma más fácil de que una se actualice y la otra
+ * no.
+ *
+ * Tres estados y NO se pisan: bloqueado gana sobre pendiente, porque "no se puede tomar" es una
+ * información más fuerte que "puede subir menos". El bloqueado va en gris de deshabilitado y no en
+ * rojo de error: no está mal, está esperando a Ventas.
+ */
+const claseFila = (row: Pedido, soloPendientes: boolean, detalleId: string | null) =>
+  cn(
+    !pedidoEsSeleccionable(row)
+      ? 'bg-muted/60 text-muted-foreground hover:bg-muted/70'
+      : // Ámbar = stock pendiente. Con el filtro activo no se pinta porque, si todas las filas son
+        // pendientes, la banda deja de distinguir algo útil.
+        !soloPendientes && tieneStockPorConfirmar(row) && 'bg-amber-500/10 hover:bg-amber-500/15',
+    row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
+  )
 
 /**
  * Una línea del pedido en el panel. `confirmado / solicitado` es todo el mensaje.
@@ -121,6 +168,13 @@ function ItemFila({ item }: { item: ItemPedido }) {
             </Badge>
           )}
         </div>
+        {/* El código SAP en su propia línea, en monoespaciada. Al lado del nombre competiría con él
+            por el renglón y obligaría a truncar justo lo que no se puede truncar (la presentación del
+            producto); abajo se lee cuando hace falta y no estorba cuando no. La monoespaciada no es
+            estética: un código se compara dígito a dígito y se dicta. */}
+        <span className="mt-0.5 block font-mono text-[10px] leading-none text-muted-foreground">
+          {item.codigo}
+        </span>
       </div>
       <span
         className={cn(
@@ -166,6 +220,23 @@ function StockPanel({ pedido, onClose }: { pedido: Pedido; onClose: () => void }
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+        {/* Cierra el circuito: la tabla dice que este pedido no se puede tomar, y acá abajo está la
+            línea culpable con su badge "Bonificación". Sin esta franja hay que deducir la conexión. */}
+        {!pedidoEsSeleccionable(pedido) && (
+          <p className="mb-3 flex items-start gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-[11px] leading-snug">
+            <Lock size={12} className="mt-px shrink-0 text-rose-600 dark:text-rose-400" />
+            <span>
+              <span className="font-semibold text-rose-700 dark:text-rose-300">
+                No se puede planificar.
+              </span>{' '}
+              <span className="text-muted-foreground">
+                Falta stock de una bonificación (abajo, con su badge). Se destraba cuando Ventas la
+                confirme.
+              </span>
+            </span>
+          </p>
+        )}
+
         {faltantes.length > 0 && (
           <section className="mb-3">
             <h4 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
@@ -312,6 +383,9 @@ export function CanalPedidosDialog({
 
   // Cuántos hay para filtrar, tildados o no: el botón informa el tamaño del grupo, no del plan.
   const pendientesTotal = dentro.filter(tieneStockPorConfirmar).length
+  // Los que la tabla NO deja tildar. Se cuentan para poder decirlo una vez arriba en vez de dejar que
+  // cada uno lo descubra fila por fila probando el checkbox.
+  const bloqueados = dentro.filter((p) => !pedidoEsSeleccionable(p)).length
   // Lo que la tabla realmente muestra. Con el filtro activo las demás filas salen del row model.
   const visibles = soloPendientes ? dentro.filter(tieneStockPorConfirmar) : dentro
 
@@ -339,11 +413,30 @@ export function CanalPedidosDialog({
             {meta.label}
           </DialogTitle>
           <DialogDescription>
-            Pedidos que entran solos por cerrar antes de las {meta.timeOff}. Destildá los que no
-            quieras en esta planificación. Los que quedan fuera del corte se eligen en
-            &ldquo;Seleccionar fuera de corte&rdquo;.
+            Los de este canal que cierran antes de las {meta.timeOff}. Destildá los que no quieras en
+            esta planificación. Los que cierran después están en &ldquo;Fuera de corte&rdquo; —
+            también entran, y ahí se sacan.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Aviso de lo que NO se va a poder tildar, arriba y una sola vez.
+            Un checkbox deshabilitado sin explicación se lee como un bug —fue exactamente lo que pasó—
+            y probar fila por fila cuál responde no es una forma de enterarse de una regla. Aparece
+            solo si hay alguno: un cartel permanente que casi siempre dice "0" enseña a ignorarlo. */}
+        {bloqueados > 0 && (
+          <div className="flex shrink-0 items-start gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs">
+            <Lock size={13} className="mt-px shrink-0 text-rose-600 dark:text-rose-400" />
+            <p className="min-w-0 leading-snug">
+              <span className="font-semibold text-rose-700 dark:text-rose-300">
+                {bloqueados} pedido{bloqueados !== 1 ? 's' : ''} sin poder planificar
+              </span>{' '}
+              <span className="text-muted-foreground">
+                — les falta stock de una línea de bonificación, y hasta que Ventas la confirme no se
+                pueden tomar. Están en gris y con candado en la columna Stock.
+              </span>
+            </p>
+          </div>
+        )}
 
         {/* `overflow-auto` y no `fillHeight` en la tabla: con 3-4 pedidos la tabla crece con su
             contenido (fillHeight la estiraría vacía hasta el 85vh), y si la lista es larga scrollea
@@ -364,7 +457,7 @@ export function CanalPedidosDialog({
                     emptyMessage={
                       soloPendientes
                         ? 'Todos los pedidos de este canal tienen el stock confirmado.'
-                        : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
+                        : 'Todos los pedidos de este canal cierran después del corte: se manejan en “Fuera de corte”.'
                     }
                     bodyMinHeight={280}
                     selectable
@@ -398,16 +491,7 @@ export function CanalPedidosDialog({
                     // Click en la fila abre el detalle; el checkbox corta la propagación, así que tildar y
                     // mirar el detalle siguen siendo dos gestos distintos. Re-clickear el mismo cierra.
                     onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
-                    rowClassName={(row) =>
-                      cn(
-                        // Ámbar = stock pendiente. Con el filtro activo no se pinta porque, si todas las
-                        // filas son pendientes, la banda deja de distinguir algo útil.
-                        !soloPendientes &&
-                          tieneStockPorConfirmar(row) &&
-                          'bg-amber-500/10 hover:bg-amber-500/15',
-                        row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
-                      )
-                    }
+                    rowClassName={(row) => claseFila(row, soloPendientes, detalleId)}
                   />
                 </div>
               </ResizablePanel>
@@ -431,7 +515,7 @@ export function CanalPedidosDialog({
                 emptyMessage={
                   soloPendientes
                     ? 'Todos los pedidos de este canal tienen el stock confirmado.'
-                    : 'Todos los pedidos de este canal cierran después del corte: se eligen en “Seleccionar fuera de corte”.'
+                    : 'Todos los pedidos de este canal cierran después del corte: se manejan en “Fuera de corte”.'
                 }
                 bodyMinHeight={280}
                 selectable
@@ -458,14 +542,7 @@ export function CanalPedidosDialog({
                   ) : undefined
                 }
                 onRowClick={(row) => setDetalleId((id) => (id === row.id ? null : row.id))}
-                rowClassName={(row) =>
-                  cn(
-                    !soloPendientes &&
-                      tieneStockPorConfirmar(row) &&
-                      'bg-amber-500/10 hover:bg-amber-500/15',
-                    row.id === detalleId && 'ring-1 ring-inset ring-primary/40',
-                  )
-                }
+                rowClassName={(row) => claseFila(row, soloPendientes, detalleId)}
               />
             </div>
           )}

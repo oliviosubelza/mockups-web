@@ -118,6 +118,8 @@ interface PlannerState {
   setVerTrazos: (v: boolean) => void
   setVerDeposito: (v: boolean) => void
   toggleRutaVisible: (rutaId: string) => void
+  /** Prende o apaga TODAS de una: la lista vacía muestra todo. */
+  setRutasOcultas: (ids: string[]) => void
   setNombreRuta: (rutaId: string, nombre: string) => void
   setAsignaciones: (a: Asignaciones) => void
   setOptimizado: (v: boolean) => void
@@ -147,7 +149,11 @@ interface PlannerState {
 }
 
 const INICIAL = {
-  panel: 'pedidos' as PanelId,
+  // FLOTA PRIMERO. Antes abría en Pedidos, y eso invertía el orden real de la decisión: sin camiones
+  // elegidos no hay con qué repartir nada, así que la primera pregunta de la pantalla es "¿con qué
+  // salgo?" y recién después "¿qué llevo?". Además el gate de Optimizar pide camiones, así que abrir
+  // en Pedidos dejaba al usuario armando una selección que todavía no podía usar.
+  panel: 'flota' as PanelId,
   dockAbierto: true,
   verMetricas: true,
   verAcciones: true,
@@ -208,6 +214,7 @@ export const usePlannerStore = create<PlannerState>((set) => ({
     })),
   // Un nombre vacío BORRA la entrada en vez de guardar "": así la ruta vuelve al `Ruta N` por defecto
   // y no queda con una etiqueta en blanco que no se puede deshacer desde la pantalla.
+  setRutasOcultas: (rutasOcultas) => set({ rutasOcultas }),
   setNombreRuta: (rutaId, nombre) =>
     set((s) => {
       const limpio = nombre.trim()

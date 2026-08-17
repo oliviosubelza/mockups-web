@@ -31,8 +31,10 @@ export const ATAJOS: Atajo[] = [
 
   { grupo: 'Vista', tecla: 'f', teclas: 'F', descripcion: 'Encuadrar todas las paradas' },
   { grupo: 'Vista', tecla: 'b', teclas: 'B', descripcion: 'Mostrar u ocultar el panel lateral' },
-  { grupo: 'Vista', tecla: '1', teclas: '1', descripcion: 'Ir a Pedidos' },
-  { grupo: 'Vista', tecla: '2', teclas: '2', descripcion: 'Ir a Flota' },
+  // 1-2-3 siguen el orden de la barra superior, que es el orden de la decisión (flota → pedidos →
+  // rutas). Si el atajo y el botón no coincidieran, habría dos órdenes que aprender para lo mismo.
+  { grupo: 'Vista', tecla: '1', teclas: '1', descripcion: 'Ir a Flota' },
+  { grupo: 'Vista', tecla: '2', teclas: '2', descripcion: 'Ir a Pedidos' },
   { grupo: 'Vista', tecla: '3', teclas: '3', descripcion: 'Ir a Rutas' },
 
   { grupo: 'Selección', tecla: null, teclas: 'Shift + click', descripcion: 'Sumar o sacar una parada' },
@@ -136,10 +138,10 @@ export function usePlannerAtajos(acciones: AccionesAtajos): void {
           acciones.alternarPanel()
           break
         case '1':
-          acciones.irAPanel('pedidos')
+          acciones.irAPanel('flota')
           break
         case '2':
-          acciones.irAPanel('flota')
+          acciones.irAPanel('pedidos')
           break
         case '3':
           acciones.irAPanel('rutas')

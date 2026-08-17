@@ -16,7 +16,16 @@ import { encuadrar } from '../map/encuadrar'
 import { reactIcon } from '../map/div-icon'
 import { CANAL_META, DEPOSITO, type Parada } from '../mock-data'
 import { PlannerHerramientas } from './PlannerHerramientas'
-import { anchoPin, PIN_RATIO, rangoPeso, trazoDeRuta, type RutaPlan } from './planner-model'
+import {
+  anchoPin,
+  escalaPorZoom,
+  PIN_ANCHO_NUMERO,
+  PIN_RATIO,
+  rangoPeso,
+  trazoDeRuta,
+  ZOOM_NUMERO,
+  type RutaPlan,
+} from './planner-model'
 import { usePlannerStore, type CapaBase } from './planner-store'
 
 const SANTA_CRUZ: [number, number] = [-17.786, -63.17]
@@ -66,8 +75,15 @@ const GOTA = 'M13 1C6.37 1 1 6.37 1 13c0 8.6 12 20 12 20s12-11.4 12-20C25 6.37 1
  *
  * El marcador codifica TRES cosas a la vez:
  *   · color  → la ruta asignada, o el canal (lo elige `colorPor` en el menú de Capas).
- *   · tamaño → el peso de la parada, con el ÁREA proporcional (ver `anchoPin`).
- *   · número → el orden de visita, en el hueco blanco, cuando ya hay ruta y hay lugar.
+ *   · tamaño → el peso de la parada, con el ÁREA proporcional (ver `anchoPin`), corregido por el zoom
+ *              (ver `escalaPorZoom`) y con la escala cerrada en el p90 para que un pedido atípico no
+ *              achate a los demás (ver `rangoPeso`).
+ *   · número → el orden de visita, en el hueco blanco, desde `ZOOM_NUMERO` y en TODAS las asignadas.
+ *
+ * El número NO depende del tamaño del pin, y esa es la corrección importante: antes salía en los
+ * marcadores grandes y faltaba en los chicos, o sea que el recorrido se leía en las paradas pesadas y
+ * no en las livianas — una mezcla de dos variables que no contesta ninguna pregunta. Ahora es una sola
+ * regla, la del zoom: lejos se ve el REPARTO (quién es de quién), cerca se ve el RECORRIDO.
  */
 function pinParada(
   parada: Parada,
@@ -75,15 +91,19 @@ function pinParada(
   ancho: number,
   marcada: boolean,
   enFoco: boolean,
+  /** El zoom ya decidió que se muestran los números; acá solo se hace lugar para el que toca. */
+  conNumero: boolean,
 ) {
   const asignada = parada.rutaId !== null && parada.rutaId !== undefined
   const resaltado = marcada || enFoco
+  const cabeNumero = conNumero && asignada && parada.secuencia > 0
   // El resaltado crece: tiene que saltar por encima del resto sin depender solo del color del borde.
-  const w = resaltado ? ancho + 6 : ancho
+  // Y cuando toca mostrar el orden, el marcador sube al piso donde el número se lee: a partir de ese
+  // zoom la pregunta es "¿en qué orden los visito?", y responderla vale ceder un poco de la escala de
+  // peso en las paradas más livianas.
+  const base = cabeNumero ? Math.max(ancho, PIN_ANCHO_NUMERO) : ancho
+  const w = resaltado ? base + 6 : base
   const h = Math.round(w * PIN_RATIO)
-  // El número solo entra si hay lugar. Por debajo de 22 px un "12" se convierte en una mancha dentro
-  // del hueco; en esas paradas el orden lo sigue diciendo el trazo.
-  const cabeNumero = asignada && w >= 22 && parada.secuencia > 0
   // Id único del degradado: los marcadores se inyectan como HTML suelto en el DOM del mapa, y un id
   // repetido haría que todos resolvieran contra la primera definición — que desaparece en cuanto ese
   // marcador se desmonta, dejando al resto sin relleno.
@@ -253,6 +273,18 @@ function LimpiarAlClickear() {
   return null
 }
 
+/**
+ * Reporta el zoom hacia afuera para que los marcadores puedan responder a él.
+ *
+ * Tiene que ser un componente HIJO del mapa: `useMapEvents` necesita el contexto de Leaflet, y el que
+ * monta el `MapContainer` está por definición fuera de él. Guarda el valor SOLO cuando cambia, o cada
+ * evento de zoom re-renderizaría los 54 marcadores dos veces.
+ */
+function ZoomWatch({ onZoom }: { onZoom: (z: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
+  return null
+}
+
 export function PlannerMapa({
   paradas,
   rutas,
@@ -315,6 +347,7 @@ export function PlannerMapa({
   }, [])
 
   const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
+  const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const cityIds = useCityIdsDelMapa(paradas, 'santacruz')
   const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
 
@@ -353,6 +386,8 @@ export function PlannerMapa({
   // Rango de peso del conjunto VISIBLE: la escala compara las paradas del plan entre sí, no contra un
   // máximo absoluto que no significa nada para quien mira esta pantalla.
   const rango = useMemo(() => rangoPeso(visibles), [visibles])
+  const escala = escalaPorZoom(zoom)
+  const conNumero = zoom >= ZOOM_NUMERO
 
   return (
     <MapContainer
@@ -367,6 +402,7 @@ export function PlannerMapa({
           anterior se quedan pintadas hasta que el usuario mueve el mapa. Remontando, entra limpio. */}
       <TileLayer key={capa} url={TILES[capa]} subdomains={capa === 'suave' ? 'abcd' : 'abc'} />
       <InvalidateOnResize />
+      <ZoomWatch onZoom={setZoom} />
       <Camara paradas={paradas} foco={foco} margenIzq={margenIzq} margenDer={margenDer} />
 
       {/* Mercados de fondo: su pane propio (z 350) los deja debajo de trazos y pines, así que prender
@@ -455,17 +491,23 @@ export function PlannerMapa({
         const [desde, hasta] = parada.ventana.split('–').map((s) => s.trim())
         const marcada = marcadas.has(parada.id)
         const enFoco = paradaFoco === parada.id
+        const ancho = Math.round(anchoPin(parada.pesoTotal, rango.min, rango.max) * escala)
         return (
           <Marker
             key={parada.id}
             position={[parada.lat, parada.lng]}
-            icon={pinParada(
-              parada,
-              colorDe(parada),
-              anchoPin(parada.pesoTotal, rango.min, rango.max),
-              marcada,
-              enFoco,
-            )}
+            icon={pinParada(parada, colorDe(parada), ancho, marcada, enFoco, conNumero)}
+            /**
+             * LOS CHICOS ADELANTE. Sin esto el apilado lo decide la latitud (el default de Leaflet) y
+             * una parada liviana puede quedar ÍNTEGRAMENTE tapada detrás de una pesada que la rodea —
+             * desaparece del mapa sin que nadie se entere de que está—. Un marcador grande asomando
+             * detrás de uno chico se sigue viendo; al revés, no.
+             *
+             * Lo marcado y lo enfocado va por encima de todo: es lo que se está mirando.
+             */
+            zIndexOffset={
+              marcada || enFoco ? 1000 : Math.round((PIN_ANCHO_NUMERO * 2 - ancho) * 10)
+            }
             eventHandlers={{
               // CLICK IZQUIERDO: enfocar y centrar. Nada más. Abrir un diálogo con cada click sobre
               // el mapa era demasiado: el gesto más frecuente de esta pantalla es recorrer paradas, y

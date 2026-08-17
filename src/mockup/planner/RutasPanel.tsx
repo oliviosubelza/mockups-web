@@ -7,9 +7,10 @@
 //
 // El select-search resuelve las dos cosas que la lista sí hacía bien: se ve el conjunto completo al
 // abrirlo (con su color, su placa y su ocupación) y se salta a cualquiera escribiendo. El "ojo" de
-// cada tarjeta también vive ahí, uno por opción: prender y apagar rutas es comparar el mapa contra
-// varias a la vez, así que el select NO se cierra al tocarlo —solo el cuerpo de la opción elige y
-// cierra—. El ojo de al lado del select queda como atajo para la ruta que ya estás mirando.
+// cada tarjeta también vive ahí, uno por opción, más un "mostrar/ocultar todas" arriba: prender y
+// apagar rutas es comparar el mapa contra varias a la vez, así que el select NO se cierra al tocar un
+// ojo —solo el cuerpo de la opción elige y cierra—. Afuera del select no quedó ningún botón: eran
+// acciones sobre "la ruta elegida" flotando fuera del control que la elige.
 import { useEffect, useMemo, useState } from 'react'
 import {
   closestCenter,
@@ -30,8 +31,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  AlertTriangle,
   ChevronsUpDown,
-  Crosshair,
   GripVertical,
   Eye,
   EyeOff,
@@ -52,8 +53,8 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { CanalGlyph } from '../canal-glyph'
-import { CANAL_META, type Parada } from '../mock-data'
-import { cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
+import { CANAL_META, MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
+import { TEXTO_OCUPACION, cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
 import { usePlannerStore } from './planner-store'
 
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
@@ -175,27 +176,64 @@ function OjoRuta({
   )
 }
 
-/** Barra de ocupación en línea. Ámbar arriba del 90%, igual que `CapacityBar`. */
+/**
+ * Barra de ocupación en línea, con TRES niveles y el exceso a la vista.
+ *
+ * EL BUG QUE TENÍA: `width` estaba acotado a 100 y el color solo distinguía "≥ 90". Una ruta al 1200%
+ * dibujaba exactamente la misma barra llena y ámbar que una al 91%. La barra decía "está lleno"
+ * cuando lo que pasaba era "no entra ni de casualidad", y quien miraba no tenía cómo notar la
+ * diferencia sin leer el número.
+ *
+ * Ahora la barra se parte en dos tramos: hasta el 100% va la capacidad real, y lo que sobra se dibuja
+ * PEGADO a la derecha, en el color del nivel y rayado. Es la convención de cualquier medidor que
+ * admite exceso, y la única forma de que el sobrante ocupe lugar visual en vez de desaparecer.
+ */
 function Ocupacion({ carga, color }: { carga: CargaRuta; color: string }) {
-  const alta = carga.ocupacionPct >= 90
+  const { nivel, ocupacionPct } = carga
+  // El exceso se dibuja proporcional al tramo que sobra, con un piso: al 101% tiene que verse ALGO, y
+  // se acota al 40% del ancho para que al 1200% la barra siga siendo una barra y no todo exceso.
+  const excesoPct =
+    ocupacionPct <= 100 ? 0 : Math.min(40, Math.max(6, ((ocupacionPct - 100) / 100) * 40))
+
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+      <div className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
         <div
-          className={cn('h-full rounded-full transition-all duration-500', alta && 'bg-amber-500')}
+          className={cn(
+            'h-full min-w-0 flex-1 rounded-l-full transition-all duration-500',
+            nivel === 'alta' && 'bg-amber-500',
+            nivel === 'critica' && 'bg-rose-500',
+          )}
           style={{
-            width: `${Math.min(100, carga.ocupacionPct)}%`,
-            background: alta ? undefined : color,
+            width: `${Math.min(100, ocupacionPct)}%`,
+            background: nivel === 'ok' ? color : undefined,
           }}
         />
+        {excesoPct > 0 && (
+          // Rayado además de color: sobre el ámbar del nivel "alta", un tramo liso pegado a otro liso
+          // se lee como una sola barra. La textura dice "esto es de otra naturaleza".
+          <div
+            className={cn(
+              'h-full shrink-0 rounded-r-full',
+              nivel === 'critica' ? 'bg-rose-600' : 'bg-amber-600',
+            )}
+            style={{
+              width: `${excesoPct}%`,
+              backgroundImage:
+                'repeating-linear-gradient(45deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 4px)',
+            }}
+          />
+        )}
       </div>
       <span
         className={cn(
           'shrink-0 text-[11px] font-semibold tabular-nums',
-          alta ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
+          nivel === 'ok' && 'text-foreground',
+          nivel === 'alta' && 'text-amber-600 dark:text-amber-400',
+          nivel === 'critica' && 'text-rose-600 dark:text-rose-400',
         )}
       >
-        {carga.ocupacionPct}%
+        {ocupacionPct}%
       </span>
     </div>
   )
@@ -222,7 +260,7 @@ export function RutasPanel({
   const setRutaFoco = usePlannerStore((s) => s.setRutaFoco)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
-  const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
+  const setRutasOcultas = usePlannerStore((s) => s.setRutasOcultas)
 
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -247,6 +285,9 @@ export function RutasPanel({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  /** Cuántas se están dibujando. Alimenta el conteo y el gate de los dos botones masivos. */
+  const enMapa = rutas.filter((r) => !rutasOcultas.includes(r.id)).length
 
   const ruta = rutas.find((r) => r.id === rutaFoco) ?? null
   const esSinAsignar = rutaFoco === SIN_ASIGNAR
@@ -312,14 +353,20 @@ export function RutasPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* ── Cabecera: select-search + herramientas de la ruta elegida ── */}
+      {/* ── Cabecera: el select-search, y nada más ──
+          ANTES TENÍA DOS BOTONES AL LADO (ojo y encuadrar) y se veían mal por una razón concreta: son
+          acciones sobre "la ruta elegida" viviendo AFUERA del control que la elige, así que con el
+          popover cerrado quedaban dos íconos sueltos sin dueño visible. El ojo, además, pasó a estar
+          duplicado desde que cada opción de la lista tiene el suyo.
+
+          El encuadre se fue con ellos: clickear cualquier fila de la tabla de abajo ya vuela el mapa a
+          esa parada — mismo resultado, un click, y además decís a dónde vas. */}
       <div className="shrink-0 space-y-2 border-b border-border px-2 py-2">
-        <div className="flex items-center gap-1">
           <Popover open={abierto} onOpenChange={setAbierto}>
             <PopoverTrigger
               className={cn(
                 buttonVariants({ variant: 'outline', size: 'sm' }),
-                'h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs',
+                'h-7 w-full min-w-0 justify-start gap-1.5 px-2 text-xs',
               )}
             >
               {esSinAsignar ? (
@@ -332,6 +379,9 @@ export function RutasPanel({
                 />
               )}
               <span className="min-w-0 flex-1 truncate text-left font-medium">{etiqueta}</span>
+              {/* Si la ruta que estás mirando está apagada, el trigger tiene que decirlo: si no, el
+                  panel lista sus paradas, el mapa no dibuja nada, y parece un bug. */}
+              {oculta && <EyeOff size={12} className="shrink-0 text-muted-foreground" />}
               {!esSinAsignar && ruta && (
                 <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                   {ruta.camion.placa}
@@ -342,6 +392,35 @@ export function RutasPanel({
             <PopoverContent align="start" className="w-72 p-0">
               <Command>
                 <CommandInput placeholder="Buscar ruta o placa…" className="h-8 text-xs" />
+
+                {/* Prender y apagar de a una sirve para AISLAR una ruta; para eso primero hay que
+                    apagar las otras ocho, y hacerlo de a una es justo el trabajo que estos dos botones
+                    borran. Van arriba de la lista, con el conteo al lado: el número dice en qué estado
+                    estás sin tener que contar ojitos fila por fila. */}
+                <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[11px] tabular-nums text-muted-foreground">
+                    {enMapa} de {rutas.length} en el mapa
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 shrink-0 px-1.5 text-[11px]"
+                    disabled={rutasOcultas.length === 0}
+                    onClick={() => setRutasOcultas([])}
+                  >
+                    Mostrar todas
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 shrink-0 px-1.5 text-[11px]"
+                    disabled={enMapa === 0}
+                    onClick={() => setRutasOcultas(rutas.map((r) => r.id))}
+                  >
+                    Ocultar todas
+                  </Button>
+                </div>
+
                 <CommandList>
                   <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
                     Sin resultados
@@ -361,8 +440,23 @@ export function RutasPanel({
                             setRutaFoco(r.id)
                             setAbierto(false)
                           }}
-                          className="gap-2 pr-1 text-xs"
+                          // `[&>svg]:hidden` tapa el check que `CommandItem` dibuja SIEMPRE al final
+                          // (invisible cuando no está elegida). Quedaba después del ojo, como un
+                          // cuarto ícono en el borde, y era la mitad de por qué la fila se veía
+                          // amontonada. La marca de "elegida" se dibuja acá abajo, en su propia
+                          // columna a la IZQUIERDA: así el ancho de la fila no depende de cuál esté
+                          // seleccionada y las columnas quedan alineadas de arriba a abajo.
+                          className="gap-2 pl-1 pr-1 text-xs [&>svg]:hidden"
                         >
+                          <span
+                            className={cn(
+                              'w-3 shrink-0 text-center text-[11px] font-bold leading-none',
+                              rutaFoco === r.id ? 'text-primary' : 'text-transparent',
+                            )}
+                            aria-hidden
+                          >
+                            •
+                          </span>
                           {/* Una ruta apagada se lee apagada: mismo dato, menos tinta. Sin esta señal
                               el ojo sería el único indicio y habría que recorrerlos uno por uno. */}
                           <span
@@ -377,18 +471,30 @@ export function RutasPanel({
                               aria-hidden
                             />
                             <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                            {/* El aviso viaja en la lista y no solo en la ruta abierta: si hubiera que
+                                entrar a cada una para descubrir cuál se pasó de clientes, con seis
+                                camiones son seis clicks para una pregunta de un vistazo. */}
+                            {c.excedeClientes && (
+                              <AlertTriangle
+                                size={11}
+                                className="shrink-0 text-amber-600 dark:text-amber-400"
+                              />
+                            )}
                             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                               {r.camion.placa}
                             </span>
                             <span
                               className={cn(
                                 'w-9 shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                                c.ocupacionPct >= 90 && 'text-amber-600 dark:text-amber-400',
+                                TEXTO_OCUPACION[c.nivel],
                               )}
                             >
                               {c.ocupacionPct}%
                             </span>
                           </span>
+                          {/* Línea fina antes del ojo: sin ella el ícono se lee como una columna más
+                              del dato de la ruta, cuando es un control. */}
+                          <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
                           <OjoRuta
                             oculta={rOculta}
                             nombre={r.nombre}
@@ -425,38 +531,6 @@ export function RutasPanel({
             </PopoverContent>
           </Popover>
 
-          {/* Herramientas de la ruta elegida: dos botones que siempre significan lo mismo, aplicados
-              a lo que estés mirando. El ojo duplica al de la opción a propósito —apagar la ruta que
-              ya tenés al frente no debería obligarte a abrir el select—. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
-            disabled={esSinAsignar}
-            onClick={() => rutaFoco && toggleRutaVisible(rutaFoco)}
-            title={oculta ? 'Mostrar esta ruta en el mapa' : 'Ocultar esta ruta del mapa'}
-            aria-pressed={!oculta}
-          >
-            {oculta ? <EyeOff size={13} /> : <Eye size={13} />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
-            disabled={paradas.length === 0}
-            onClick={() => {
-              // Encuadrar sobre la primera parada de la ruta: alcanza para llevar la cámara a su zona
-              // sin tener que inventar un encuadre por subconjunto en la cámara del mapa.
-              if (paradas[0]) onFoco(paradas[0].id)
-              pedirEncuadre('foco')
-            }}
-            title="Llevar el mapa a esta ruta"
-            aria-label="Llevar el mapa a esta ruta"
-          >
-            <Crosshair size={13} />
-          </Button>
-        </div>
-
         {esSinAsignar ? (
           <p className="text-[11px] leading-snug text-muted-foreground">
             No entran en ningún camión con la capacidad elegida. Sumá flota o sacá pedidos.
@@ -471,10 +545,62 @@ export function RutasPanel({
                   {fmtPeso.format(carga.pesoKg / 1000)} / {ruta.camion.capacidadPeso} t ·{' '}
                   {fmtPeso.format(carga.volumenM3)} / {ruta.camion.capacidadVolumen} m³
                 </span>
-                <span>
+                {/* El conteo de paradas se pinta cuando pasa el techo de clientes. Es la MISMA cifra
+                    de siempre cambiando de color, y no un cartel nuevo al lado: el dato que se vuelve
+                    problema tiene que avisar desde donde ya estaba, o hay que aprender dos lugares. */}
+                <span
+                  className={cn(
+                    carga.excedeClientes && 'font-semibold text-amber-600 dark:text-amber-400',
+                  )}
+                  title={
+                    carga.excedeClientes
+                      ? `Más de ${MAX_CLIENTES_POR_CAMION} clientes en un camión: no le da la jornada aunque le sobre capacidad`
+                      : undefined
+                  }
+                >
                   {carga.paradas.length} paradas · {carga.pedidos} pedidos
                 </span>
               </div>
+
+              {/* Sobrecarga de capacidad. Solo el nivel CRÍTICO trae cartel: entre 90 y 150 el color
+                  de la barra alcanza —es un "va apretado" que se resuelve acomodando—, pero pasado el
+                  150 hay que decir qué hacer, porque ningún acomodo mete media carga extra. */}
+              {carga.nivel === 'critica' && (
+                <p className="flex items-start gap-1.5 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] leading-snug">
+                  <AlertTriangle
+                    size={12}
+                    className="mt-px shrink-0 text-rose-600 dark:text-rose-400"
+                  />
+                  <span>
+                    <span className="font-semibold text-rose-700 dark:text-rose-300">
+                      {carga.ocupacionPct}% de capacidad
+                    </span>{' '}
+                    <span className="text-muted-foreground">
+                      — el camión no puede salir así. Sacale paradas o repartilas en otra ruta.
+                    </span>
+                  </span>
+                </p>
+              )}
+
+              {/* La ocupación en porcentaje NO puede contar esto: son dos restricciones distintas y un
+                  solo número las mezclaría. La ruta puede ir al 38% y ser imposible igual. */}
+              {carga.excedeClientes && (
+                <p className="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] leading-snug">
+                  <AlertTriangle
+                    size={12}
+                    className="mt-px shrink-0 text-amber-600 dark:text-amber-400"
+                  />
+                  <span>
+                    <span className="font-semibold text-amber-700 dark:text-amber-300">
+                      {carga.paradas.length} clientes
+                    </span>{' '}
+                    <span className="text-muted-foreground">
+                      — el tope por camión es {MAX_CLIENTES_POR_CAMION}. Movele paradas a otra ruta o
+                      sumá un camión.
+                    </span>
+                  </span>
+                </p>
+              )}
             </>
           )
         )}

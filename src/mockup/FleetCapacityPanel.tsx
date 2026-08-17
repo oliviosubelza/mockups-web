@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { CapacityBar } from './CapacityBar'
 import { useDispatchPlanStore } from './dispatch-plan-store'
-import { CAMIONES, type Camion, type EstadoCamion } from './mock-data'
+import { CAMIONES, CLASES_CAMION, type Camion, type EstadoCamion } from './mock-data'
 import type { BoardState } from './types'
 
 interface CamionFilters extends Record<string, unknown> {
@@ -18,7 +18,9 @@ interface CamionFilters extends Record<string, unknown> {
 }
 
 const TIPOS = ['Frío', 'Seco']
-const CLASES = ['Furgón', 'Camión']
+// Las clases salen de `mock-data` y no de una lista local: si la carrocería se agrega en un lado y
+// se filtra en otro, la opción nueva no aparece y parece que no hay unidades de esa clase.
+const CLASES = CLASES_CAMION
 
 const columns = defineColumns<Camion>([
   { id: 'placa', header: 'Placa', accessorKey: 'placa', size: 88, pin: 'left' },

@@ -281,13 +281,25 @@ export const PLANIFICADORES = nombresCompletos(VOLUMEN.planificadores)
 
 // ── planning_truck (+ truck del maestro) ─────────────────────────────────────────────────────
 
+/**
+ * Carrocería del vehículo (`vehicle_class`).
+ *
+ * La `Minivan` NO es "un camión más chico" a efectos del mockup: es otro orden de magnitud (1–2,5 t
+ * contra 9–30 t), y por eso su capacidad se genera aparte. Ponerle el rango de los camiones habría
+ * dado mini-vans de 20 toneladas, que es la clase de dato que hace desconfiar de toda la pantalla.
+ */
+export type ClaseCamion = 'Furgón' | 'Camión' | 'Minivan'
+
+/** Todas las carrocerías, para los filtros. Una sola fuente: agregar una acá la muestra en todos. */
+export const CLASES_CAMION: ClaseCamion[] = ['Camión', 'Furgón', 'Minivan']
+
 export interface Camion {
   id: string
   placa: string
   /** truck_type / is_refrigerated del contrato SAP — refrigeración: Frío o Seco. */
   tipo: 'Frío' | 'Seco'
-  /** vehicle_class del contrato SAP — carrocería: Furgón o Camión. */
-  clase: 'Furgón' | 'Camión'
+  /** vehicle_class del contrato SAP — carrocería: Furgón, Camión o Minivan. */
+  clase: ClaseCamion
   /** capacity_weight, en toneladas. */
   capacidadPeso: number
   /** capacity_volume, en m³. */
@@ -390,7 +402,15 @@ export const CAMIONES: Camion[] = (() => {
       ? 'disponible'
       : estadosFueraDeRuteo[(i - VOLUMEN.camionesEnRuta) % estadosFueraDeRuteo.length]
 
-    const capacidadPeso = rand.int(9, 30)
+    // La carrocería se sortea ANTES que la capacidad porque la manda: una mini-van con el rango de
+    // un camión daría una furgoneta de 20 toneladas.
+    const clase: ClaseCamion = rand.chance(0.15)
+      ? 'Minivan'
+      : rand.chance(0.35)
+        ? 'Furgón'
+        : 'Camión'
+    const capacidadPeso =
+      clase === 'Minivan' ? Number(rand.float(1, 2.5, 1).toFixed(1)) : rand.int(9, 30)
     // Volumen coherente con el peso: ~2,2 m³ por tonelada, con dispersión por carrocería.
     const capacidadVolumen = Number((capacidadPeso * rand.float(2.0, 2.4, 2)).toFixed(1))
     // Lo ya cargado nunca supera la capacidad: el exceso se retrata en las órdenes de transporte
@@ -402,7 +422,7 @@ export const CAMIONES: Camion[] = (() => {
       id: `t${i + 1}`,
       placa: `${rand.int(1000, 9999)}-${letras[i % letras.length]}`,
       tipo: rand.chance(0.35) ? 'Frío' : 'Seco',
-      clase: rand.chance(0.3) ? 'Furgón' : 'Camión',
+      clase,
       capacidadPeso,
       capacidadVolumen,
       asignadoPeso: Number((capacidadPeso * ocupacion).toFixed(1)),
@@ -436,6 +456,12 @@ export interface ItemPedido {
   /** product_id, resuelto a su nombre. Hoy `product_snapshot` (`DB.puml:35-40`) solo trae peso y
    *  volumen: la descripción también hay que pedirla. */
   producto: string
+  /**
+   * Código SAP del material. Va JUNTO al nombre y no en su lugar: el nombre es lo que se lee de
+   * corrido, el código es lo que se dicta por teléfono cuando hay que reclamarle el stock a Ventas.
+   * Sin él, "Mayonesa Real doypack" no alcanza para pedir nada — hay tres presentaciones parecidas.
+   */
+  codigo: string
   /** `true` cuando la línea es regalo/promoción y NO mercadería facturada normal. */
   esBonificacion?: boolean
   /** Lo que se cuenta (cajas, packs, bolsas). No es dato del esquema. */
@@ -636,6 +662,7 @@ function generarItems(pedidoId: string, productType: ProductType): ItemPedido[] 
     return {
       id: `${pedidoId}-i${i + 1}`,
       producto: producto.nombre,
+      codigo: producto.codigo,
       esBonificacion,
       unidad: producto.unidad,
       solicitado,
@@ -1228,6 +1255,19 @@ export const pedidosDeOrden = (o: OrdenTransporte): number =>
  */
 export const MAX_PEDIDOS_POR_CAMION = 50
 
+/**
+ * Techo de CLIENTES (puntos de entrega) por camión.
+ *
+ * Es un límite distinto al de pedidos y al de capacidad, y por eso vive aparte: lo que se agota no es
+ * el espacio de la caja sino la JORNADA. Cada cliente cuesta llegar, estacionar, descargar, firmar y
+ * volver a subir, y a partir de 45 paradas el camión no termina el recorrido en su turno por más
+ * lugar que le quede adentro. Un camión puede ir al 40% de su capacidad y ser inviable igual.
+ *
+ * ALERTA, NO BLOQUEO: hay días en que se sale igual y se acepta volver tarde. La pantalla avisa; la
+ * decisión es de quien planifica.
+ */
+export const MAX_CLIENTES_POR_CAMION = 45
+
 // ── dispatch_plan ────────────────────────────────────────────────────────────────────────────
 
 // El listado se arma SOLO con columnas propias de `dispatch_plans` más el catálogo `plan_status`
@@ -1241,7 +1281,7 @@ export interface PlanCamion {
   camionId: string
   placa: string
   tipo: 'Frío' | 'Seco'
-  clase: 'Furgón' | 'Camión'
+  clase: ClaseCamion
   capacidadKg: number
   capacidadVolM3: number
   rutaNombre: string

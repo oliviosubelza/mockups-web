@@ -10,7 +10,13 @@
 // pantallas puedan converger después sin copiar y pegar la regla una tercera vez.
 import { ordenarPorCercania } from '../map/geo/hilbert'
 import { nearestOrder } from '../map/route-optimizer'
-import { DEPOSITO, type Camion, type Parada, type Pedido } from '../mock-data'
+import {
+  DEPOSITO,
+  MAX_CLIENTES_POR_CAMION,
+  type Camion,
+  type Parada,
+  type Pedido,
+} from '../mock-data'
 
 /** Una ruta del plan = un camión seleccionado. El color es el del camión (ya evita la franja azul). */
 export interface RutaPlan {
@@ -100,6 +106,10 @@ export function construirRutas(
  *
  * Recorrer la curva de Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta; el orden
  * fino dentro del grupo lo decide después el vecino-más-cercano desde el depósito.
+ *
+ * ADEMÁS DEL PESO, respeta la refrigeración: una parada con algún pedido de frío solo puede caer en
+ * un camión `Frío`. Si no hay ninguno con lugar, queda sin asignar — y el panel de avisos dice por
+ * qué. Antes esta regla no existía y el reparto mandaba frío a camiones secos sin decir nada.
  */
 export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
   const asignaciones: Asignaciones = {}
@@ -119,12 +129,18 @@ export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
   let actual = 0
 
   for (const parada of porCercania) {
+    // LA REFRIGERACIÓN ES UNA RESTRICCIÓN DURA, no una preferencia. Repartir solo por peso mandaba
+    // pedidos de frío a camiones secos: el plan cerraba perfecto en kilos y la mercadería no llegaba.
+    // Un camión de frío SÍ puede llevar carga seca, así que la restricción es en un solo sentido.
+    const necesitaFrio = parada.pedidos.some((p) => p.productType === 'Frío')
+    const sirve = (i: number) => !necesitaFrio || rutas[i].camion.tipo === 'Frío'
+
     // Primera ruta —desde la actual— donde la parada entra dentro de su objetivo; si ninguna tiene
     // lugar (resto de empaquetado), se reintenta contra la capacidad real.
     let idx = -1
     for (let k = 0; k < rutas.length; k++) {
       const i = (actual + k) % rutas.length
-      if (objetivoKg[i] >= parada.pesoTotal) {
+      if (sirve(i) && objetivoKg[i] >= parada.pesoTotal) {
         idx = i
         break
       }
@@ -132,14 +148,15 @@ export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
     if (idx === -1) {
       for (let k = 0; k < rutas.length; k++) {
         const i = (actual + k) % rutas.length
-        if (libreKg[i] >= parada.pesoTotal) {
+        if (sirve(i) && libreKg[i] >= parada.pesoTotal) {
           idx = i
           break
         }
       }
     }
-    // No entra en ninguna: queda SIN ASIGNAR en vez de sobrecargar un camión. El HUD de cobertura ya
-    // avisa el déficit; esconder la parada sería tapar el problema.
+    // No entra en ninguna: queda SIN ASIGNAR en vez de sobrecargar un camión —o de romper la cadena
+    // de frío—. El panel de avisos explica cuál de las dos cosas pasó; esconder la parada sería tapar
+    // el problema.
     if (idx === -1) {
       sinAsignar.push(parada)
       continue
@@ -282,6 +299,41 @@ export function aplicarAsignaciones(
   })
 }
 
+/**
+ * Umbrales de ocupación de un camión, en porcentaje de su capacidad.
+ *
+ * Hasta ahora había UN umbral (90%) repetido a mano en nueve archivos, y arriba de eso nada: una ruta
+ * al 1200% se pintaba igual que una al 91%. O sea que el color decía "atención" tanto para el camión
+ * que va lleno como para el que lleva doce veces su capacidad — dos situaciones que no se parecen en
+ * nada. Un aviso que no distingue el problema grande del chico no se mira más.
+ *
+ * Tres niveles y no dos, porque hay tres situaciones REALES distintas:
+ *   · < 90       → normal. Entra sin discusión.
+ *   · 90 – 150   → apretado. Pasa de la capacidad nominal, pero es el rango en el que se sale igual:
+ *                  se acomoda la carga, se apila distinto, se lleva un poco de más. ÁMBAR.
+ *   · > 150      → imposible. Ningún acomodo mete media carga extra en el mismo camión. ROJO.
+ *
+ * El 150 no sale de una tabla: es hasta dónde el negocio dijo que se estira. Vive acá, en un solo
+ * lugar, para que cambiarlo no obligue a buscar nueve archivos.
+ */
+export const OCUPACION_ALERTA = 90
+export const OCUPACION_CRITICA = 150
+
+export type NivelOcupacion = 'ok' | 'alta' | 'critica'
+
+export function nivelOcupacion(pct: number): NivelOcupacion {
+  if (pct > OCUPACION_CRITICA) return 'critica'
+  if (pct >= OCUPACION_ALERTA) return 'alta'
+  return 'ok'
+}
+
+/** Clases de texto por nivel. Una sola definición, o los nueve lugares se despintan de a uno. */
+export const TEXTO_OCUPACION: Record<NivelOcupacion, string> = {
+  ok: 'text-muted-foreground',
+  alta: 'text-amber-600 dark:text-amber-400',
+  critica: 'text-rose-600 dark:text-rose-400',
+}
+
 export interface CargaRuta {
   paradas: Parada[]
   pedidos: number
@@ -289,6 +341,17 @@ export interface CargaRuta {
   volumenM3: number
   /** Ocupación = la restricción que se agote primero (peso o volumen), como en `CapacityBar`. */
   ocupacionPct: number
+  /** `ocupacionPct` traducido a los tres estados que la pantalla pinta. Ver `nivelOcupacion`. */
+  nivel: NivelOcupacion
+  /**
+   * Pasa el techo de clientes por camión.
+   *
+   * Es una SEGUNDA restricción, independiente de `ocupacionPct`: lo que se agota acá es la jornada,
+   * no la caja. Una ruta puede ir al 38% de ocupación y ser imposible de cumplir igual porque son 52
+   * puntos de entrega. Por eso viaja como bandera propia y no metida dentro del porcentaje — meterla
+   * ahí haría que un solo número mezclara dos causas distintas y no se sabría cuál corregir.
+   */
+  excedeClientes: boolean
 }
 
 /** Lo que lleva encima una ruta con la asignación actual. */
@@ -302,13 +365,19 @@ export function cargaDeRuta(paradasAsignadas: Parada[], ruta: RutaPlan): CargaRu
   const capacidadM3 = ruta.camion.capacidadVolumen ?? 0
   const pctPeso = capacidadKg > 0 ? (pesoKg / capacidadKg) * 100 : 0
   const pctVolumen = capacidadM3 > 0 ? (volumenM3 / capacidadM3) * 100 : 0
+  const ocupacionPct = Math.round(Math.max(pctPeso, pctVolumen))
 
   return {
     paradas: propias,
     pedidos: propias.reduce((acc, p) => acc + p.pedidos.length, 0),
     pesoKg,
     volumenM3,
-    ocupacionPct: Math.round(Math.max(pctPeso, pctVolumen)),
+    ocupacionPct,
+    nivel: nivelOcupacion(ocupacionPct),
+    // Una parada = un punto de entrega = un cliente al que hay que llegar. Es la unidad que consume
+    // jornada, y por eso el tope se cuenta sobre paradas y no sobre pedidos: tres pedidos del mismo
+    // cliente son una sola bajada del camión.
+    excedeClientes: propias.length > MAX_CLIENTES_POR_CAMION,
   }
 }
 
@@ -325,6 +394,36 @@ const PIN_MAX_PX = 28
 
 /** Proporción alto/ancho de la gota. Sale del viewBox del path (26 × 34). */
 export const PIN_RATIO = 34 / 26
+
+/** Ancho mínimo para que un número de dos cifras se lea dentro del hueco blanco. */
+export const PIN_ANCHO_NUMERO = 22
+
+/**
+ * Desde qué zoom el mapa muestra el orden de visita en TODOS los pines asignados.
+ *
+ * Es un umbral y no "el que tenga lugar" a propósito. Con la regla vieja el número aparecía en los
+ * marcadores grandes y faltaba en los chicos, o sea que el orden de visita se leía en las paradas
+ * pesadas y no en las livianas — una mezcla que no responde a ninguna pregunta. Atado al zoom, la
+ * regla es una sola y se entiende sin explicarla: lejos se ve el reparto, cerca se ve el recorrido.
+ */
+export const ZOOM_NUMERO = 14
+
+/**
+ * Cuánto se agranda o achica el marcador según el zoom.
+ *
+ * A zoom de ciudad hay 54 gotas sobre veinte cuadras y lo que importa es la MANCHA —dónde se
+ * concentra cada ruta—, así que conviene que sean chicas y no se pisen. Acercándose, el espacio entre
+ * puntos crece y el marcador puede crecer con él: ahí la pregunta ya es cuál es cada uno.
+ *
+ * Un mapa de marcadores de tamaño fijo se ve apretado lejos y perdido cerca; este es el ajuste que
+ * hace cualquier mapa que se sienta bien al navegarlo.
+ */
+export function escalaPorZoom(zoom: number): number {
+  // Recorte a [11, 16] en los dos extremos: fuera de ese tramo el ajuste dejaría de ayudar. Más lejos
+  // los pines serían puntos indistinguibles; más cerca, gotas de medio bloque.
+  const z = Math.min(16, Math.max(11, zoom))
+  return 0.85 + ((z - 11) / 5) * 0.35
+}
 
 /**
  * Ancho del marcador según el peso de la parada.
@@ -343,16 +442,37 @@ export function anchoPin(peso: number, minPeso: number, maxPeso: number): number
   return Math.round(PIN_MIN_PX + t * (PIN_MAX_PX - PIN_MIN_PX))
 }
 
-/** Rango de peso del conjunto, para alimentar `diametroPin`. */
+/**
+ * Percentil que cierra la escala de tamaño por arriba. Todo lo que pese más que él dibuja el marcador
+ * más grande, sin estirar la escala para el resto.
+ */
+const PERCENTIL_TOPE = 0.9
+
+/**
+ * Rango de peso del conjunto para alimentar `anchoPin`. El techo NO es el máximo: es el percentil 90.
+ *
+ * POR QUÉ NO EL MÁXIMO. El marcador nunca puede crecer sin control —`anchoPin` recorta en 28 px— así
+ * que un pedido gigante no rompe el mapa por su tamaño. Rompe otra cosa, más silenciosa: se lleva
+ * puesta la escala de TODOS los demás. Con paradas de 177 a 2.533 kg la escala usa los 16-28 px
+ * enteros; si aparece una de 50.000, esa misma población pasa a repartirse entre 16 y 19 px y el mapa
+ * deja de distinguir una parada liviana de una pesada. Un solo dato atípico apaga la variable para
+ * las otras cincuenta y tres.
+ *
+ * Cerrando en el p90, la escala se calcula con el 90% "normal" y los atípicos SATURAN arriba. Se
+ * pierde poder distinguir entre dos gigantes —ambos dibujan 28 px— y eso es exactamente el intercambio
+ * correcto: que dos paradas enormes se vean igual de enormes no le cuesta nada a quien planifica; que
+ * cincuenta paradas se vean todas iguales, sí.
+ */
 export function rangoPeso(paradas: Parada[]): { min: number; max: number } {
   if (paradas.length === 0) return { min: 0, max: 0 }
-  let min = Infinity
-  let max = -Infinity
-  for (const parada of paradas) {
-    if (parada.pesoTotal < min) min = parada.pesoTotal
-    if (parada.pesoTotal > max) max = parada.pesoTotal
-  }
-  return { min, max }
+
+  const pesos = paradas.map((p) => p.pesoTotal).sort((a, b) => a - b)
+  const min = pesos[0]
+  const tope = pesos[Math.min(pesos.length - 1, Math.floor(pesos.length * PERCENTIL_TOPE))]
+
+  // Si el p90 empata con el mínimo (muchas paradas del mismo peso), cerrar ahí dejaría la escala
+  // plana. Se cae al máximo real, que es el comportamiento de antes y el único que queda con rango.
+  return { min, max: tope > min ? tope : pesos[pesos.length - 1] }
 }
 
 /** Trazo de una ruta: depósito → paradas en secuencia → depósito. Sin marcadores extra. */

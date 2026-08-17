@@ -34,7 +34,7 @@ import { CanalGlyph } from '../canal-glyph'
 import { GaleriaPunto } from '../GaleriaPunto'
 import { fotosDePunto, ilustracionDePunto } from '../mock-fotos'
 import { CANAL_META, tieneStockPorConfirmar, type Parada } from '../mock-data'
-import { cargaDeRuta, type RutaPlan } from './planner-model'
+import { TEXTO_OCUPACION, cargaDeRuta, type RutaPlan } from './planner-model'
 
 const fmtMoneda = new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' })
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
@@ -133,7 +133,7 @@ export function ParadaDialog({
                     <span
                       className={cn(
                         'ml-1 font-semibold tabular-nums',
-                        rutaCarga.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                        TEXTO_OCUPACION[rutaCarga.nivel],
                       )}
                     >
                       · {rutaCarga.ocupacionPct}%
@@ -188,7 +188,7 @@ export function ParadaDialog({
                         <span
                           className={cn(
                             'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                            rutaCarga.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                            TEXTO_OCUPACION[rutaCarga.nivel],
                           )}
                         >
                           {rutaCarga.ocupacionPct}%
@@ -222,7 +222,7 @@ export function ParadaDialog({
                           <span
                             className={cn(
                               'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                              c.ocupacionPct >= 90 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                              TEXTO_OCUPACION[c.nivel],
                             )}
                           >
                             {c.ocupacionPct}%

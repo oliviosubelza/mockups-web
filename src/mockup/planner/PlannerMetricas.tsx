@@ -138,7 +138,12 @@ export function PlannerMetricas({
       style={{ height: METRICAS_ALTO_PX }}
     >
       {/* Lo que se ELIGIÓ. Va primero porque es la causa: la capacidad de abajo sale de estos camiones
-          y la demanda sale de estas paradas. */}
+          y la demanda sale de estos puntos.
+
+          "PUNTOS" Y NO "PARADAS": antes de repartir no son paradas de nada —no hay recorrido todavía—,
+          y llamarlas así acá obligaba a que la misma cosa tuviera un nombre en las métricas, otro en
+          el botón de la barra y un tercero en el buscador. Parada queda reservada para el panel de
+          Rutas, que es donde el punto ya tiene camión y número de orden. */}
       <Fila
         icon={Truck}
         label="Camiones"
@@ -147,15 +152,15 @@ export function PlannerMetricas({
       />
       <Fila
         icon={MapPin}
-        label="Paradas"
+        label="Puntos"
         valor={String(paradas)}
-        titulo="Puntos de entrega del plan (los pedidos del mismo punto ya vienen unificados)"
+        titulo="Puntos de entrega del plan. Un punto agrupa TODOS los pedidos de ese cliente: el camión va una vez y descarga todo"
       />
       <Fila
         icon={Package}
         label="Pedidos"
         valor={String(pedidos)}
-        titulo="Pedidos que entran al plan con los filtros y decisiones actuales"
+        titulo="Órdenes de venta que entran al plan. Son más que los puntos: un mismo cliente puede tener varias"
       />
 
       <span className="h-px bg-border" aria-hidden />
