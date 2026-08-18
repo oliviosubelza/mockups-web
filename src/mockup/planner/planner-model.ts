@@ -385,18 +385,44 @@ export function cargaDeRuta(paradasAsignadas: Parada[], ruta: RutaPlan): CargaRu
  * Ancho mínimo y máximo del marcador (gota), en px.
  *
  * Chicos a propósito: con 59 paradas sobre una ciudad, marcadores de 40 px se tocan entre sí y el mapa
- * se convierte en una mancha. 16 px es el piso donde una gota todavía se distingue de otra a zoom de
- * barrio, y 28 px alcanza para que la diferencia de tamaño se lea sin que el más grande tape a sus
- * vecinos. El número de secuencia solo entra a partir de 22 px (ver `pinParada`).
+ * se convierte en una mancha. 13 px es el piso donde una gota todavía se distingue de otra a zoom de
+ * barrio, y 22 px alcanza para que la diferencia de tamaño se lea sin que el más grande tape a sus
+ * vecinos. El número de secuencia solo entra a partir de 20 px (ver `pinParada`).
+ *
+ * La referencia de escala es la capa de aeropuertos de Flightradar24: pines de ~14 px, planos, con la
+ * silueta hecha por una sombra y no por un contorno. Un marcador chico y limpio deja ver el mapa que
+ * está abajo, que es la mitad de la información — un marcador grande y con borde compite con él.
  */
-const PIN_MIN_PX = 16
-const PIN_MAX_PX = 28
+const PIN_MIN_PX = 13
+const PIN_MAX_PX = 22
 
-/** Proporción alto/ancho de la gota. Sale del viewBox del path (26 × 34). */
-export const PIN_RATIO = 34 / 26
+/**
+ * Proporción alto/ancho de la CAJA del ícono. Sale del viewBox del marcador (30 × 37).
+ *
+ * La caja es más grande que la gota (24 × 32) porque el aro azul de la parada marcada se dibuja por
+ * FUERA de la silueta, y en una caja justa quedaba recortado contra el borde del viewBox. Son 3
+ * unidades de aire arriba y a los costados y 2 abajo: lo que necesita ese aro y nada más.
+ */
+export const PIN_RATIO = 37 / 30
+
+/**
+ * Cuánto más ancha es la caja del ícono que la gota que dibuja adentro.
+ *
+ * Existe para que `PIN_MIN_PX`, `PIN_MAX_PX` y `PIN_ANCHO_NUMERO` sigan significando "ancho de la
+ * GOTA" y no "ancho de la caja". Sin este factor, reservar el margen del aro de selección habría
+ * achicado la gota un 20% — el marcador se vería MENOS, que es lo contrario de lo que se buscaba.
+ */
+export const CAJA_SOBRE_GOTA = 30 / 24
+
+/**
+ * Dónde está la PUNTA de la gota dentro de la caja, como fracción de su alto. Es el `iconAnchor`: un
+ * pin ancla en su punta o queda flotando arriba del lugar que señala. No es el borde de abajo de la
+ * caja, porque ahí abajo quedan las 2 unidades de aire del aro de selección.
+ */
+export const PIN_ANCLA_Y = 35 / 37
 
 /** Ancho mínimo para que un número de dos cifras se lea dentro del hueco blanco. */
-export const PIN_ANCHO_NUMERO = 22
+export const PIN_ANCHO_NUMERO = 20
 
 /**
  * Desde qué zoom el mapa muestra el orden de visita en TODOS los pines asignados.
@@ -407,6 +433,41 @@ export const PIN_ANCHO_NUMERO = 22
  * regla es una sola y se entiende sin explicarla: lejos se ve el reparto, cerca se ve el recorrido.
  */
 export const ZOOM_NUMERO = 14
+
+/**
+ * Desde qué zoom el marcador es una GOTA. Más lejos que esto es un PUNTO.
+ *
+ * POR QUÉ CAMBIA DE FORMA Y NO SOLO DE TAMAÑO. Las 53 paradas del plan caben en el radio urbano de
+ * Santa Cruz, así que a zoom de departamento entran todas en un cuadrado de 150 px y se pisan. Achicar
+ * la gota no alcanza: una gota es ALTA y tiene la cabeza ancha, así que al superponerse la cabeza de
+ * una tapa la punta de otra y el conjunto se lee como una mancha con relieve, no como puntos. Un disco
+ * del mismo diámetro se empaqueta mucho mejor —es lo más compacto que existe para un área dada— y
+ * apilado sigue dejando ver los colores de abajo, que a ese zoom es la única pregunta que queda en pie:
+ * dónde se concentra cada ruta.
+ *
+ * La otra mitad del argumento es que a ese zoom la gota no está haciendo su trabajo: lo que la
+ * justifica es anclar en la punta para señalar una coordenada exacta, y una coordenada exacta no
+ * significa nada cuando un píxel son 200 metros. Ahí el marcador ya no señala un lugar, señala una
+ * zona, y la forma correcta de dibujar una zona es un punto en su centro.
+ *
+ * 13 y no 12 porque 12 es el zoom inicial de la pantalla: entrar viendo puntos y que se conviertan en
+ * gotas con un solo click de acercamiento es la transición que se quiere. Entrar ya en gotas dejaría el
+ * primer cuadro —el más importante— siendo justamente el que se veía apelmazado.
+ */
+export const ZOOM_GOTA = 13
+
+/**
+ * Diámetro del punto respecto del ancho de la gota que reemplaza.
+ *
+ * Se deriva del mismo ancho y no es un tamaño fijo para que el punto SIGA CODIFICANDO EL PESO: la
+ * escala de tamaño es una de las tres variables del marcador, y perderla al alejarse dejaría el mapa
+ * de conjunto —el que contesta "dónde está la carga"— justo sin la variable de la carga.
+ *
+ * 0,55 sale de igualar áreas percibidas: un disco de 55% del ancho de la gota ocupa aproximadamente la
+ * misma superficie visual que ella sin su cabeza, así que el paso de una forma a la otra no se lee como
+ * un salto de tamaño.
+ */
+export const PUNTO_SOBRE_GOTA = 0.55
 
 /**
  * Cuánto se agranda o achica el marcador según el zoom.

@@ -34,10 +34,11 @@ import { usePlannerStore, type CapaBase, type ColorPor } from './planner-store'
 
 export function CapasMapa({
   rutas,
-  cargandoMercados,
+  cargandoCapas,
 }: {
   rutas: RutaPlan[]
-  cargandoMercados: boolean
+  /** Hay datos que el mapa DIBUJA viajando por red: mercados, recorridos por calles, o los dos. */
+  cargandoCapas: boolean
 }) {
   const capa = usePlannerStore((s) => s.capa)
   const setCapa = usePlannerStore((s) => s.setCapa)
@@ -67,7 +68,7 @@ export function CapasMapa({
         title="Capas del mapa"
         aria-label="Capas del mapa"
       >
-        {cargandoMercados ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
+        {cargandoCapas ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
         {/* Punto de "hay algo apagado". Sin él, un mapa al que le falta media información se ve igual
             que uno completo y se pierde tiempo buscando paradas que están ocultas. */}
         {(ocultas > 0 || !verTrazos || verMercados || verEtiquetas) && (

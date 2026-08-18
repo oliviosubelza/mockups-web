@@ -55,6 +55,7 @@ export function ParadaMenu({
   x,
   y,
   marcada,
+  hayRutas,
   onCerrar,
   onVerFicha,
   onAlternarSeleccion,
@@ -69,6 +70,13 @@ export function ParadaMenu({
   x: number
   y: number
   marcada: boolean
+  /**
+   * Si las rutas del plan YA EXISTEN (reparto hecho).
+   *
+   * `false` antes de optimizar: en ese momento hay camiones elegidos y paradas sueltas, no recorridos,
+   * y listar las N rutas derivadas de esos camiones las hacía pasar por generadas.
+   */
+  hayRutas: boolean
   onCerrar: () => void
   onVerFicha: () => void
   onAlternarSeleccion: () => void
@@ -106,7 +114,7 @@ export function ParadaMenu({
     const maxY = contenedor.clientHeight - el.offsetHeight - MARGEN_PX
     el.style.left = `${Math.max(MARGEN_PX, Math.min(x, maxX))}px`
     el.style.top = `${Math.max(MARGEN_PX, Math.min(y, maxY))}px`
-  }, [x, y, rutas.length])
+  }, [x, y, hayRutas, rutas.length])
 
   return (
     <div
@@ -166,60 +174,65 @@ export function ParadaMenu({
       </div>
 
       {/* Mover de ruta: lista PLANA y no un submenú. Con hasta ~10 rutas un submenú agrega un hover y
-          una espera para llegar a lo mismo, y este menú se abre justo para esto. */}
-      <div className="border-t border-border pt-1">
-        <p className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Mover a
-        </p>
-        <div className="max-h-48 overflow-y-auto">
-          {rutas.map((ruta) => {
-            const c = paradas.length > 0 ? cargaDeRuta(paradas, ruta) : null
-            return (
+          una espera para llegar a lo mismo, y este menú se abre justo para esto.
+
+          DESAPARECE ENTERO antes del reparto —ni el título ni la lista vacía— porque un "Mover a" sin
+          destinos posibles no es una acción deshabilitada: es una acción que todavía no existe. */}
+      {hayRutas && (
+        <div className="border-t border-border pt-1">
+          <p className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Mover a
+          </p>
+          <div className="max-h-48 overflow-y-auto">
+            {rutas.map((ruta) => {
+              const c = paradas.length > 0 ? cargaDeRuta(paradas, ruta) : null
+              return (
+                <Opcion
+                  key={ruta.id}
+                  onClick={() => {
+                    onMover(ruta.id)
+                    onCerrar()
+                  }}
+                >
+                  <span className="flex w-full items-center gap-2">
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ background: ruta.color }}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                      {ruta.camion.placa}
+                    </span>
+                    {c && (
+                      <span
+                        className={cn(
+                          'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                          TEXTO_OCUPACION[c.nivel],
+                        )}
+                      >
+                        {c.ocupacionPct}%
+                      </span>
+                    )}
+                  </span>
+                </Opcion>
+              )
+            })}
+            {/* Solo si ya tiene ruta: "sacar de la ruta" sobre una parada sin asignar es una opción muerta. */}
+            {parada.rutaId && (
               <Opcion
-                key={ruta.id}
+                icon={PackageX}
                 onClick={() => {
-                  onMover(ruta.id)
+                  onMover(null)
                   onCerrar()
                 }}
               >
-                <span className="flex w-full items-center gap-2">
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ background: ruta.color }}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                    {ruta.camion.placa}
-                  </span>
-                  {c && (
-                    <span
-                      className={cn(
-                        'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                        TEXTO_OCUPACION[c.nivel],
-                      )}
-                    >
-                      {c.ocupacionPct}%
-                    </span>
-                  )}
-                </span>
+                Sin asignar
               </Opcion>
-            )
-          })}
-          {/* Solo si ya tiene ruta: "sacar de la ruta" sobre una parada sin asignar es una opción muerta. */}
-          {parada.rutaId && (
-            <Opcion
-              icon={PackageX}
-              onClick={() => {
-                onMover(null)
-                onCerrar()
-              }}
-            >
-              Sin asignar
-            </Opcion>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

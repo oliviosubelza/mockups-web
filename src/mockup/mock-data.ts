@@ -29,7 +29,6 @@ import type { StepItem } from '@/components/ui/steps'
 import { ordenarPorCercania } from './map/geo/hilbert'
 import { createRand, uniqueNames } from './mock-random'
 import {
-  ANCLAS_ZONA,
   APELLIDOS,
   CODIGOS_EMPRESA,
   COLOR_CAMION_INACTIVO,
@@ -44,6 +43,7 @@ import {
   NOMBRES_SUCURSAL,
   PREFIJOS_POR_CANAL,
   PRODUCTOS,
+  PUNTOS_CALLE_SCZ,
   SUCURSALES_CADENA,
   VIAS,
 } from './mock-pools'
@@ -684,6 +684,56 @@ export const PEDIDOS: Pedido[] = (() => {
   let siguienteId = 1
   let siguientePunto = 1
 
+  /**
+   * Coordenadas ya asignadas, para que DOS puntos de entrega distintos no caigan en el mismo lugar.
+   *
+   * Es la contrapartida de elegir de un pool en vez de sortear con jitter. El jitter daba coordenadas
+   * prácticamente únicas por construcción; una lista de 440 posiciones, no: el dataset necesita ~200
+   * puntos, y eligiendo con reemplazo la paradoja del cumpleaños predice ~44 repeticiones. Cada
+   * repetición son dos clientes distintos, con su propio `DP-xxxx` y sus propios pedidos, dibujados
+   * exactamente uno ENCIMA del otro — un pin que tapa a otro sin que nadie pueda saberlo, que es el
+   * mismo problema que el `zIndexOffset` del mapa existe para evitar.
+   *
+   * Compartir punto SÍ existe y es otra cosa: es el mismo `DP-xxxx` con varios pedidos (ver
+   * `compartir` más abajo), y ahí un solo pin representando a todos es exactamente lo correcto.
+   */
+  const coordenadasUsadas = new Set<string>()
+
+  /**
+   * Una calle libre de la zona. Si la zona se agotó cae a cualquier otra: preferimos un pedido con la
+   * zona un poco corrida antes que dos pines superpuestos, porque lo primero no se ve y lo segundo sí.
+   * Con 110 posiciones por zona y ~50 pedidos por zona, la caída no debería ocurrir nunca.
+   */
+  const calleLibre = (zona: ZonaId): readonly [number, number] => {
+    const clave = (p: readonly [number, number]) => `${p[0]},${p[1]}`
+    const tomar = (p: readonly [number, number]) => {
+      coordenadasUsadas.add(clave(p))
+      return p
+    }
+
+    // SORTEO CON REINTENTO, y no "la primera libre de la lista". Barrer la lista en orden daría
+    // coordenadas correctas y un mapa mentiroso: el pool está ordenado por distancia al ancla, así que
+    // los primeros pedidos se apilarían todos alrededor del centro de su zona y la dispersión que este
+    // cambio venía a arreglar se perdería por otro lado. Con ~50 de 110 tomadas, la mitad de los
+    // sorteos cae en una libre y doce intentos alcanzan de sobra.
+    const pool = PUNTOS_CALLE_SCZ[zona]
+    for (let intento = 0; intento < 12; intento++) {
+      const p = rand.pick(pool)
+      if (!coordenadasUsadas.has(clave(p))) return tomar(p)
+    }
+
+    // Zona saturada: recién acá se barre, primero la propia y después las otras.
+    const propia = pool.find((p) => !coordenadasUsadas.has(clave(p)))
+    if (propia) return tomar(propia)
+    for (const otra of ZONA_IDS) {
+      const libre = PUNTOS_CALLE_SCZ[otra].find((p) => !coordenadasUsadas.has(clave(p)))
+      if (libre) return tomar(libre)
+    }
+    // Sin ninguna libre en las cuatro zonas (imposible con los volúmenes actuales) se reusa una: un pin
+    // repetido es preferible a un dataset que no se puede construir.
+    return pool[0]
+  }
+
   for (const canal of CANAL_IDS) {
     const cantidad = VOLUMEN.pedidosPorCanal
     const corte = CANAL_META[canal].timeOff
@@ -710,15 +760,17 @@ export const PEDIDOS: Pedido[] = (() => {
     for (let i = 0; i < cantidad; i++) {
       const clientePropio = deProvincia ? deProvincia[i].cliente : nombres![i]
 
-      // Coordenadas elegidas dentro del radio urbano de Santa Cruz de la Sierra
+      // La coordenada se ELIGE de las calles de la zona, no se calcula con jitter alrededor del ancla.
+      // El jitter era un cuadrado de casi 5 km de lado y no sabía dónde hay ciudad: dejaba pines en el
+      // Río Piraí, en las lagunas de oxidación y en campo abierto sin una calle a cientos de metros.
+      // Ver `PUNTOS_CALLE_SCZ` para de dónde salen las coordenadas y cómo regenerarlas.
       const ciudad: CiudadId = 'santacruz'
       const zona = rand.pick(ZONA_IDS)
-      const ancla = ANCLAS_ZONA[zona]
       const lugar = rand.pick(LUGARES_SCZ)
 
-      const jitter = 0.022
-      const lat = Number((ancla.lat + rand.float(-jitter, jitter, 4)).toFixed(4))
-      const lng = Number((ancla.lng + rand.float(-jitter, jitter, 4)).toFixed(4))
+      // `[lat, lng]`, orden de Leaflet. Desestructurado en dos líneas para que el orden quede escrito y
+      // nadie lo invierta al leerlo de corrido.
+      const [lat, lng] = calleLibre(zona)
 
       // ~22% de los pedidos reusan un punto de entrega ya existente del canal → paradas unificadas.
       const compartir = puntosDelCanal.length > 0 && rand.chance(0.22)

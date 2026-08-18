@@ -175,6 +175,7 @@ export function PlannerView() {
   const alternarSeleccion = usePlannerStore((s) => s.alternarSeleccion)
   const setHerramientaStore = usePlannerStore((s) => s.setHerramienta)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
+  const setRutasOcultas = usePlannerStore((s) => s.setRutasOcultas)
   const atajosAbiertos = usePlannerStore((s) => s.atajosAbiertos)
   const setAtajosAbiertos = usePlannerStore((s) => s.setAtajosAbiertos)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
@@ -341,9 +342,44 @@ export function PlannerView() {
     )
   }
 
-  /** Mueve un conjunto de paradas a una ruta (o las devuelve a "sin asignar") y resecuencia. */
-  const mover = (paradaIds: string[], rutaId: string | null, etiqueta: string) => {
+  /**
+   * Mueve un conjunto de paradas a una ruta (o les quita la asignación) y resecuencia.
+   *
+   * LOS TEXTOS SE ARMAN ACÁ, no en cada llamador. Los tres puntos de entrada —el menú de la parada, el
+   * detalle de la derecha y la barra de selección múltiple— tenían cada uno su copia de la misma
+   * frase, y la de la barra decía “N parada(s) → Sin asignar”, como si “Sin asignar” fuera una ruta a
+   * la que se manda algo. No lo es: quitarle la asignación a una parada no la mueve a ningún lado, la
+   * deja esperando camión. Una sola definición de la frase evita que las tres vuelvan a divergir.
+   *
+   * Son DOS textos y no uno: el velo de trabajo cuenta lo que está pasando (gerundio) y el aviso del
+   * final cuenta lo que quedó (pasado). Reusar la misma cadena para los dos dejaba el velo diciendo
+   * algo ya terminado.
+   *
+   * PRENDE LA RUTA DESTINO SI ESTABA APAGADA, y eso arregla un bug con forma de dato perdido. El mapa
+   * saca del dibujo las paradas cuya ruta está oculta (`visibles`, en PlannerMapa), y ese filtro solo
+   * alcanza a las ASIGNADAS: un punto sin ruta se ve siempre. Así que mover puntos a una ruta apagada
+   * los hacía desaparecer JUSTO en el frame en que se asignaban — se veía como "se borraron del plan"
+   * cuando en realidad estaban en la ruta y el mapa los estaba filtrando. El caso aparece solo cuando
+   * se suman canales DESPUÉS de optimizar: los puntos nuevos entran sin asignar, visibles, y el ojo de
+   * la ruta destino puede llevar rato apagado de cuando se estuvo aislando el reparto.
+   *
+   * Se prende la ruta en vez de bloquear el movimiento porque las dos cosas no compiten: apagar una
+   * ruta es una decisión sobre QUÉ MIRAR, y mandarle paradas es una decisión sobre EL PLAN. La segunda
+   * manda. El aviso lo dice para que el ojo no parezca haberse prendido solo.
+   */
+  const mover = (paradaIds: string[], rutaId: string | null) => {
     if (paradaIds.length === 0) return
+    const nombreDestino = rutaId ? (rutas.find((r) => r.id === rutaId)?.nombre ?? 'la ruta') : null
+    const una = paradaIds.length === 1
+    const quien = una
+      ? (paradas.find((p) => p.id === paradaIds[0])?.cliente ?? 'El punto')
+      : `${paradaIds.length} paradas`
+    const enCurso = nombreDestino
+      ? `Moviendo ${quien} a ${nombreDestino}…`
+      : `Dejando ${quien} sin asignar…`
+    const hecho = nombreDestino
+      ? `${quien} → ${nombreDestino}`
+      : `${quien} ${una ? 'quedó' : 'quedaron'} sin asignar`
     // Las rutas tocadas son la de ORIGEN de cada parada y la de destino: las dos cambian de recorrido.
     const tocadas = new Set<string>()
     if (rutaId) tocadas.add(rutaId)
@@ -355,16 +391,26 @@ export function PlannerView() {
     const siguiente = { ...asignaciones }
     for (const id of paradaIds) siguiente[id] = { rutaId, secuencia: 0 }
 
-    setProcesando(etiqueta)
+    setProcesando(enCurso)
     const id = window.setTimeout(() => {
       setAsignaciones(resecuenciar(paradasBase, siguiente, [...tocadas]))
+      // Del store y no del render: entre el click y este callback pasan 900 ms, y en ese rato el ojo de
+      // cualquier ruta pudo cambiar. Escribir el array capturado en el closure revertiría ese cambio.
+      const ocultas = usePlannerStore.getState().rutasOcultas
+      const seEncendio = rutaId !== null && ocultas.includes(rutaId)
+      if (seEncendio) setRutasOcultas(ocultas.filter((x) => x !== rutaId))
       setProcesando(null)
       setSeleccion([])
       setDestinoMasivo(null)
       // Vuelta a la mano: el rectángulo y el lazo DESHABILITAN el arrastre del mapa mientras están
       // activos. Dejar la herramienta puesta después de mover deja el mapa trabado sin motivo.
       setHerramienta('pan')
-      toast.success(etiqueta)
+      toast.success(
+        hecho,
+        seEncendio
+          ? { description: `${nombreDestino} estaba apagada en el mapa: se volvió a mostrar.` }
+          : undefined,
+      )
     }, 900)
     timers.current.push(id)
   }
@@ -724,18 +770,11 @@ export function PlannerView() {
             parada={foco}
             rutas={rutas}
             paradas={paradas}
+            hayRutas={optimizado}
             onCerrar={() => setParadaFoco(null)}
             onQuitar={() => quitarParadas([foco.id])}
             onVerFicha={() => abrirFicha(foco.id)}
-            onMover={(rutaId) =>
-              mover(
-                [foco.id],
-                rutaId,
-                rutaId
-                  ? `${foco.cliente} → ${rutas.find((r) => r.id === rutaId)?.nombre ?? 'ruta'}`
-                  : `${foco.cliente} quedó sin asignar`,
-              )
-            }
+            onMover={(rutaId) => mover([foco.id], rutaId)}
           />
         )}
       </div>
@@ -766,56 +805,69 @@ export function PlannerView() {
             {paradasMarcadas.reduce((acc, p) => acc + p.pedidos.length, 0)} pedidos
           </span>
 
-          <Select value={destinoMasivo ?? ''} onValueChange={(v) => v && setDestinoMasivo(v)}>
-            <SelectTrigger className="h-7 w-52 text-xs">
-              <SelectValue placeholder="Mover a…" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sin-asignar">
-                <span className="flex items-center gap-2 text-xs">
-                  <PackageX size={12} className="text-muted-foreground" />
-                  Sin asignar
-                </span>
-              </SelectItem>
-              {rutas.map((r) => {
-                const c = cargaDeRuta(paradas, r)
-                return (
-                  <SelectItem key={r.id} value={r.id}>
-                    <span className="flex w-full items-center gap-2 text-xs">
-                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                      <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.camion.placa}</span>
-                      <span
-                        className={cn(
-                          'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                          TEXTO_OCUPACION[c.nivel],
-                        )}
-                      >
-                        {c.ocupacionPct}%
-                      </span>
+          {/* MOVER A… SOLO EXISTE CON EL REPARTO HECHO, igual que "Nueva ruta" en la barra de arriba y
+              por la misma razón: antes de optimizar no hay rutas, hay camiones elegidos y paradas
+              sueltas. Ofrecer las N rutas derivadas de esos camiones las hacía pasar por generadas —y
+              "Sin asignar" ahí es doblemente vacío, porque en ese momento TODAS lo están.
+
+              No va deshabilitado: un select gris con un destino que no existe todavía sigue afirmando
+              que existe. Lo que queda es el otro uso legítimo de marcar un área antes de repartir,
+              que es sacar puntos del plan. */}
+          {!optimizado ? (
+            <span className="text-xs text-muted-foreground">
+              Optimizá primero: todavía no hay rutas a las que moverlas.
+            </span>
+          ) : (
+            <>
+              <Select value={destinoMasivo ?? ''} onValueChange={(v) => v && setDestinoMasivo(v)}>
+                <SelectTrigger className="h-7 w-52 text-xs">
+                  <SelectValue placeholder="Mover a…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sin-asignar">
+                    <span className="flex items-center gap-2 text-xs">
+                      <PackageX size={12} className="text-muted-foreground" />
+                      Sin asignar
                     </span>
                   </SelectItem>
-                )
-              })}
-            </SelectContent>
-          </Select>
+                  {rutas.map((r) => {
+                    const c = cargaDeRuta(paradas, r)
+                    return (
+                      <SelectItem key={r.id} value={r.id}>
+                        <span className="flex w-full items-center gap-2 text-xs">
+                          <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                          <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.camion.placa}</span>
+                          <span
+                            className={cn(
+                              'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                              TEXTO_OCUPACION[c.nivel],
+                            )}
+                          >
+                            {c.ocupacionPct}%
+                          </span>
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
 
-          <Button
-            size="sm"
-            className="h-7"
-            disabled={!destinoMasivo}
-            onClick={() => {
-              const rutaId = destinoMasivo === 'sin-asignar' ? null : destinoMasivo
-              const nombre = rutas.find((r) => r.id === rutaId)?.nombre ?? 'Sin asignar'
-              mover(
-                paradasMarcadas.map((p) => p.id),
-                rutaId,
-                `${paradasMarcadas.length} parada(s) → ${nombre}`,
-              )
-            }}
-          >
-            Mover
-          </Button>
+              <Button
+                size="sm"
+                className="h-7"
+                disabled={!destinoMasivo}
+                onClick={() =>
+                  mover(
+                    paradasMarcadas.map((p) => p.id),
+                    destinoMasivo === 'sin-asignar' ? null : destinoMasivo,
+                  )
+                }
+              >
+                Mover
+              </Button>
+            </>
+          )}
 
           {/* QUITAR es la otra mitad de esta barra: marcás un área y o la mandás a otra ruta, o la
               sacás del plan. No es una herramienta de puntero aparte —un modo "goma" que borra al
@@ -855,6 +907,7 @@ export function PlannerView() {
           parada={paradaMenu}
           rutas={rutas}
           paradas={paradas}
+          hayRutas={optimizado}
           x={menuParada.x}
           y={menuParada.y}
           marcada={seleccion.includes(paradaMenu.id)}
@@ -863,15 +916,7 @@ export function PlannerView() {
           onAlternarSeleccion={() => alternarSeleccion(paradaMenu.id)}
           onCentrar={() => pedirEncuadre('foco')}
           onQuitar={() => quitarParadas([paradaMenu.id])}
-          onMover={(rutaId) =>
-            mover(
-              [paradaMenu.id],
-              rutaId,
-              rutaId
-                ? `${paradaMenu.cliente} → ${rutas.find((r) => r.id === rutaId)?.nombre ?? 'ruta'}`
-                : `${paradaMenu.cliente} quedó sin asignar`,
-            )
-          }
+          onMover={(rutaId) => mover([paradaMenu.id], rutaId)}
         />
       )}
 
@@ -891,16 +936,11 @@ export function PlannerView() {
         parada={fichaAbierta ? foco : null}
         rutas={rutas}
         paradas={paradas}
+        hayRutas={optimizado}
         onCerrar={cerrarFicha}
         onMover={(rutaId) => {
           if (!foco) return
-          mover(
-            [foco.id],
-            rutaId,
-            rutaId
-              ? `${foco.cliente} → ${rutas.find((r) => r.id === rutaId)?.nombre ?? 'ruta'}`
-              : `${foco.cliente} quedó sin asignar`,
-          )
+          mover([foco.id], rutaId)
           cerrarFicha()
         }}
         onCentrar={() => {

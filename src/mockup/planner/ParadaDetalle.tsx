@@ -32,6 +32,7 @@ export function ParadaDetalle({
   parada,
   rutas,
   paradas = [],
+  hayRutas,
   onCerrar,
   onQuitar,
   onMover,
@@ -40,6 +41,13 @@ export function ParadaDetalle({
   parada: Parada
   rutas: RutaPlan[]
   paradas?: Parada[]
+  /**
+   * Si las rutas del plan YA EXISTEN (reparto hecho).
+   *
+   * `false` antes de optimizar: hay camiones elegidos y paradas sueltas, no recorridos. El selector se
+   * reemplaza por el estado del punto, que en ese momento es el único dato real.
+   */
+  hayRutas: boolean
   onCerrar: () => void
   /** Saca el punto de entrega del plan. Reversible desde la card "Quitados". */
   onQuitar: () => void
@@ -108,66 +116,76 @@ export function ParadaDetalle({
           <span className="text-[10px] uppercase leading-none tracking-wide text-muted-foreground">
             Ruta asignada
           </span>
-          <Select
-            value={parada.rutaId ?? 'sin-asignar'}
-            onValueChange={(v) => onMover(v === 'sin-asignar' ? null : v)}
-          >
-            <SelectTrigger className="h-8 w-full text-xs">
-              {/* Ver la nota del mismo control en `ParadaDialog`: sin children, el trigger mostraba el
-                  id crudo de la ruta hasta que alguien abría el popup. */}
-              <SelectValue>
-                {ruta ? (
-                  <span className="flex w-full items-center gap-2">
-                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />
-                    <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
-                    <span className="shrink-0 font-mono text-muted-foreground">{ruta.camion.placa}</span>
-                    {rutaCarga && (
-                      <span
-                        className={cn(
-                          'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                          TEXTO_OCUPACION[rutaCarga.nivel],
-                        )}
-                      >
-                        {rutaCarga.ocupacionPct}%
-                      </span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">Sin asignar</span>
-                )}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sin-asignar">
-                <span className="flex items-center gap-2 text-xs">
-                  <PackageX size={12} className="text-muted-foreground" />
-                  Sin asignar
-                </span>
-              </SelectItem>
-              {rutas.map((r) => {
-                const c = paradas.length > 0 ? cargaDeRuta(paradas, r) : null
-                return (
-                  <SelectItem key={r.id} value={r.id}>
-                    <span className="flex w-full items-center gap-2 text-xs">
-                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                      <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
-                      <span className="shrink-0 font-mono text-muted-foreground">{r.camion.placa}</span>
-                      {c && (
+          {/* SIN RUTAS TODAVÍA no hay selector: antes de optimizar las rutas no existen —hay camiones
+              elegidos y paradas sueltas— y un desplegable con las N derivadas de esos camiones las
+              hace pasar por generadas. Queda el dato, que es el verdadero: este punto no tiene camión
+              y lo va a tener cuando se reparta. */}
+          {hayRutas ? (
+            <Select
+              value={parada.rutaId ?? 'sin-asignar'}
+              onValueChange={(v) => onMover(v === 'sin-asignar' ? null : v)}
+            >
+              <SelectTrigger className="h-8 w-full text-xs">
+                {/* Ver la nota del mismo control en `ParadaDialog`: sin children, el trigger mostraba el
+                    id crudo de la ruta hasta que alguien abría el popup. */}
+                <SelectValue>
+                  {ruta ? (
+                    <span className="flex w-full items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: ruta.color }} />
+                      <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
+                      <span className="shrink-0 font-mono text-muted-foreground">{ruta.camion.placa}</span>
+                      {rutaCarga && (
                         <span
                           className={cn(
                             'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                            TEXTO_OCUPACION[c.nivel],
+                            TEXTO_OCUPACION[rutaCarga.nivel],
                           )}
                         >
-                          {c.ocupacionPct}%
+                          {rutaCarga.ocupacionPct}%
                         </span>
                       )}
                     </span>
-                  </SelectItem>
-                )
-              })}
-            </SelectContent>
-          </Select>
+                  ) : (
+                    <span className="text-muted-foreground">Sin asignar</span>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sin-asignar">
+                  <span className="flex items-center gap-2 text-xs">
+                    <PackageX size={12} className="text-muted-foreground" />
+                    Sin asignar
+                  </span>
+                </SelectItem>
+                {rutas.map((r) => {
+                  const c = paradas.length > 0 ? cargaDeRuta(paradas, r) : null
+                  return (
+                    <SelectItem key={r.id} value={r.id}>
+                      <span className="flex w-full items-center gap-2 text-xs">
+                        <span className="size-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                        <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                        <span className="shrink-0 font-mono text-muted-foreground">{r.camion.placa}</span>
+                        {c && (
+                          <span
+                            className={cn(
+                              'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                              TEXTO_OCUPACION[c.nivel],
+                            )}
+                          >
+                            {c.ocupacionPct}%
+                          </span>
+                        )}
+                      </span>
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sin asignar — se le asigna un camión al optimizar.
+            </p>
+          )}
           {ruta && parada.secuencia > 0 && (
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Truck size={11} />

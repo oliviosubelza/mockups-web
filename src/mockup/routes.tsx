@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardCheck, ClipboardList, Flag, Map as MapIcon, Radar, Route } from 'lucide-react'
+import { ClipboardCheck, ClipboardList, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -23,6 +23,8 @@ import { MonitoreoDetalleView } from './monitoreo/MonitoreoDetalleView'
 import { PlanningView } from './views/PlanningView'
 import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
+import { ZonasView } from './zonas/ZonasView'
+import { ZonaEditorView } from './zonas/ZonaEditorView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -233,6 +235,36 @@ export const routes: MockRoute[] = [
     label: 'Planificación mapa',
     icon: MapIcon,
     component: PlannerView,
+    order: 2,
+    fullBleed: true,
+    showInSidebar: false,
+  },
+  {
+    // Dato maestro: zonas de reparto por ciudad. Ítem propio en el sidebar — no es una acción de
+    // un plan puntual, es un perímetro que muchos planes van a reusar.
+    id: 'zonas',
+    path: '/zonas',
+    label: 'Zonas',
+    icon: LandPlot,
+    component: ZonasView,
+    order: 2,
+  },
+  {
+    // Dibujar el polígono es un mapa a pantalla completa, no un modal: mismo criterio que el
+    // editor de planificación. Sin id en la URL → zona nueva.
+    id: 'zona-nueva',
+    path: '/zonas/nueva',
+    label: 'Nueva zona',
+    component: ZonaEditorView,
+    order: 2,
+    fullBleed: true,
+    showInSidebar: false,
+  },
+  {
+    id: 'zona-editar',
+    path: '/zonas/:zonaId/editar',
+    label: 'Editar zona',
+    component: ZonaEditorView,
     order: 2,
     fullBleed: true,
     showInSidebar: false,

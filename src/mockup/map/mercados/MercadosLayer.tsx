@@ -10,6 +10,7 @@
 // de los tiles (200) y debajo de TODO lo demás (rutas 400, marcadores 600, etiquetas 650), sin importar
 // quién se monte primero.
 import { Pane, Polygon, Tooltip } from 'react-leaflet'
+import { oscurecer } from '../color'
 import type { MercadoMapa } from './mercado-mapa'
 
 /** Nombre del pane. Exportado para que nadie lo escriba de nuevo como string suelto. */
@@ -47,6 +48,17 @@ export function MercadosLayer({
 }) {
   return (
     <Pane name={PANE_MERCADOS} style={{ zIndex: Z_PANE_MERCADOS }}>
+      {/* ── Pasada 1: SOLO LOS RELLENOS ─────────────────────────────────────────────────────────
+          Dos pasadas y no un polígono con relleno y borde, por la misma razón que los trazos de ruta
+          se dibujan en dos vueltas (halo primero, color después): los mercados se TOCAN, y Leaflet los
+          apila en el orden en que se montan. Con una sola pasada, el relleno del mercado que se monta
+          último pasa por encima del borde de su vecino y la frontera entre los dos se borra justo donde
+          hace falta. Rellenos primero y bordes después, cada límite se dibuja completo.
+
+          El relleno queda BAJO —0.16— a propósito. Es la parte del polígono que compite con los pines
+          que tiene adentro, y subirla es exactamente lo que apagaba los puntos de entrega: el mercado
+          se veía más y el dato que importa, menos. Lo que hace legible la zona es el borde de la pasada
+          siguiente, que no le cuesta contraste a nada. */}
       {mercados.map((mercado) => {
         const seleccionado = mercado.id === seleccionadoId
         return (
@@ -54,14 +66,11 @@ export function MercadosLayer({
             key={mercado.id}
             positions={mercado.anillos}
             pathOptions={{
-              color: mercado.color,
-              // El mercado seleccionado se marca con el BORDE (más grueso y opaco), no con el relleno:
-              // subir el relleno le come contraste a los pines que caen adentro, que es justo lo que no
-              // se puede perder de vista.
-              weight: seleccionado ? 3.5 : 1.25,
-              opacity: seleccionado ? 1 : 0.65,
+              stroke: false,
               fillColor: mercado.color,
-              fillOpacity: seleccionado ? 0.2 : 0.12,
+              // El seleccionado sube el relleno porque ahí sí hay una pregunta puntual —cuál es este— y
+              // vale gastarle contraste al interior para contestarla.
+              fillOpacity: seleccionado ? 0.3 : 0.16,
             }}
             eventHandlers={{
               // Volver a clickear el mismo mercado lo deselecciona: sin esto no habría forma de quitar
@@ -104,6 +113,38 @@ export function MercadosLayer({
             </Tooltip>
             )}
           </Polygon>
+        )
+      })}
+
+      {/* ── Pasada 2: SOLO LOS BORDES ───────────────────────────────────────────────────────────
+          Acá está todo el peso visual del mercado. Un contorno de 2,5 px opaco delimita la zona de un
+          vistazo y no le saca ni un punto de contraste a los pines que tiene adentro, que es la única
+          forma de que un mercado se lea sólido sin tapar lo que contiene. Antes esto se intentaba con
+          el relleno y el resultado era el peor de los dos mundos: al 0,12 el polígono no se veía, y
+          subiéndolo se apagaban los puntos de entrega.
+
+          El TONO ES MÁS OSCURO que el relleno (`oscurecer`): la paleta de mercados es deliberadamente
+          suave —son fondo— y un borde del mismo tono claro no delimita nada. Oscurecerlo mantiene el
+          matiz, que es lo que identifica al mercado, y le da el contraste que un límite necesita.
+
+          `interactive: false`: esta pasada está ENCIMA de los rellenos, así que si recibiera eventos se
+          quedaría con los clicks del borde y el `onSeleccionar` de abajo nunca se enteraría. Sin
+          eventos, el click atraviesa hasta el relleno, que es el dueño de la interacción y del nombre. */}
+      {mercados.map((mercado) => {
+        const seleccionado = mercado.id === seleccionadoId
+        return (
+          <Polygon
+            key={`borde-${mercado.id}`}
+            positions={mercado.anillos}
+            interactive={false}
+            pathOptions={{
+              fill: false,
+              color: oscurecer(mercado.color, seleccionado ? 0.55 : 0.7),
+              weight: seleccionado ? 4 : 2.5,
+              opacity: 1,
+              lineJoin: 'round',
+            }}
+          />
         )
       })}
     </Pane>

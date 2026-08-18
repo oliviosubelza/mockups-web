@@ -178,11 +178,20 @@ body[data-resizing] * {
      queda claro qué cambió; viendo el trazo avanzar se lee "esto es un recorrido", no "esto es una
      línea". Va en CSS porque Leaflet dibuja SVG y el `className` de la polilínea es el único enganche.
 
-     El `stroke-dasharray` alto es a propósito: es la longitud máxima que la animación puede recorrer.
-     Un valor chico dejaría el trazo punteado al terminar. */
+     LAS UNIDADES SON RELATIVAS, no píxeles, y eso corrige un bug: antes el dasharray era 12000 —"un
+     número lo bastante grande"— y el problema es que la longitud del path en el SVG de Leaflet está en
+     PÍXELES DE PANTALLA, así que crece con el zoom. Una ruta de 50 km mide ~5.500 px a zoom 14 y
+     ~22.000 a zoom 16: pasado el tope, el dash terminaba antes que la línea y la cola quedaba
+     INVISIBLE. Con el ruteo por calles el recorrido es todavía más largo y el corte se veía siempre.
+
+     El arreglo es `pathLength="1"` en el elemento (lo pone `PlannerMapa` al montar la capa): declara
+     que el path mide 1, y a partir de ahí el dash se mide en fracciones del recorrido — 1 es "todo",
+     sin importar el zoom ni los kilómetros. Por eso la clase la agrega el mismo callback que pone el
+     atributo: si el elemento no estuviera, sin clase la línea se dibuja entera y sólida, mientras que
+     un `dasharray: 1` sin `pathLength` la haría desaparecer. Falla del lado seguro. */
   .ruta-trazo {
-    stroke-dasharray: 12000;
-    stroke-dashoffset: 12000;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
     animation: ruta-trazo 900ms ease-out forwards;
   }
   @keyframes ruta-trazo {

@@ -3,8 +3,13 @@
 // de lo que es del plan.
 //
 // Cada punto de entrega es una GOTA que codifica tres cosas sin texto: color (ruta asignada, o canal),
-// tamaño (peso de la parada) y número (orden de visita). Gris punteado = todavía sin ruta, que es
+// tamaño (peso de la parada) y número (orden de visita). Gris apagado = todavía sin ruta, que es
 // justamente el trabajo pendiente del planificador.
+//
+// A ZOOM LEJANO la gota pasa a ser un PUNTO (ver `ZOOM_GOTA`): las 53 paradas caben en el radio urbano
+// de Santa Cruz y a vista de departamento se pisaban entre sí hasta formar una mancha. La regla es una
+// sola y vale para todos los marcadores a la vez, el depósito incluido: lejos, vista de conjunto —
+// formas compactas y chicas—; cerca, vista de detalle.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Warehouse } from 'lucide-react'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
@@ -13,16 +18,22 @@ import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
+import { useRutasPorCalles } from '../map/use-rutas-calles'
+import { oscurecer } from '../map/color'
 import { reactIcon } from '../map/div-icon'
 import { CANAL_META, DEPOSITO, type Parada } from '../mock-data'
 import { PlannerHerramientas } from './PlannerHerramientas'
 import {
   anchoPin,
+  CAJA_SOBRE_GOTA,
   escalaPorZoom,
   PIN_ANCHO_NUMERO,
+  PIN_ANCLA_Y,
   PIN_RATIO,
+  PUNTO_SOBRE_GOTA,
   rangoPeso,
   trazoDeRuta,
+  ZOOM_GOTA,
   ZOOM_NUMERO,
   type RutaPlan,
 } from './planner-model'
@@ -55,12 +66,17 @@ const TILES: Record<CapaBase, string> = {
 }
 
 /**
- * Contorno de la gota. viewBox 26 × 34, con la PUNTA en (13, 33) — de ahí sale el `iconAnchor`: un pin
- * ancla en su punta, no en su centro, o queda flotando arriba del lugar que señala.
+ * Contorno de la gota, con la PUNTA en (13, 33). El path no cambió; lo que cambió es la caja que lo
+ * contiene: `-2 -2 30 37` en vez de `0 0 26 34`.
  *
- * El `1` de margen es para que el trazo blanco del borde no quede recortado por el viewBox.
+ * POR QUÉ LA CAJA ES MÁS GRANDE QUE LA GOTA. El aro azul de la parada marcada se dibuja por FUERA de
+ * la silueta, y en un viewBox justo (`0 0 26 34`, una sola unidad de aire) quedaba recortado contra el
+ * borde — un aro cortado en la coronilla se ve peor que no tener aro. 3 unidades de aire arriba y a los
+ * costados y 2 abajo es exactamente lo que ese aro necesita; el marcador sin marcar no dibuja nada
+ * fuera de la silueta.
  */
 const GOTA = 'M13 1C6.37 1 1 6.37 1 13c0 8.6 12 20 12 20s12-11.4 12-20C25 6.37 19.63 1 13 1z'
+const VIEWBOX_PIN = '-2 -2 30 37'
 
 /**
  * Punto de entrega: una GOTA sólida de color.
@@ -102,8 +118,15 @@ function pinParada(
   // zoom la pregunta es "¿en qué orden los visito?", y responderla vale ceder un poco de la escala de
   // peso en las paradas más livianas.
   const base = cabeNumero ? Math.max(ancho, PIN_ANCHO_NUMERO) : ancho
-  const w = resaltado ? base + 6 : base
+  const anchoGota = resaltado ? base + 6 : base
+  // La CAJA del ícono, no la gota: reserva el aire que necesita el aro de la parada marcada.
+  // `anchoGota` sigue siendo el ancho de la silueta, que es lo que codifica el peso.
+  const w = Math.round(anchoGota * CAJA_SOBRE_GOTA)
   const h = Math.round(w * PIN_RATIO)
+  // Versión oscura del color, solo para el NÚMERO de secuencia sobre el hueco blanco. Se deriva del
+  // color en vez de ser un gris fijo para no meter un color ajeno al mapa: el matiz sigue diciendo de
+  // quién es el punto, y lo único que cambia es el contraste que un texto de 9 px necesita.
+  const oscuro = oscurecer(color, 0.55)
   // Id único del degradado: los marcadores se inyectan como HTML suelto en el DOM del mapa, y un id
   // repetido haría que todos resolvieran contra la primera definición — que desaparece en cuanto ese
   // marcador se desmonta, dejando al resto sin relleno.
@@ -117,15 +140,19 @@ function pinParada(
         height: h,
         // La escala del hover y del "pop" tienen que crecer DESDE LA PUNTA. Con el origen al centro
         // —el default de `.stop-pin`— el marcador se despega del lugar que señala mientras se agranda.
-        transformOrigin: 'bottom center',
-        // `drop-shadow` y no `box-shadow`: sigue la SILUETA de la gota. Un box-shadow dibujaría la
-        // sombra de un rectángulo alrededor de un marcador que no lo es.
+        // Y la punta ya no es `bottom`: la caja reserva 2 unidades abajo para el aro de selección.
+        transformOrigin: `center ${(PIN_ANCLA_Y * 100).toFixed(1)}%`,
+        // LA SOMBRA ES EL BORDE de este marcador, así que no es un adorno: es lo único que lo separa
+        // del mapa. `drop-shadow` y no `box-shadow` porque sigue la SILUETA de la gota — un box-shadow
+        // dibujaría la sombra de un rectángulo alrededor de algo que no lo es. Corta y pegada (1-2 px)
+        // y no una sombra de elevación: a 14 px, una sombra larga se lee como un segundo marcador
+        // borroso al lado del primero.
         filter: resaltado
-          ? 'drop-shadow(0 3px 5px rgba(0,0,0,0.45))'
-          : 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))',
+          ? 'drop-shadow(0 2px 3px rgba(0,0,0,0.5))'
+          : 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
       }}
     >
-      <svg width={w} height={h} viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">
+      <svg width={w} height={h} viewBox={VIEWBOX_PIN} xmlns="http://www.w3.org/2000/svg">
         <defs>
           {/* Brillo arriba y sombra abajo, en blanco y negro translúcidos. Le da volumen sin tener que
               calcular una versión más clara y otra más oscura de cada color de ruta. */}
@@ -136,26 +163,38 @@ function pinParada(
           </linearGradient>
         </defs>
 
+        {/* SIN BORDE: la silueta la hace la SOMBRA.
+            Este marcador pasó por las dos versiones equivocadas antes de llegar acá. Con borde blanco y
+            contorno oscuro por fuera, el blanco quedaba encerrado entre dos colores y se leía como una
+            línea brillante alrededor del pin. Dejando solo el contorno oscuro de 2 px, el borde seguía
+            pesando más que el marcador: a 14 px, 2 px de contorno son un séptimo del ancho, y el mapa
+            se llenaba de anillos.
+            Lo que separa el pin del fondo es el `drop-shadow` del div —corto y pegado, como en la capa
+            de aeropuertos de Flightradar24—: sigue la silueta, no le agrega grosor y funciona igual
+            sobre calles claras que sobre satélite, que es más de lo que hacía cualquiera de los bordes.
+
+            El único trazo que queda es el AZUL de la parada marcada o en foco, y ese no es decoración:
+            es el estado de la selección, y tiene que ganarle al resto del mapa. */}
         <path
           d={GOTA}
           fill={color}
-          stroke={resaltado ? SELECCION : '#ffffff'}
-          strokeWidth={resaltado ? 2.5 : 1.8}
-          // Punteado = sin ruta todavía. Es la misma información que da el gris, dicha por un segundo
-          // canal: sobre satélite el gris pierde contraste y el borde se sigue leyendo.
-          strokeDasharray={asignada ? undefined : '3 2.5'}
+          stroke={resaltado ? SELECCION : 'none'}
+          strokeWidth={resaltado ? 2.5 : 0}
           strokeLinejoin="round"
         />
         <path d={GOTA} fill={`url(#${gid})`} />
 
         {/* Hueco blanco, como el marcador de referencia. Es lo que hace que la gota se lea como un pin
-            y no como una lágrima de color, y de paso es el fondo del número. */}
+            y no como una lágrima de color, y de paso es el fondo del número. Sin aro: a este tamaño un
+            aro alrededor de un círculo de 5 px es la misma clase de ruido que el borde exterior. */}
         <circle cx="13" cy="13" r={cabeNumero ? 6.6 : 4.4} fill="#ffffff" />
         {cabeNumero && (
           <text
             x="13"
             y="13"
-            fill={color}
+            // El número va en el tono OSCURO y no en el color plano: sobre blanco, un ámbar o un lima a
+            // 9 px es ilegible. Es el mismo color, con el contraste que un texto de ese cuerpo necesita.
+            fill={oscuro}
             fontSize="9"
             fontWeight="700"
             fontFamily="system-ui, sans-serif"
@@ -168,30 +207,84 @@ function pinParada(
       </svg>
     </div>,
     [w, h],
-    // Ancla en la PUNTA de la gota, no en el centro.
-    [w / 2, h],
+    // Ancla en la PUNTA de la gota, no en el centro ni en el borde de abajo de la caja: abajo quedan
+    // las 2 unidades de aire del aro de selección, y anclar ahí correría todos los marcadores.
+    [w / 2, Math.round(h * PIN_ANCLA_Y)],
   )
 }
 
-const pinDeposito = reactIcon(
-  <div
-    style={{
-      width: 36,
-      height: 36,
-      borderRadius: 999,
-      background: '#0f172a',
-      border: '2px solid #fff',
-      boxShadow: '0 2px 6px rgb(0 0 0 / 0.4)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#fff',
-    }}
-  >
-    <Warehouse size={18} strokeWidth={2.25} />
-  </div>,
-  36,
-)
+/**
+ * Punto de entrega a ZOOM LEJANO: un disco, no una gota (ver `ZOOM_GOTA` para el por qué del cambio de
+ * forma).
+ *
+ * Conserva las DOS variables que a ese zoom todavía se leen —color (de quién es el punto) y tamaño
+ * (cuánto pesa)— y suelta las dos que no: la punta que señala una coordenada exacta, que no significa
+ * nada cuando un píxel son 200 metros, y el número de orden, que a ese cuerpo no se lee (`ZOOM_NUMERO`
+ * es 14, así que en modo punto nunca corresponde dibujarlo).
+ *
+ * Es un div y no un SVG porque un círculo con `border-radius` no necesita un path, y esa diferencia
+ * arrastra otra: `box-shadow` respeta el redondeo, así que acá alcanza y no hace falta el `drop-shadow`
+ * —bastante más caro— que la gota sí necesita para que la sombra siga su silueta.
+ */
+function pinPunto(color: string, ancho: number, marcada: boolean, enFoco: boolean) {
+  const resaltado = marcada || enFoco
+  // Piso de 5 px: por debajo de eso un disco deja de ser un objeto y se lee como suciedad del mapa.
+  const diametro = Math.max(5, Math.round(ancho * PUNTO_SOBRE_GOTA))
+  // El aro de selección va POR FUERA (`box-sizing: content-box`) y no comiéndose el disco: si creciera
+  // hacia adentro, marcar un punto lo haría más chico justo cuando pasa a ser el que estás mirando.
+  const aro = resaltado ? 2 : 0
+  const total = diametro + aro * 2
+
+  return reactIcon(
+    <div
+      className={`stop-pin ${resaltado ? 'stop-pin-selected' : ''}`}
+      style={{
+        width: diametro,
+        height: diametro,
+        borderRadius: 999,
+        background: color,
+        // EXPLÍCITO: el reset de Tailwind pone `border-box` en todo, y con eso el aro se comería el
+        // disco en vez de rodearlo — exactamente el efecto contrario al que busca.
+        boxSizing: 'content-box',
+        border: aro ? `${aro}px solid ${SELECCION}` : undefined,
+        boxShadow: resaltado ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 2px rgba(0,0,0,0.45)',
+      }}
+    />,
+    total,
+    // Sin `anchor`: un disco ancla en su CENTRO, que es el default de `divIcon`. La gota es la excepción
+    // —ancla en la punta— y por eso es la única que lo pasa explícito.
+  )
+}
+
+/**
+ * El almacén de salida. Sigue el MISMO umbral que las paradas (`ZOOM_GOTA`) y por la misma razón: era
+ * un disco de 36 px fijo, así que al alejarse quedaba seis veces más grande que los puntos y se comía
+ * el centro de la nube — el objeto que menos se consulta tapando a los 53 que sí. Lejos vale la mitad;
+ * de cerca recupera su tamaño, que es cuando de verdad hace falta leer el ícono.
+ */
+function pinDeposito(comoGota: boolean) {
+  const lado = comoGota ? 36 : 22
+  return reactIcon(
+    <div
+      style={{
+        width: lado,
+        height: lado,
+        borderRadius: 999,
+        background: '#0f172a',
+        border: '2px solid #fff',
+        boxSizing: 'border-box',
+        boxShadow: '0 2px 6px rgb(0 0 0 / 0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+      }}
+    >
+      <Warehouse size={comoGota ? 18 : 12} strokeWidth={2.25} />
+    </div>,
+    lado,
+  )
+}
 
 /**
  * Cámara del mapa. Un solo lugar mueve la vista, y lo hace cuando alguien lo PIDE (`encuadreToken`),
@@ -382,12 +475,56 @@ export function PlannerMapa({
       .filter((t) => t.path.length > 2)
   }, [ocultas, optimizado, paradas, rutas, verTrazos])
 
+  /**
+   * El recorrido POR CALLES de cada ruta, cuando ya llegó.
+   *
+   * `trazos[].path` sigue siendo la secuencia de paradas —depósito, las visitas en orden, depósito— y
+   * eso es el PLAN. Lo que el ruteo agrega es cómo se maneja entre esos puntos, y por eso no lo
+   * reemplaza en el modelo: si el servidor no contesta, el trazo recto se sigue dibujando y el plan se
+   * sigue leyendo igual, solo menos realista. El único que sabe la diferencia es este componente.
+   */
+  const tramos = useMemo(
+    () => trazos.map((t) => ({ id: t.ruta.id, puntos: t.path })),
+    [trazos],
+  )
+  const { porRuta: porCalles, cargando: ruteando } = useRutasPorCalles(tramos, optimizado && verTrazos)
+
+  /**
+   * Las rutas que el mapa dibuja AHORA. Una ruta NO SE DIBUJA hasta tener su geometría definitiva, y esa
+   * es la corrección de dos reportes que resultaron ser el mismo.
+   *
+   * Al optimizar se veía aparecer la recta —con su animación de trazado— y un segundo después la misma
+   * ruta redibujándose por las calles con una SEGUNDA animación. Dos dibujados encadenados de la misma
+   * línea sobre dos formas distintas: eso era la "animación rara". El intento anterior fue atenuar la
+   * recta mientras esperaba, y era la respuesta equivocada a la pregunta correcta — el problema no era
+   * que la recta se leyera como definitiva, era que no tenía por qué estar ahí.
+   *
+   * NADA ES MEJOR QUE UNA FORMA INCORRECTA, y acá además no cuesta: el reparto ya se ve en el color de
+   * los pines, el spinner de Capas dice que falta algo, y el velo de "Optimizando" tapa el mapa justo
+   * durante la espera. Las rutas van apareciendo de a una a medida que se resuelven.
+   *
+   * `!ruteando` evita el otro extremo: si el ruteo TERMINÓ y esta ruta no está en `porCalles`, es que no
+   * se pudo rutear — y ahí la recta sí es lo que hay, y se dibuja.
+   *
+   * Es UNA definición y no el mismo filtro repetido en las dos pasadas del dibujo: halo y color tienen
+   * que trazar exactamente el mismo conjunto, y dos copias del predicado es la forma de que un día no lo
+   * hagan.
+   */
+  const dibujables = useMemo(
+    () => trazos.filter(({ ruta }) => porCalles.has(ruta.id) || !ruteando),
+    [porCalles, ruteando, trazos],
+  )
+
   const foco = useMemo(() => paradas.find((p) => p.id === paradaFoco) ?? null, [paradaFoco, paradas])
   // Rango de peso del conjunto VISIBLE: la escala compara las paradas del plan entre sí, no contra un
   // máximo absoluto que no significa nada para quien mira esta pantalla.
   const rango = useMemo(() => rangoPeso(visibles), [visibles])
   const escala = escalaPorZoom(zoom)
   const conNumero = zoom >= ZOOM_NUMERO
+  // Lejos, PUNTOS; cerca, GOTAS. Es un solo umbral y decide la forma de los 53 marcadores a la vez, así
+  // que el cambio se lee como que el mapa pasó de vista de conjunto a vista de detalle — no como que
+  // algunos marcadores se dibujan distinto que otros.
+  const comoGota = zoom >= ZOOM_GOTA
 
   return (
     <MapContainer
@@ -449,10 +586,10 @@ export function PlannerMapa({
           Delgados: 4 px de halo y 2 de color. Con siete rutas saliendo del mismo depósito, líneas de
           6,5 px se fusionan en una sola mancha y deja de leerse cuántas hay. `round` en punta y unión
           evita las esquinas en pico de los giros cerrados. */}
-      {trazos.map(({ ruta, path }) => (
+      {dibujables.map(({ ruta, path }) => (
         <Polyline
           key={ruta.id}
-          positions={path}
+          positions={porCalles.get(ruta.id) ?? path}
           pathOptions={{
             color: '#ffffff',
             weight: 4,
@@ -462,26 +599,63 @@ export function PlannerMapa({
           }}
         />
       ))}
-      {trazos.map(({ ruta, path }) => (
-        <Polyline
-          key={`color-${ruta.id}`}
-          positions={path}
-          pathOptions={{
-            color: ruta.color,
-            weight: 2,
-            opacity: 1,
-            lineCap: 'round',
-            lineJoin: 'round',
-            className: 'ruta-trazo',
-          }}
-        />
-      ))}
+      {dibujables.map(({ ruta, path }) => {
+        const calles = porCalles.get(ruta.id)
+        return (
+          <Polyline
+            // El `key` sigue distinguiendo el trazo RUTEADO del recto aunque ya no se dibujen los dos
+            // seguidos: Leaflet reusa la capa si solo cambian sus props y la animación de trazado corre
+            // al CREAR el elemento, así que sin remontar una ruta que pasara de recta a ruteada cambiaría
+            // de forma sin dibujarse. Hoy solo puede pasar si un ruteo que había fallado se recupera.
+            key={`color-${ruta.id}-${calles ? 'calles' : 'recto'}`}
+            positions={calles ?? path}
+            /**
+             * `pathLength="1"` ANTES de la clase que anima, y las dos cosas acá y no en `pathOptions`.
+             *
+             * La animación de trazado dibuja la línea corriendo un `stroke-dashoffset`, y el dash se
+             * mide en la longitud del path — que en el SVG de Leaflet está en PÍXELES DE PANTALLA y por
+             * lo tanto crece con el zoom. Con un tope fijo (era 12000) la cola de un recorrido largo
+             * quedaba sin dibujar, y con el ruteo por calles eso pasa siempre. Declarando que el path
+             * mide 1, el dash se mide en fracciones del recorrido y "todo" es 1 a cualquier zoom.
+             *
+             * El ORDEN importa y es lo que hace esto seguro: la clase se agrega recién después del
+             * atributo. Si el elemento no estuviera, no hay clase, y sin clase la línea se dibuja
+             * entera y sólida — mientras que un `dasharray: 1` sin `pathLength` la haría desaparecer.
+             */
+            ref={(capa) => {
+              if (!capa) return
+              const aplicar = () => {
+                const el = capa.getElement()
+                if (!el) return false
+                el.setAttribute('pathLength', '1')
+                el.classList.add('ruta-trazo')
+                return true
+              }
+              // Un reintento en el próximo frame: el `<path>` recién existe cuando Leaflet agrega la
+              // capa al mapa, y el orden entre eso y el ref de react-leaflet no está garantizado. Si
+              // tampoco está en el segundo intento se abandona, y la línea queda sólida sin animar —
+              // que es la degradación correcta, no una línea invisible.
+              if (!aplicar()) requestAnimationFrame(aplicar)
+            }}
+            pathOptions={{
+              color: ruta.color,
+              weight: 2,
+              opacity: 1,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        )
+      })}
 
       {/* De acá sale todo: sin el almacén el mapa no explica de dónde arrancan las rutas. Se puede
           apagar desde Capas porque cae justo en el centro de la ciudad y a veces tapa paradas. */}
       {verDeposito && (
-        <Marker position={[DEPOSITO.lat, DEPOSITO.lng]} icon={pinDeposito}>
-          <Tooltip direction="top" offset={[0, -20]}>
+        <Marker position={[DEPOSITO.lat, DEPOSITO.lng]} icon={pinDeposito(comoGota)}>
+          {/* El offset sigue al tamaño del ícono: el marcador ancla en su CENTRO, así que la etiqueta
+              tiene que subir su radio para no quedar encima. Fijo en -20 dejaba un hueco cuando el
+              depósito se achica a zoom lejano. */}
+          <Tooltip direction="top" offset={[0, comoGota ? -20 : -13]}>
             <span className="font-medium">{DEPOSITO.nombre}</span> — almacén de salida
           </Tooltip>
         </Marker>
@@ -496,7 +670,11 @@ export function PlannerMapa({
           <Marker
             key={parada.id}
             position={[parada.lat, parada.lng]}
-            icon={pinParada(parada, colorDe(parada), ancho, marcada, enFoco, conNumero)}
+            icon={
+              comoGota
+                ? pinParada(parada, colorDe(parada), ancho, marcada, enFoco, conNumero)
+                : pinPunto(colorDe(parada), ancho, marcada, enFoco)
+            }
             /**
              * LOS CHICOS ADELANTE. Sin esto el apilado lo decide la latitud (el default de Leaflet) y
              * una parada liviana puede quedar ÍNTEGRAMENTE tapada detrás de una pesada que la rodea —
@@ -576,7 +754,10 @@ export function PlannerMapa({
       <PlannerHerramientas
         rutas={rutas}
         onEncuadrar={() => pedirEncuadre('todo')}
-        cargandoMercados={cargandoMercados}
+        // Un solo indicador para las DOS cosas que el mapa pide por red. Son dos fuentes distintas pero
+        // una sola pregunta del usuario —"¿ya está o le falta?"— y dos spinners a 30 px uno del otro
+        // obligarían a aprender cuál es cuál para responderla.
+        cargandoCapas={cargandoMercados || ruteando}
       />
     </MapContainer>
   )

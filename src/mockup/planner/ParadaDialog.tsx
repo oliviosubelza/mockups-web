@@ -64,6 +64,7 @@ export function ParadaDialog({
   parada,
   rutas,
   paradas = [],
+  hayRutas,
   onCerrar,
   onMover,
   onCentrar,
@@ -72,6 +73,13 @@ export function ParadaDialog({
   parada: Parada | null
   rutas: RutaPlan[]
   paradas?: Parada[]
+  /**
+   * Si las rutas del plan YA EXISTEN (reparto hecho).
+   *
+   * `false` antes de optimizar: hay camiones elegidos y paradas sueltas, no recorridos, así que el
+   * selector se reemplaza por el estado del punto.
+   */
+  hayRutas: boolean
   onCerrar: () => void
   /** `null` la saca de su ruta y la devuelve al grupo "Sin asignar". */
   onMover: (rutaId: string | null) => void
@@ -167,73 +175,79 @@ export function ParadaDialog({
             <span className="shrink-0 text-[10px] uppercase leading-none tracking-wide text-muted-foreground">
               Ruta
             </span>
-            <Select
-              value={parada.rutaId ?? 'sin-asignar'}
-              onValueChange={(v) => onMover(v === 'sin-asignar' ? null : v)}
-            >
-              <SelectTrigger className="h-8 min-w-0 flex-1 text-xs">
-                {/* La etiqueta se renderiza ACÁ y no se deja al `SelectValue` vacío: los `SelectItem`
-                    viven en el popup, que se monta recién al abrirlo, así que hasta entonces el value
-                    no encuentra su ítem y el trigger mostraba el id crudo ("r-t3") en vez del nombre. */}
-                <SelectValue>
-                  {ruta ? (
-                    <span className="flex w-full items-center gap-2">
-                      <span
-                        className="size-2.5 shrink-0 rounded-full"
-                        style={{ background: ruta.color }}
-                      />
-                      <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
-                      <span className="shrink-0 font-mono text-muted-foreground">{ruta.camion.placa}</span>
-                      {rutaCarga && (
-                        <span
-                          className={cn(
-                            'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                            TEXTO_OCUPACION[rutaCarga.nivel],
-                          )}
-                        >
-                          {rutaCarga.ocupacionPct}%
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">Sin asignar</span>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="z-[1400]">
-                <SelectItem value="sin-asignar">
-                  <span className="flex items-center gap-2 text-xs">
-                    <PackageX size={12} className="text-muted-foreground" />
-                    Sin asignar
-                  </span>
-                </SelectItem>
-                {rutas.map((r) => {
-                  const c = paradas.length > 0 ? cargaDeRuta(paradas, r) : null
-                  return (
-                    <SelectItem key={r.id} value={r.id}>
-                      <span className="flex w-full items-center gap-2 text-xs">
+            {/* SIN RUTAS TODAVÍA no hay selector: antes de optimizar no existen —hay camiones elegidos y
+                paradas sueltas— y listar las N derivadas de esos camiones las hace pasar por generadas. */}
+            {hayRutas ? (
+              <Select
+                value={parada.rutaId ?? 'sin-asignar'}
+                onValueChange={(v) => onMover(v === 'sin-asignar' ? null : v)}
+              >
+                <SelectTrigger className="h-8 min-w-0 flex-1 text-xs">
+                  {/* La etiqueta se renderiza ACÁ y no se deja al `SelectValue` vacío: los `SelectItem`
+                      viven en el popup, que se monta recién al abrirlo, así que hasta entonces el value
+                      no encuentra su ítem y el trigger mostraba el id crudo ("r-t3") en vez del nombre. */}
+                  <SelectValue>
+                    {ruta ? (
+                      <span className="flex w-full items-center gap-2">
                         <span
                           className="size-2.5 shrink-0 rounded-full"
-                          style={{ background: r.color }}
+                          style={{ background: ruta.color }}
                         />
-                        <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
-                        <span className="shrink-0 font-mono text-muted-foreground">{r.camion.placa}</span>
-                        {c && (
+                        <span className="min-w-0 flex-1 truncate">{ruta.nombre}</span>
+                        <span className="shrink-0 font-mono text-muted-foreground">{ruta.camion.placa}</span>
+                        {rutaCarga && (
                           <span
                             className={cn(
                               'shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                              TEXTO_OCUPACION[c.nivel],
+                              TEXTO_OCUPACION[rutaCarga.nivel],
                             )}
                           >
-                            {c.ocupacionPct}%
+                            {rutaCarga.ocupacionPct}%
                           </span>
                         )}
                       </span>
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+                    ) : (
+                      <span className="text-muted-foreground">Sin asignar</span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="z-[1400]">
+                  <SelectItem value="sin-asignar">
+                    <span className="flex items-center gap-2 text-xs">
+                      <PackageX size={12} className="text-muted-foreground" />
+                      Sin asignar
+                    </span>
+                  </SelectItem>
+                  {rutas.map((r) => {
+                    const c = paradas.length > 0 ? cargaDeRuta(paradas, r) : null
+                    return (
+                      <SelectItem key={r.id} value={r.id}>
+                        <span className="flex w-full items-center gap-2 text-xs">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ background: r.color }}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
+                          <span className="shrink-0 font-mono text-muted-foreground">{r.camion.placa}</span>
+                          {c && (
+                            <span
+                              className={cn(
+                                'shrink-0 text-right text-[11px] font-semibold tabular-nums',
+                                TEXTO_OCUPACION[c.nivel],
+                              )}
+                            >
+                              {c.ocupacionPct}%
+                            </span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-xs text-muted-foreground">Sin asignar — se le asigna un camión al optimizar.</span>
+            )}
           </div>
         </div>
 

@@ -61,11 +61,12 @@ const PUNTEROS: { id: Herramienta; etiqueta: string; tecla: string; icon: typeof
 export function PlannerHerramientas({
   rutas,
   onEncuadrar,
-  cargandoMercados,
+  cargandoCapas,
 }: {
   rutas: RutaPlan[]
   onEncuadrar: () => void
-  cargandoMercados: boolean
+  /** Hay datos que el mapa DIBUJA viajando por red: mercados, recorridos por calles, o los dos. */
+  cargandoCapas: boolean
 }) {
   const map = useMap()
   const herramienta = usePlannerStore((s) => s.herramienta)
@@ -102,7 +103,7 @@ export function PlannerHerramientas({
 
       {/* Dos menús y no uno: "Capas" es qué se DIBUJA en el mapa, "Paneles" es qué HERRAMIENTA se ve
           encima. Juntarlos daba una lista de nueve casillas donde nada se encontraba. */}
-      <CapasMapa rutas={rutas} cargandoMercados={cargandoMercados} />
+      <CapasMapa rutas={rutas} cargandoCapas={cargandoCapas} />
       <PanelesMapa />
     </div>
   )

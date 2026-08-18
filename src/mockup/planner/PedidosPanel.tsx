@@ -488,11 +488,13 @@ export function PedidosPanel({
                     )}
                   >
                     {/* Punto del color de la ruta: dice de un vistazo qué quedó sin asignar. Sin ruta =
-                        círculo punteado, el mismo lenguaje que el borde del disco en el mapa. */}
+                        círculo vacío con aro gris, el mismo lenguaje que el pin del mapa — que también
+                        dejó el punteado: era la única parada con la silueta rota y se leía como un
+                        marcador a medio dibujar, no como uno pendiente. */}
                     <span
                       className={cn(
                         'size-2 shrink-0 rounded-full',
-                        !color && 'border border-dashed border-muted-foreground',
+                        !color && 'border border-muted-foreground',
                       )}
                       style={color ? { background: color } : undefined}
                       aria-hidden
