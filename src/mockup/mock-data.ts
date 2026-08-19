@@ -568,6 +568,37 @@ function calcularFechaPlan(): string {
 export const FECHA_PLAN = calcularFechaPlan()
 
 /** Rangos de peso (kg) y monto (Bs) por canal: un mayorista no pesa lo mismo que un kiosco. */
+/**
+ * DENSIDAD DE LA CARGA, en kg/m³. Es el puente entre el peso de un pedido y el volumen que ocupa, y
+ * decide cuál de las dos capacidades del camión se agota primero — o sea, decide qué significa la barra
+ * de ocupación de toda la planificación.
+ *
+ * ESTABA MAL Y SE VEÍA. Era 250–340 kg/m³, mientras que un camión del maestro admite
+ * `capacidadPeso × 2,0–2,4 m³/t`, es decir 417–500 kg/m³. Con la carga MENOS densa que lo que la caja
+ * admite, el volumen se agotaba SIEMPRE antes que el peso: llenar un camión al 100 % de peso lo dejaba
+ * al 147–167 % de volumen. Y como el optimizador reparte por peso, cada plan salía con todas las rutas
+ * por encima del 100 % — un plan imposible según su propia barra, con los camiones a tres cuartos de su
+ * peso útil.
+ *
+ * Ahora la carga es MÁS densa que la caja, que es lo que corresponde a bebida embotellada: una caja de
+ * botellas ronda los 600–750 kg/m³ y es de las mercaderías más densas que se reparten en ciudad. Con
+ * eso el PESO vuelve a ser la restricción que manda, que es la realidad del negocio: a un camión de
+ * bebida se le termina el peso mucho antes que el espacio, y por eso las cajas van a media altura.
+ */
+const DENSIDAD_SECO: [number, number] = [520, 700]
+
+/** El frío va en cajas más llenas y con menos aire de embalaje: es la carga más densa que se reparte. */
+const DENSIDAD_FRIO: [number, number] = [600, 750]
+
+/**
+ * ENVASE RETORNABLE VACÍO. Deliberadamente MUY por debajo de las otras dos y de la densidad de la caja
+ * del camión: una devolución son cajas y botellas vacías, que ocupan lo mismo que llenas y no pesan.
+ *
+ * Es el único caso del dataset donde el volumen SÍ tiene que ser la restricción que se agota primero, y
+ * está bien que lo sea — es exactamente el problema real del reparto de retornables.
+ */
+const DENSIDAD_ENVASE_VACIO: [number, number] = [180, 260]
+
 const PERFIL_CANAL: Record<CanalId, { peso: [number, number]; total: [number, number] }> = {
   horizontal: { peso: [80, 700], total: [280, 2200] },
   tradicional: { peso: [400, 1700], total: [900, 3400] },
@@ -809,8 +840,13 @@ export const PEDIDOS: Pedido[] = (() => {
         puntoEntrega: punto.nombre,
         ventana,
         peso,
-        // Densidad ~250-340 kg/m³ (el seco ocupa más por kilo que el frío).
-        volumen: Number((peso / rand.int(productType === 'Frío' ? 300 : 250, 340)).toFixed(2)),
+        // La densidad decide qué capacidad del camión se agota primero. Ver `DENSIDAD_SECO`.
+        volumen: Number(
+          (peso /
+            (productType === 'Frío'
+              ? rand.int(DENSIDAD_FRIO[0], DENSIDAD_FRIO[1])
+              : rand.int(DENSIDAD_SECO[0], DENSIDAD_SECO[1]))).toFixed(2),
+        ),
         priority: rand.pick([1, 2, 3] as const),
         listo: rand.chance(0.9),
         lat: punto.lat,
@@ -1435,7 +1471,9 @@ export const TRANSFERENCIAS: Transferencia[] = Array.from(
       fecha: FECHA_PLAN,
       items: rand.int(3, 32),
       peso,
-      volumen: Number((peso / rand.int(230, 300)).toFixed(2)),
+      // Producto lleno moviéndose entre sucursales: la misma densidad que un pedido de venta. Antes era
+      // 230–300 kg/m³ y arrastraba el mismo problema que los pedidos — ver `DENSIDAD_SECO`.
+      volumen: Number((peso / rand.int(DENSIDAD_SECO[0], DENSIDAD_SECO[1])).toFixed(2)),
       estado: 'Confirmada',
     } satisfies Transferencia
   },
@@ -1476,7 +1514,11 @@ export const DEVOLUCIONES: Devolucion[] = (() => {
       fecha: FECHA_PLAN,
       items: rand.int(1, 9),
       peso,
-      volumen: Number((peso / rand.int(180, 260)).toFixed(2)),
+      // Envase retornable VACÍO: liviano y voluminoso, a diferencia de los pedidos. No es un descuido
+      // que sea la densidad más baja del dataset — ver `DENSIDAD_ENVASE_VACIO`.
+      volumen: Number(
+        (peso / rand.int(DENSIDAD_ENVASE_VACIO[0], DENSIDAD_ENVASE_VACIO[1])).toFixed(2),
+      ),
       motivo: rand.pick(MOTIVOS_DEVOLUCION),
       // Casi la mitad sin asignar: el mockup tiene que mostrar el estado "todavía sin camión".
       camionId: rand.chance(0.55) ? rand.pick(enRuteo).id : null,

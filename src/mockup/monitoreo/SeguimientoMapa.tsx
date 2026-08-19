@@ -7,13 +7,17 @@
 // cada capa. Eso es exactamente cómo un archivo de 250 líneas termina en 1000. Lo que SÍ se comparte
 // son las primitivas: `divIcon`, el control de capas y el invalidate por resize.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Truck, Warehouse } from 'lucide-react'
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { MapPin, Truck, Warehouse } from 'lucide-react'
+import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { cn } from '@/lib/utils'
 import type { LatLngTuple } from '../map/geo/polyline'
+import { cortarEn, unirTramos } from '../map/geo/recorrido'
+import { oscurecer } from '../map/color'
 import { reactIcon } from '../map/div-icon'
 import { encuadrar } from '../map/encuadrar'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
+import { CLAVES_TRAZO, TRAZO, TRAZO_LABEL, type ClaveTrazo } from './trazo-estilo'
+import { CAPA_POR_DEFECTO, SUBDOMINIOS, TILES } from '../map/tiles'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { DEPOSITO } from '../mock-data'
@@ -31,22 +35,26 @@ const INITIAL_ZOOM = 12
 const ZOOM_CAMION = 15
 const ZOOM_PARADA = 16
 
-/** URLs de las capas base. Antes vivían en `MapLayersControl`, que se reemplazó por herramienta propia. */
-const TILES: Record<CapaBase, string> = {
-  calles: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  satelite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-}
+/**
+ * Cuánto se queda la cámara en la próxima parada antes de volver a la traza del camión.
+ *
+ * El vuelo de ida dura 0,9 s, así que esto deja ~1,7 s de quietud sobre la parada: alcanza para leer
+ * cuál es y dónde está, y no tanto como para que la pantalla se sienta trabada. Menos de un segundo de
+ * pausa y el movimiento se lee como un rebote, no como "mirá acá, ahora mirá allá".
+ */
+const MS_MIRANDO_LA_PARADA = 2600
 
 /** Alto del rombo que forma la punta, proporcional al cuerpo de la chapa. */
 const puntaDe = (ancho: number) => Math.round(ancho * 0.34)
 
 /**
- * Chapa blanca con punta: el contenedor de todos los marcadores de LUGAR del mapa.
+ * Chapa blanca con punta. Hoy la usa SOLO EL DEPÓSITO.
  *
- * Antes cada parada era un círculo de color pelado. Con quince paradas el mapa quedaba como un
- * sarpullido de puntos rojos y verdes encima de las calles — el color competía con el mapa en vez de
- * apoyarse en él. La chapa blanca resuelve dos cosas de una: separa el marcador del fondo sea cual
- * sea la capa (calles claras, satélite oscuro), y encierra el color adentro, donde SIGNIFICA algo.
+ * Nació como el contenedor de todos los marcadores de lugar y las paradas la dejaron cuando se
+ * volvieron gotas: envolver el color en blanco cuesta una capa de anidamiento, y con ocho paradas en el
+ * mismo barrio ese costo se pagaba en solapamiento (ver `PIN_ANCHO`). Para el depósito el argumento
+ * original sigue en pie y encima suma: es UNO, no se apila con nada, y ser la única chapa del mapa lo
+ * distingue de las paradas de un vistazo — que es exactamente lo que un punto de partida tiene que hacer.
  *
  * La punta es un cuadrado rotado 45° que el cuerpo tapa por la mitad, así solo asoma el vértice.
  * La sombra va como `drop-shadow` en el contenedor y no como `box-shadow` en cada parte: `drop-shadow`
@@ -107,87 +115,163 @@ function Chapa({
 }
 
 /**
- * Pin de una parada. El NÚMERO DE SECUENCIA manda siempre: es el dato que responde "¿en qué orden
- * las visita?", y sin él el mapa es una nube de puntos de colores.
+ * Contorno de la gota y su caja. Es EL MISMO marcador que el editor de planificación, y el path está
+ * copiado y no importado a propósito: los dos mapas tienen contratos distintos —allá el ancho codifica
+ * el peso de la parada, acá no hay peso— y compartir el componente obligaría a un prop `modo` que
+ * ramifique cada pieza. Lo que se comparte es la FORMA, que es una constante de dos líneas.
  *
- * Antes el símbolo (✓ / ✕ / ↩) reemplazaba al número apenas la parada cerraba, así que en un viaje
- * casi terminado —el caso que MÁS se mira— se veía una fila de tildes y el orden se perdía entero.
- * El estado se lee por DOS canales, uno de ellos independiente del color (entre 5% y 8% de los
- * hombres tiene algún daltonismo):
- *   1. COLOR    — el matiz semántico del estado.
- *   2. INSIGNIA — ✓ / ✕ / ↩ solo cuando la parada CERRÓ. Sin insignia, sigue abierta.
- *
- * El relleno del círculo ya NO codifica nada, y es una corrección: antes hueco = abierta, pero cuando
- * el pin pasó a vivir dentro de una chapa BLANCA el relleno blanco se confundió con ella y quedaba un
- * aro de 2px flotando. La insignia cubre lo mismo y mejor — el relleno solo decía "cerrada", la
- * insignia dice CUÁL de los tres cierres fue.
+ * La caja (`-2 -2 30 37`) es más grande que la gota (24 × 32) porque el aro de la parada en foco se
+ * dibuja por FUERA de la silueta y en una caja justa quedaba recortado contra el borde.
  */
-function pinEntrega(entrega: EntregaMonitoreo, resaltado: boolean) {
+const GOTA = 'M13 1C6.37 1 1 6.37 1 13c0 8.6 12 20 12 20s12-11.4 12-20C25 6.37 19.63 1 13 1z'
+const VIEWBOX_PIN = '-2 -2 30 37'
+const CAJA_SOBRE_GOTA = 30 / 24
+const PIN_RATIO = 37 / 30
+/** Dónde cae la PUNTA dentro de la caja. Un pin ancla en su punta o flota arriba de lo que señala. */
+const PIN_ANCLA_Y = 35 / 37
+/** Azul de la selección. Es el mismo de `en_camino` y del editor: la selección es una sola idea. */
+const SELECCION = '#2563eb'
+
+/**
+ * Ancho de la gota de una parada, en px.
+ *
+ * ERA UNA CHAPA DE 32 px (40 al resaltarse) y eso estaba mal medido. La chapa blanca envolvía un
+ * círculo de color que a su vez envolvía el número: tres capas anidadas, y cada una necesita su propio
+ * diámetro, así que el marcador terminaba en 43 px de alto —54 el resaltado— para mostrar un número de
+ * una cifra. Con ocho paradas en el mismo barrio se pisaban entre ellas y el mapa se leía como una
+ * mancha con relieve.
+ *
+ * La gota resuelve lo mismo con una capa menos: el color ES la silueta y el hueco blanco es el fondo
+ * del número, no un envoltorio. 22 px es el mismo ancho máximo que usa el editor de planificación, que
+ * dibuja 53 paradas donde acá hay ocho.
+ */
+const PIN_ANCHO = 22
+/** Cuánto crece la parada en foco. Tiene que saltar por encima del resto sin depender del color. */
+const PIN_CRECE_FOCO = 6
+
+/**
+ * Escala del marcador según el zoom, recortada en los dos extremos.
+ *
+ * Misma curva que el editor. No es cosmética: al alejarse, dos paradas de la misma manzana caen a
+ * pocos píxeles una de otra, y lo único que evita que se pisen es que el marcador se achique con la
+ * distancia. Fuera de [12, 17] el ajuste deja de ayudar — más lejos serían puntos indistinguibles y
+ * más cerca, gotas de media cuadra.
+ */
+function escalaPorZoom(zoom: number): number {
+  const z = Math.min(17, Math.max(12, zoom))
+  return 0.82 + ((z - 12) / 5) * 0.36
+}
+
+/**
+ * Alto en px de la caja del pin de una parada. Lo necesita el TOOLTIP: su offset se mide desde el ancla
+ * del marcador, que es la punta de la gota, así que para quedar arriba de la cabeza hay que subir todo
+ * el alto. Y como el pin ahora escala con el zoom, un offset fijo lo dejaba pegado al pin de cerca y
+ * flotando lejos de él al alejarse.
+ */
+function altoPinEntrega(resaltado: boolean, escala: number): number {
+  const anchoGota = Math.round((resaltado ? PIN_ANCHO + PIN_CRECE_FOCO : PIN_ANCHO) * escala)
+  return Math.round(Math.round(anchoGota * CAJA_SOBRE_GOTA) * PIN_RATIO)
+}
+
+/**
+ * Pin de una parada: una GOTA del color de su estado con el ORDEN DE VISITA adentro.
+ *
+ * El NÚMERO manda siempre. Es el dato que responde "¿en qué orden las visita?" y sin él el mapa es una
+ * nube de puntos de colores. Antes el símbolo (✓ / ✕ / ↩) lo reemplazaba apenas la parada cerraba, así
+ * que en un viaje casi terminado —el caso que MÁS se mira— quedaba una fila de tildes y el orden se
+ * perdía entero.
+ *
+ * LO QUE SE PERDIÓ AL ACHICAR, dicho explícito porque era una decisión deliberada y no un descuido: el
+ * pin grande llevaba además una insignia de 15 px con el símbolo del cierre, como segundo canal
+ * independiente del color (entre 5% y 8% de los hombres tiene algún daltonismo). A 22 px ese símbolo
+ * mide 5 px y no se distingue un ✓ de un ✕, o sea que el canal redundante dejaría de ser un canal y
+ * pasaría a ser ruido. El estado en TEXTO sigue estando en las dos partes donde se lee de verdad: el
+ * tooltip del pin y la lista de paradas.
+ *
+ * El número va en el tono OSCURO del color y no en el color plano: sobre el hueco blanco, un ámbar o un
+ * gris claro a 9 px es ilegible. Es el mismo matiz, con el contraste que un texto de ese cuerpo necesita.
+ */
+function pinEntrega(entrega: EntregaMonitoreo, resaltado: boolean, escala: number) {
   const meta = ESTADO_ENTREGA[entrega.estado]
-  const ancho = resaltado ? 40 : 32
-  const punta = puntaDe(ancho)
-  const circulo = Math.round(ancho * 0.72)
+  const anchoGota = Math.round((resaltado ? PIN_ANCHO + PIN_CRECE_FOCO : PIN_ANCHO) * escala)
+  const w = Math.round(anchoGota * CAJA_SOBRE_GOTA)
+  const h = Math.round(w * PIN_RATIO)
+  // Id único del degradado: los marcadores se inyectan como HTML suelto en el DOM del mapa, y un id
+  // repetido haría que todos resolvieran contra la primera definición — que desaparece en cuanto ese
+  // marcador se desmonta, dejando al resto sin relleno.
+  const gid = `gm-${entrega.id.replace(/[^a-zA-Z0-9_-]/g, '')}`
 
   return reactIcon(
-    <Chapa ancho={ancho} resaltado={resaltado}>
-      <div
-        style={{
-          width: circulo,
-          height: circulo,
-          borderRadius: 999,
-          background: meta.color,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          fontSize: Math.round(circulo * 0.56),
-          fontWeight: 700,
-          fontFamily: 'ui-monospace, monospace',
-          lineHeight: 1,
-        }}
-      >
-        {entrega.secuencia}
-      </div>
+    <div
+      style={{
+        width: w,
+        height: h,
+        // LA SOMBRA ES EL BORDE de este marcador. `drop-shadow` y no `box-shadow` porque sigue la
+        // SILUETA de la gota; un box-shadow dibujaría la sombra de un rectángulo alrededor de algo que
+        // no lo es. Corta y pegada: a 22 px una sombra de elevación se lee como un segundo marcador
+        // borroso al lado del primero.
+        filter: resaltado
+          ? 'drop-shadow(0 2px 3px rgba(0,0,0,0.5))'
+          : 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+      }}
+    >
+      <svg width={w} height={h} viewBox={VIEWBOX_PIN} xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          {/* Brillo arriba y sombra abajo, en blanco y negro translúcidos: le da volumen sin tener que
+              calcular una versión más clara y otra más oscura de cada color de estado. */}
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
+            <stop offset="52%" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0.22" />
+          </linearGradient>
+        </defs>
 
-      {meta.simbolo && (
-        <span
-          style={{
-            position: 'absolute',
-            top: -3,
-            right: -3,
-            width: 15,
-            height: 15,
-            borderRadius: 999,
-            background: meta.color,
-            border: '1.5px solid #fff',
-            color: '#fff',
-            fontSize: 9,
-            fontWeight: 700,
-            lineHeight: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+        {/* Sin borde: lo que separa el pin del fondo es el `drop-shadow`, que funciona igual sobre
+            calles claras que sobre satélite. El único trazo es el AZUL de la parada en foco, y ese no
+            es decoración: es el estado de la selección y tiene que ganarle al resto del mapa. */}
+        <path
+          d={GOTA}
+          fill={meta.color}
+          stroke={resaltado ? SELECCION : 'none'}
+          strokeWidth={resaltado ? 2.5 : 0}
+          strokeLinejoin="round"
+        />
+        <path d={GOTA} fill={`url(#${gid})`} />
+
+        <circle cx="13" cy="13" r="6.6" fill="#ffffff" />
+        <text
+          x="13"
+          y="13"
+          fill={oscurecer(meta.color, 0.55)}
+          fontSize="9"
+          fontWeight="700"
+          fontFamily="system-ui, sans-serif"
+          textAnchor="middle"
+          dominantBaseline="central"
         >
-          {meta.simbolo}
-        </span>
-      )}
-    </Chapa>,
-    [ancho, ancho + punta / 2],
-    // Ancla en la PUNTA, no en el centro: el pin señala el lugar desde arriba en vez de pisarlo.
-    [ancho / 2, ancho + punta / 2],
+          {entrega.secuencia}
+        </text>
+      </svg>
+    </div>,
+    [w, h],
+    [w / 2, Math.round(h * PIN_ANCLA_Y)],
   )
 }
 
-/** El depósito lleva la misma chapa que las paradas: es otro LUGAR, no otra clase de objeto. */
-const DEPOSITO_ANCHO = 34
+/**
+ * Ancho de la chapa del depósito. Bajó de 34 a 28 junto con el achique de las paradas: el tamaño es
+ * JERARQUÍA, y una chapa de 34 al lado de gotas de 22 leía el almacén como lo más importante del mapa.
+ * Sigue siendo más grande que una parada —es el origen del viaje— pero por debajo del camión, que es lo
+ * único que se mueve y lo que la pantalla vino a mirar.
+ */
+const DEPOSITO_ANCHO = 28
 
 const pinDeposito = reactIcon(
   <Chapa ancho={DEPOSITO_ANCHO}>
     <div
       style={{
-        width: 24,
-        height: 24,
+        width: 20,
+        height: 20,
         borderRadius: 999,
         background: '#0f172a',
         display: 'flex',
@@ -196,7 +280,7 @@ const pinDeposito = reactIcon(
         color: '#fff',
       }}
     >
-      <Warehouse size={14} strokeWidth={2.25} />
+      <Warehouse size={12} strokeWidth={2.25} />
     </div>
   </Chapa>,
   [DEPOSITO_ANCHO, DEPOSITO_ANCHO + puntaDe(DEPOSITO_ANCHO) / 2],
@@ -285,6 +369,9 @@ function AjustarVista({
   posicionInicial,
   focoLat,
   focoLng,
+  tourActivo,
+  tourEnCurso,
+  tramo,
   margenIzq,
   margenDer,
   marcarProgramatico,
@@ -294,6 +381,33 @@ function AjustarVista({
   posicionInicial: LatLngTuple | null
   focoLat: number | null
   focoLng: number | null
+  /**
+   * Encadenar el segundo acto: el foco lo movió la SIMULACIÓN (no un click) y el seguimiento automático
+   * está encendido.
+   *
+   * Las dos condiciones van juntas en un solo booleano porque las dos significan lo mismo para la cámara:
+   * "el usuario no está manejando la vista ahora mismo". Si eligió la parada a mano, o si apagó el
+   * seguimiento, cualquier movimiento que no pidió es una molestia.
+   */
+  tourActivo: boolean
+  /**
+   * Bandera compartida con `SeguirCamion`: "hay un tour en curso, no reencuadres". La escribe este
+   * componente y la lee él, igual que `programatico`.
+   *
+   * Es una bandera aparte y no `programatico` con más duración, porque las dos cosas que `programatico`
+   * hace tienen plazos distintos: silenciar el detector de gestos tiene que durar lo que dura el vuelo
+   * (si dura todo el tour, el usuario arrastra el mapa y el seguimiento no se enteraría), y frenar el
+   * reencuadre tiene que durar la secuencia completa.
+   */
+  tourEnCurso: React.RefObject<boolean>
+  /**
+   * El tramo en curso —camión → próxima parada, por calles— POR REF.
+   *
+   * Por ref y no como prop normal porque cambia en cada ping: como dependencia del efecto, el tour se
+   * re-armaría una vez por segundo y nunca llegaría a su segundo acto. Lo que interesa es su valor en
+   * el momento de volar, no cada versión intermedia.
+   */
+  tramo: React.RefObject<LatLngTuple[] | null>
   margenIzq: number
   margenDer: number
   /** Avisa que el movimiento que viene lo hace el código, no el usuario. Ver `SeguirCamion`. */
@@ -313,6 +427,11 @@ function AjustarVista({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId])
 
+  /**
+   * ACTO 1 — la parada. Vale para los dos orígenes del foco: el click puede venir de la LISTA, donde la
+   * parada bien puede estar fuera de cuadro, y sin esto seleccionás algo en el panel y el mapa no acusa
+   * recibo.
+   */
   useEffect(() => {
     if (focoLat === null || focoLng === null) return
     marcarProgramatico()
@@ -320,11 +439,64 @@ function AjustarVista({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focoLat, focoLng])
 
+  /**
+   * ACTO 2 — la traza, unos segundos después y solo cuando el foco fue AUTOMÁTICO.
+   *
+   * Arregla un agujero real: cuando la simulación cerraba una parada, la cámara volaba a la siguiente y
+   * se quedaba ahí, a zoom de manzana. Si el camión venía de la otra punta de la ciudad quedaba fuera del
+   * cuadro, y la pantalla mostraba un punto de entrega quieto en vez de un camión andando — justo lo
+   * contrario de lo que se vino a ver.
+   *
+   * ENCUADRA EL TRAMO, NO EL CAMIÓN SOLO. Centrarlo también lo trae de vuelta, pero al zoom de la parada,
+   * y entonces se ve el camión sin nada alrededor: nunca la relación entre los dos, que es la pregunta
+   * real ("¿cuánto le falta para llegar?"). El tramo mete al camión, la parada y el camino por calles
+   * entre ambos en un solo cuadro, y de paso el zoom sale solo — cuanto más lejos está, más alejado se ve.
+   *
+   * ES UN EFECTO APARTE Y NO UNA RAMA DEL ACTO 1, y esa separación es la parte fina. `tourActivo` se apaga
+   * en cuanto el usuario arrastra el mapa (arrastrar apaga el seguimiento), y con los dos actos en el
+   * mismo efecto ese cambio lo re-ejecutaba ENTERO: el usuario se iba a mirar otra zona y el mapa lo
+   * devolvía a la parada de un vuelo. Separados, apagar el tour solo cancela lo que falta.
+   *
+   * El `clearTimeout` es lo que hace al tour interrumpible: si mientras la cámara está sobre la parada
+   * cambia el foco —otra selección, o la simulación cerrando la siguiente— el segundo acto de la anterior
+   * nunca se ejecuta, y no quedan dos vuelos peleándose.
+   */
+  useEffect(() => {
+    if (!tourActivo || focoLat === null || focoLng === null) return
+    tourEnCurso.current = true
+    const id = setTimeout(() => {
+      tourEnCurso.current = false
+      const traza = tramo.current
+      // Sin tramo no hay nada que mostrar: el camión no salió, o ya volvió al depósito. Quedarse en la
+      // parada es la respuesta correcta, no encuadrar un punto suelto.
+      if (!traza || traza.length < 2) return
+      marcarProgramatico()
+      encuadrar(map, traza, { ...margenes.current, zoomMax: ZOOM_CAMION })
+    }, MS_MIRANDO_LA_PARADA)
+    return () => {
+      clearTimeout(id)
+      // Se suelta también al cancelar. Si el tour se interrumpe —otro foco, el usuario arrastrando— la
+      // bandera no puede quedar trabada en `true`: dejaría al seguimiento sordo para el resto de la
+      // sesión, que es la misma clase de bug que `programatico` evita soltándose por tiempo.
+      tourEnCurso.current = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focoLat, focoLng, tourActivo])
+
   return null
 }
 
-/** Respiro contra el borde de la zona visible antes de considerar que el camión "se fue de cuadro". */
-const MARGEN_SEGURO = 48
+/**
+ * Respiro contra el borde de la zona visible antes de considerar que el camión "se fue de cuadro".
+ *
+ * TIENE QUE SER MENOR QUE EL PADDING DE `encuadrar` (32 px verticales), y era 48. La diferencia importa
+ * desde que el tour encuadra el tramo completo: el camión queda en un EXTREMO de ese encuadre, o sea a
+ * unos 32 px del borde, y con un respiro de 48 `SeguirCamion` lo declaraba fuera de cuadro y volvía a
+ * centrarlo — deshaciendo el encuadre que acababa de hacerse, medio segundo después. Dos mecanismos
+ * peleando por la cámara. Con el respiro por debajo del padding, todo lo que `encuadrar` mete en el
+ * cuadro cuenta como visible, que es la única relación coherente entre los dos.
+ */
+const MARGEN_SEGURO = 24
 
 /**
  * SEGUIR AL CAMIÓN — el encuadre que corre solo mientras el usuario no toca el mapa.
@@ -357,6 +529,7 @@ function SeguirCamion({
   margenIzq,
   margenDer,
   programatico,
+  tourEnCurso,
   marcarProgramatico,
   onUsuarioTomaControl,
   onFueraDeCuadro,
@@ -366,6 +539,8 @@ function SeguirCamion({
   margenIzq: number
   margenDer: number
   programatico: React.RefObject<boolean>
+  /** Hay un tour de cámara en curso y no se le puede robar el volante. Ver `AjustarVista`. */
+  tourEnCurso: React.RefObject<boolean>
   marcarProgramatico: () => void
   onUsuarioTomaControl: () => void
   /**
@@ -418,6 +593,12 @@ function SeguirCamion({
       // Mientras un vuelo nuestro está en curso no se reencuadra: a mitad de camino el camión todavía
       // puede estar fuera de cuadro, y volver a llamar cortaría la animación en cada ping.
       if (programatico.current) return
+      // Y tampoco durante el TOUR (ver `AjustarVista`): entre el acto 1 y el acto 2 el camión está fuera
+      // de cuadro a propósito —la cámara está sobre la próxima parada— y sin esta guarda el seguimiento
+      // lo traía al centro justo en ese hueco, metiendo un tercer movimiento en medio de una secuencia de
+      // dos. Se veía como un temblor: parada, camión de golpe, traza. El tour ya termina mostrando el
+      // camión, así que acá no hay nada que rescatar.
+      if (tourEnCurso.current) return
 
       // Mismo helper que usan el botón y el encuadre inicial: una sola regla de centrado en todo el
       // mapa. `zoomMax` es el zoom ACTUAL a propósito — seguir al camión no debe cambiar la escala que
@@ -442,23 +623,44 @@ function SeguirCamion({
 }
 
 /**
- * Pastilla "el camión se te fue de cuadro".
+ * Pastilla del MODO DE LA CÁMARA: dice por qué el mapa no está siguiendo al camión y lo devuelve con un
+ * click.
  *
- * Es la pieza que faltaba. El seguimiento se apaga solo en dos casos legítimos —el usuario arrastró el
- * mapa, o eligió una parada para mirarla— y hasta ahora eso dejaba la pantalla en un estado MUDO: el
- * camión seguía andando fuera del cuadro y el mapa se veía perfectamente normal. Había que acordarse de
- * que existe un botón en la barra.
+ * Es la pieza que convierte dos estados invisibles en uno visible. El seguimiento se apaga en dos casos
+ * legítimos —el usuario arrastró el mapa, o eligió una parada para mirarla— y hasta ahora eso dejaba la
+ * pantalla MUDA: el camión seguía andando fuera del cuadro y el mapa se veía perfectamente normal. Había
+ * que acordarse de que existe un botón en la barra, y en el caso de la parada, ni eso: nada indicaba que
+ * el sistema había pausado nada.
  *
- * Por qué un aviso con acción y no un reencuadre automático: si el mapa volviera al camión solo, nadie
- * podría mirar otra cosa — cada ping le arrancaría la vista de las manos, que es exactamente el problema
- * que `seguir` resuelve. El aviso convierte un estado invisible en un click.
+ * DOS MENSAJES Y NO UNO, porque no son la misma situación:
+ *   · Mirando una parada → la pausa la hizo el SISTEMA. Nombra la parada, así queda claro qué la causó y
+ *     que se deshace sola al cerrarla.
+ *   · Fuera de cuadro    → la pausa la hizo el USUARIO y encima perdió al camión de vista. Acá el dato
+ *     nuevo es la POSICIÓN, no el modo.
  *
- * Va DENTRO del MapContainer (como `HerramientasMapa`) para poder vivir en el sistema de coordenadas del
- * mapa; arriba al centro porque es la única franja que no le pertenece a nadie: los paneles flotantes
- * ocupan los bordes laterales, la barra de herramientas la esquina superior izquierda y los toasts la
- * franja de abajo.
+ * POR QUÉ UNA PASTILLA Y NO UN DIÁLOGO. Un modal tapa el mapa y hay que descartarlo para volver a
+ * mirarlo, en una pantalla cuyo trabajo es que se pueda mirar sin interrupciones — y encima aparecería
+ * cada vez que alguien elige una parada, que es la acción más frecuente de la pantalla. Un diálogo que
+ * hay que cerrar seguido deja de leerse y se cierra por reflejo.
+ *
+ * POR QUÉ TAMPOCO UN REENCUADRE AUTOMÁTICO: si el mapa volviera al camión solo, nadie podría mirar otra
+ * cosa — cada ping le arrancaría la vista de las manos, que es el problema que `seguir` resuelve.
+ *
+ * Va DENTRO del MapContainer (como `HerramientasMapa`) para vivir en el sistema de coordenadas del mapa;
+ * arriba al centro porque es la única franja que no le pertenece a nadie: los paneles flotantes ocupan
+ * los bordes laterales, la barra de herramientas la esquina superior izquierda y los toasts la franja de
+ * abajo.
  */
-function AvisoFueraDeCuadro({ onSeguir }: { onSeguir: () => void }) {
+function AvisoCamara({
+  /** Hay una parada elegida a mano: el seguimiento está en pausa por eso y no porque el usuario lo apagó. */
+  paradaMirando,
+  onSeguir,
+}: {
+  paradaMirando: number | null
+  onSeguir: () => void
+}) {
+  const porParada = paradaMirando !== null
+
   return (
     <button
       type="button"
@@ -469,10 +671,136 @@ function AvisoFueraDeCuadro({ onSeguir }: { onSeguir: () => void }) {
         'transition-colors hover:bg-accent',
       )}
     >
-      <Truck size={14} className="text-muted-foreground" />
-      El camión salió de cuadro
-      <span className="font-semibold text-primary">Seguirlo</span>
+      {porParada ? (
+        <MapPin size={14} className="text-muted-foreground" />
+      ) : (
+        <Truck size={14} className="text-muted-foreground" />
+      )}
+      {porParada ? `Mirando la parada ${paradaMirando}` : 'El camión salió de cuadro'}
+      <span className="font-semibold text-primary">
+        {porParada ? 'Seguir al camión' : 'Seguirlo'}
+      </span>
     </button>
+  )
+}
+
+/**
+ * Informa el zoom al componente padre. Tiene que ser HIJO del mapa: `useMapEvents` necesita el contexto
+ * de Leaflet, y el que lo tiene es el que está adentro del `MapContainer`.
+ *
+ * `zoomend` y no `zoom`: durante la animación de zoom el evento se dispara en cada cuadro, y recalcular
+ * los ocho iconos por cuadro hace que Leaflet los recree —cada uno es un `divIcon` nuevo— justo mientras
+ * el mapa se está moviendo. Al final del gesto es una sola vez y no se nota.
+ */
+function ZoomWatch({ onZoom }: { onZoom: (zoom: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
+  return null
+}
+
+/**
+ * Una línea del recorrido, con su HALO blanco debajo.
+ *
+ * POR QUÉ EL HALO. Es la misma pieza que ya usa el editor de planificación, y acá hacía más falta
+ * todavía: desde que el trazo va por calles, la línea corre ENCIMA de la calle que dibuja la tesela, y
+ * sobre satélite o sobre un fondo gris con muchas calles el trazo se pierde contra el fondo. El halo lo
+ * separa de lo que tenga abajo sin cambiarle el color, que es dato.
+ *
+ * `atenuado` es la vista de tramo: baja la opacidad al 20 % de la suya en vez de ocultar la línea. El
+ * contexto —de dónde viene, cuánto le falta— sigue haciendo falta, y borrarlo dejaría una línea suelta en
+ * el vacío, imposible de ubicar.
+ *
+ * El halo copia la opacidad EN PROPORCIÓN: el trazo de lo ya recorrido está apagado a propósito, así que
+ * un halo a opacidad plena lo traería al frente y arruinaría la jerarquía que la atenuación establece.
+ */
+function Trazo({
+  positions,
+  estilo,
+  atenuado,
+}: {
+  positions: LatLngTuple[]
+  estilo: { color: string; weight: number; opacity: number }
+  atenuado?: boolean
+}) {
+  if (positions.length < 2) return null
+  const opacity = atenuado ? estilo.opacity * 0.2 : estilo.opacity
+
+  return (
+    <>
+      <Polyline
+        positions={positions}
+        pathOptions={{
+          color: '#ffffff',
+          weight: estilo.weight + 3,
+          opacity: opacity * 0.8,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+      />
+      <Polyline
+        positions={positions}
+        pathOptions={{
+          color: estilo.color,
+          weight: estilo.weight,
+          opacity,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+      />
+    </>
+  )
+}
+
+/**
+ * Leyenda de los trazos, abajo del mapa.
+ *
+ * POR QUÉ HACE FALTA. Las tres líneas codifican tiempo con tono y grosor, y eso se lee muy bien una vez
+ * que sabés la regla — pero no se adivina. Sin leyenda, un gris más oscuro que otro gris es una diferencia
+ * que se VE y no se entiende, y la pantalla queda dependiendo de que alguien te la explique. Es el mismo
+ * argumento por el que la leyenda de estados de parada ya existía en el panel.
+ *
+ * Muestra SOLO los trazos que están dibujados: si apagaste "Por recorrer" desde el menú de capas, su
+ * renglón se va. Una leyenda que nombra algo que no está en el mapa manda a buscar una línea que no
+ * existe.
+ *
+ * Abajo y no arriba porque arriba es de la pastilla de la cámara; a la izquierda y no al centro porque el
+ * centro de abajo es de los toasts de eventos. Y se corre con el panel de paradas: `margenIzq` es el mismo
+ * que usa `fitBounds`, así que la leyenda nunca queda debajo de una tarjeta.
+ */
+function LeyendaTrazos({
+  visibles,
+  margenIzq,
+}: {
+  visibles: ClaveTrazo[]
+  margenIzq: number
+}) {
+  if (visibles.length === 0) return null
+
+  return (
+    <div
+      className={cn(
+        'absolute bottom-3 z-[1000] flex items-center gap-3 rounded-lg border border-border',
+        'bg-card/95 px-2.5 py-1.5 shadow-lg backdrop-blur-sm',
+        'transition-[left] duration-300 ease-out',
+      )}
+      style={{ left: margenIzq }}
+    >
+      {visibles.map((clave) => (
+        <span key={clave} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          {/* La muestra es un TRAZO de verdad —mismo color y mismo grosor— y no un cuadradito de color:
+              acá el grosor es parte de lo que hay que reconocer, no un detalle de estilo. */}
+          <span
+            className="block w-5 rounded-full"
+            style={{
+              height: TRAZO[clave].weight,
+              background: TRAZO[clave].color,
+              opacity: TRAZO[clave].opacity,
+            }}
+            aria-hidden
+          />
+          {TRAZO_LABEL[clave]}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -483,7 +811,20 @@ export function SeguimientoMapa({
   /** Paradas ya cerradas — viene de la simulación en vivo, no de `viaje.cursor`. */
   cursor,
   paradaFoco,
+  /** El foco lo movió la simulación, no un click. Habilita el segundo acto del tour de la cámara. */
+  focoAuto = false,
   onSeleccionar,
+  /**
+   * Recorrido POR CALLES partido en tramos, indexado igual que `viaje.recorrido`: `tramosCalles[i]` va
+   * del punto `i` al `i + 1`. `null` = todavía no hay ruteo, y entonces se dibuja el trazo recto.
+   *
+   * Llega como prop y NO se rutea acá adentro porque la simulación necesita la MISMA geometría para
+   * mover el camión: si cada uno la pidiera por su cuenta, el pin andaría al lado de su propia línea
+   * durante el rato en que una respuesta llegó y la otra no.
+   */
+  tramosCalles = null,
+  /** Hay ruteo en vuelo. Solo alimenta el spinner del menú de capas; nunca decide qué se dibuja. */
+  ruteando = false,
   /** Ancho (px) que los paneles flotantes le tapan al mapa de cada lado, para encuadrar sin ocultar. */
   margenIzq = 32,
   margenDer = 32,
@@ -501,7 +842,10 @@ export function SeguimientoMapa({
   tracking: ItemActual | null
   cursor: number
   paradaFoco: string | null
+  focoAuto?: boolean
   onSeleccionar: (paradaId: string) => void
+  tramosCalles?: LatLngTuple[][] | null
+  ruteando?: boolean
   margenIzq?: number
   margenDer?: number
   anclaHerramientas: { top: number; left: number }
@@ -514,18 +858,80 @@ export function SeguimientoMapa({
   const ahora = Date.now()
   const minutos = tracking ? minutosSinSenal(tracking.trackedAt, ahora) : null
   const senalVieja = tracking ? esSenalVieja(tracking.trackedAt, ahora) : false
-  // La polilínea se parte en dos: lo recorrido va sólido y atenuado, lo que falta va punteado a color
-  // pleno. Es la lectura de progreso más barata del mapa — no hay que leer un solo número.
-  const { recorrido, pendiente } = useMemo(() => {
+  /**
+   * Las tres líneas del mapa, cortadas del mismo recorrido:
+   *   · `recorrido` → lo ya hecho, sólido y atenuado;
+   *   · `pendiente` → lo que falta, punteado a color pleno;
+   *   · `tramo`     → el trecho que está haciendo AHORA, de su posición a la próxima parada.
+   * Es la lectura de progreso más barata del mapa — no hay que leer un solo número.
+   *
+   * SE CORTAN EN DOS LUGARES DISTINTOS y por eso el cálculo está junto. El corte por PARADA sale gratis
+   * cuando hay ruteo: los tramos ya vienen separados por parada, así que "lo hecho" son los primeros
+   * `cursor` tramos y no hay que buscar nada. El corte en la POSICIÓN DEL CAMIÓN es el que necesita
+   * geometría (`cortarEn`), porque el camión está a mitad de una calle, en un lugar que no es un vértice
+   * ni una parada.
+   *
+   * Sin ruteo cae al recorrido de hitos, que es el comportamiento que había: rectas de parada a parada.
+   */
+  const { recorrido, pendiente, tramo } = useMemo<{
+    recorrido: LatLngTuple[]
+    pendiente: LatLngTuple[]
+    tramo: LatLngTuple[] | null
+  }>(() => {
+    if (tramosCalles) {
+      // `cursor` paradas cerradas = los `cursor` primeros tramos terminados. El tramo `cursor` es el
+      // que el camión está haciendo, y los de más atrás incluyen la vuelta al depósito.
+      const cerrados = tramosCalles.slice(0, Math.min(cursor, tramosCalles.length))
+      const restantes = tramosCalles.slice(Math.min(cursor, tramosCalles.length))
+
+      if (!posicion || restantes.length === 0) {
+        return { recorrido: unirTramos(cerrados), pendiente: unirTramos(restantes), tramo: null }
+      }
+
+      const [andado, porAndar] = cortarEn(restantes[0], posicion)
+      return {
+        recorrido: unirTramos([...cerrados, andado]),
+        pendiente: unirTramos([porAndar, ...restantes.slice(1)]),
+        // El tramo en curso ES el resto del tramo actual: mismo asfalto, mismo corte. Antes era una
+        // recta de la posición del camión a la parada, que en una avenida con retorno mentía el doble
+        // — la distancia y el lado de la calle por el que va a llegar.
+        tramo: porAndar.length > 1 ? porAndar : null,
+      }
+    }
+
     const corte = Math.min(cursor + 1, viaje.recorrido.length)
     const hecho = viaje.recorrido.slice(0, corte)
     const falta = viaje.recorrido.slice(Math.max(corte - 1, 0))
     // Con el camión en ruta, el quiebre real está en su posición actual, no en la última parada.
-    if (posicion) return { recorrido: [...hecho, posicion], pendiente: [posicion, ...falta.slice(1)] }
-    return { recorrido: hecho, pendiente: falta }
-  }, [viaje.recorrido, cursor, posicion])
+    if (posicion) {
+      return {
+        recorrido: [...hecho, posicion],
+        pendiente: [posicion, ...falta.slice(1)],
+        tramo: falta.length > 1 ? [posicion, falta[1]] : null,
+      }
+    }
+    return { recorrido: hecho, pendiente: falta, tramo: null }
+  }, [viaje.recorrido, tramosCalles, cursor, posicion])
 
-  const [capa, setCapa] = useState<CapaBase>('calles')
+  /**
+   * Recorrido completo para la CÁMARA (encuadrar, ver todo). Con ruteo es la tira por calles, que abarca
+   * un poco más que la línea de hitos —el camino real se va para los costados— y encuadrar con los hitos
+   * dejaba pedazos de ruta cortados contra el borde.
+   */
+  const paraEncuadrar = useMemo<LatLngTuple[]>(
+    () => (tramosCalles ? unirTramos(tramosCalles) : viaje.recorrido),
+    [tramosCalles, viaje.recorrido],
+  )
+
+  const [capa, setCapa] = useState<CapaBase>(CAPA_POR_DEFECTO)
+
+  /**
+   * Zoom actual, solo para la ESCALA de los marcadores. Vive en estado y no en un ref porque los iconos
+   * se recalculan en el render: al alejarse, dos paradas de la misma manzana caen a pocos píxeles y lo
+   * único que evita que se pisen es que la gota se achique. Ver `escalaPorZoom`.
+   */
+  const [zoom, setZoom] = useState(INITIAL_ZOOM)
+  const escalaPin = escalaPorZoom(zoom)
 
   /**
    * Seguimiento automático. Arranca ENCENDIDO: quien abre esta pantalla quiere mirar el camión, no
@@ -533,19 +939,22 @@ export function SeguimientoMapa({
    * `SeguirCamion`) y se vuelve a encender con su botón o con "Centrar en el camión".
    */
   const [seguir, setSeguir] = useState(true)
+  /** Espejo de `seguir` para los efectos que lo consultan sin querer depender de él. */
+  const seguirRef = useRef(seguir)
+  seguirRef.current = seguir
 
   /**
    * POR QUÉ se apagó el seguimiento. La distinción es la que permite retomarlo sin adivinar:
-   *  · `'foco'`    → lo apagó el sistema porque el usuario eligió una parada. Es TEMPORAL: cuando suelta
-   *                  la parada, volver a seguir al camión es exactamente lo que quería.
-   *  · `'usuario'` → lo apagó arrastrando, con zoom o desde el botón. Es una DECISIÓN suya y no se toca:
-   *                  se fue a mirar otra zona, y encendérselo de vuelta sería pelearle la vista.
+   *  · `'usuario'` → arrastró, hizo zoom o apretó el botón. Es una DECISIÓN suya y no se toca: se fue a
+   *                  mirar otra zona, y encendérselo de vuelta sería pelearle la vista.
+   *  · `'foco'`    → lo pausó el SISTEMA porque el usuario eligió una parada de la lista. Es TEMPORAL:
+   *                  al cerrar la parada, volver a seguir al camión es exactamente lo que quería.
    *
-   * Sin esta distinción hay que elegir entre dos comportamientos y los dos están mal: "retomar siempre
-   * al cerrar la parada" también revive el seguimiento del que se fue a mirar otra cosa, y "no retomar
-   * nunca" es lo que había — mirabas UNA parada y el camión no volvía al cuadro jamás.
+   * Sin la distinción hay que elegir entre dos comportamientos y los dos están mal: "retomar siempre"
+   * también revive el seguimiento del que se fue a mirar otra cosa, y "no retomar nunca" deja el
+   * seguimiento apagado para el resto de la sesión por haber mirado una parada.
    */
-  const motivoPausa = useRef<'foco' | 'usuario' | null>(null)
+  const motivoPausa = useRef<'usuario' | 'foco' | null>(null)
 
   /**
    * Vista de TRAMO SIGUIENTE: en vez del recorrido completo, solo el trecho que el camión está
@@ -567,6 +976,32 @@ export function SeguimientoMapa({
    * (esta pantalla trabaja con entregas), y por eso el fallback es explícito y no adivinado.
    */
   const [verMercados, setVerMercados] = useState(false)
+
+  /**
+   * Nombres de parada SIEMPRE visibles, en vez de solo al pasar el mouse.
+   *
+   * Arranca apagado y es la decisión correcta para el caso normal: el pin ya lleva el número de visita,
+   * que es lo que se necesita para leer el orden, y ocho etiquetas encima de las calles tapan justo el
+   * recorrido que se vino a mirar. Se prende para el caso en que la pregunta es "¿cuál de estos es el
+   * Hipermaxi?" — ahí sí, recorrer ocho pines con el mouse para averiguarlo es peor que el desorden.
+   */
+  const [verEtiquetas, setVerEtiquetas] = useState(false)
+
+  /**
+   * Qué trazos se dibujan. Los tres arrancan encendidos: juntos son la respuesta completa a "¿cómo va este
+   * viaje?" y apagar uno por defecto sería esconder un tercio de la historia.
+   *
+   * Se pueden apagar porque cada uno contesta una pregunta distinta y a veces molestan las otras dos: para
+   * mirar de cerca la maniobra de ahora, el recorrido de las siete paradas anteriores es ruido; para
+   * evaluar cuánto falta, lo ya recorrido no aporta. Es el mismo argumento de las capas — el mapa
+   * completo es el default correcto, no la única vista posible.
+   */
+  const [trazosOcultos, setTrazosOcultos] = useState<ClaveTrazo[]>([])
+  const verTrazo = (clave: ClaveTrazo) => !trazosOcultos.includes(clave)
+  const alternarTrazo = (clave: ClaveTrazo) =>
+    setTrazosOcultos((ocultos) =>
+      ocultos.includes(clave) ? ocultos.filter((c) => c !== clave) : [...ocultos, clave],
+    )
   const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
   const cityIds = useCityIdsDelMapa([], 'santacruz')
   const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
@@ -595,17 +1030,6 @@ export function SeguimientoMapa({
   const focoLat = enFoco?.lat ?? null
   const focoLng = enFoco?.lng ?? null
 
-  /**
-   * La próxima parada es la del cursor: las anteriores están cerradas. El tramo se dibuja desde la
-   * posición REAL del camión y no desde la parada anterior, que es lo que lo hace útil — la línea
-   * sale de donde está el camión ahora mismo.
-   */
-  const siguiente = entregas[cursor]
-  const tramo = useMemo<LatLngTuple[] | null>(
-    () => (posicion && siguiente ? [posicion, [siguiente.lat, siguiente.lng]] : null),
-    [posicion, siguiente],
-  )
-
   // El ícono se memoiza porque Leaflet RECREA el marcador cuando cambia la prop `icon`, y eso
   // reinicia la animación del pulso. Sin esto, con un ping cada 1,2 s la onda no llegaría a salir
   // nunca: se cortaría a la mitad en cada tick.
@@ -620,6 +1044,13 @@ export function SeguimientoMapa({
    * gestos para siempre. 1,2 s cubre el vuelo de 0,9 s con margen.
    */
   const programatico = useRef(false)
+
+  /**
+   * Hay un tour de cámara en curso. Lo escribe `AjustarVista` y lo lee `SeguirCamion`: mientras dura, el
+   * seguimiento no reencuadra, porque el camión está fuera de cuadro A PROPÓSITO.
+   */
+  const tourEnCurso = useRef(false)
+
   const marcarProgramatico = useCallback(() => {
     programatico.current = true
     setTimeout(() => {
@@ -630,6 +1061,47 @@ export function SeguimientoMapa({
   // El camión está fuera de la zona visible. Lo calcula `SeguirCamion` (que es quien conoce los píxeles
   // y los paneles) y solo se muestra con el seguimiento APAGADO: encendido, vuelve solo.
   const [fueraDeCuadro, setFueraDeCuadro] = useState(false)
+
+  /**
+   * ELEGIR UNA PARADA A MANO PAUSA EL SEGUIMIENTO.
+   *
+   * Sin esto, la pantalla se contradecía: hacías click en una parada de la lista, la cámara volaba hasta
+   * ella y ~1,2 s después `SeguirCamion` la reemplazaba por el camión, porque desde su punto de vista el
+   * camión había quedado fuera de cuadro. O sea que mirar una parada era imposible mientras el
+   * seguimiento estuviera encendido, y no había ninguna forma de enterarse de por qué.
+   *
+   * La pausa es del SISTEMA y por eso se ANUNCIA (ver `AvisoCamara`): una pantalla que apaga sola una
+   * función sin decirlo deja al usuario sin saber qué la volvió a prender. Y es temporal — al cerrar la
+   * parada se retoma, que es lo que quería quien la abrió para mirarla un rato.
+   *
+   * `focoAuto` sale primero porque ese foco no lo eligió nadie: lo movió la simulación al cerrar una
+   * parada, y ahí manda el tour de la cámara, que no pausa nada. Si venía pausado por un foco manual, un
+   * avance automático lo retoma: el usuario dejó de mirar su parada porque el camión avanzó.
+   */
+  useEffect(() => {
+    if (focoAuto || paradaFoco === null) {
+      if (motivoPausa.current === 'foco') {
+        motivoPausa.current = null
+        setSeguir(true)
+      }
+      return
+    }
+    // `seguir` se lee de un REF y no de las dependencias, a propósito: como dependencia, apretar
+    // "Seguir al camión" con la parada abierta volvería a disparar este efecto y lo apagaría de nuevo —
+    // el botón no funcionaría. Y por ref y no desde el updater de `setSeguir` porque acá hay que escribir
+    // `motivoPausa`, y un updater con efectos secundarios corre dos veces en StrictMode.
+    if (!seguirRef.current) return
+    motivoPausa.current = 'foco'
+    setSeguir(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paradaFoco, focoAuto])
+
+  /**
+   * El tramo en curso por REF, para el segundo acto del tour (ver `AjustarVista`). El valor cambia en
+   * cada ping y el tour solo necesita el vigente en el momento de volar, no cada versión intermedia.
+   */
+  const tramoRef = useRef<LatLngTuple[] | null>(tramo)
+  tramoRef.current = tramo
 
   /** Retomar el seguimiento a mano: limpia la pausa para que no quede una decisión vieja pendiente. */
   const retomarSeguimiento = useCallback(() => {
@@ -646,7 +1118,10 @@ export function SeguimientoMapa({
       zoomControl={false}
       className="h-full w-full"
     >
-      <TileLayer url={TILES[capa]} />
+      {/* `key={capa}`: sin remontar, Leaflet reusa la capa y mezcla teselas de las dos durante la
+          transición. `subdomains` porque CARTO sirve desde a–d y OSM desde a–c. */}
+      <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
+      <ZoomWatch onZoom={setZoom} />
       <InvalidateOnResize />
 
       {/* Mercados: fondo. Su pane propio (z 350) la deja debajo del recorrido y de todos los pines, así
@@ -658,7 +1133,7 @@ export function SeguimientoMapa({
       )}
 
       <HerramientasMapa
-        recorrido={viaje.recorrido}
+        recorrido={paraEncuadrar}
         posicionCamion={posicion}
         capa={capa}
         onCapa={setCapa}
@@ -676,7 +1151,11 @@ export function SeguimientoMapa({
         hayTramo={tramo !== null}
         verMercados={verMercados}
         onVerMercados={setVerMercados}
-        cargandoMercados={cargandoMercados}
+        verEtiquetas={verEtiquetas}
+        onVerEtiquetas={setVerEtiquetas}
+        trazosOcultos={trazosOcultos}
+        onAlternarTrazo={alternarTrazo}
+        cargandoCapas={cargandoMercados || ruteando}
         notificaciones={notificaciones}
         onNotificaciones={setNotificaciones}
         ancla={anclaHerramientas}
@@ -689,6 +1168,7 @@ export function SeguimientoMapa({
         margenIzq={margenIzq}
         margenDer={margenDer}
         programatico={programatico}
+        tourEnCurso={tourEnCurso}
         marcarProgramatico={marcarProgramatico}
         onUsuarioTomaControl={() => {
           motivoPausa.current = 'usuario'
@@ -697,22 +1177,37 @@ export function SeguimientoMapa({
         onFueraDeCuadro={setFueraDeCuadro}
       />
 
-      {/* El camión se fue de cuadro y el seguimiento está apagado: un click lo trae de vuelta. Con el
-          seguimiento encendido no aparece — vuelve solo.
-          Mientras hay una parada en foco tampoco: ahí el usuario está mirando OTRA cosa a propósito, la
-          pausa es temporal y cerrar el panel ya retoma el seguimiento. El aviso sería ruido justo cuando
-          la respuesta ya está en camino. */}
-      {fueraDeCuadro && !seguir && !paradaFoco && posicion && (
-        <AvisoFueraDeCuadro onSeguir={retomarSeguimiento} />
+      {/* Con el seguimiento ENCENDIDO no hay pastilla: el camión vuelve solo, o lo trae el segundo acto
+          del tour. Apagado, aparece en los dos casos que lo apagan, y con una diferencia importante entre
+          ellos: la pausa por PARADA se anuncia siempre —la hizo el sistema y hay que decirlo— y la del
+          usuario solo cuando además perdió al camión de vista, porque apagarlo fue su decisión y no
+          necesita que se la recuerden. */}
+      {/* La leyenda lista lo que EFECTIVAMENTE está dibujado: los trazos encendidos, y `ahora` solo si hay
+          un tramo en curso que dibujar (con el camión en el depósito no hay ninguno). */}
+      <LeyendaTrazos
+        visibles={CLAVES_TRAZO.filter(
+          (clave) => verTrazo(clave) && (clave !== 'ahora' || tramo !== null),
+        )}
+        margenIzq={margenIzq}
+      />
+
+      {!seguir && posicion && (enFoco || fueraDeCuadro) && (
+        <AvisoCamara paradaMirando={enFoco?.secuencia ?? null} onSeguir={retomarSeguimiento} />
       )}
       <AjustarVista
         tripId={viaje.tripId}
-        recorrido={viaje.recorrido}
+        recorrido={paraEncuadrar}
         // La posición del PRIMER render, no la que llega en cada ping: encuadrar con la posición viva
         // le arrancaría la vista de las manos al usuario en cada tick.
         posicionInicial={viaje.tracking ? posicionDe(viaje.tracking) : null}
         focoLat={focoLat}
         focoLng={focoLng}
+        // El tour solo corre si el usuario no está manejando la vista: foco automático Y seguimiento
+        // encendido. Con el seguimiento apagado —que solo pasa por decisión suya— el avance sigue
+        // mostrando la parada nueva, pero la cámara no se va sola a buscar el camión.
+        tourActivo={focoAuto && seguir}
+        tourEnCurso={tourEnCurso}
+        tramo={tramoRef}
         margenIzq={margenIzq}
         margenDer={margenDer}
         marcarProgramatico={marcarProgramatico}
@@ -721,54 +1216,71 @@ export function SeguimientoMapa({
       {/* Con la vista de tramo, el recorrido completo no se OCULTA: se atenúa. Sigue siendo el
           contexto —de dónde viene, cuánto le falta— y borrarlo dejaría una línea suelta en el vacío,
           imposible de ubicar. Lo que cambia es cuál de las dos líneas manda la vista. */}
-      {recorrido.length > 1 && (
-        <Polyline
-          positions={recorrido}
-          pathOptions={{ color: viaje.color, weight: 4, opacity: soloTramo ? 0.12 : 0.35 }}
-        />
-      )}
-      {pendiente.length > 1 && (
-        <Polyline
-          positions={pendiente}
-          pathOptions={{
-            color: viaje.color,
-            weight: 3,
-            opacity: soloTramo ? 0.15 : 0.9,
-            dashArray: '6 8',
-          }}
-        />
-      )}
-      {soloTramo && tramo && (
-        <Polyline
-          positions={tramo}
-          pathOptions={{ color: viaje.color, weight: 5, opacity: 1, dashArray: '2 9', lineCap: 'round' }}
-        />
-      )}
+      {verTrazo('hecho') && <Trazo positions={recorrido} estilo={TRAZO.hecho} atenuado={soloTramo} />}
+      {verTrazo('falta') && <Trazo positions={pendiente} estilo={TRAZO.falta} atenuado={soloTramo} />}
+      {/* EL TRAMO EN CURSO SE DIBUJA SIEMPRE, no solo en la vista de tramo.
+          Antes aparecía únicamente con `soloTramo` encendido, y por eso hacía falta encenderlo: en la
+          vista normal, "qué está haciendo ahora" —la pregunta de una pantalla de vigilancia— no estaba
+          dibujada en ninguna parte. Ahora lo está, y `soloTramo` pasa a ser lo que su nombre dice: no
+          agrega la línea, ATENÚA el contexto para que quede sola.
+
+          Es el más grueso de los tres y el único a color: las tres líneas se distinguen por GROSOR y no
+          solo por tono, que es lo que las mantiene legibles para quien no distingue bien el azul del
+          gris. Ver `trazo-estilo`. */}
+      {verTrazo('ahora') && tramo && <Trazo positions={tramo} estilo={TRAZO.ahora} />}
 
       {/* Los offsets de tooltip son NEGATIVOS y grandes porque el ancla del pin es su punta (abajo):
           para quedar arriba del marcador hay que subir todo su alto, no la mitad. */}
       <Marker position={[DEPOSITO.lat, DEPOSITO.lng]} icon={pinDeposito}>
-        <Tooltip direction="top" offset={[0, -42]}>
+        {/* -34 y no -42: la chapa del depósito bajó de 34 a 28 px de ancho, así que su alto total
+            (ancho + media punta) pasó de 42 a 33 y el tooltip quedaba flotando arriba del pin. */}
+        <Tooltip direction="top" offset={[0, -34]}>
           <span className="font-medium">{DEPOSITO.nombre}</span> — salida y retorno
         </Tooltip>
       </Marker>
 
       {entregas.map((entrega) => {
         const meta = ESTADO_ENTREGA[entrega.estado]
+        const enFocoPin = paradaFoco === entrega.paradaId
+        const alto = altoPinEntrega(enFocoPin, escalaPin)
         return (
           <Marker
             key={entrega.id}
             position={[entrega.lat, entrega.lng]}
-            icon={pinEntrega(entrega, paradaFoco === entrega.paradaId)}
+            icon={pinEntrega(entrega, enFocoPin, escalaPin)}
             eventHandlers={{ click: () => onSeleccionar(entrega.paradaId) }}
+            // La parada en foco se dibuja ENCIMA de sus vecinas. Con los pines más chicos siguen
+            // pudiendo tocarse, y la que está seleccionada es justamente la que no puede quedar debajo.
+            zIndexOffset={enFocoPin ? 500 : 0}
           >
-            <Tooltip direction="top" offset={[0, -40]}>
-              <span className="font-medium">
-                #{entrega.secuencia} · {entrega.cliente}
-              </span>
-              <br />
-              {meta.label}
-              {entrega.entregaAt ? ` · ${entrega.entregaAt}` : ''}
+            {/* UN tooltip que cambia de modo, con `key` para que Leaflet lo remonte: `permanent` se lee
+                una sola vez, al crear la capa, así que sin remontar prender las etiquetas no hacía nada.
+                Es el mismo patrón que el editor de planificación.
+
+                El contenido NO es el mismo en los dos modos, y ahí está el punto. Permanente hay ocho a
+                la vez y tiene que ser un nombre y nada más; en hover hay uno, es una consulta puntual y
+                ahí sí entra el estado y la hora. */}
+            <Tooltip
+              key={verEtiquetas ? 'permanente' : 'hover'}
+              permanent={verEtiquetas}
+              direction={verEtiquetas ? 'bottom' : 'top'}
+              offset={verEtiquetas ? [0, 4] : [0, -(alto - 2)]}
+              className={verEtiquetas ? 'stop-detail-tip' : ''}
+            >
+              {verEtiquetas ? (
+                <span className="block max-w-28 truncate text-center text-[9px] font-semibold leading-tight">
+                  {entrega.secuencia}. {entrega.cliente}
+                </span>
+              ) : (
+                <>
+                  <span className="font-medium">
+                    #{entrega.secuencia} · {entrega.cliente}
+                  </span>
+                  <br />
+                  {meta.label}
+                  {entrega.entregaAt ? ` · ${entrega.entregaAt}` : ''}
+                </>
+              )}
             </Tooltip>
           </Marker>
         )

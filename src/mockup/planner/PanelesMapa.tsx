@@ -15,6 +15,7 @@
 import { Keyboard, Settings2 } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { IconoConFlecha, useMenuHover } from '../map/menu-mapa'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -42,25 +43,37 @@ export function PanelesMapa() {
 
   const algoOculto = !dockAbierto || !verMetricas || !verAcciones
 
+  // Apertura por hover + flecha: el patrón compartido de las barras de mapa. Ver `map/menu-mapa`.
+  const menu = useMenuHover()
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={menu.abierto} onOpenChange={menu.setAbierto}>
       {/* El trigger ES el botón: este DropdownMenu es Base UI, no Radix, y no tiene `asChild`. Meterle
           un <Button> adentro anidaba un <button> dentro de otro —HTML inválido— y filtraba `asChild`
           al DOM. Se le pasan las clases del botón directamente, igual que hace el DataTable. */}
       <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative size-7 rounded-md')}
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'icon' }),
+          'relative size-7 gap-px rounded-md',
+        )}
         title="Paneles"
         aria-label="Paneles"
+        {...menu.trigger}
       >
-        <Settings2 size={14} />
+        {/* Barra pegada al borde derecho: el menú sale hacia la izquierda y la flecha va de ese lado,
+            apuntando para allá. El tamaño como clase `size-*`: ver la nota de `IconoConFlecha`. */}
+        <IconoConFlecha side="left">
+          <Settings2 className="size-3.5" />
+        </IconoConFlecha>
         {/* Punto de "hay algo apagado": una pantalla a la que le falta la mitad de la información no
-            puede verse igual que una completa. */}
+            puede verse igual que una completa. La flecha ocupa el lado izquierdo, así que esta esquina
+            sigue libre. */}
         {algoOculto && (
           <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" aria-hidden />
         )}
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" side="left" className="w-52">
+      <DropdownMenuContent align="end" side="left" className="w-52" {...menu.contenido}>
         <DropdownMenuGroup>
           {/* El label va DENTRO del grupo: `DropdownMenuLabel` es `Menu.GroupLabel` de Base UI y
               revienta sin un `Menu.Group` o `Menu.RadioGroup` de ancestro. */}

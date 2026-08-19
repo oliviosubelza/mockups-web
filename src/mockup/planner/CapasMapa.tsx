@@ -29,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { IconoConFlecha, useMenuHover } from '../map/menu-mapa'
+import { CAPAS_BASE } from '../map/tiles'
 import type { RutaPlan } from './planner-model'
 import { usePlannerStore, type CapaBase, type ColorPor } from './planner-store'
 
@@ -58,25 +60,45 @@ export function CapasMapa({
 
   const ocultas = rutasOcultas.length
 
+  // Apertura por hover + flecha: el patrón compartido de las barras de mapa. Ver `map/menu-mapa`.
+  const menu = useMenuHover()
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={menu.abierto} onOpenChange={menu.setAbierto}>
       {/* El trigger ES el botón: este DropdownMenu es Base UI, no Radix, y no tiene `asChild`. Meterle
           un <Button> adentro anidaba un <button> dentro de otro —HTML inválido— y filtraba `asChild`
           al DOM. Se le pasan las clases del botón directamente, igual que hace el DataTable. */}
       <DropdownMenuTrigger
-        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative size-7 rounded-md')}
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'icon' }),
+          'relative size-7 gap-px rounded-md',
+        )}
         title="Capas del mapa"
         aria-label="Capas del mapa"
+        {...menu.trigger}
       >
-        {cargandoCapas ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
+        {/* Esta barra está pegada al borde DERECHO del mapa, así que el menú sale hacia la izquierda
+            (`side="left"`) y la flecha va a la izquierda del ícono, apuntando para allá.
+
+            El tamaño del ícono va como clase `size-*` y no como prop de Lucide: ver la nota de
+            `IconoConFlecha`. Con la prop, ícono y flecha se dibujan los dos a 16 px y no entran en un
+            botón de 28. */}
+        <IconoConFlecha side="left">
+          {cargandoCapas ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Layers className="size-3.5" />
+          )}
+        </IconoConFlecha>
         {/* Punto de "hay algo apagado". Sin él, un mapa al que le falta media información se ve igual
-            que uno completo y se pierde tiempo buscando paradas que están ocultas. */}
+            que uno completo y se pierde tiempo buscando paradas que están ocultas. Sigue arriba a la
+            derecha: la flecha ocupa el lado izquierdo, así que esa esquina quedó libre. */}
         {(ocultas > 0 || !verTrazos || verMercados || verEtiquetas) && (
           <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" aria-hidden />
         )}
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" side="left" className="w-52">
+      <DropdownMenuContent align="end" side="left" className="w-52" {...menu.contenido}>
         {/* Qué codifica el color de los puntos. Va PRIMERO porque es la decisión que más cambia lo que
             se ve: es la diferencia entre un mapa que responde "dónde están los mayoristas" y uno que
             responde "a quién le tocó cada punto". */}
@@ -105,15 +127,14 @@ export function CapasMapa({
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup value={capa} onValueChange={(v) => setCapa(v as CapaBase)}>
           <DropdownMenuLabel className="text-xs">Fondo</DropdownMenuLabel>
-          <DropdownMenuRadioItem value="calles" className="text-xs">
-            Calles
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="suave" className="text-xs">
-            Calles en gris
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="satelite" className="text-xs">
-            Satélite
-          </DropdownMenuRadioItem>
+          {/* La lista sale de `map/tiles` y no está escrita acá: es la misma que ofrecen el monitoreo y el
+              mapa de órdenes, y con tres copias alcanza con que alguien sume una capa en un archivo para
+              que las pantallas dejen de ofrecer lo mismo. */}
+          {CAPAS_BASE.map((fondo) => (
+            <DropdownMenuRadioItem key={fondo.valor} value={fondo.valor} className="text-xs">
+              {fondo.label}
+            </DropdownMenuRadioItem>
+          ))}
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />

@@ -459,3 +459,35 @@
         
     }
 }
+
+
+
+{
+  "name": "Zona Norte",
+  "cityId": 1,
+  "polygonGeojson": {
+    "type": "Polygon",
+    "coordinates": [[[-63.207, -17.758], [-63.157, -17.758], [-63.157, -17.808], [-63.207, -17.808], [-63.207, -17.758]]]
+  }
+}
+
+{
+  "id": 6,
+  "name": "Zona Norte",
+  "cityId": 1,
+  "polygonGeojson": { "type": "Polygon", "coordinates": [[[-63.207, -17.758], "..."]] },
+  "isActive": true,
+  "createdAt": "2026-08-19T14:02:11Z",
+  "createdBy": "j.perez",
+  "warnings": [
+    { "code": "OVERLAPS_EXISTING_ZONE", "zoneId": 2, "zoneName": "Zona Centro" }
+  ]
+}
+
+{ "latitude": -17.783, "longitude": -63.182, "cityId": 1, "deliveryPointId": 7 }
+
+{
+  "status": "IN_ZONE",
+  "zone": { "id": 1, "name": "Zona Norte", "cityId": 1 },
+  "ambiguous": false
+}

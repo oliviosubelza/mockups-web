@@ -3,6 +3,7 @@
 // (`/zonas/:zonaId/editar`) con el MISMO componente: sin `zonaId` arranca vacío y en modo dibujo.
 import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, Polygon, TileLayer, useMap } from 'react-leaflet'
+import { CAPA_POR_DEFECTO, SUBDOMINIOS, TILES } from '../map/tiles'
 import { toast } from 'sonner'
 import { ChevronLeft, MousePointerClick, PenLine, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -108,8 +109,8 @@ export function ZonaEditorView() {
           className="h-full w-full"
         >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-            subdomains="abcd"
+            url={TILES[CAPA_POR_DEFECTO]}
+            subdomains={SUBDOMINIOS[CAPA_POR_DEFECTO]}
           />
           <InvalidateOnResize />
           <Recentrado ciudad={ciudad} quieto={puntos.length === 0} />

@@ -6,6 +6,7 @@
 // Vive en zustand y no en useState porque lo leen piezas que no son hermanas: el mapa, la barra de
 // herramientas que está DENTRO del MapContainer, los tres paneles del dock y el HUD.
 import { create } from 'zustand'
+import { CAPA_POR_DEFECTO, type CapaBase } from '../map/tiles'
 import type { Asignaciones } from './planner-model'
 
 /** Panel del dock izquierdo. Uno a la vez: dos paneles abiertos ya no dejan ver el mapa. */
@@ -26,14 +27,10 @@ export type PanelId = 'flota' | 'pedidos' | 'rutas'
 export type Herramienta = 'pan' | 'punto' | 'rect' | 'lasso'
 
 /**
- * Fondo del mapa.
- *
- * `suave` es un mapa GRIS de bajo contraste (CARTO Positron). Existe porque en esta pantalla el dato
- * son los marcadores y los trazos, y el mapa de calles normal compite con ellos: sus amarillos y
- * naranjas de avenidas están en la misma familia de color que varias rutas. Bajado a gris, el color
- * queda disponible para lo que sí lo necesita.
+ * Fondo del mapa. El tipo, las URLs y cuál viene por defecto viven en `map/tiles`: son de todos los
+ * mapas del mockup y no de esta pantalla. Se re-exporta porque media planificación lo importa de acá.
  */
-export type CapaBase = 'calles' | 'suave' | 'satelite'
+export type { CapaBase } from '../map/tiles'
 
 /**
  * Qué codifica el COLOR de cada punto de entrega.
@@ -158,7 +155,7 @@ const INICIAL = {
   verMetricas: true,
   verAcciones: true,
   herramienta: 'pan' as Herramienta,
-  capa: 'calles' as CapaBase,
+  capa: CAPA_POR_DEFECTO,
   colorPor: 'canal' as ColorPor,
   rutaFoco: null as string | null,
   verMercados: false,

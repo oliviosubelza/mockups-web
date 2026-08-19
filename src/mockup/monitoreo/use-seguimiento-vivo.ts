@@ -61,7 +61,8 @@
 // La frecuencia del ping (10-15 s en producción) y la fluidez del mapa son problemas distintos: el
 // pin se anima acá, no se pide más seguido. Ver la nota de tracking en UltimaVersion.sql — la
 // telemetría NO vive en Postgres, vive en DynamoDB.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { avanceSobre } from '../map/geo/recorrido'
 import type { LatLngTuple } from '../map/geo/polyline'
 import {
   MOTIVOS_DEVOLUCION,
@@ -96,11 +97,6 @@ const TICKS_EN_SITIO = 3
 const PINGS_POR_PUNTO_BATERIA = 25
 
 type Overrides = Map<string, Partial<EntregaMonitoreo>>
-
-const interpolar = (a: LatLngTuple, b: LatLngTuple, t: number): LatLngTuple => [
-  a[0] + (b[0] - a[0]) * t,
-  a[1] + (b[1] - a[1]) * t,
-]
 
 /**
  * Cómo cierra una parada. Derivado del id con un hash y NO con `Math.random`: el resultado tiene que
@@ -149,6 +145,17 @@ export function useSeguimientoVivo(
   viaje: ViajeMonitoreo | undefined,
   /** Entregas del viaje en orden de visita: `entregas[i]` es la parada de secuencia `i + 1`. */
   entregas: EntregaMonitoreo[],
+  /**
+   * Recorrido POR CALLES partido en tramos, indexado igual que `viaje.recorrido`: `tramosCalles[i]` es
+   * cómo se maneja del punto `i` al `i + 1`. `null` mientras no hay ruteo, y entonces el camión avanza
+   * en línea recta como antes.
+   *
+   * POR QUÉ ENTRA POR ACÁ y no se rutea adentro. La simulación es la que decide DÓNDE está el camión, y
+   * si esa posición no cae sobre la misma geometría que el mapa dibuja, el pin queda cortando manzanas
+   * al lado de su propia línea. Que las dos cosas salgan del mismo array es la única forma de que no
+   * puedan desincronizarse.
+   */
+  tramosCalles: LatLngTuple[][] | null = null,
 ): SeguimientoVivo {
   const tripId = viaje?.tripId ?? null
   const viajeEstado = viaje?.estado ?? null
@@ -161,6 +168,18 @@ export function useSeguimientoVivo(
     [recorrido],
   )
   const entregasKey = useMemo(() => entregas.map((entrega) => entrega.id).join('|'), [entregas])
+
+  /**
+   * Los tramos van por REF y NO son dependencia del efecto.
+   *
+   * Es la diferencia entre que el ruteo mejore el movimiento y que lo reinicie. El recorrido por calles
+   * llega ~1 s después de abrir la pantalla, y si el efecto dependiera de él, esa llegada volvería a
+   * montar la simulación: el camión saltaría de vuelta al 55 % del primer tramo y las paradas que ya
+   * había cerrado se abrirían solas. Leído desde el ref, el tick siguiente simplemente empieza a usar
+   * la calle — el camión se acomoda sobre el asfalto y sigue desde donde iba.
+   */
+  const tramosRef = useRef<LatLngTuple[][] | null>(tramosCalles)
+  tramosRef.current = tramosCalles
 
   // El SNAPSHOT del detalle sale de la tabla, no de un campo del viaje: es la Query documentada
   // (`PK=TRIP#{tripId}`, `ScanIndexForward=false`, `Limit=1`). Leerlo de la tabla y no de
@@ -243,6 +262,10 @@ export function useSeguimientoVivo(
       // va de `recorrido[cursor]` a `recorrido[cursor + 1]`.
       const desde = recorrido[cursor]
       const hasta = recorrido[cursor + 1]
+      // El camino REAL de ese tramo: la calle si ya está ruteada, el segmento recto si no. Los dos
+      // empiezan en `desde` y terminan en `hasta`, así que el resto de la simulación no cambia.
+      const porCalles = tramosRef.current?.[cursor]
+      const camino = porCalles && porCalles.length >= 2 ? porCalles : [desde, hasta]
       const actual = vigente(activa)
 
       // ── En camino ──
@@ -259,7 +282,10 @@ export function useSeguimientoVivo(
               historial: [...actual.historial, { estado: 'en_camino', hora: horaLlegadaPlanificada(salida, activa.secuencia) }],
             })
           }
-          publicar(interpolar(desde, hasta, t))
+          // `t` es fracción de LONGITUD del camino, no de la recta: en una calle con curvas los
+          // vértices están densos en las esquinas y ralos en las rectas, así que avanzar por índice
+          // haría al camión frenar en cada bocacalle y dispararse en las avenidas.
+          publicar(avanceSobre(camino, t))
           return
         }
 

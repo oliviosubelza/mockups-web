@@ -22,16 +22,29 @@ import {
   Minus,
   Navigation,
   Plus,
-  Store,
   Truck,
 } from 'lucide-react'
 import { useMap } from 'react-leaflet'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { encuadrar } from '../map/encuadrar'
+// El tipo y los nombres de las capas son de TODO el mockup, no de esta barra: viven en `map/tiles`.
+export type { CapaBase } from '../map/tiles'
+import { CAPAS_BASE, CAPA_POR_DEFECTO, type CapaBase } from '../map/tiles'
+import { IconoConFlecha, useMenuHover } from '../map/menu-mapa'
+import { CLAVES_TRAZO, TRAZO, TRAZO_LABEL, type ClaveTrazo } from './trazo-estilo'
 import type { LatLngTuple } from '../map/geo/polyline'
-
-export type CapaBase = 'calles' | 'satelite'
 
 /**
  * Botón de la barra. Chico y cuadrado: es una herramienta, no una acción de la pantalla.
@@ -91,8 +104,18 @@ export function HerramientasMapa({
   /** Capa de mercados (polígonos de zona de venta). Arranca APAGADA en esta pantalla. */
   verMercados,
   onVerMercados,
-  /** Petición de mercados en vuelo: el botón muestra el spinner en lugar de su ícono. */
-  cargandoMercados = false,
+  /** Nombres de parada fijos sobre el mapa en vez de solo al pasar el mouse. */
+  verEtiquetas,
+  onVerEtiquetas,
+  /** Trazos apagados. El estilo y el nombre de cada uno salen de `trazo-estilo`, no de props. */
+  trazosOcultos,
+  onAlternarTrazo,
+  /**
+   * Hay algo que el mapa DIBUJA viajando por red: los mercados, el recorrido por calles, o los dos. El
+   * botón de capas muestra el spinner en lugar de su ícono. Es un solo indicador para las dos cosas a
+   * propósito: al usuario no le sirve saber CUÁL falta, le sirve saber que el mapa todavía no está entero.
+   */
+  cargandoCapas = false,
   /** Avisos (toasts) de los eventos del viaje. Preferencia persistida; arranca apagada. */
   notificaciones,
   onNotificaciones,
@@ -112,7 +135,11 @@ export function HerramientasMapa({
   hayTramo: boolean
   verMercados: boolean
   onVerMercados: (ver: boolean) => void
-  cargandoMercados?: boolean
+  verEtiquetas: boolean
+  onVerEtiquetas: (ver: boolean) => void
+  trazosOcultos: ClaveTrazo[]
+  onAlternarTrazo: (clave: ClaveTrazo) => void
+  cargandoCapas?: boolean
   notificaciones: boolean
   onNotificaciones: (activas: boolean) => void
   margenDer: number
@@ -120,6 +147,14 @@ export function HerramientasMapa({
 }) {
   const map = useMap()
   const margenes = { margenIzq, margenDer }
+
+  // Apertura por hover + flecha: el patrón compartido de las barras de mapa. Ver `map/menu-mapa`.
+  const menu = useMenuHover()
+  // El botón se pinta cuando el mapa NO está en su estado por defecto: otro fondo, una capa extra o algún
+  // trazo apagado. Sin esto, un mapa al que le falta media información se ve igual que uno completo y se
+  // pierde tiempo buscando una línea que alguien apagó hace media hora.
+  const hayAlgoCambiado =
+    capa !== CAPA_POR_DEFECTO || verMercados || verEtiquetas || trazosOcultos.length > 0
 
   return (
     <div
@@ -195,25 +230,110 @@ export function HerramientasMapa({
 
       <span className="mx-1.5 h-px bg-border" aria-hidden />
 
-      {/* Con dos capas, un toggle dice más que una lista: el botón anuncia A DÓNDE va, no dónde está. */}
-      <Herramienta
-        etiqueta={capa === 'calles' ? 'Ver satélite' : 'Ver calles'}
-        onClick={() => onCapa(capa === 'calles' ? 'satelite' : 'calles')}
-      >
-        <Layers size={15} className={cn(capa === 'satelite' && 'text-primary')} />
-      </Herramienta>
+      {/* CAPAS: un menú, no un botón por capa.
+          Con dos fondos alcanzaba un toggle —el botón anunciaba a dónde iba— pero con tres deja de
+          funcionar: un ciclo de tres estados obliga a pasar por el que no se quiere para llegar al que
+          sí, y el ícono ya no puede decir dónde estás. Es el mismo menú que el editor de planificación,
+          por el mismo motivo, y además se lleva adentro los interruptores que antes eran botones mudos
+          en esta misma barra. */}
+      <DropdownMenu open={menu.abierto} onOpenChange={menu.setAbierto}>
+        <DropdownMenuTrigger
+          className={cn(
+            buttonVariants({ variant: 'ghost', size: 'icon' }),
+            'relative size-8 gap-px rounded-lg',
+            hayAlgoCambiado && 'text-primary',
+          )}
+          title="Capas y trazos del mapa"
+          aria-label="Capas y trazos del mapa"
+          {...menu.trigger}
+        >
+          {/* El menú de esta barra sale hacia la DERECHA (`side="right"`): está pegada al borde izquierdo
+              del mapa y el panel se despliega hacia adentro. `IconoConFlecha` pone la flecha de ese lado y
+              apuntando para allá.
 
-      {/* MERCADOS. Es un interruptor y arranca APAGADO: esta pantalla ya tiene el recorrido, las paradas
-          con su estado y el camión moviéndose; sumarle once polígonos de fondo por defecto convierte la
-          vigilancia en un mapa temático. Queda a mano para el caso en que sí importa —"¿esta entrega
-          fallida es del mercado que venimos teniendo problemas?"— y ahí lo prende quien pregunta. */}
-      <Herramienta
-        etiqueta={verMercados ? 'Ocultar los mercados' : 'Ver los mercados'}
-        onClick={() => onVerMercados(!verMercados)}
-        activo={verMercados}
-      >
-        {cargandoMercados ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}
-      </Herramienta>
+              EL TAMAÑO DEL ÍCONO VA COMO CLASE `size-*` y no como prop de Lucide: `buttonVariants` trae
+              `[&_svg:not([class*='size-'])]:size-4`, y ese CSS le gana a los atributos width/height que
+              Lucide escribe con su prop `size`. Sin la clase, ícono y flecha se dibujan los dos a 16 px
+              —33 px de contenido en un botón de 32— y la flecha deja de leerse como una flecha chica. */}
+          <IconoConFlecha side="right">
+            {cargandoCapas ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Layers className="size-3.5" />
+            )}
+          </IconoConFlecha>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent
+          align="start"
+          side="right"
+          className="w-48"
+          {...menu.contenido}
+        >
+          <DropdownMenuRadioGroup value={capa} onValueChange={(v) => onCapa(v as CapaBase)}>
+            {/* El label va DENTRO del grupo: es `Menu.GroupLabel` de Base UI y revienta sin un
+                `Menu.Group` o `Menu.RadioGroup` de ancestro. */}
+            <DropdownMenuLabel className="text-xs">Fondo</DropdownMenuLabel>
+            {CAPAS_BASE.map((fondo) => (
+              <DropdownMenuRadioItem key={fondo.valor} value={fondo.valor} className="text-xs">
+                {fondo.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-xs">Capas</DropdownMenuLabel>
+            {/* MERCADOS. Arranca APAGADO: esta pantalla ya tiene el recorrido, las paradas con su estado
+                y el camión moviéndose; sumarle once polígonos de fondo por defecto convierte la
+                vigilancia en un mapa temático. Queda a mano para cuando sí importa — "¿esta entrega
+                fallida es del mercado que venimos teniendo problemas?". */}
+            <DropdownMenuCheckboxItem
+              checked={verMercados}
+              onCheckedChange={onVerMercados}
+              className="text-xs"
+            >
+              Mercados
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={verEtiquetas}
+              onCheckedChange={onVerEtiquetas}
+              className="text-xs"
+            >
+              Nombres de parada
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            {/* TRAZOS. Cada línea contesta una pregunta distinta —qué pasó, qué falta, qué está pasando— y
+                a veces las otras dos estorban: para mirar la maniobra de ahora, el recorrido de las siete
+                paradas anteriores es ruido. La muestra de color al lado del nombre es la que hace que la
+                lista sea usable sin haber memorizado la leyenda. */}
+            <DropdownMenuLabel className="text-xs">Trazos</DropdownMenuLabel>
+            {CLAVES_TRAZO.map((clave) => (
+              <DropdownMenuCheckboxItem
+                key={clave}
+                checked={!trazosOcultos.includes(clave)}
+                onCheckedChange={() => onAlternarTrazo(clave)}
+                className="gap-2 text-xs"
+              >
+                <span
+                  className="shrink-0 rounded-full"
+                  style={{
+                    width: 14,
+                    height: TRAZO[clave].weight,
+                    background: TRAZO[clave].color,
+                    opacity: TRAZO[clave].opacity,
+                  }}
+                  aria-hidden
+                />
+                {TRAZO_LABEL[clave]}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <span className="mx-1.5 h-px bg-border" aria-hidden />
 

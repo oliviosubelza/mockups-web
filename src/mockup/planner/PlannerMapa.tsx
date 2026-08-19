@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Warehouse } from 'lucide-react'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
+import { SUBDOMINIOS, TILES } from '../map/tiles'
 import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
@@ -44,26 +45,6 @@ const INITIAL_ZOOM = 12
 /** Gris de "todavía sin ruta". Deliberadamente apagado: es una parada que reclama una decisión. */
 const SIN_RUTA = '#94a3b8'
 const SELECCION = '#2563eb'
-
-/**
- * Fondos disponibles.
- *
- * `suave` es CARTO Positron: el mismo mapa, desaturado a grises. Es el fondo estándar de cualquier
- * visualización sobre mapa, y por una razón concreta que se ve acá: el OSM de calles pinta las
- * avenidas de amarillo y naranja, que son exactamente dos de los colores que reparte el generador de
- * rutas. Sobre gris, el color vuelve a significar una sola cosa.
- *
- * ATRIBUCIÓN: CARTO no pide clave pero sí crédito («© OpenStreetMap contributors © CARTO»). Esta
- * pantalla monta el mapa con `attributionControl={false}`, igual que el resto del mockup — antes de
- * que esto salga a producción hay que reponer el control o poner el crédito en algún lado.
- */
-const TILES: Record<CapaBase, string> = {
-  calles: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  // Sin `{r}` (la variante retina): Leaflet solo sustituye ese token con `detectRetina`, y sin él
-  // quedaría literal en la URL y las teselas darían 404.
-  suave: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-  satelite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-}
 
 /**
  * Contorno de la gota, con la PUNTA en (13, 33). El path no cambió; lo que cambió es la caja que lo
@@ -537,7 +518,7 @@ export function PlannerMapa({
     >
       {/* `key`: sin él, Leaflet reusa la capa y solo le cambia la URL, y las teselas viejas del fondo
           anterior se quedan pintadas hasta que el usuario mueve el mapa. Remontando, entra limpio. */}
-      <TileLayer key={capa} url={TILES[capa]} subdomains={capa === 'suave' ? 'abcd' : 'abc'} />
+      <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
       <InvalidateOnResize />
       <ZoomWatch onZoom={setZoom} />
       <Camara paradas={paradas} foco={foco} margenIzq={margenIzq} margenDer={margenDer} />

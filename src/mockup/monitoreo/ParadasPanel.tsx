@@ -91,17 +91,16 @@ export function ParadasPanel({
               type="button"
               onClick={() => onSeleccionar(entrega.paradaId)}
               aria-current={enFoco}
-              // La parada EN CURSO se marca con una barra de acento a la izquierda, no con un badge.
-              // El tinte solo no alcanzaba: `bg-muted/30` es más flojo que el `hover:bg-muted/60`, así
-              // que al pasar el mouse la marca desaparecía — por eso hacía falta la palabra "En curso".
-              // La barra es ortogonal al fondo: hover y selección siguen usando tinte sin borrarla.
+              // La parada EN CURSO se marca solo con tinte, sin barra de acento ni badge. El tinte
+              // tiene que GANARLE al del hover (`bg-muted/60`): con `bg-primary/5` la marca
+              // desaparecía al pasar el mouse, así que el reposo va en /10 y el foco en /15.
               className={cn(
-                'flex w-full items-stretch gap-2.5 rounded-xl border-l-2 border-transparent pr-3 text-left transition-colors',
+                'flex w-full items-stretch gap-2.5 rounded-xl pr-3 text-left transition-colors',
                 'hover:bg-muted/60',
                 enFoco && 'bg-muted/70',
                 reciente && 'bg-muted/60',
-                activa && 'border-primary bg-primary/5',
-                activa && enFoco && 'bg-primary/10',
+                activa && 'bg-primary/10',
+                activa && enFoco && 'bg-primary/15',
               )}
             >
               {/* Columna del riel: tramo, marcador, tramo. Los extremos del recorrido van

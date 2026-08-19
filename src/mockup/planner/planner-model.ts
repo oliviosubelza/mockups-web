@@ -97,19 +97,26 @@ export function construirRutas(
 }
 
 /**
- * Reparte las paradas entre las rutas POR PESO, a prorrata de la capacidad de cada camión.
+ * Reparte las paradas entre las rutas a prorrata de la capacidad de cada camión, respetando PESO y
+ * VOLUMEN.
  *
- * Verbatim de la regla de `PlanningView.optimizar`, y por la misma razón: partir la lista en N trozos
- * iguales de paradas ignora que las paradas no pesan lo mismo ni los camiones tienen la misma
- * capacidad — así un camión de 11 t terminaba con 80 t encima. Como `ratio ≤ 1`, el objetivo de cada
- * camión nunca supera su capacidad real.
+ * POR QUÉ LAS DOS CAPACIDADES Y NO SOLO EL PESO. Repartía solo por kilos, y la barra de ocupación mide
+ * `max(pctPeso, pctVolumen)` (ver `cargaDeRuta`). O sea que la pantalla repartía con una regla y puntuaba
+ * con otra, y cuando las dos no coincidían el resultado era un plan que su propia barra declaraba
+ * imposible: cuatro rutas al 120-160 % con los camiones al 80 % de su peso útil. Un optimizador tiene
+ * que optimizar contra la misma restricción que la pantalla verifica, o el usuario ve un error donde el
+ * código cree que hizo bien su trabajo.
  *
- * Recorrer la curva de Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta; el orden
- * fino dentro del grupo lo decide después el vecino-más-cercano desde el depósito.
+ * Partir la lista en N trozos iguales de paradas no sirve: las paradas no pesan lo mismo ni los camiones
+ * tienen la misma capacidad —el maestro va de una minivan de 1 t a un camión de 30—, así que el objetivo
+ * de cada ruta es su capacidad × el ratio de lo que hay que repartir. Como `ratio ≤ 1`, ningún objetivo
+ * supera la capacidad real.
  *
- * ADEMÁS DEL PESO, respeta la refrigeración: una parada con algún pedido de frío solo puede caer en
- * un camión `Frío`. Si no hay ninguno con lugar, queda sin asignar — y el panel de avisos dice por
- * qué. Antes esta regla no existía y el reparto mandaba frío a camiones secos sin decir nada.
+ * Recorrer la curva de Hilbert en orden mantiene la CONTIGÜIDAD geográfica de cada ruta; el orden fino
+ * dentro del grupo lo decide después el vecino-más-cercano desde el depósito.
+ *
+ * ADEMÁS, respeta la refrigeración: una parada con algún pedido de frío solo puede caer en un camión
+ * `Frío`. Si no hay ninguno con lugar, queda sin asignar — y el panel de avisos dice por qué.
  */
 export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
   const asignaciones: Asignaciones = {}
@@ -119,51 +126,96 @@ export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
   const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
 
   const libreKg = rutas.map((r) => (r.camion.capacidadPeso ?? 0) * 1000)
-  const capacidadTotalKg = libreKg.reduce((acc, kg) => acc + kg, 0)
+  const libreM3 = rutas.map((r) => r.camion.capacidadVolumen ?? 0)
+
+  /**
+   * El objetivo de cada ruta se calcula con UN ratio por dimensión, y el que manda es el más exigente.
+   *
+   * Con ratios independientes —peso al 60 %, volumen al 95 %— los objetivos de una misma ruta describen
+   * dos planes distintos, y el reparto termina cortando por el que se agota primero de todos modos. Un
+   * solo ratio (el mayor de los dos) reparte contra la restricción que de verdad limita el día y deja las
+   * rutas parejas EN ESA dimensión, que es la que la barra va a mostrar.
+   */
+  const totalKg = libreKg.reduce((acc, kg) => acc + kg, 0)
+  const totalM3 = libreM3.reduce((acc, m3) => acc + m3, 0)
   const demandaKg = porCercania.reduce((acc, p) => acc + p.pesoTotal, 0)
-  const ratio = capacidadTotalKg > 0 ? Math.min(1, demandaKg / capacidadTotalKg) : 1
+  const demandaM3 = porCercania.reduce((acc, p) => acc + p.volumenTotal, 0)
+  const ratio = Math.min(
+    1,
+    Math.max(totalKg > 0 ? demandaKg / totalKg : 0, totalM3 > 0 ? demandaM3 / totalM3 : 0),
+  )
   const objetivoKg = libreKg.map((kg) => kg * ratio)
+  const objetivoM3 = libreM3.map((m3) => m3 * ratio)
 
   const grupos = new Map<string, Parada[]>()
   const sinAsignar: Parada[] = []
   let actual = 0
 
-  for (const parada of porCercania) {
-    // LA REFRIGERACIÓN ES UNA RESTRICCIÓN DURA, no una preferencia. Repartir solo por peso mandaba
-    // pedidos de frío a camiones secos: el plan cerraba perfecto en kilos y la mercadería no llegaba.
-    // Un camión de frío SÍ puede llevar carga seca, así que la restricción es en un solo sentido.
-    const necesitaFrio = parada.pedidos.some((p) => p.productType === 'Frío')
-    const sirve = (i: number) => !necesitaFrio || rutas[i].camion.tipo === 'Frío'
+  // LA REFRIGERACIÓN ES UNA RESTRICCIÓN DURA, no una preferencia. Repartir sin mirarla mandaba pedidos
+  // de frío a camiones secos: el plan cerraba perfecto en kilos y la mercadería no llegaba. Un camión de
+  // frío SÍ puede llevar carga seca, así que la restricción es en un solo sentido.
+  const sirve = (parada: Parada, i: number) =>
+    !parada.pedidos.some((p) => p.productType === 'Frío') || rutas[i].camion.tipo === 'Frío'
 
-    // Primera ruta —desde la actual— donde la parada entra dentro de su objetivo; si ninguna tiene
-    // lugar (resto de empaquetado), se reintenta contra la capacidad real.
-    let idx = -1
-    for (let k = 0; k < rutas.length; k++) {
-      const i = (actual + k) % rutas.length
-      if (sirve(i) && objetivoKg[i] >= parada.pesoTotal) {
-        idx = i
-        break
-      }
-    }
+  const entra = (parada: Parada, i: number, kg: number[], m3: number[]) =>
+    sirve(parada, i) && kg[i] >= parada.pesoTotal && m3[i] >= parada.volumenTotal
+
+  /**
+   * Cuánto lugar le queda a una ruta, como fracción de su capacidad y en su dimensión más ajustada.
+   *
+   * Es lo que permite comparar una minivan con un camión de 30 t: en kilos absolutos el camión gana
+   * siempre, y elegirlo por eso es exactamente cómo el reparto terminaba con una ruta al 158 % y otra al
+   * 4 %. Lo que se reparte es OCUPACIÓN, no kilos.
+   */
+  const lugarRelativo = (i: number) =>
+    Math.min(
+      libreKg[i] > 0 ? libreKg[i] / ((rutas[i].camion.capacidadPeso ?? 0) * 1000 || 1) : 0,
+      libreM3[i] > 0 ? libreM3[i] / (rutas[i].camion.capacidadVolumen ?? 1) : 0,
+    )
+
+  for (const parada of porCercania) {
+    // 1. LA RUTA ACTUAL PRIMERO, mientras la parada entre en su objetivo. Es lo que conserva la
+    //    contigüidad: las paradas vienen en orden geográfico, así que quedarse en la misma ruta agrupa
+    //    vecinos. Saltar de ruta en cada parada daría cuatro recorridos entreverados por toda la ciudad.
+    let idx = entra(parada, actual, objetivoKg, objetivoM3) ? actual : -1
+
+    // 2. Se llenó el objetivo de la actual: sigue la siguiente que tenga lugar, en orden. El recorrido
+    //    circular arranca en `actual` para que la ruta nueva empiece donde terminó la anterior.
     if (idx === -1) {
-      for (let k = 0; k < rutas.length; k++) {
+      for (let k = 1; k <= rutas.length; k++) {
         const i = (actual + k) % rutas.length
-        if (sirve(i) && libreKg[i] >= parada.pesoTotal) {
+        if (entra(parada, i, objetivoKg, objetivoM3)) {
           idx = i
           break
         }
       }
     }
-    // No entra en ninguna: queda SIN ASIGNAR en vez de sobrecargar un camión —o de romper la cadena
-    // de frío—. El panel de avisos explica cuál de las dos cosas pasó; esconder la parada sería tapar
-    // el problema.
+
+    // 3. Ninguna tiene objetivo libre —es el resto de empaquetado— y hay que ubicarla igual. Va a la que
+    //    tenga MÁS LUGAR RELATIVO, no a la primera que la acepte: el sobrante es justo lo que desnivela
+    //    el plan, y colocarlo por orden de aparición es lo que dejaba la primera ruta sobrecargada y la
+    //    última casi vacía. Acá se usa la capacidad REAL, no el objetivo.
+    if (idx === -1) {
+      let mejor = -1
+      for (let i = 0; i < rutas.length; i++) {
+        if (!entra(parada, i, libreKg, libreM3)) continue
+        if (mejor === -1 || lugarRelativo(i) > lugarRelativo(mejor)) mejor = i
+      }
+      idx = mejor
+    }
+
+    // No entra en ninguna: queda SIN ASIGNAR en vez de sobrecargar un camión —o de romper la cadena de
+    // frío—. El panel de avisos explica cuál de las dos cosas pasó; esconder la parada sería tapar el
+    // problema.
     if (idx === -1) {
       sinAsignar.push(parada)
       continue
     }
 
     libreKg[idx] -= parada.pesoTotal
+    libreM3[idx] -= parada.volumenTotal
     objetivoKg[idx] -= parada.pesoTotal
+    objetivoM3[idx] -= parada.volumenTotal
     actual = idx
     const rutaId = rutas[idx].id
     grupos.set(rutaId, [...(grupos.get(rutaId) ?? []), parada])

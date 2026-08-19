@@ -22,6 +22,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useRouteParams } from '@/core/routing/active-route'
+import { useRecorridoCalles } from '../map/use-recorrido-calles'
 import { openRoute } from '@/core/routing/open-route'
 import { DetalleParadaPanel } from './DetalleParadaPanel'
 import { BateriaChofer, Frescura, LeyendaColapsable, ProgresoEntregas } from './ProgresoEntregas'
@@ -218,10 +219,36 @@ export function MonitoreoDetalleView() {
   // Las entregas de esta orden, en orden de visita. Un viaje = una carga = una orden.
   const base = useMemo(() => (tripId === null ? [] : entregasDeViaje(tripId)), [tripId])
 
+  /**
+   * Recorrido por calles del viaje, partido por sus paradas.
+   *
+   * SE PIDE ACÁ, en el ancestro común, y no adentro del mapa: lo consumen DOS cosas —la simulación, que
+   * decide dónde está el camión, y el mapa, que dibuja la línea— y tienen que usar exactamente la misma
+   * geometría. Ruteando en cada uno por separado bastaba con que una respuesta llegara antes que la otra
+   * para tener el pin caminando al lado de su propia ruta.
+   */
+  const { tramos: tramosCalles, cargando: ruteando } = useRecorridoCalles(
+    tripId,
+    viaje?.recorrido ?? [],
+    viaje !== undefined,
+  )
+
   // La simulación en vivo es la única fuente del estado actual: devuelve las entregas ya mutadas y el
   // último ítem ACTUAL crudo (la posición y la batería se derivan de él, no se guardan).
-  const { tracking, cursor, actualizadoAt, entregas } = useSeguimientoVivo(viaje, base)
+  const { tracking, cursor, actualizadoAt, entregas } = useSeguimientoVivo(viaje, base, tramosCalles)
   const [paradaFoco, setParadaFoco] = useState<string | null>(() => paradaInicial(entregas))
+
+  /**
+   * El último cambio de foco lo hizo la SIMULACIÓN al cerrar una parada, no el usuario.
+   *
+   * Existe porque el mapa hace dos cosas distintas según el origen. Con un foco automático encadena un
+   * segundo movimiento —muestra la parada nueva y después vuelve a la traza del camión— para que el
+   * camión no quede fuera de cuadro sin que nadie lo pidiera. Con un foco del usuario NO: si alguien
+   * hizo click en una parada para mirarla, irse de ahí dos segundos después es pelearle la vista.
+   *
+   * El mapa no puede deducirlo: le llega un `paradaFoco` y los dos caminos lo escriben igual.
+   */
+  const [focoAuto, setFocoAuto] = useState(false)
   const [actividadReciente, setActividadReciente] = useState<ActividadReciente | null>(null)
   const previas = useRef<{ tripId: number | null; entregas: Map<string, EntregaMonitoreo> } | null>(null)
   const limpiarActividad = useRef<number | null>(null)
@@ -266,6 +293,10 @@ export function MonitoreoDetalleView() {
     if (anterior === paradaActual) return
     setDetalleAbierto(true)
     setParadaFoco(paradaActual)
+    // `anterior === null` es la PRIMERA parada, o sea abrir la pantalla, no un avance. Ahí el encuadre
+    // inicial ya centra en el camión y encadenarle un tour sería moverle la vista a alguien que recién
+    // llegó. El tour es para los avances: el camión cerró una parada y arrancó hacia la siguiente.
+    setFocoAuto(anterior !== null)
   }, [paradaActual])
 
   useEffect(() => {
@@ -335,6 +366,8 @@ export function MonitoreoDetalleView() {
   const seleccionar = (paradaId: string) => {
     setDetalleAbierto(true)
     setParadaFoco(paradaId)
+    // Elegida a mano: el mapa se queda en la parada y no encadena la vuelta a la traza.
+    setFocoAuto(false)
   }
 
   // Sin contexto (F5 o URL directa) no hay nada que seguir: se vuelve al listado.
@@ -375,7 +408,10 @@ export function MonitoreoDetalleView() {
           entregas={entregas}
           tracking={tracking}
           cursor={cursor}
+          tramosCalles={tramosCalles}
+          ruteando={ruteando}
           paradaFoco={paradaFoco}
+          focoAuto={focoAuto}
           onSeleccionar={seleccionar}
           margenIzq={paradasAbierto ? PARADAS_PX + MARGEN_PX * 2 : MARGEN_PX * 3}
           margenDer={detalleVisible ? DETALLE_PX + MARGEN_PX * 2 : MARGEN_PX * 3}
