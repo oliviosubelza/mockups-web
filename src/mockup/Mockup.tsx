@@ -7,6 +7,7 @@ import { PortalContainerContext } from '@/components/ui/portal-container'
 import { Toaster } from '@/components/ui/sonnet'
 import { cn } from '@/lib/utils'
 import { ClipWarning } from './ClipWarning'
+// DEPRECADO: solo para tableros armados con `fase` explícita. La app navegable ya no lo usa.
 import { DispatchFlow } from './DispatchFlow'
 import { resolveFrame, type Frame } from './frame'
 import { MockupShell, type MockTheme } from './MockupShell'

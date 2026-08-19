@@ -11,8 +11,10 @@ import { ClipboardCheck, ClipboardList, Flag, LandPlot, Map as MapIcon, Radar, R
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
-import { DispatchFlow } from './DispatchFlow'
+// DEPRECADO: el flujo por steps (`DispatchFlow`) ya no se navega. Queda importado solo para el
+// fallback de `Mockup.tsx` cuando un tablero se arma con `fase` explícita.
 import { PlansView } from './views/PlansView'
+import { DeprecatedScreen } from './DeprecatedScreen'
 // Listado de órdenes de transporte: reemplazado por el listado de CAMIONES (ver CamionesView). Se deja
 // el import comentado, no borrado, para poder revertir el flujo si hiciera falta.
 import { OrdenesTransporteView } from './views/OrdenesTransporteView'
@@ -23,8 +25,7 @@ import { MonitoreoDetalleView } from './monitoreo/MonitoreoDetalleView'
 import { PlanningView } from './views/PlanningView'
 import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
-import { ZonasView } from './zonas/ZonasView'
-import { ZonaEditorView } from './zonas/ZonaEditorView'
+import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -53,6 +54,12 @@ export interface MockRoute {
    * pantalla muestra.
    */
   fullBleed?: boolean
+  /**
+   * La ruta está retirada: sigue resolviendo (links viejos, favoritos) pero ya no se navega desde
+   * la UI y `navigateTo` avisa por consola si algo la sigue llamando. `reemplazo` es el id de la
+   * ruta que ocupó su lugar.
+   */
+  deprecated?: { motivo: string; reemplazo: string }
 }
 
 // ── Pantallas (wrappers de vistas existentes con sus props por defecto) ──────────────────────────
@@ -64,17 +71,38 @@ function PlanificacionesScreen() {
     <PlansView
       state="default"
       onNew={() => {
+        // "Nueva planificación" ya NO entra al flujo por steps (deprecado): abre el editor del mapa,
+        // con el mismo arranque que usa `PlannerPlansView.handleNueva` (plan nuevo + activo).
         useDispatchPlanStore.getState().reset()
-        usePlanesStore.getState().beginPlan()
-        navigateTo('nueva-planificacion')
+        const nuevo = usePlanesStore.getState().beginPlan()
+        usePlanesStore.setState({ activePlanId: nuevo.id })
+        navigateTo('planificacion-mapa-editor')
       }}
     />
   )
 }
 
+/**
+ * @deprecated Reemplazada por el editor del mapa (`planificacion-mapa-editor`).
+ *
+ * Era el flujo por steps (camiones y pedidos → planificación → órdenes). Toda la planificación se
+ * hace ahora sobre el mapa, así que la ruta queda como cartel: el que llegue por un link viejo ve
+ * a dónde se mudó la pantalla en vez de un 404 o, peor, un flujo paralelo que nadie mantiene.
+ */
 function NuevaPlanificacionScreen() {
-  // El flujo de steps actual arranca en el paso 0 (Camiones y pedidos).
-  return <DispatchFlow state="default" initialFase={0} />
+  return (
+    <DeprecatedScreen
+      titulo="El flujo por pasos se retiró"
+      motivo="La planificación ahora se arma entera sobre el mapa: flota, pedidos y rutas en una sola pantalla."
+      reemplazoRouteId="planificacion-mapa-editor"
+      reemplazoLabel="Ir al editor del mapa"
+      onAntesDeIr={() => {
+        useDispatchPlanStore.getState().reset()
+        const nuevo = usePlanesStore.getState().beginPlan()
+        usePlanesStore.setState({ activePlanId: nuevo.id })
+      }}
+    />
+  )
 }
 
 // Pantalla del listado de órdenes de transporte: comentada mientras el sidebar lista CAMIONES.
@@ -126,8 +154,18 @@ function ReoptimizarScreen() {
       }),
     [operationalStops, paradaIds, plannedStops, target?.id],
   )
-  // Sin contexto (refresh/URL directa) cae al plan completo.
-  if (!camion) return <DispatchFlow state="default" initialFase={1} planningTab="mapa" />
+  // Sin contexto (refresh/URL directa) no hay nada que reoptimizar: antes caía al flujo por steps,
+  // que quedó deprecado. Ahora vuelve al listado desde donde SE ELIGE el camión a finalizar.
+  if (!camion) {
+    return (
+      <DeprecatedScreen
+        titulo="No hay ningún camión en reoptimización"
+        motivo="Esta pantalla necesita un camión unificado. Elegí uno desde el listado y usá 'Finalizar'."
+        reemplazoRouteId="camiones"
+        reemplazoLabel="Ir a Confirmar rutas"
+      />
+    )
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PlanningView
@@ -211,13 +249,18 @@ export const routes: MockRoute[] = [
     showInSidebar: false,
   },
   {
+    // DEPRECADA. El flujo por steps se retiró; la ruta sobrevive solo para no romper links viejos.
     id: 'nueva-planificacion',
     path: '/planificaciones/nueva',
-    label: 'Nueva planificación',
+    label: 'Nueva planificación (deprecado)',
     component: NuevaPlanificacionScreen,
     order: 2,
     // Es una ACCIÓN (se llega por el botón de la lista), no un lugar fijo del sidebar.
     showInSidebar: false,
+    deprecated: {
+      motivo: 'El flujo por steps se reemplazó por el editor del mapa.',
+      reemplazo: 'planificacion-mapa-editor',
+    },
   },
   {
     // Lista de planificaciones del mapa interactivo con histórico y botón de nueva planificación.
@@ -242,29 +285,35 @@ export const routes: MockRoute[] = [
   {
     // Dato maestro: zonas de reparto por ciudad. Ítem propio en el sidebar — no es una acción de
     // un plan puntual, es un perímetro que muchos planes van a reusar.
+    //
+    // UNA sola pantalla para las tres rutas de zonas: el mapa es el contenido y el listado flota
+    // encima. Antes eran dos —tabla acá, editor a pantalla completa en las otras dos— y para tocar
+    // una zona había que entrar de a una desde la tabla, sin ver nunca dos zonas juntas.
     id: 'zonas',
     path: '/zonas',
     label: 'Zonas',
     icon: LandPlot,
-    component: ZonasView,
+    component: ZonasWorkspaceView,
     order: 2,
+    fullBleed: true,
   },
   {
-    // Dibujar el polígono es un mapa a pantalla completa, no un modal: mismo criterio que el
-    // editor de planificación. Sin id en la URL → zona nueva.
+    // Entra al mismo workspace pero arrancando en modo dibujo. Se conserva como ruta propia para no
+    // romper links viejos y para que "nueva zona" sea compartible por URL.
     id: 'zona-nueva',
     path: '/zonas/nueva',
     label: 'Nueva zona',
-    component: ZonaEditorView,
+    component: ZonasWorkspaceView,
     order: 2,
     fullBleed: true,
     showInSidebar: false,
   },
   {
+    // Ídem, arrancando en modo edición sobre la zona del path.
     id: 'zona-editar',
     path: '/zonas/:zonaId/editar',
     label: 'Editar zona',
-    component: ZonaEditorView,
+    component: ZonasWorkspaceView,
     order: 2,
     fullBleed: true,
     showInSidebar: false,
@@ -329,5 +378,13 @@ export function registerMockRoutes(): void {
 
 /** Navega a una ruta por id. Este es "el método" al que se le pasa la ruta. */
 export function navigateTo(routeId: string): void {
+  // Una ruta deprecada sigue navegable (links viejos), pero si el que la llama es NUESTRA propia UI
+  // es un bug: alguien quedó apuntando a la pantalla retirada. Falla ruidosa en consola.
+  const deprecada = findRoute(routeId)?.deprecated
+  if (deprecada) {
+    console.warn(
+      `[routing] navigateTo('${routeId}') apunta a una ruta DEPRECADA. ${deprecada.motivo} Usá '${deprecada.reemplazo}'.`,
+    )
+  }
   openRoute(routeId)
 }

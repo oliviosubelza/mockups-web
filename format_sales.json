@@ -491,3 +491,6 @@
   "zone": { "id": 1, "name": "Zona Norte", "cityId": 1 },
   "ambiguous": false
 }
+
+{ "status": "OUT_OF_ZONE", "zone": null }
+

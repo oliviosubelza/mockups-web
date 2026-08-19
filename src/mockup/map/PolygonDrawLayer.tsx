@@ -7,25 +7,74 @@
 // vértice se agrega en cada click mientras se dibuja, y remontar N componentes React por cada uno
 // se ve como un parpadeo. Mismo criterio que `SelectionLayer` con el rectángulo y el lazo.
 //
-// A DIFERENCIA de `SelectionLayer`, acá NO se desactiva el arrastre del mapa: un click sin
-// movimiento sigue agregando un vértice, y un click CON movimiento sigue siendo un pan — es la
-// distinción nativa entre 'click' y drag que ya hace Leaflet, y es lo que permite panear el mapa
-// mientras se dibuja sin salir de la herramienta.
+// EL PAN, Y POR QUÉ NO ALCANZA LA DISTINCIÓN NATIVA DE LEAFLET:
+// La versión anterior confiaba en que "click sin movimiento agrega vértice, click con movimiento
+// panea". Es cierto, pero el umbral de Leaflet es `clickTolerance: 3` (leaflet-src.js:5978): con más
+// de 3 px de movimiento arranca el arrastre y se traga el click, con menos es un click. Tres píxeles.
+// En trackpad eso es una moneda al aire — querés reencuadrar y te clava un vértice, y como no podés
+// confiar en el gesto terminás no paneando nunca.
+//
+// El arreglo es separar los gestos, no subir el umbral: **ESPACIO apretado = modo pan**. Mientras
+// está apretado el click no agrega nada, los vértices no se arrastran (así se puede empezar el pan
+// encima de uno) y el cursor lo dice. Es la convención de Figma y de cualquier editor vectorial.
+//
+// Y la línea guía se esconde mientras el mapa se arrastra: seguía al cursor durante el pan, tirando
+// una goma elástica gigante por la pantalla, y eso solo hacía que la herramienta PARECIERA rota
+// además de serlo.
+//
+// TIRADORES DE PUNTO MEDIO: ajustando el contorno aparece un tirador tenue en el medio de cada arista,
+// y clickearlo INSERTA un vértice ahí. Es la forma de "hacer un quiebre nuevo" en un lado sin tener que
+// redibujar la zona entera.
+//
+// Es CLICK y no arrastrar, y es una decisión, no una limitación que no se vio: los markers se
+// reconstruyen en cada cambio de `puntos` (así se dibuja esta capa), así que un arrastre que insertara
+// al empezar destruiría, en pleno gesto, el marker que se está arrastrando. Sostener el arrastre pide
+// congelar la reconstrucción y actualizar la forma a mano durante el gesto — bastante máquina para
+// ahorrar un click, cuando el vértice nuevo aparece justo donde estaba el tirador y arrastrarlo es el
+// gesto siguiente natural.
+//
+// SNAPPING: si `anillosSnap` trae la geometría de las zonas vecinas, cada vértice que se pone o se
+// arrastra se imanta a sus vértices y aristas (ver `geo/snapping.ts`). Es lo que hace que un borde
+// compartido sea EL MISMO punto en las dos zonas en vez de dos trazos que pasan cerca. Se puede
+// suspender con ALT apretado, porque a veces querés un vértice cerca del borde y no sobre él.
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { useMap } from 'react-leaflet'
 import { oscurecer } from './color'
 import type { LatLngTuple } from './geo/polyline'
+import { buscarSnap, RADIO_SNAP_PX, type Snap } from './geo/snapping'
 
 const AZUL = '#2563eb'
 const ESTILO_TRAZO: L.PolylineOptions = { color: AZUL, weight: 2, dashArray: '6 4' }
 const ESTILO_GUIA: L.PolylineOptions = { color: AZUL, weight: 1.5, dashArray: '2 6', opacity: 0.55 }
+/** Ámbar y no azul: el indicador de imantado tiene que leerse como algo DISTINTO del trazo propio. */
+const AMBAR = '#f59e0b'
+/** Vértice soldado: relleno. Punto sobre una arista: hueco. La diferencia dice si compartís un vértice
+ *  o solo caés sobre el borde, que es información distinta al soldar dos zonas. */
+const estiloSnap = (tipo: Snap['tipo']): L.CircleMarkerOptions => ({
+  radius: tipo === 'vertice' ? 7 : 6,
+  color: AMBAR,
+  weight: 2.5,
+  fillColor: AMBAR,
+  fillOpacity: tipo === 'vertice' ? 1 : 0,
+})
 const estiloRelleno = (color: string): L.PolylineOptions => ({
   color: oscurecer(color, 0.7),
   weight: 2.5,
   fillColor: color,
   fillOpacity: 0.18,
 })
+
+/** Tirador de punto medio: hueco y tenue, para que NO compita con los vértices de verdad. Lo que está
+ *  ahí todavía no es un vértice; es la oferta de crear uno. */
+function iconoPuntoMedio(): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:9px;height:9px;border-radius:999px;background:#fff;border:2px dashed ${AZUL};opacity:.55;cursor:copy;"></div>`,
+    iconSize: [9, 9],
+    iconAnchor: [4.5, 4.5],
+  })
+}
 
 function iconoVertice(primero: boolean): L.DivIcon {
   const tam = primero ? 13 : 9
@@ -45,12 +94,25 @@ export function PolygonDrawLayer({
   /** Cierre del polígono: click en el primer vértice, doble click o Enter (con 3+ vértices). */
   onFinalizar,
   color = AZUL,
+  anillosSnap = [],
+  snapActivo = true,
+  snapRadioPx = RADIO_SNAP_PX,
 }: {
   puntos: LatLngTuple[]
   activo: boolean
-  onPuntosChange: (puntos: LatLngTuple[]) => void
+  /**
+   * `transitorio` distingue el cuadro intermedio de un gesto (arrastrando un vértice) de la acción
+   * terminada. Existe para el historial: sin esto, un solo arrastre empuja decenas de entradas y
+   * deshacerlo cuesta cuarenta Ctrl+Z. Se llama con `true` en cada `drag` y con `false` al soltar.
+   */
+  onPuntosChange: (puntos: LatLngTuple[], transitorio?: boolean) => void
   onFinalizar: (puntosFinal: LatLngTuple[]) => void
   color?: string
+  /** Anillos de las zonas vecinas contra los que imantar. Vacío = sin snapping. */
+  anillosSnap?: LatLngTuple[][]
+  /** Interruptor persistente del imantado (el de la barra). ALT lo suspende momentáneamente. */
+  snapActivo?: boolean
+  snapRadioPx?: number
 }) {
   const map = useMap()
 
@@ -64,49 +126,167 @@ export function PolygonDrawLayer({
   onPuntosChangeRef.current = onPuntosChange
   const onFinalizarRef = useRef(onFinalizar)
   onFinalizarRef.current = onFinalizar
+  const anillosSnapRef = useRef(anillosSnap)
+  anillosSnapRef.current = anillosSnap
+  const snapActivoRef = useRef(snapActivo)
+  snapActivoRef.current = snapActivo
+  const snapRadioRef = useRef(snapRadioPx)
+  snapRadioRef.current = snapRadioPx
 
   const capaRef = useRef<L.LayerGroup | null>(null)
   const guiaRef = useRef<L.Polyline | null>(null)
+  /** Espacio apretado: modo pan. Vive en un ref y no en estado porque lo leen handlers de Leaflet. */
+  const panRef = useRef(false)
+  /** El mapa se está arrastrando ahora mismo. Apaga la guía, que si no dibuja una goma por la pantalla. */
+  const arrastrandoRef = useRef(false)
+  /** Los markers de vértice del render actual, para poder apagarles el arrastre en modo pan. */
+  const marcadoresRef = useRef<L.Marker[]>([])
+  /** ALT apretado: suspende el imantado sin apagar el interruptor de la barra. */
+  const altRef = useRef(false)
+  /**
+   * Hay un vértice EN PLENO ARRASTRE.
+   *
+   * Existe por un bug concreto: el efecto de redibujo hace `capa.clearLayers()` en cada cambio de
+   * `puntos`, y durante un arrastre `puntos` cambia en cada mousemove. O sea que el marker que estabas
+   * arrastrando se DESTRUÍA a los pocos píxeles — y `Marker.onRemove` llama a `dragging.removeHooks()`,
+   * así que Leaflet soltaba el arrastre solo. El síntoma era exactamente "se mueve 2 o 3 px y se suelta".
+   *
+   * Con este ref, mientras dura el gesto no se reconstruye nada: solo se le corrigen las coordenadas a
+   * la forma que ya está dibujada. La reconstrucción completa llega en el `dragend`.
+   */
+  const arrastrandoVerticeRef = useRef(false)
+  /** La polilínea/polígono del contorno, para poder moverla sin rehacerla. `any` en la geometría porque
+   *  acá vive una `L.Polyline` mientras se traza y una `L.Polygon` una vez cerrado, y lo único que se le
+   *  pide es `setLatLngs`. */
+  const formaRef = useRef<L.Polyline<any> | null>(null)
+  /** El tramo punteado que cierra el trazo mientras se dibuja. */
+  const cierreRef = useRef<L.Polyline | null>(null)
+  /** Los tiradores de punto medio del render actual. */
+  const tiradoresRef = useRef<L.Marker[]>([])
+  /** Capa APARTE de `capaRef` a propósito: esa se limpia en cada cambio de `puntos` y se llevaría el
+   *  indicador puesto justo cuando más hace falta (al soltar un vértice imantado). */
+  const indicadorCapaRef = useRef<L.LayerGroup | null>(null)
+  const indicadorRef = useRef<L.CircleMarker | null>(null)
 
   useEffect(() => {
     const capa = L.layerGroup().addTo(map)
     capaRef.current = capa
+    const indicador = L.layerGroup().addTo(map)
+    indicadorCapaRef.current = indicador
     return () => {
       capa.remove()
       capaRef.current = null
+      indicador.remove()
+      indicadorCapaRef.current = null
+      indicadorRef.current = null
     }
   }, [map])
+
+  // Imanta un punto contra las zonas vecinas y pinta (o borra) el indicador. Devuelve el punto que hay
+  // que usar de verdad: el imantado si hubo snap, el original si no.
+  const resolverSnap = (latlng: L.LatLng): LatLngTuple => {
+    const original: LatLngTuple = [latlng.lat, latlng.lng]
+    const capa = indicadorCapaRef.current
+    const snap =
+      snapActivoRef.current && !altRef.current && !panRef.current
+        ? buscarSnap(map, latlng, anillosSnapRef.current, snapRadioRef.current)
+        : null
+
+    if (!capa) return snap ? snap.latlng : original
+    if (!snap) {
+      indicadorRef.current?.remove()
+      indicadorRef.current = null
+      return original
+    }
+    // Se remonta en cada cambio de tipo porque Leaflet fija algunas opciones del CircleMarker al
+    // crearlo; mover el existente alcanza mientras el tipo no cambie.
+    if (!indicadorRef.current) {
+      indicadorRef.current = L.circleMarker(snap.latlng, estiloSnap(snap.tipo)).addTo(capa)
+    } else {
+      indicadorRef.current.setLatLng(snap.latlng).setStyle(estiloSnap(snap.tipo))
+    }
+    return snap.latlng
+  }
+  const resolverSnapRef = useRef(resolverSnap)
+  resolverSnapRef.current = resolverSnap
+
+  const limpiarIndicador = () => {
+    indicadorRef.current?.remove()
+    indicadorRef.current = null
+  }
 
   // Redibuja la forma y los vértices en cada cambio. `activo` decide si se ve como TRAZO (todavía no
   // es una zona) o como POLÍGONO relleno (ya cerrado) — el mismo lenguaje visual que los mercados.
   useEffect(() => {
     const capa = capaRef.current
     if (!capa) return
+
+    // Arrastre en curso: NO se reconstruye. Se le corrigen las coordenadas a lo que ya está dibujado y
+    // se sale. Reconstruir acá es lo que rompía el arrastre (ver `arrastrandoVerticeRef`).
+    if (arrastrandoVerticeRef.current) {
+      formaRef.current?.setLatLngs(puntos)
+      if (cierreRef.current && puntos.length >= 3) {
+        cierreRef.current.setLatLngs([puntos[puntos.length - 1], puntos[0]])
+      }
+      return
+    }
+
     capa.clearLayers()
     guiaRef.current = null
+    formaRef.current = null
+    cierreRef.current = null
+    tiradoresRef.current = []
 
     if (puntos.length >= 2) {
-      if (activo) L.polyline(puntos, ESTILO_TRAZO).addTo(capa)
-      else L.polygon(puntos, estiloRelleno(color)).addTo(capa)
+      formaRef.current = activo
+        ? L.polyline(puntos, ESTILO_TRAZO).addTo(capa)
+        : L.polygon(puntos, estiloRelleno(color)).addTo(capa)
     }
     if (activo && puntos.length >= 3) {
-      L.polyline([puntos[puntos.length - 1], puntos[0]], ESTILO_GUIA).addTo(capa)
+      cierreRef.current = L.polyline([puntos[puntos.length - 1], puntos[0]], ESTILO_GUIA).addTo(capa)
     }
 
+    marcadoresRef.current = []
     puntos.forEach((p, i) => {
       const marker = L.marker(p, { icon: iconoVertice(i === 0), draggable: true, autoPan: true }).addTo(capa)
+      marcadoresRef.current.push(marker)
+      // Se remontan en cada cambio de `puntos`, así que hay que reponerles el estado del modo pan.
+      if (panRef.current) marker.dragging?.disable()
+
+      marker.on('dragstart', () => {
+        arrastrandoVerticeRef.current = true
+        // Los tiradores de punto medio quedarían en posiciones viejas durante todo el gesto —y no se
+        // recalculan, porque justamente no estamos reconstruyendo—. Se sacan y vuelven en el dragend.
+        tiradoresRef.current.forEach((m) => m.remove())
+        tiradoresRef.current = []
+      })
 
       marker.on('drag', (e) => {
-        const { lat, lng } = (e.target as L.Marker).getLatLng()
+        const m = e.target as L.Marker
+        const destino = resolverSnapRef.current(m.getLatLng())
+        // Reposicionar el marker además de avisar el cambio: si no, el punto del arreglo queda imantado
+        // pero el círculo sigue pegado al cursor y se ve un desfasaje mientras arrastrás.
+        m.setLatLng(destino)
         const siguiente = [...puntosRef.current]
-        siguiente[i] = [lat, lng] as LatLngTuple
-        onPuntosChangeRef.current(siguiente)
+        siguiente[i] = destino
+        onPuntosChangeRef.current(siguiente, true)
+      })
+
+      // El gesto terminó: acá recién entra al historial, como UNA entrada.
+      marker.on('dragend', () => {
+        arrastrandoVerticeRef.current = false
+        limpiarIndicador()
+        // COPIA y no `puntosRef.current` tal cual: el historial guardaría la MISMA referencia que ya es
+        // el presente, `puntos` no cambiaría de identidad y el efecto de redibujo no volvería a correr
+        // — se quedaría sin reconstruir los markers ni los tiradores para siempre.
+        onPuntosChangeRef.current([...puntosRef.current], false)
       })
 
       // Parado en el mapa, así que su click burbujea al 'click' del mapa (agregaría un vértice
       // fantasma en el mismo lugar) si no se corta acá.
       marker.on('click', (e) => {
         L.DomEvent.stop(e)
+        if (panRef.current) return
         if (i === 0 && activoRef.current && puntosRef.current.length >= 3) {
           onFinalizarRef.current(puntosRef.current)
         }
@@ -114,8 +294,9 @@ export function PolygonDrawLayer({
 
       marker.on('contextmenu', (e) => {
         L.DomEvent.stop(e)
+        if (panRef.current) return
         if (puntosRef.current.length <= 3) return
-        onPuntosChangeRef.current(puntosRef.current.filter((_, idx) => idx !== i))
+        onPuntosChangeRef.current(puntosRef.current.filter((_, idx) => idx !== i), false)
       })
 
       marker.bindTooltip(i === 0 ? 'Click para cerrar el polígono' : 'Arrastrar para mover · click derecho para borrar', {
@@ -123,7 +304,94 @@ export function PolygonDrawLayer({
         offset: [0, -8],
       })
     })
+
+    // Tiradores de punto medio: solo con el polígono ya cerrado. Mientras se traza, el contorno todavía
+    // se está definiendo y llenarlo de puntos intermedios taparía los vértices que estás poniendo.
+    if (!activo && puntos.length >= 3) {
+      for (let i = 0; i < puntos.length; i++) {
+        const a = puntos[i]
+        const b = puntos[(i + 1) % puntos.length]
+        // Aristas cortas EN PANTALLA no llevan tirador: en un contorno denso, o alejando el mapa, los
+        // tiradores se apilan sobre los vértices de verdad y no se le puede acertar a ninguno de los
+        // dos. El umbral va en píxeles porque el problema es de pantalla, no de territorio.
+        if (map.latLngToContainerPoint(a).distanceTo(map.latLngToContainerPoint(b)) < 28) continue
+
+        const medio: LatLngTuple = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+        const tirador = L.marker(medio, { icon: iconoPuntoMedio(), interactive: true }).addTo(capa)
+        tiradoresRef.current.push(tirador)
+        tirador.on('click', (e) => {
+          L.DomEvent.stop(e)
+          if (panRef.current) return
+          const siguiente = [...puntosRef.current]
+          siguiente.splice(i + 1, 0, medio)
+          onPuntosChangeRef.current(siguiente, false)
+        })
+        tirador.bindTooltip('Click para insertar un vértice acá', { direction: 'top', offset: [0, -8] })
+      }
+    }
   }, [puntos, activo, color, map])
+
+  // Modo pan (ESPACIO) y ocultamiento de la guía mientras el mapa se arrastra. Va en su PROPIO efecto
+  // y no dentro del de `activo` porque también hace falta al ajustar vértices: ahí el click no agrega
+  // nada, pero los markers siguen tapando el mapa y un pan que empieza encima de uno lo arrastra.
+  useEffect(() => {
+    const container = map.getContainer()
+
+    const aplicarPan = (encendido: boolean) => {
+      if (panRef.current === encendido) return
+      panRef.current = encendido
+      container.style.cursor = encendido ? 'grab' : activoRef.current ? 'crosshair' : ''
+      marcadoresRef.current.forEach((m) => (encendido ? m.dragging?.disable() : m.dragging?.enable()))
+      if (encendido) {
+        guiaRef.current?.remove()
+        guiaRef.current = null
+      }
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return
+      // `e.code` y no `e.key`: con el espacio, `key` es ' ' y se confunde con cualquier separador.
+      if (e.key === 'Alt') altRef.current = true
+      if (e.code !== 'Space') return
+      e.preventDefault() // si no, la página scrollea debajo del mapa
+      aplicarPan(true)
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') altRef.current = false
+      if (e.code === 'Space') aplicarPan(false)
+    }
+    // Si el foco se va de la ventana con el espacio (o ALT) apretado nunca llega el keyup y el modo
+    // quedaría trabado para siempre. Con ALT pasa seguido: Alt+Tab.
+    const onBlur = () => {
+      altRef.current = false
+      aplicarPan(false)
+    }
+
+    const onDragStart = () => {
+      arrastrandoRef.current = true
+      guiaRef.current?.remove()
+      guiaRef.current = null
+    }
+    const onDragEnd = () => {
+      arrastrandoRef.current = false
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    map.on('dragstart', onDragStart)
+    map.on('dragend', onDragEnd)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+      map.off('dragstart', onDragStart)
+      map.off('dragend', onDragEnd)
+      aplicarPan(false)
+    }
+  }, [map])
 
   // Gestos de dibujo: solo se escuchan mientras `activo`. Dejar el arrastre del mapa prendido: un
   // click SIN movimiento sigue siendo un click (agrega vértice), uno CON movimiento sigue paneando.
@@ -131,19 +399,24 @@ export function PolygonDrawLayer({
     if (!activo) return
     const container = map.getContainer()
     const prevCursor = container.style.cursor
-    container.style.cursor = 'crosshair'
+    if (!panRef.current) container.style.cursor = 'crosshair'
     map.doubleClickZoom.disable()
 
     const onClick = (e: L.LeafletMouseEvent) => {
-      onPuntosChangeRef.current([...puntosRef.current, [e.latlng.lat, e.latlng.lng]])
+      if (panRef.current) return
+      onPuntosChangeRef.current([...puntosRef.current, resolverSnapRef.current(e.latlng)], false)
     }
 
     const onMouseMove = (e: L.LeafletMouseEvent) => {
       const capa = capaRef.current
+      if (panRef.current || arrastrandoRef.current) return
+      // El indicador se calcula SIEMPRE, aunque todavía no haya ningún vértice: el primer punto de una
+      // zona nueva es justamente el que más conviene soldar al borde de la vecina.
+      const destino = resolverSnapRef.current(e.latlng)
       if (!capa || puntosRef.current.length === 0) return
       const desde = puntosRef.current[puntosRef.current.length - 1]
-      if (!guiaRef.current) guiaRef.current = L.polyline([desde, e.latlng], ESTILO_GUIA).addTo(capa)
-      else guiaRef.current.setLatLngs([desde, e.latlng])
+      if (!guiaRef.current) guiaRef.current = L.polyline([desde, destino], ESTILO_GUIA).addTo(capa)
+      else guiaRef.current.setLatLngs([desde, destino])
     }
 
     const onDblClick = (e: L.LeafletMouseEvent) => {
@@ -156,8 +429,9 @@ export function PolygonDrawLayer({
       while (pts.length > 0 && map.latLngToContainerPoint(pts[pts.length - 1]).distanceTo(aca) < 8) {
         pts = pts.slice(0, -1)
       }
+      if (panRef.current) return
       if (pts.length >= 3) onFinalizarRef.current(pts)
-      else if (pts.length !== puntosRef.current.length) onPuntosChangeRef.current(pts)
+      else if (pts.length !== puntosRef.current.length) onPuntosChangeRef.current(pts, false)
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -165,9 +439,9 @@ export function PolygonDrawLayer({
       // No compite con escribir el nombre de la zona o abrir el select de ciudad.
       if (target && /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return
       if (e.key === 'Enter' && puntosRef.current.length >= 3) onFinalizarRef.current(puntosRef.current)
-      else if (e.key === 'Escape') onPuntosChangeRef.current([])
+      else if (e.key === 'Escape') onPuntosChangeRef.current([], false)
       else if ((e.key === 'Backspace' || e.key === 'Delete') && puntosRef.current.length > 0) {
-        onPuntosChangeRef.current(puntosRef.current.slice(0, -1))
+        onPuntosChangeRef.current(puntosRef.current.slice(0, -1), false)
       }
     }
 
@@ -185,6 +459,7 @@ export function PolygonDrawLayer({
       map.doubleClickZoom.enable()
       guiaRef.current?.remove()
       guiaRef.current = null
+      limpiarIndicador()
     }
   }, [activo, map])
 

@@ -32,6 +32,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   AlertTriangle,
+  Boxes,
   ChevronsUpDown,
   GripVertical,
   Eye,
@@ -56,6 +57,8 @@ import { CanalGlyph } from '../canal-glyph'
 import { CANAL_META, MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
 import { TEXTO_OCUPACION, cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
 import { usePlannerStore } from './planner-store'
+import { AccesoriosDialog } from './AccesoriosDialog'
+import { resumenAccesorios, totalAccesorios } from '../accesorios'
 
 const fmtPeso = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 
@@ -261,6 +264,11 @@ export function RutasPanel({
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
   const setRutasOcultas = usePlannerStore((s) => s.setRutasOcultas)
+  const accesorios = usePlannerStore((s) => s.accesorios)
+  const accesoriosRuta = usePlannerStore((s) => s.accesoriosRuta)
+  const abrirAccesorios = usePlannerStore((s) => s.abrirAccesorios)
+  const cerrarAccesorios = usePlannerStore((s) => s.cerrarAccesorios)
+  const setAccesorio = usePlannerStore((s) => s.setAccesorio)
 
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -292,6 +300,9 @@ export function RutasPanel({
   const ruta = rutas.find((r) => r.id === rutaFoco) ?? null
   const esSinAsignar = rutaFoco === SIN_ASIGNAR
   const carga = ruta ? cargaDeRuta(paradasAsignadas, ruta) : null
+  const accesoriosDeRuta = (ruta && accesorios[ruta.id]) || []
+  /** Ruta del diálogo abierto. Puede no ser la del foco si alguien cambió de ruta con él abierto. */
+  const rutaAccesorios = rutas.find((r) => r.id === accesoriosRuta) ?? null
   const paradas = esSinAsignar ? sinAsignar : (carga?.paradas ?? [])
 
   const visibles = useMemo(() => {
@@ -562,6 +573,32 @@ export function RutasPanel({
                 </span>
               </div>
 
+              {/* BANDEO. Vive en el detalle de la ruta y no en un panel aparte porque es un atributo
+                  del camión que sale, igual que su ocupación: se decide mirando lo mismo. Una fila
+                  chica y no una tabla — el 90% de las rutas lleva dos tipos, y la lista completa está
+                  a un click. */}
+              <button
+                type="button"
+                onClick={() => abrirAccesorios(ruta.id)}
+                className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-left text-[11px] leading-snug transition-colors hover:border-solid hover:bg-muted/60"
+              >
+                <Boxes size={12} className="shrink-0 text-muted-foreground" />
+                {accesoriosDeRuta.length > 0 ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate">{resumenAccesorios(accesoriosDeRuta)}</span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {totalAccesorios(accesoriosDeRuta)}
+                    </span>
+                  </>
+                ) : (
+                  // El estado vacío nombra el gesto, no la ausencia. "Sin accesorios" describe algo
+                  // que ya se ve (la fila está vacía) y no dice que se pueda tocar.
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    Agregar accesorios (pallets, carritos…)
+                  </span>
+                )}
+              </button>
+
               {/* Sobrecarga de capacidad. Solo el nivel CRÍTICO trae cartel: entre 90 y 150 el color
                   de la barra alcanza —es un "va apretado" que se resuelve acomodando—, pero pasado el
                   150 hay que decir qué hacer, porque ningún acomodo mete media carga extra. */}
@@ -670,6 +707,19 @@ export function RutasPanel({
         <p className="shrink-0 border-t border-border px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
           Limpiá la búsqueda para poder reordenar las paradas.
         </p>
+      )}
+
+      {rutaAccesorios && (
+        <AccesoriosDialog
+          abierto
+          rutaNombre={rutaAccesorios.nombre}
+          placa={rutaAccesorios.camion.placa}
+          items={accesorios[rutaAccesorios.id] ?? []}
+          onCerrar={cerrarAccesorios}
+          onCambiar={(tipoId, cantidad, series) =>
+            setAccesorio(rutaAccesorios.id, tipoId, cantidad, series)
+          }
+        />
       )}
     </div>
   )

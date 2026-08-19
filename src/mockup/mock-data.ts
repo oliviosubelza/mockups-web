@@ -26,6 +26,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { StepItem } from '@/components/ui/steps'
+import type { AccesorioRuta } from './accesorios'
 import { ordenarPorCercania } from './map/geo/hilbert'
 import { createRand, uniqueNames } from './mock-random'
 import {
@@ -1390,6 +1391,14 @@ export interface PlanCamion {
   chofer: string
   auxiliar: string
   ocupacionPct: number
+  /**
+   * BANDEO: pallets, carritos y demás que salen con el camión y tienen que volver. Se declara en la
+   * planificación y viaja con la ruta guardada, porque el control del retorno compara contra ESTE
+   * número — si no quedara acá, "salió con 12" sería lo que escriba el que descarga.
+   *
+   * Opcional: los planes viejos y las rutas que no llevan nada no tienen la clave.
+   */
+  accesorios?: AccesorioRuta[]
   planId?: number
 }
 

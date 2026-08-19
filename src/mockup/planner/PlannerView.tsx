@@ -156,6 +156,7 @@ export function PlannerView() {
   const cerrarDock = usePlannerStore((s) => s.cerrarDock)
   const asignaciones = usePlannerStore((s) => s.asignaciones)
   const setAsignaciones = usePlannerStore((s) => s.setAsignaciones)
+  const accesorios = usePlannerStore((s) => s.accesorios)
   const optimizado = usePlannerStore((s) => s.optimizado)
   const setColorPor = usePlannerStore((s) => s.setColorPor)
   const setOptimizado = usePlannerStore((s) => s.setOptimizado)
@@ -470,6 +471,9 @@ export function PlannerView() {
         chofer: tripulacion.chofer,
         auxiliar: tripulacion.auxiliar,
         ocupacionPct: capacidadKg > 0 ? Math.round((cargaKg / capacidadKg) * 100) : 0,
+        // El bandeo viaja con la ruta guardada. Sin esta línea se cargan los pallets en el panel, se
+        // genera el plan y el dato se evapora: el control del retorno no tendría contra qué comparar.
+        accesorios: accesorios[ruta.id] ?? [],
       }
     })
     // Las rutas vacías no se guardan: un camión sin paradas no es una ruta, es un camión libre.

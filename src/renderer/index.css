@@ -92,7 +92,8 @@ body[data-resizing] * {
      MAPA (como el nombre de un barrio), no un tooltip de un objeto. El halo blanco alrededor del texto
      es lo que la hace legible tanto sobre el relleno del polígono como sobre el satélite, sin tener que
      ponerle un fondo que taparía los pines de abajo. */
-  .leaflet-tooltip.mercado-etiqueta {
+  .leaflet-tooltip.mercado-etiqueta,
+  .leaflet-tooltip.zona-etiqueta {
     padding: 0;
     border: none;
     border-radius: 0;
@@ -109,13 +110,26 @@ body[data-resizing] * {
       0 0 3px #fff,
       0 0 6px #fff;
   }
-  .leaflet-tooltip.mercado-etiqueta::before {
+  .leaflet-tooltip.mercado-etiqueta::before,
+  .leaflet-tooltip.zona-etiqueta::before {
     display: none; /* la flechita no tiene sentido en una etiqueta centrada */
   }
   /* En oscuro los tiles van invertidos pero los panes de vectores NO (ver el filtro de arriba): el halo
      tiene que seguir siendo claro para separar el texto del relleno del polígono. */
-  .dark .leaflet-tooltip.mercado-etiqueta {
+  .dark .leaflet-tooltip.mercado-etiqueta,
+  .dark .leaflet-tooltip.zona-etiqueta {
     color: #0b1120;
+  }
+
+  /* Zona SELECCIONADA en el mapa de zonas: mismo mecanismo que el mercado seleccionado — el foco se
+     marca sobre la etiqueta que ya estaba, no con una segunda copia del nombre al lado. */
+  .leaflet-tooltip.zona-etiqueta.zona-etiqueta-sel {
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 0.92);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.22);
+    font-size: 11px;
+    text-shadow: none;
   }
 
   /* Mercado SELECCIONADO (click en su polígono): la misma etiqueta, con más presencia. Es lo que

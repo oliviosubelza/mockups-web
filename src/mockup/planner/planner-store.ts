@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import { CAPA_POR_DEFECTO, type CapaBase } from '../map/tiles'
 import type { Asignaciones } from './planner-model'
+import { nuevoAccesorio, tipoAccesorio, type AccesoriosPorRuta } from '../accesorios'
 
 /** Panel del dock izquierdo. Uno a la vez: dos paneles abiertos ya no dejan ver el mapa. */
 export type PanelId = 'flota' | 'pedidos' | 'rutas'
@@ -79,6 +80,14 @@ interface PlannerState {
    */
   nombresRuta: Record<string, string>
   asignaciones: Asignaciones
+  /**
+   * Bandeo por ruta: pallets, carritos y demás que el camión se lleva y tiene que devolver. Fuera de
+   * la `RutaPlan` por lo mismo que `asignaciones` y `nombresRuta` — las rutas se rederivan de los
+   * camiones elegidos en cada render, así que lo que se guarda adentro se pierde al filtrar.
+   */
+  accesorios: AccesoriosPorRuta
+  /** Ruta cuyo diálogo de accesorios está abierto (`null` = cerrado). */
+  accesoriosRuta: string | null
   optimizado: boolean
   optimizando: boolean
   /** Trabajo simulado en curso (mover paradas). Bloquea el mapa con un velo, igual que optimizar. */
@@ -119,6 +128,15 @@ interface PlannerState {
   setRutasOcultas: (ids: string[]) => void
   setNombreRuta: (rutaId: string, nombre: string) => void
   setAsignaciones: (a: Asignaciones) => void
+  /**
+   * Pone la cantidad de UN tipo en una ruta. Cantidad 0 (o menos) BORRA la entrada en vez de guardar
+   * un cero: "lleva 0 pallets" y "no lleva pallets" son lo mismo, y dejar la fila haría que el
+   * resumen y el badge tuvieran que filtrar ceros en cada lectura.
+   */
+  setAccesorio: (rutaId: string, tipoId: string, cantidad: number, series?: string[]) => void
+  quitarAccesorio: (rutaId: string, tipoId: string) => void
+  abrirAccesorios: (rutaId: string) => void
+  cerrarAccesorios: () => void
   setOptimizado: (v: boolean) => void
   setOptimizando: (v: boolean) => void
   setProcesando: (label: string | null) => void
@@ -165,6 +183,8 @@ const INICIAL = {
   rutasOcultas: [] as string[],
   nombresRuta: {} as Record<string, string>,
   asignaciones: {} as Asignaciones,
+  accesorios: {} as AccesoriosPorRuta,
+  accesoriosRuta: null as string | null,
   optimizado: false,
   optimizando: false,
   procesando: null as string | null,
@@ -221,6 +241,31 @@ export const usePlannerStore = create<PlannerState>((set) => ({
       return { nombresRuta: next }
     }),
   setAsignaciones: (asignaciones) => set({ asignaciones }),
+  setAccesorio: (rutaId, tipoId, cantidad, series = []) =>
+    set((s) => {
+      const tipo = tipoAccesorio(tipoId)
+      if (!tipo) return s
+      const previos = s.accesorios[rutaId] ?? []
+      const resto = previos.filter((item) => item.tipoId !== tipoId)
+      const item = nuevoAccesorio(tipo, Math.max(0, Math.trunc(cantidad)), series)
+      const next = { ...s.accesorios }
+      // Una ruta sin accesorios sale del mapa entera: así `Object.keys(accesorios).length` sigue
+      // siendo "cuántas rutas llevan bandeo" y no cuenta las que quedaron con la lista vacía.
+      const items = item.salida > 0 ? [...resto, item] : resto
+      if (items.length) next[rutaId] = items
+      else delete next[rutaId]
+      return { accesorios: next }
+    }),
+  quitarAccesorio: (rutaId, tipoId) =>
+    set((s) => {
+      const items = (s.accesorios[rutaId] ?? []).filter((item) => item.tipoId !== tipoId)
+      const next = { ...s.accesorios }
+      if (items.length) next[rutaId] = items
+      else delete next[rutaId]
+      return { accesorios: next }
+    }),
+  abrirAccesorios: (accesoriosRuta) => set({ accesoriosRuta }),
+  cerrarAccesorios: () => set({ accesoriosRuta: null }),
   setOptimizado: (optimizado) => set({ optimizado }),
   setOptimizando: (optimizando) => set({ optimizando }),
   setProcesando: (procesando) => set({ procesando }),

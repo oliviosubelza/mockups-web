@@ -1,3 +1,5 @@
+// DEPRECADO — ver el @deprecated de `DispatchFlow` más abajo.
+//
 // Flujo de despacho: los Steps arriba y, debajo, la vista de la fase activa. Cada fase muestra lo
 // que necesita y NADA más — camiones + pedidos = flota y canales en un solo paso, traslados =
 // selección, planificación = mapa y paradas, órdenes = una tarjeta por camión.
@@ -10,6 +12,11 @@ import { OrdersView } from './views/OrdersView'
 import { PlanningView } from './views/PlanningView'
 import { TrucksAndOrdersView } from './views/TrucksAndOrdersView'
 
+/**
+ * @deprecated El flujo por steps se retiró. La planificación se arma entera sobre el mapa
+ * (`planificacion-mapa-editor` → `PlannerView`). Ninguna ruta lo navega: sobrevive solo para los
+ * tableros de mockup que se arman con una `fase` explícita (`Mockup.tsx`). No agregar features acá.
+ */
 export function DispatchFlow({
   state,
   initialFase,
