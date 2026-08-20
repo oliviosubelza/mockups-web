@@ -9,15 +9,21 @@
 // POR QUÉ UNA LISTA Y NO EL `DataTable`: en 320 px de ancho una tabla con filtros y paginado no entra.
 // Lo que hace falta acá es encontrar una zona y saltar a ella, no comparar columnas.
 //
-// LAS ACCIONES VIVEN EN EL PIE, no en un menú por fila ni en un globo sobre el mapa. Son las de la zona
-// SELECCIONADA, y la selección se hace tanto desde acá como clickeando el polígono: un solo lugar donde
-// buscarlas, en vez de dos juegos de botones que hay que mantener iguales.
-import { useMemo } from 'react'
-import { Crosshair, MapPin, Pencil, Plus, Power, Search, Trash2, X } from 'lucide-react'
+// ESTE PANEL SOLO SELECCIONA. Las acciones de la zona elegida (editar contorno, encuadrar, activar,
+// eliminar) estaban en un pie acá abajo y se fueron a `ZonasAccionesBar`, la barra flotante del centro
+// del mapa. Dos razones: estaban a 300 px de la zona sobre la que operaban —seleccionabas un polígono en
+// el medio del mapa y los botones aparecían contra el borde izquierdo—, y mezclaban ENCONTRAR con
+// OPERAR, así que el panel crecía y se encogía por abajo en cada cambio de selección y el pie tapaba las
+// últimas filas justo cuando estabas comparando zonas.
+//
+// Lo que queda acá es una sola cosa y bien hecha: buscar, filtrar y elegir. La acción se hace donde está
+// la zona.
+import { AlertTriangle, MapPin, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import type { TipoConflicto } from '../map/geo/holgura'
 import { CIUDAD_META, ciudadDeCityId, type CiudadId } from '../mock-data'
 import type { Zona } from '../zones-store'
 
@@ -38,12 +44,9 @@ export function ZonasListaPanel({
   onFiltros,
   seleccionadaId,
   onSeleccionar,
-  onEncuadrar,
   onEditar,
-  onNueva,
-  onAlternarActiva,
-  onEliminar,
   deshabilitado,
+  enConflicto,
 }: {
   /** Ya filtradas por el llamador: el panel muestra, no decide. */
   zonas: Zona[]
@@ -51,42 +54,34 @@ export function ZonasListaPanel({
   onFiltros: (f: FiltrosZonas) => void
   seleccionadaId: number | null
   onSeleccionar: (id: number | null) => void
-  onEncuadrar: (id: number) => void
+  /** Doble click en una fila: el único atajo a una acción que queda en el panel. */
   onEditar: (id: number) => void
-  onNueva: () => void
-  onAlternarActiva: (id: number) => void
-  onEliminar: (zona: Zona) => void
   /** `true` mientras se dibuja o edita: el panel queda de consulta y no puede disparar acciones que
    *  cambiarían de zona en medio de un trazo sin guardar. */
   deshabilitado: boolean
+  /**
+   * Zonas con problema de bordes, para marcarlas en la fila.
+   *
+   * Va acá además de en el mapa porque una zona en conflicto puede estar fuera de la pantalla: si la
+   * marca vive SOLO en el polígono, el que audita tiene que pasear la cámara para encontrar cuáles son.
+   * En la lista están todas juntas, y el listado ya es la forma de llegar a una zona.
+   */
+  enConflicto?: Map<number, TipoConflicto>
 }) {
-  const seleccionada = useMemo(
-    () => zonas.find((z) => z.id === seleccionadaId) ?? null,
-    [zonas, seleccionadaId],
-  )
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 space-y-2 border-b border-border p-2.5">
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={filtros.texto}
-              onChange={(e) => onFiltros({ ...filtros, texto: e.target.value })}
-              placeholder="Buscar zona…"
-              className="h-7 pl-7 text-xs"
-            />
-          </div>
-          <Button
-            size="sm"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-            onClick={onNueva}
-            disabled={deshabilitado}
-          >
-            <Plus size={13} />
-            Nueva
-          </Button>
+        {/* Sin botón "Nueva" acá: crear una zona ya es el primer botón de la barra de arriba, y dos
+            botones iguales en la misma pantalla obligan a mantener dos comportamientos sincronizados
+            para nada. El buscador se queda con todo el ancho, que es lo que necesita. */}
+        <div className="relative">
+          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filtros.texto}
+            onChange={(e) => onFiltros({ ...filtros, texto: e.target.value })}
+            placeholder="Buscar zona…"
+            className="h-7 pl-7 text-xs"
+          />
         </div>
 
         {/* Filtros como chips y no como <Select>: son pocos valores y alternarlos es un click en vez de
@@ -133,6 +128,7 @@ export function ZonasListaPanel({
           <ul className="space-y-0.5">
             {zonas.map((zona) => {
               const sel = zona.id === seleccionadaId
+              const conflicto = enConflicto?.get(zona.id)
               const ciudad = ciudadDeCityId(zona.cityId)
               return (
                 <li key={zona.id}>
@@ -148,10 +144,24 @@ export function ZonasListaPanel({
                       sel ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/60',
                     )}
                   >
-                    <MapPin
-                      size={13}
-                      className={cn('shrink-0', zona.isActive ? 'text-primary' : 'text-muted-foreground')}
-                    />
+                    {/* El ícono de la fila hace de indicador de estado: un conflicto de bordes lo
+                        reemplaza por el triángulo, en vez de sumar una segunda marca al renglón. En 320
+                        px de ancho cada elemento nuevo le come lugar al nombre, que es lo que se lee. */}
+                    {conflicto ? (
+                      <AlertTriangle
+                        size={13}
+                        className={cn(
+                          'shrink-0',
+                          conflicto === 'solapa' ? 'text-destructive' : 'text-amber-500',
+                        )}
+                        aria-label={conflicto === 'solapa' ? 'Se pisa con otra zona' : 'Borde demasiado cerca de otra zona'}
+                      />
+                    ) : (
+                      <MapPin
+                        size={13}
+                        className={cn('shrink-0', zona.isActive ? 'text-primary' : 'text-muted-foreground')}
+                      />
+                    )}
                     <span className="min-w-0 flex-1 truncate font-medium">{zona.name}</span>
                     <span className="shrink-0 text-[11px] text-muted-foreground">
                       {ciudad ? CIUDAD_META[ciudad].label : `city ${zona.cityId}`}
@@ -169,64 +179,6 @@ export function ZonasListaPanel({
         )}
       </div>
 
-      {/* Pie de acciones de la zona seleccionada. Aparece por selección, venga del listado o de un click
-          en el polígono — las dos rutas terminan en el mismo lugar. */}
-      {seleccionada && (
-        <div className="shrink-0 space-y-2 border-t border-border bg-muted/30 p-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{seleccionada.name}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0"
-              title="Quitar selección"
-              onClick={() => onSeleccionar(null)}
-            >
-              <X size={12} />
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            <Button
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={() => onEditar(seleccionada.id)}
-              disabled={deshabilitado}
-            >
-              <Pencil size={12} />
-              Editar contorno
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={() => onEncuadrar(seleccionada.id)}
-            >
-              <Crosshair size={12} />
-              Encuadrar
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={() => onAlternarActiva(seleccionada.id)}
-              disabled={deshabilitado}
-            >
-              <Power size={12} />
-              {seleccionada.isActive ? 'Desactivar' : 'Activar'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs text-destructive hover:text-destructive"
-              onClick={() => onEliminar(seleccionada)}
-              disabled={deshabilitado}
-            >
-              <Trash2 size={12} />
-              Eliminar
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

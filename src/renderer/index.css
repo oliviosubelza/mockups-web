@@ -132,6 +132,31 @@ body[data-resizing] * {
     text-shadow: none;
   }
 
+  /* Etiqueta de HOLGURA del imantado: el número de metros que quedó entre el vértice y el borde vecino.
+     Existe porque un metro a los zooms de dibujo es 0,07 px — sin el número, "imantado con holgura" y
+     "imantado encima del borde" se ven idénticos y no hay forma de saber si la regla se cumplió. */
+  .leaflet-tooltip.snap-holgura {
+    padding: 0 4px;
+    border: none;
+    border-radius: 4px;
+    background: rgb(245 158 11 / 0.95);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+    color: #1c1204;
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-shadow: none;
+    white-space: nowrap;
+  }
+  /* La holgura NO se logró: mismo lugar, mismo número, otro significado. */
+  .leaflet-tooltip.snap-holgura.snap-holgura-mal {
+    background: rgb(220 38 38 / 0.95);
+    color: #fff;
+  }
+  .leaflet-tooltip.snap-holgura::before {
+    display: none; /* la flechita compite con el círculo del indicador, que ya señala el punto */
+  }
+
   /* Mercado SELECCIONADO (click en su polígono): la misma etiqueta, con más presencia. Es lo que
      reemplaza al globo que antes repetía el nombre — el foco se marca sobre el texto que ya estaba, no
      con una segunda copia del nombre al lado. */

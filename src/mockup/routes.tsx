@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardCheck, ClipboardList, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
+import { Boxes, ClipboardCheck, ClipboardList, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -26,6 +26,7 @@ import { PlanningView } from './views/PlanningView'
 import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
 import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
+import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -317,6 +318,20 @@ export const routes: MockRoute[] = [
     order: 2,
     fullBleed: true,
     showInSidebar: false,
+  },
+  {
+    // Dato maestro: catálogo del BANDEO (`logistic_assets`) — pallets, carritos, jabas, refrigeradores.
+    // Ítem propio del sidebar y no una pestaña dentro de la planificación: se da de alta una vez y lo
+    // usan muchas OTs, igual que Zonas. Que además se vaya a ELEGIR desde la planificación no lo
+    // convierte en parte de ella (los camiones también se eligen ahí y son dato maestro aparte).
+    //
+    // Va después de Zonas a propósito: los dos son catálogos, y el sidebar los deja juntos.
+    id: 'activos-logisticos',
+    path: '/activos-logisticos',
+    label: 'Activos logísticos',
+    icon: Boxes,
+    component: ActivosLogisticosView,
+    order: 2,
   },
   {
     id: 'reoptimizar-plan',

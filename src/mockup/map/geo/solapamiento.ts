@@ -14,6 +14,12 @@
 //     contacto en un extremo compartido ni el solape colineal de dos bordes pegados;
 //   · un vértice sobre el borde de la otra zona NO es prueba de nada: tiene que estar ESTRICTAMENTE
 //     adentro.
+//
+// ESTE MÓDULO ES EL PRIMITIVO, NO LA REGLA. La regla que valida hoy la pantalla de zonas es más
+// estricta —los bordes tienen que quedar SEPARADOS un metro, ver `geo/holgura.ts`— y se apoya en estas
+// funciones para el caso grueso (¿comparten área?) antes de ponerse a medir distancias. Compartir un
+// borde exacto sigue devolviendo `false` acá, y eso sigue siendo correcto: no es solaparse. Que además
+// esté prohibido lo decide `holgura.ts`.
 import type { LatLngTuple } from './polyline'
 
 /**
@@ -84,6 +90,22 @@ function adentro(p: Punto, anillo: Punto[]): boolean {
 /** Estrictamente adentro: ni afuera, ni apoyado en el borde. */
 const adentroEstricto = (p: Punto, anillo: Punto[]) => !enElBorde(p, anillo) && adentro(p, anillo)
 
+/**
+ * De qué lado del anillo cae un punto: `dentro`, `borde` o `fuera`.
+ *
+ * Los tres casos se devuelven por separado y no como un booleano porque `borde` no es "medio dentro":
+ * es el caso que hay que tratar aparte. `geo/holgura.ts` lo usa para decidir hacia dónde EMPUJAR un
+ * vértice imantado (siempre hacia afuera de la vecina), y ahí un punto en el borde no dice para qué
+ * lado ir — quien llama tiene que verlo y resolverlo con otra información.
+ */
+export function puntoEnAnillo(punto: LatLngTuple, anillo: LatLngTuple[]): 'dentro' | 'borde' | 'fuera' {
+  if (anillo.length < 3) return 'fuera'
+  const p = aPunto(punto)
+  const A = anillo.map(aPunto)
+  if (enElBorde(p, A)) return 'borde'
+  return adentro(p, A) ? 'dentro' : 'fuera'
+}
+
 const bbox = (a: Punto[]) => ({
   x0: Math.min(...a.map((p) => p.x)),
   x1: Math.max(...a.map((p) => p.x)),
@@ -125,19 +147,28 @@ export function seSolapan(anilloA: LatLngTuple[], anilloB: LatLngTuple[]): boole
   return false
 }
 
-/** Par de ids en conflicto. Siempre `[menor, mayor]` para que el par sea único. */
-export type ParSolapado = [number, number]
-
-/** Todos los pares que se pisan, comparando cada zona con las siguientes (nunca dos veces el mismo par). */
-export function buscarSolapamientos(zonas: { id: number; anillo: LatLngTuple[] }[]): ParSolapado[] {
-  const pares: ParSolapado[] = []
-  for (let i = 0; i < zonas.length; i++) {
-    for (let j = i + 1; j < zonas.length; j++) {
-      if (seSolapan(zonas[i].anillo, zonas[j].anillo)) {
-        const [a, b] = [zonas[i].id, zonas[j].id]
-        pares.push(a < b ? [a, b] : [b, a])
-      }
+/**
+ * `true` si el anillo se cruza CONSIGO MISMO (dos de sus propios lados se atraviesan).
+ *
+ * Es la otra forma de que "los bordes se toquen", y la que no se ve al dibujar: un contorno con un lazo
+ * queda igual de azul en pantalla, pero su interior deja de estar definido —el ray casting da resultados
+ * contradictorios según por dónde se entre— así que ni la holgura ni el "esta dentro de la zona" de un
+ * cliente significan nada. Se valida junto con la holgura porque el síntoma es el mismo: un borde que
+ * toca lo que no tiene que tocar.
+ *
+ * Solo cuenta el cruce PROPIO, igual que entre dos zonas: los lados consecutivos comparten un vértice y
+ * eso no es un cruce, es la esquina.
+ */
+export function autoSeCruza(anillo: LatLngTuple[]): boolean {
+  if (anillo.length < 4) return false
+  const A = anillo.map(aPunto)
+  const n = A.length
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      // Lados vecinos (y el primero con el último, que también se tocan) se saltean.
+      if (j === i + 1 || (i === 0 && j === n - 1)) continue
+      if (seCruzan(A[i], A[(i + 1) % n], A[j], A[(j + 1) % n])) return true
     }
   }
-  return pares
+  return false
 }

@@ -10,7 +10,10 @@ import { create } from 'zustand'
 import { CIUDAD_META, type CiudadId } from './mock-data'
 import type { LatLngTuple } from './map/geo/polyline'
 
-const STORAGE_KEY = 'mockups-web:zonas'
+// `:v2` porque las zonas sembradas cambiaron de forma: las viejas se pisaban entre sí y hoy eso no pasa
+// la validación (ver `map/geo/holgura.ts`). Sin cambiar la clave, cualquiera con la sesión ya arrancada
+// seguiría viendo el seed viejo y su primera edición quedaría bloqueada por un conflicto que no creó él.
+const STORAGE_KEY = 'mockups-web:zonas:v2'
 const USUARIO_MOCK = 'Juan Pérez'
 
 export interface ZonaPoligonoGeoJson {
@@ -80,10 +83,17 @@ export const CIUDAD_CENTRO: Record<CiudadId, LatLngTuple> = {
 
 function defaultZonasSeed(): Zona[] {
   const creado = nowIso()
+  // LAS ZONAS SEMBRADAS CUMPLEN LA REGLA DE HOLGURA, y no es un detalle: el editor exige que los bordes
+  // queden separados (`map/geo/holgura.ts`) y valida el contorno completo, no solo lo que se acaba de
+  // tocar. Con un seed que se pisa, el primer intento de mover un vértice de cualquiera de esas zonas se
+  // rechazaría por un conflicto que el usuario no creó — y eso se lee como una herramienta rota, no como
+  // una validación. `Zona Centro` era el caso: con lado 0,03 se montaba sobre Norte y sobre Sur.
+  //
+  // Los tres cuadrados de Santa Cruz quedan en bandas de latitud con ~330 m de aire entre banda y banda.
   const seeds: { name: string; ciudad: CiudadId; offset: LatLngTuple; lado: number }[] = [
     { name: 'Zona Norte', ciudad: 'santacruz', offset: [0.035, 0], lado: 0.05 },
     { name: 'Zona Sur', ciudad: 'santacruz', offset: [-0.035, 0], lado: 0.05 },
-    { name: 'Zona Centro', ciudad: 'santacruz', offset: [0, 0], lado: 0.03 },
+    { name: 'Zona Centro', ciudad: 'santacruz', offset: [0, 0], lado: 0.014 },
     { name: 'Zona Montero', ciudad: 'montero', offset: [0, 0], lado: 0.04 },
     { name: 'Zona Warnes', ciudad: 'warnes', offset: [0, 0], lado: 0.04 },
   ]

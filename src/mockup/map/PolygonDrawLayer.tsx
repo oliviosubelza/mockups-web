@@ -33,31 +33,43 @@
 // ahorrar un click, cuando el vértice nuevo aparece justo donde estaba el tirador y arrastrarlo es el
 // gesto siguiente natural.
 //
-// SNAPPING: si `anillosSnap` trae la geometría de las zonas vecinas, cada vértice que se pone o se
-// arrastra se imanta a sus vértices y aristas (ver `geo/snapping.ts`). Es lo que hace que un borde
-// compartido sea EL MISMO punto en las dos zonas en vez de dos trazos que pasan cerca. Se puede
-// suspender con ALT apretado, porque a veces querés un vértice cerca del borde y no sobre él.
+// SNAPPING CON HOLGURA: si `anillosSnap` trae la geometría de las zonas vecinas, cada vértice que se
+// pone o se arrastra se imanta a sus vértices y aristas (ver `geo/snapping.ts`). Con `holguraMetros` el
+// vértice NO queda sobre el borde vecino sino a esa distancia hacia afuera: es lo que hace que dos zonas
+// limiten sin tocarse, en vez de compartir el punto exacto. Se puede suspender con ALT apretado, porque
+// a veces querés un vértice cerca del borde y no acomodado por la herramienta.
+//
+// El indicador ámbar dice DÓNDE está el borde vecino y CUÁNTO quedó de separación, con el número puesto
+// al lado. Sin el número el imantado sería un acto de fe: a los zooms a los que se dibuja, un metro de
+// separación y cero metros se ven exactamente igual.
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { useMap } from 'react-leaflet'
 import { oscurecer } from './color'
 import type { LatLngTuple } from './geo/polyline'
 import { buscarSnap, RADIO_SNAP_PX, type Snap } from './geo/snapping'
+import { formatearMetros, incumple } from './geo/holgura'
 
 const AZUL = '#2563eb'
 const ESTILO_TRAZO: L.PolylineOptions = { color: AZUL, weight: 2, dashArray: '6 4' }
 const ESTILO_GUIA: L.PolylineOptions = { color: AZUL, weight: 1.5, dashArray: '2 6', opacity: 0.55 }
 /** Ámbar y no azul: el indicador de imantado tiene que leerse como algo DISTINTO del trazo propio. */
 const AMBAR = '#f59e0b'
-/** Vértice soldado: relleno. Punto sobre una arista: hueco. La diferencia dice si compartís un vértice
- *  o solo caés sobre el borde, que es información distinta al soldar dos zonas. */
-const estiloSnap = (tipo: Snap['tipo']): L.CircleMarkerOptions => ({
-  radius: tipo === 'vertice' ? 7 : 6,
-  color: AMBAR,
-  weight: 2.5,
-  fillColor: AMBAR,
-  fillOpacity: tipo === 'vertice' ? 1 : 0,
-})
+/** Rojo solo cuando el imantado NO logró la holgura pedida (borde más angosto que la separación, o
+ *  geometría degenerada). Es el único caso en que el indicador avisa de un problema y no de una ayuda. */
+const ROJO = '#dc2626'
+/** Vértice de referencia: relleno. Punto sobre una arista: hueco. La diferencia dice si te estás
+ *  alineando con una ESQUINA de la vecina o con un lado, que es información distinta al dibujar. */
+const estiloSnap = (snap: Snap, holguraOk: boolean): L.CircleMarkerOptions => {
+  const color = holguraOk ? AMBAR : ROJO
+  return {
+    radius: snap.tipo === 'vertice' ? 7 : 6,
+    color,
+    weight: 2.5,
+    fillColor: color,
+    fillOpacity: snap.tipo === 'vertice' ? 1 : 0,
+  }
+}
 const estiloRelleno = (color: string): L.PolylineOptions => ({
   color: oscurecer(color, 0.7),
   weight: 2.5,
@@ -97,6 +109,7 @@ export function PolygonDrawLayer({
   anillosSnap = [],
   snapActivo = true,
   snapRadioPx = RADIO_SNAP_PX,
+  holguraMetros = 0,
 }: {
   puntos: LatLngTuple[]
   activo: boolean
@@ -113,6 +126,8 @@ export function PolygonDrawLayer({
   /** Interruptor persistente del imantado (el de la barra). ALT lo suspende momentáneamente. */
   snapActivo?: boolean
   snapRadioPx?: number
+  /** Separación a dejar contra el borde imantado, en metros. 0 = imantar encima del borde. */
+  holguraMetros?: number
 }) {
   const map = useMap()
 
@@ -132,6 +147,8 @@ export function PolygonDrawLayer({
   snapActivoRef.current = snapActivo
   const snapRadioRef = useRef(snapRadioPx)
   snapRadioRef.current = snapRadioPx
+  const holguraRef = useRef(holguraMetros)
+  holguraRef.current = holguraMetros
 
   const capaRef = useRef<L.LayerGroup | null>(null)
   const guiaRef = useRef<L.Polyline | null>(null)
@@ -167,6 +184,8 @@ export function PolygonDrawLayer({
    *  indicador puesto justo cuando más hace falta (al soltar un vértice imantado). */
   const indicadorCapaRef = useRef<L.LayerGroup | null>(null)
   const indicadorRef = useRef<L.CircleMarker | null>(null)
+  /** Último estado de la holgura (cumple / no cumple), para rebindear la etiqueta solo cuando cambia. */
+  const holguraOkRef = useRef(true)
 
   useEffect(() => {
     const capa = L.layerGroup().addTo(map)
@@ -189,7 +208,10 @@ export function PolygonDrawLayer({
     const capa = indicadorCapaRef.current
     const snap =
       snapActivoRef.current && !altRef.current && !panRef.current
-        ? buscarSnap(map, latlng, anillosSnapRef.current, snapRadioRef.current)
+        ? buscarSnap(map, latlng, anillosSnapRef.current, {
+            radioPx: snapRadioRef.current,
+            holguraMetros: holguraRef.current,
+          })
         : null
 
     if (!capa) return snap ? snap.latlng : original
@@ -198,13 +220,34 @@ export function PolygonDrawLayer({
       indicadorRef.current = null
       return original
     }
-    // Se remonta en cada cambio de tipo porque Leaflet fija algunas opciones del CircleMarker al
-    // crearlo; mover el existente alcanza mientras el tipo no cambie.
+    // El indicador se pone sobre el BORDE vecino y no sobre el vértice resultante: son el mismo píxel
+    // (un metro es 0,07 px a zoom 12) y lo que hace falta señalar es la referencia a la que te estás
+    // alineando. El número al lado es el que dice cuánto quedó de separación de verdad.
+    const holguraOk = holguraRef.current === 0 || !incumple(snap.holguraM)
+    const estilo = estiloSnap(snap, holguraOk)
     if (!indicadorRef.current) {
-      indicadorRef.current = L.circleMarker(snap.latlng, estiloSnap(snap.tipo)).addTo(capa)
+      // Se remonta en cada cambio de tipo porque Leaflet fija algunas opciones del CircleMarker al
+      // crearlo; mover el existente alcanza mientras el tipo no cambie.
+      indicadorRef.current = L.circleMarker(snap.borde, estilo).addTo(capa)
     } else {
-      indicadorRef.current.setLatLng(snap.latlng).setStyle(estiloSnap(snap.tipo))
+      indicadorRef.current.setLatLng(snap.borde).setStyle(estilo)
     }
+    // La etiqueta con el número se BINDEA una sola vez y después solo se le cambia el contenido: se
+    // recalcula en cada mousemove, y `bindTooltip` desmonta y vuelve a montar el nodo — a 60 cuadros por
+    // segundo eso parpadea. Se rebindea únicamente al cambiar de estado, porque Leaflet fija el
+    // `className` al CREAR el tooltip y no lo re-aplica (mismo caso que la etiqueta de `ZonasLayer`).
+    if (holguraRef.current > 0) {
+      if (indicadorRef.current.getTooltip() === undefined || holguraOkRef.current !== holguraOk) {
+        indicadorRef.current.unbindTooltip().bindTooltip('', {
+          permanent: true,
+          direction: 'right',
+          offset: [9, 0],
+          className: holguraOk ? 'snap-holgura' : 'snap-holgura snap-holgura-mal',
+        })
+      }
+      indicadorRef.current.setTooltipContent(formatearMetros(snap.holguraM))
+    }
+    holguraOkRef.current = holguraOk
     return snap.latlng
   }
   const resolverSnapRef = useRef(resolverSnap)

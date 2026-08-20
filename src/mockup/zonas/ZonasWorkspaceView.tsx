@@ -13,6 +13,21 @@
 // se reencuadraría en medio de un trazo. Se paga con que los paneles TAPAN mapa, y se compensa con dos
 // cosas: se pliegan, y la cámara recibe su ancho como padding asimétrico (`encuadrar`).
 //
+// LOS CUATRO BORDES, UN PAPEL CADA UNO. La versión anterior amontonaba todo en la barra de arriba
+// (cancelar, ciudad, nombre, imantado, deshacer, rehacer, redibujar, cerrar, guardar: nueve controles en
+// un renglón) y el único aviso de conflicto era una píldora roja que decía "se pisa con 2 zonas" y nada
+// más. Ahora cada borde contesta UNA pregunta:
+//   · izquierda → ¿QUÉ zonas hay? (`ZonasListaPanel`, plegable). SOLO buscar y elegir.
+//   · arriba    → ¿QUÉ estoy haciendo y con qué la confirmo? (nombre, ciudad, guardar)
+//   · derecha   → ¿con qué la DIBUJO? (`ZonasHerramientasDock`)
+//   · abajo-der → ¿ESTÁ BIEN lo que dibujé? (`ZonasConflictosPanel`)
+//   · abajo-centro → ¿QUÉ HAGO con la zona elegida? (`ZonasAccionesBar`) y, sin nada elegido, cómo se
+//     usa la herramienta (la pista). Las acciones estaban en el pie del panel izquierdo, o sea a 300 px
+//     de la zona sobre la que operaban; acá caen sobre el eje por el que el mouse ya se mueve.
+// El criterio es que un dato que cambia en cada cuadro (la holgura) necesita un lugar fijo donde
+// mirarlo, y una herramienta que se usa cincuenta veces por zona no puede cambiar de posición según si
+// hay o no un botón contextual al lado.
+//
 // MÁQUINA DE MODOS. Antes todo el estado era un `dibujando: boolean`, y con eso no entraba nada más.
 // Ahora son tres papeles distintos y explícitos:
 //   · `explorar` → las zonas son el contenido: clickeables, la seleccionada resaltada, acciones en el pie.
@@ -20,10 +35,26 @@
 //   · `editar`   → una zona con sus vértices; ídem las demás.
 // El modo inicial sale de la RUTA, así que `/zonas/nueva` y `/zonas/:id/editar` siguen funcionando y
 // ningún link viejo se rompe.
+//
+// LA REGLA GEOMÉTRICA: LOS BORDES NO SE TOCAN. Entre dos zonas queda siempre una franja de
+// `METROS_HOLGURA` (ver `map/geo/holgura.ts`). Se sostiene en tres lugares a la vez, y hacen falta los
+// tres: el imantado DEJA la separación al poner el vértice, el panel de abajo la MIDE mientras dibujás,
+// y `guardar` la EXIGE. Solo con lo primero no alcanza —el imantado se puede apagar, o suspender con
+// ALT—, y solo con lo último la corrección llegaría cuando ya no te acordás qué vértice movió qué.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import { toast } from 'sonner'
-import { AlertTriangle, Check, ChevronLeft, Crosshair, Magnet, MousePointerClick, PanelLeftClose, PanelLeftOpen, PenLine, Redo2, Save, Undo2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronLeft,
+  Crosshair,
+  MousePointerClick,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PenLine,
+  Save,
+  ShieldCheck,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -39,17 +70,27 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useRouteParams } from '@/core/routing/active-route'
-import { openRoute } from '@/core/routing/open-route'
 import { CAPA_POR_DEFECTO, SUBDOMINIOS, TILES } from '../map/tiles'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { PolygonDrawLayer } from '../map/PolygonDrawLayer'
 import { encuadrar } from '../map/encuadrar'
-import { buscarSolapamientos, seSolapan } from '../map/geo/solapamiento'
+import {
+  auditarZonas,
+  evaluarContorno,
+  formatearMetros,
+  METROS_HOLGURA,
+  type Evaluacion,
+  type ParConflicto,
+  type TipoConflicto,
+} from '../map/geo/holgura'
 import type { LatLngTuple } from '../map/geo/polyline'
 import { CIUDAD_IDS, CIUDAD_META, cityIdDe, ciudadDeCityId, type CiudadId } from '../mock-data'
 import { CIUDAD_CENTRO, latLngAPoligono, poligonoALatLng, useZonesStore, type Zona } from '../zones-store'
 import { ZonasLayer } from './ZonasLayer'
 import { ZonasListaPanel, type FiltrosZonas } from './ZonasListaPanel'
+import { ZonasHerramientasDock } from './ZonasHerramientasDock'
+import { ZonasAccionesBar } from './ZonasAccionesBar'
+import { PanelAuditoria, PanelValidacionContorno } from './ZonasConflictosPanel'
 import { useHistorial } from './historial'
 
 const COLOR_ZONA = '#2563eb'
@@ -57,6 +98,20 @@ const INITIAL_ZOOM = 12
 /** Ancho del panel de la lista. En px porque la cámara lo necesita como padding. */
 const LISTA_PX = 320
 const RAIL_PX = 40
+/** Ancho que tapan los flotantes de la derecha (dock + panel de validación), para la cámara. */
+const DERECHA_PX = 272
+
+/**
+ * Holgura que deja el IMANTADO, un poco mayor que el mínimo exigido.
+ *
+ * Los 15 cm de sobra no son decorativos: el vértice hace un viaje de ida y vuelta por la proyección de
+ * pantalla (grados → píxeles → grados) y volver justo en el límite haría que la validación rechazara lo
+ * que el propio imantado acaba de construir. Con 1,15 m el redondeo nunca alcanza para incumplir, y 15 cm
+ * de franja extra no cambian ninguna decisión de reparto.
+ */
+const HOLGURA_SNAP_M = METROS_HOLGURA + 0.15
+
+const SIN_CONFLICTOS: Evaluacion = { conflictos: [], holguraMinima: null, autoCruce: false }
 
 type Modo = 'explorar' | 'dibujar' | 'editar'
 
@@ -94,9 +149,9 @@ export function ZonasWorkspaceView() {
   const [listaAbierta, setListaAbierta] = useState(true)
   const [filtros, setFiltros] = useState<FiltrosZonas>({ texto: '' })
   const [aBorrar, setABorrar] = useState<Zona | null>(null)
-  /** Resaltar en rojo las zonas que se pisan. Apagable: con muchas zonas mal dibujadas el mapa queda
-   *  rojo entero y deja de decir nada; encendido se usa como auditoría, no como fondo permanente. */
-  const [verSolapes, setVerSolapes] = useState(false)
+  /** Auditoría de lo ya guardado. Apagable: con muchas zonas mal dibujadas el mapa queda rojo entero y
+   *  deja de decir nada; encendida se usa para una revisión, no como fondo permanente. */
+  const [verAuditoria, setVerAuditoria] = useState(false)
 
   // --- estado del formulario de la zona en curso ---
   const [nombre, setNombre] = useState('')
@@ -109,6 +164,11 @@ export function ZonasWorkspaceView() {
 
   const editando = modo !== 'explorar'
   const vivas = useMemo(() => zonas.filter((z) => !z.deletedAt), [zonas])
+  const seleccionada = useMemo(
+    () => vivas.find((z) => z.id === seleccionadaId) ?? null,
+    [vivas, seleccionadaId],
+  )
+  const nombreDe = (id: number) => vivas.find((z) => z.id === id)?.name ?? `Zona ${id}`
 
   const visibles = useMemo(() => {
     const texto = filtros.texto.trim().toLowerCase()
@@ -127,37 +187,66 @@ export function ZonasWorkspaceView() {
     return vivas.filter((z) => z.polygonGeoJson && z.isActive && z.id !== enEdicionId && z.cityId === cityIdDe(ciudad))
   }, [editando, visibles, vivas, enEdicionId, ciudad])
 
-  /** Contra qué se imanta: exactamente lo que se ve de fondo, nunca una zona invisible. */
-  const anillosSnap = useMemo(
-    () => (editando ? enMapa.map((z) => poligonoALatLng(z.polygonGeoJson)) : []),
-    [editando, enMapa],
+  /** Los anillos de las vecinas, una sola vez por cambio: los usan el imantado y la validación, y
+   *  reconvertir el GeoJSON en cada cuadro de un arrastre sería trabajo repetido al doble. */
+  const vecinos = useMemo(
+    () => enMapa.map((z) => ({ id: z.id, anillo: poligonoALatLng(z.polygonGeoJson) })),
+    [enMapa],
+  )
+  const anillosSnap = useMemo(() => (editando ? vecinos.map((v) => v.anillo) : []), [editando, vecinos])
+
+  /**
+   * Validación del contorno EN CURSO. Se recalcula en cada cuadro del arrastre a propósito: el aviso
+   * tiene que llegar mientras movés el vértice, no al soltarlo.
+   *
+   * Se evalúa como CERRADO desde el tercer vértice aunque todavía se esté trazando: es la forma que se
+   * guardaría si apretaras Guardar ahora, y validar la otra (el trazo abierto, sin el lado que une el
+   * último punto con el primero) daría por buenos contornos que al cerrarse pisan a la vecina.
+   */
+  const evaluacion = useMemo(
+    () => (editando ? evaluarContorno(puntos, puntos.length >= 3, vecinos) : SIN_CONFLICTOS),
+    [editando, puntos, vecinos],
   )
 
-  /** Pares que se pisan entre las zonas dibujadas. Solo se calcula con el resaltado encendido: es
-   *  O(pares · vértices) y no hace falta mientras nadie lo mire. */
-  const solapes = useMemo(() => {
-    if (!verSolapes || editando) return []
-    return buscarSolapamientos(enMapa.map((z) => ({ id: z.id, anillo: poligonoALatLng(z.polygonGeoJson) })))
-  }, [verSolapes, editando, enMapa])
-
-  /** Zonas del fondo que el contorno EN CURSO está invadiendo. Se recalcula en cada cuadro del
-   *  arrastre a propósito: el aviso tiene que llegar mientras movés el vértice, no al soltarlo. Con las
-   *  decenas de vértices por zona que se dibujan a mano el costo es despreciable. */
-  const invadidas = useMemo(() => {
-    if (!editando || puntos.length < 3) return new Set<number>()
-    const chocan = enMapa.filter((z) => seSolapan(puntos, poligonoALatLng(z.polygonGeoJson)))
-    return new Set(chocan.map((z) => z.id))
-  }, [editando, puntos, enMapa])
-
-  const enConflicto = useMemo(
-    () => (editando ? invadidas : new Set(solapes.flat())),
-    [editando, invadidas, solapes],
+  /** Auditoría de las zonas guardadas. Solo se calcula encendida: es O(pares · vértices²) y no hace
+   *  falta mientras nadie la mire. */
+  const auditoria = useMemo(
+    () => (verAuditoria && !editando ? auditarZonas(vecinos) : []),
+    [verAuditoria, editando, vecinos],
   )
 
-  const margenes = { margenIzq: (listaAbierta ? LISTA_PX : RAIL_PX) + 24, margenDer: 24 }
+  /** Qué zonas se pintan de conflicto y por qué. Editando son las que invade el contorno en curso; en
+   *  explorar, las de cada par de la auditoría. */
+  const enConflicto = useMemo(() => {
+    const mapa = new Map<number, TipoConflicto>()
+    const marcar = (id: number, tipo: TipoConflicto) => {
+      // `solapa` gana sobre `holgura`: si una zona tiene los dos problemas, el grave es el que se pinta.
+      if (tipo === 'solapa' || !mapa.has(id)) mapa.set(id, tipo)
+    }
+    if (editando) evaluacion.conflictos.forEach((c) => marcar(c.id, c.tipo))
+    else auditoria.forEach((p) => [p.a, p.b].forEach((id) => marcar(id, p.tipo)))
+    return mapa
+  }, [editando, evaluacion, auditoria])
+
+  const margenes = {
+    margenIzq: (listaAbierta ? LISTA_PX : RAIL_PX) + 24,
+    margenDer: editando || verAuditoria ? DERECHA_PX : 24,
+  }
 
   const volarA = (pts: LatLngTuple[]) => {
     if (mapaRef.current && pts.length > 0) encuadrar(mapaRef.current, pts, { ...margenes, zoomMax: 15 })
+  }
+  const volarAZona = (id: number) => {
+    const z = vivas.find((x) => x.id === id)
+    if (z) volarA(poligonoALatLng(z.polygonGeoJson))
+  }
+  /** Encuadra las DOS zonas del par: un conflicto de bordes solo se entiende viendo las dos juntas. */
+  const volarAlPar = (par: ParConflicto) => {
+    const pts = [par.a, par.b].flatMap((id) => {
+      const z = vivas.find((x) => x.id === id)
+      return z ? poligonoALatLng(z.polygonGeoJson) : []
+    })
+    volarA(pts)
   }
 
   // --- entradas a cada modo -------------------------------------------------------------------
@@ -204,11 +293,10 @@ export function ZonasWorkspaceView() {
   const seleccionar = (id: number | null) => {
     setSeleccionadaId(id)
     if (id === null) return
-    // Al seleccionar desde el mapa la lista puede estar plegada: abrirla es lo que hace visible el pie
-    // de acciones, que si no aparecería escondido detrás del riel.
-    setListaAbierta(true)
-    const zona = vivas.find((z) => z.id === id)
-    if (zona) volarA(poligonoALatLng(zona.polygonGeoJson))
+    // Ya NO se despliega el listado al seleccionar. Antes hacía falta porque las acciones vivían en su
+    // pie y con el panel plegado quedaban escondidas detrás del riel; ahora salen en la barra de abajo,
+    // así que abrir el panel solo le robaría 280 px de mapa a alguien que lo plegó a propósito.
+    volarAZona(id)
   }
 
   const encuadrarTodo = () => {
@@ -223,11 +311,34 @@ export function ZonasWorkspaceView() {
     toast.success('Polígono cerrado — ajustá los vértices o guardá la zona')
   }
 
-  const puedeGuardar = nombre.trim().length > 0 && puntos.length >= 3
+  /**
+   * Por qué NO se puede guardar, en una frase, o `null` si se puede.
+   *
+   * Se devuelve el MOTIVO y no un booleano porque un botón deshabilitado sin explicación es el peor
+   * resultado posible: el que dibuja ve que no puede seguir y no tiene forma de saber qué le falta. El
+   * texto va al `title` del botón y al toast del intento.
+   */
+  const motivoBloqueo: string | null = useMemo(() => {
+    if (!nombre.trim()) return 'Ponele un nombre a la zona'
+    if (puntos.length < 3) return 'Un polígono necesita al menos 3 vértices'
+    if (evaluacion.autoCruce) return 'El contorno se cruza consigo mismo: sus propios bordes se tocan'
+    const solapan = evaluacion.conflictos.filter((c) => c.tipo === 'solapa')
+    if (solapan.length > 0) {
+      return `Se pisa con ${solapan.map((c) => nombreDe(c.id)).join(', ')}`
+    }
+    const cerca = evaluacion.conflictos.filter((c) => c.tipo === 'holgura')
+    if (cerca.length > 0) {
+      const peor = cerca.reduce((a, b) => ((a.metros ?? 0) <= (b.metros ?? 0) ? a : b))
+      return `El borde queda a ${formatearMetros(peor.metros ?? 0)} de ${nombreDe(peor.id)}: el mínimo es ${formatearMetros(METROS_HOLGURA)}`
+    }
+    return null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nombre, puntos, evaluacion, vivas])
 
   const guardar = () => {
+    if (motivoBloqueo) return toast.error(motivoBloqueo)
     const polygonGeoJson = latLngAPoligono(puntos)
-    if (!polygonGeoJson || !puedeGuardar) return
+    if (!polygonGeoJson) return
     const input = { name: nombre.trim(), cityId: cityIdDe(ciudad), polygonGeoJson }
     if (modo === 'editar' && enEdicionId !== null) {
       updateZona(enEdicionId, input)
@@ -295,12 +406,13 @@ export function ZonasWorkspaceView() {
               color={COLOR_ZONA}
               anillosSnap={anillosSnap}
               snapActivo={snap}
+              holguraMetros={HOLGURA_SNAP_M}
             />
           )}
         </MapContainer>
       </div>
 
-      {/* ── Panel flotante: la lista ─────────────────────────────────────────────────────────── */}
+      {/* ── Izquierda: qué zonas hay ─────────────────────────────────────────────────────────── */}
       <div
         className="pointer-events-none absolute inset-y-3 left-3 z-10 flex transition-[width] duration-200"
         style={{ width: listaAbierta ? LISTA_PX : RAIL_PX }}
@@ -334,30 +446,24 @@ export function ZonasWorkspaceView() {
                 onFiltros={setFiltros}
                 seleccionadaId={seleccionadaId}
                 onSeleccionar={seleccionar}
-                onEncuadrar={(id) => {
-                  const z = vivas.find((x) => x.id === id)
-                  if (z) volarA(poligonoALatLng(z.polygonGeoJson))
-                }}
                 onEditar={abrirEdicion}
-                onNueva={abrirNueva}
-                onAlternarActiva={(id) => {
-                  const z = vivas.find((x) => x.id === id)
-                  if (z) setZonaActiva(id, !z.isActive)
-                }}
-                onEliminar={setABorrar}
                 deshabilitado={editando}
+                enConflicto={enConflicto}
               />
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Barra flotante superior: cambia entera según el modo ─────────────────────────────── */}
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
-        <div
-          className="pointer-events-auto flex h-11 items-center gap-2 rounded-xl border border-border bg-card/95 px-2 shadow-xl backdrop-blur-sm"
-          style={{ marginLeft: listaAbierta ? LISTA_PX : RAIL_PX }}
-        >
+      {/* ── Arriba: qué estoy haciendo y con qué lo confirmo ─────────────────────────────────── */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3"
+        style={{
+          paddingLeft: (listaAbierta ? LISTA_PX : RAIL_PX) + 24,
+          paddingRight: editando ? 64 : 12,
+        }}
+      >
+        <div className="pointer-events-auto flex h-11 max-w-full items-center gap-2 overflow-hidden rounded-xl border border-border bg-card/95 px-2 shadow-xl backdrop-blur-sm">
           {!editando ? (
             <>
               <Button size="sm" className="h-7 gap-1.5 px-2.5 text-xs" onClick={abrirNueva}>
@@ -368,37 +474,36 @@ export function ZonasWorkspaceView() {
                 <Crosshair size={13} />
                 Encuadrar todo
               </Button>
+              <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
+              {/* La auditoría es un MODO de mirar, no una acción: por eso es un toggle y no un botón que
+                  dispara algo. El resultado vive en el panel de abajo a la derecha. */}
               <Button
-                variant={verSolapes ? 'secondary' : 'ghost'}
+                variant={verAuditoria ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
-                aria-pressed={verSolapes}
-                onClick={() => setVerSolapes((v) => !v)}
+                aria-pressed={verAuditoria}
+                onClick={() => setVerAuditoria((v) => !v)}
+                title={`Revisar que ninguna zona se pise y que todas queden a ${formatearMetros(METROS_HOLGURA)} de su vecina`}
               >
-                <AlertTriangle size={13} className={verSolapes ? 'text-destructive' : ''} />
-                Solapamientos
-              </Button>
-              <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
-              <span className="pr-1 text-[11px] text-muted-foreground">
-                {verSolapes ? (
-                  solapes.length === 0 ? (
-                    'Ninguna zona se pisa con otra'
-                  ) : (
-                    <span className="font-medium text-destructive">
-                      {solapes.length} par{solapes.length !== 1 ? 'es' : ''} en conflicto
-                    </span>
-                  )
+                {verAuditoria && auditoria.length > 0 ? (
+                  <AlertTriangle size={13} className="text-destructive" />
                 ) : (
-                  'Click en una zona para seleccionarla'
+                  <ShieldCheck size={13} className={verAuditoria ? 'text-emerald-600' : ''} />
                 )}
-              </span>
+                Auditar bordes
+                {verAuditoria && auditoria.length > 0 && (
+                  <span className="ml-0.5 rounded bg-destructive/15 px-1 text-[10px] font-semibold tabular-nums text-destructive">
+                    {auditoria.length}
+                  </span>
+                )}
+              </Button>
             </>
           ) : (
             <>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
                 onClick={salirAExplorar}
               >
                 <ChevronLeft size={14} />
@@ -407,7 +512,7 @@ export function ZonasWorkspaceView() {
               <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
               <Select value={ciudad} onValueChange={(v) => setCiudad(v as CiudadId)}>
-                <SelectTrigger className="h-7 w-36 shrink-0 text-xs">
+                <SelectTrigger className="h-7 w-32 shrink-0 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -422,77 +527,23 @@ export function ZonasWorkspaceView() {
               <Input
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre de la zona"
+                placeholder={modo === 'editar' ? 'Nombre de la zona' : 'Nombre de la zona nueva'}
                 maxLength={50}
-                className="h-7 w-48 min-w-0 text-xs"
+                className="h-7 w-44 min-w-0 text-xs"
               />
 
               <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
-              {/* El imantado se apaga entero desde acá y se suspende de a ratos con ALT. Tiene que ser
-                  apagable: a veces querés un vértice CERCA del borde y no sobre él. */}
+              {/* El botón se deshabilita CON el motivo puesto en el title: un botón apagado sin
+                  explicación deja al que dibuja sin saber qué le falta. El detalle completo (contra
+                  quién y por cuánto) está en el panel de validación. */}
               <Button
-                variant={snap ? 'secondary' : 'ghost'}
-                size="icon"
-                className="size-7 shrink-0"
-                title={snap ? 'Imantado activado (ALT lo suspende)' : 'Imantado desactivado'}
-                aria-pressed={snap}
-                disabled={anillosSnap.length === 0}
-                onClick={() => setSnap((v) => !v)}
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
+                disabled={motivoBloqueo !== null}
+                title={motivoBloqueo ?? 'Guardar la zona'}
+                onClick={guardar}
               >
-                <Magnet size={13} className={snap ? '' : 'opacity-40'} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
-                title="Deshacer (Ctrl+Z)"
-                disabled={!historial.puedeDeshacer}
-                onClick={historial.deshacer}
-              >
-                <Undo2 size={13} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
-                title="Rehacer (Ctrl+Shift+Z)"
-                disabled={!historial.puedeRehacer}
-                onClick={historial.rehacer}
-              >
-                <Redo2 size={13} />
-              </Button>
-
-              {puntos.length > 0 && !trazando && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1.5 px-2 text-xs"
-                  onClick={() => {
-                    historial.confirmar([])
-                    setTrazando(true)
-                  }}
-                >
-                  <PenLine size={13} />
-                  Redibujar
-                </Button>
-              )}
-
-              {/* Cerrar tenía TRES formas (click en el primer vértice, doble click, Enter) y ninguna
-                  visible: había que descubrir un atajo o acertarle a un punto de 13 px. */}
-              {trazando && puntos.length >= 3 && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
-                  onClick={() => cerrarPoligono(puntos)}
-                >
-                  <Check size={13} />
-                  Cerrar polígono
-                </Button>
-              )}
-
-              <Button size="sm" className="h-7 gap-1.5 px-2.5 text-xs" disabled={!puedeGuardar} onClick={guardar}>
                 <Save size={13} />
                 Guardar
               </Button>
@@ -501,50 +552,104 @@ export function ZonasWorkspaceView() {
         </div>
       </div>
 
-      {/* ── Pista de abajo ───────────────────────────────────────────────────────────────────── */}
-      <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-2">
-        {/* El aviso de invasión va ARRIBA de la pista y no la reemplaza: la pista dice cómo se usa la
-            herramienta y se sigue necesitando justo cuando estás corrigiendo el solapamiento. */}
-        {editando && invadidas.size > 0 && (
-          <div className="flex items-center gap-2 rounded-full border border-destructive/40 bg-destructive/10 px-3.5 py-1.5 text-xs font-medium text-destructive shadow-xl backdrop-blur-sm">
-            <AlertTriangle size={13} className="shrink-0" />
-            <span>
-              Se pisa con {invadidas.size} zona{invadidas.size !== 1 ? 's' : ''} · encendé el imantado y
-              soldá el borde
-            </span>
+      {/* ── Derecha alta: con qué la dibujo ──────────────────────────────────────────────────── */}
+      {editando && (
+        <div className="pointer-events-none absolute right-3 top-16 z-10 flex">
+          <ZonasHerramientasDock
+            snap={snap}
+            onSnap={() => setSnap((v) => !v)}
+            snapDisponible={anillosSnap.length > 0}
+            puedeDeshacer={historial.puedeDeshacer}
+            onDeshacer={historial.deshacer}
+            puedeRehacer={historial.puedeRehacer}
+            onRehacer={historial.rehacer}
+            trazando={trazando}
+            puedeCerrar={puntos.length >= 3}
+            onCerrar={() => cerrarPoligono(puntos)}
+            puedeRedibujar={puntos.length > 0}
+            onRedibujar={() => {
+              historial.confirmar([])
+              setTrazando(true)
+            }}
+            onEncuadrar={() => volarA(puntos)}
+          />
+        </div>
+      )}
+
+      {/* ── Abajo a la derecha: está bien lo que hay ─────────────────────────────────────────── */}
+      <div className="pointer-events-none absolute bottom-4 right-3 z-10 flex">
+        {editando ? (
+          <PanelValidacionContorno
+            vertices={puntos.length}
+            evaluacion={evaluacion}
+            nombreDe={nombreDe}
+            onIrAZona={volarAZona}
+          />
+        ) : (
+          verAuditoria && (
+            <PanelAuditoria
+              pares={auditoria}
+              total={enMapa.length}
+              nombreDe={nombreDe}
+              onIrAlPar={volarAlPar}
+            />
+          )
+        )}
+      </div>
+
+      {/* ── Abajo al centro: qué hago con la zona elegida, o cómo se usa la herramienta ──────── */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center"
+        style={{
+          paddingLeft: (listaAbierta ? LISTA_PX : RAIL_PX) + 24,
+          paddingRight: editando || verAuditoria ? DERECHA_PX : 12,
+        }}
+      >
+        {/* La barra de acciones OCUPA el lugar de la pista, no se apila sobre ella: la pista dice
+            "click en una zona la selecciona", que es exactamente lo que acabás de hacer. Repetir la
+            instrucción que ya cumpliste gasta la única franja libre que queda abajo. */}
+        {!editando && seleccionada ? (
+          <ZonasAccionesBar
+            zona={seleccionada}
+            onEditar={() => abrirEdicion(seleccionada.id)}
+            onEncuadrar={() => volarAZona(seleccionada.id)}
+            onAlternarActiva={() => setZonaActiva(seleccionada.id, !seleccionada.isActive)}
+            onEliminar={() => setABorrar(seleccionada)}
+            onCerrar={() => setSeleccionadaId(null)}
+          />
+        ) : (
+          <div className="flex max-w-full items-center gap-2 rounded-full border border-border bg-card/95 px-3.5 py-1.5 text-xs text-muted-foreground shadow-xl backdrop-blur-sm">
+            <MousePointerClick size={13} className="shrink-0" />
+            {!editando ? (
+              <span className="truncate">
+                Click en una zona la selecciona · doble click en el listado abre su contorno para editar.
+              </span>
+            ) : trazando ? (
+              <span className="truncate">
+                {puntos.length === 0 ? (
+                  <>Click en el mapa para empezar el polígono</>
+                ) : (
+                  <>
+                    <span className="font-medium tabular-nums text-foreground">{puntos.length}</span> vértice
+                    {puntos.length !== 1 ? 's' : ''} · Enter cierra · Backspace deshace
+                  </>
+                )}{' '}
+                · <kbd className="font-medium text-foreground">Espacio</kbd> mueve el mapa
+                {anillosSnap.length > 0 && snap && (
+                  <>
+                    {' '}· <kbd className="font-medium text-foreground">Alt</kbd> suspende el imantado
+                  </>
+                )}
+                .
+              </span>
+            ) : (
+              <span className="truncate">
+                Arrastrá los vértices · click en un tirador punteado inserta uno · click derecho borra ·{' '}
+                <kbd className="font-medium text-foreground">Espacio</kbd> mueve el mapa.
+              </span>
+            )}
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-full border border-border bg-card/95 px-3.5 py-1.5 text-xs text-muted-foreground shadow-xl backdrop-blur-sm">
-          <MousePointerClick size={13} className="shrink-0" />
-          {!editando ? (
-            <span>
-              Click en una zona la selecciona · doble click en el listado abre su contorno para editar.
-            </span>
-          ) : trazando ? (
-            <span>
-              {puntos.length === 0 ? (
-                <>Click en el mapa para empezar el polígono</>
-              ) : (
-                <>
-                  <span className="font-medium tabular-nums text-foreground">{puntos.length}</span> vértice
-                  {puntos.length !== 1 ? 's' : ''} · Enter o doble click cierra · Backspace deshace
-                </>
-              )}{' '}
-              · <kbd className="font-medium text-foreground">Espacio</kbd> mueve el mapa
-              {anillosSnap.length > 0 && snap && (
-                <>
-                  {' '}· <kbd className="font-medium text-foreground">Alt</kbd> suspende el imantado
-                </>
-              )}
-              .
-            </span>
-          ) : (
-            <span>
-              Arrastrá los vértices · click en un tirador punteado inserta uno · click derecho borra ·{' '}
-              <kbd className="font-medium text-foreground">Espacio</kbd> mueve el mapa · Ctrl+Z deshace.
-            </span>
-          )}
-        </div>
       </div>
 
       <AlertDialog open={aBorrar !== null} onOpenChange={(abierto) => !abierto && setABorrar(null)}>

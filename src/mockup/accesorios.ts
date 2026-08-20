@@ -51,9 +51,17 @@ export interface TipoAccesorio {
 }
 
 /**
- * Catálogo de tipos. Hoy es una constante: no hay tabla de accesorios en el esquema ni pantalla de
- * dato maestro, y los que existen son tres. Cuando haya backend, esto se reemplaza por un fetch y
- * nada más — el resto del módulo ya trabaja contra `TipoAccesorio`, no contra estas filas.
+ * Catálogo de tipos.
+ *
+ * YA NO ES LA ÚNICA FUENTE. El esquema nuevo trae `logistic_assets` y el mockup tiene su dato maestro
+ * editable en `logistic-assets-store.ts` + la pantalla `views/ActivosLogisticosView.tsx`. Ese store
+ * arranca sembrado con ESTAS MISMAS cuatro filas y los mismos pesos, así que hoy los dos dicen lo mismo.
+ *
+ * PENDIENTE (a propósito, no olvidado): cablear el bandeo de la planificación contra el store en vez de
+ * contra esta constante. No se hizo junto con el CRUD porque cambia los ids que ya guardan las rutas
+ * (`AccesorioRuta.tipoId` es `'pallet'`, la fila de la tabla es `1`), y eso es una migración de datos del
+ * mockup, no un cambio de pantalla. Mientras no esté, editar el catálogo NO se refleja en la
+ * planificación.
  */
 export const TIPOS_ACCESORIO: TipoAccesorio[] = [
   {

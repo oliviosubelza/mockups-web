@@ -13,6 +13,7 @@
 // hace, porque las zonas nuevas nacen pegadas a las viejas.
 import { useState } from 'react'
 import { Pane, Polygon, Tooltip } from 'react-leaflet'
+import type { TipoConflicto } from '../map/geo/holgura'
 import { poligonoALatLng, type Zona } from '../zones-store'
 
 /** Nombre del pane. Exportado para que nadie lo reescriba como string suelto. */
@@ -25,8 +26,19 @@ const Z_PANE = 340
 const AZUL = '#2563eb'
 const GRIS = '#94a3b8'
 const GRIS_OSCURO = '#64748b'
-/** Zona en conflicto: pisa a otra. Rojo porque es lo único de esta pantalla que hay que ir a arreglar. */
+/**
+ * Los dos conflictos posibles, con un color cada uno. La distinción no es un matiz: son problemas de
+ * gravedad distinta y se arreglan distinto.
+ *   · ROJO (`solapa`)  → comparten territorio. Un cliente cae en dos zonas y ninguna consulta puede
+ *     decidir cuál es la suya. Hay que rehacer un borde.
+ *   · ÁMBAR (`holgura`) → no se pisan, pero los bordes quedaron a menos del mínimo. El reparto funciona;
+ *     lo que no aguanta es el redondeo de las coordenadas. Se arregla corriendo un vértice unos metros.
+ * Pintar los dos de rojo llevaba a tratar como urgente algo que no lo es, y al revés: perder de vista
+ * el solapamiento entre veinte avisos iguales.
+ */
 const ROJO = '#dc2626'
+const AMBAR = '#f59e0b'
+const colorConflicto = (tipo: TipoConflicto) => (tipo === 'solapa' ? ROJO : AMBAR)
 
 export type PapelZonas = 'contenido' | 'contexto'
 
@@ -42,9 +54,9 @@ export function ZonasLayer({
   seleccionadaId: number | null
   /** Solo se llama en `contenido`. En `contexto` los polígonos no reciben el mouse. */
   onSeleccionar: (id: number | null) => void
-  /** Ids que se pisan con alguna otra. Se resaltan en rojo INCLUSO como contexto: mientras dibujás, la
+  /** Qué zonas están en conflicto y de qué tipo. Se resaltan INCLUSO como contexto: mientras dibujás, la
    *  zona que estás invadiendo es lo más importante del fondo. */
-  enConflicto?: Set<number>
+  enConflicto?: Map<number, TipoConflicto>
 }) {
   // El hover se guarda acá y no en el padre a propósito: es estado puramente visual de esta capa y
   // subirlo haría re-renderizar la pantalla entera —listado incluido— cada vez que el mouse cruza un
@@ -61,7 +73,7 @@ export function ZonasLayer({
           verla. Mismo criterio que `MercadosLayer`. */}
       {zonas.map((zona) => {
         const sel = !contexto && zona.id === seleccionadaId
-        const choca = enConflicto?.has(zona.id) ?? false
+        const conflicto = enConflicto?.get(zona.id)
         const hover = !contexto && zona.id === hoverId
         return (
           <Polygon
@@ -70,14 +82,14 @@ export function ZonasLayer({
             interactive={!contexto}
             pathOptions={{
               stroke: false,
-              fillColor: choca ? ROJO : contexto ? GRIS : zona.isActive ? AZUL : GRIS,
+              fillColor: conflicto ? colorConflicto(conflicto) : contexto ? GRIS : zona.isActive ? AZUL : GRIS,
               // El relleno queda bajo a propósito: es lo que compite con lo que haya debajo. Lo que
               // hace legible la zona es el borde de la pasada siguiente, que no le cuesta contraste
               // a nada. Solo el seleccionado sube, porque ahí hay una pregunta puntual que contestar.
               // El hover sube el relleno a mitad de camino entre reposo y seleccionado: es la única
               // señal de que el polígono responde al click. Sin esto no hay ninguna — un polígono
               // pintado se ve igual sea clickeable o no.
-              fillOpacity: choca ? 0.22 : contexto ? 0.1 : sel ? 0.28 : hover ? 0.2 : 0.12,
+              fillOpacity: conflicto ? 0.22 : contexto ? 0.1 : sel ? 0.28 : hover ? 0.2 : 0.12,
             }}
             eventHandlers={{
               // Volver a clickear la misma zona la deselecciona: sin esto no habría forma de quitar el
@@ -98,7 +110,7 @@ export function ZonasLayer({
 
       {zonas.map((zona) => {
         const sel = !contexto && zona.id === seleccionadaId
-        const choca = enConflicto?.has(zona.id) ?? false
+        const conflicto = enConflicto?.get(zona.id)
         const hover = !contexto && zona.id === hoverId
         return (
           <Polygon
@@ -106,12 +118,19 @@ export function ZonasLayer({
             positions={poligonoALatLng(zona.polygonGeoJson)}
             interactive={false}
             pathOptions={{
-              color: choca ? ROJO : contexto ? GRIS_OSCURO : zona.isActive ? AZUL : GRIS_OSCURO,
-              weight: choca ? 3 : sel ? 3.5 : hover ? 3 : contexto ? 1.5 : 2,
-              opacity: choca ? 1 : contexto ? 0.75 : 1,
+              color: conflicto
+                ? colorConflicto(conflicto)
+                : contexto
+                  ? GRIS_OSCURO
+                  : zona.isActive
+                    ? AZUL
+                    : GRIS_OSCURO,
+              weight: conflicto ? 3 : sel ? 3.5 : hover ? 3 : contexto ? 1.5 : 2,
+              opacity: conflicto ? 1 : contexto ? 0.75 : 1,
               // Punteado = la zona no está operativa (inactiva), o es contexto. Un contorno lleno
-              // significa "esta zona está en uso".
-              dashArray: choca ? undefined : contexto || !zona.isActive ? '5 4' : undefined,
+              // significa "esta zona está en uso". Un conflicto SIEMPRE va lleno, aunque sea contexto:
+              // es el borde que hay que ir a mover.
+              dashArray: conflicto ? undefined : contexto || !zona.isActive ? '5 4' : undefined,
               fill: false,
             }}
           >
