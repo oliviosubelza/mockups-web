@@ -34,12 +34,14 @@ import {
   AlertTriangle,
   Boxes,
   ChevronsUpDown,
+  Crosshair,
   GripVertical,
   Eye,
   EyeOff,
   PackageX,
   Route,
   Search,
+  Settings2,
 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
@@ -50,6 +52,15 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -242,6 +253,81 @@ function Ocupacion({ carga, color }: { carga: CargaRuta; color: string }) {
   )
 }
 
+/**
+ * Acciones de la ruta elegida, detrás de un engranaje a la derecha del select.
+ *
+ * POR QUÉ UN MENÚ Y NO BOTONES SUELTOS. Acá hubo dos íconos al lado del select (ojo y encuadrar) y se
+ * sacaron por muteados: un ícono suelto no dice qué hace hasta que lo tocás, y eran dos. Un engranaje
+ * es UNA sola cosa —"qué puedo hacer con esta ruta"— y adentro cada acción va con su nombre escrito.
+ * También es el lugar donde entra la próxima sin que la cabecera crezca un botón por acción.
+ */
+function RutaMenu({
+  ruta,
+  totalAccesorios,
+  oculta,
+  onAccesorios,
+  onEncuadrar,
+  onToggleVisible,
+}: {
+  ruta: RutaPlan
+  /** Unidades de bandeo cargadas en la ruta. Se muestra al lado de la acción, como un conteo. */
+  totalAccesorios: number
+  oculta: boolean
+  onAccesorios: () => void
+  onEncuadrar: () => void
+  onToggleVisible: () => void
+}) {
+  return (
+    <DropdownMenu>
+      {/* El trigger ES el botón: este menú es Base UI y no tiene `asChild` — meterle un <Button>
+          adentro anida un <button> en otro. Mismo criterio que `CapasMapa`. */}
+      <DropdownMenuTrigger
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'icon' }),
+          'size-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground',
+        )}
+        title={`Acciones de ${ruta.nombre}`}
+        aria-label={`Acciones de ${ruta.nombre}`}
+      >
+        <Settings2 className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuGroup>
+          {/* El label repite de qué ruta son las acciones: el menú sale flotando sobre la tabla de
+              paradas y sin el nombre no se sabe si aplica a la ruta o a la parada de abajo. */}
+          <DropdownMenuLabel className="text-xs">
+            {ruta.nombre} · <span className="font-mono">{ruta.camion.placa}</span>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        {/* El bandeo es lo primero: es lo único de acá que EDITA la ruta, el resto solo mueve la vista. */}
+        <DropdownMenuItem onClick={onAccesorios} className="text-xs">
+          <Boxes className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">Accesorios del camión</span>
+          {totalAccesorios > 0 && (
+            <span className="shrink-0 font-semibold tabular-nums">{totalAccesorios}</span>
+          )}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onEncuadrar} className="text-xs">
+          <Crosshair className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">Encuadrar en el mapa</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onToggleVisible} className="text-xs">
+          {oculta ? (
+            <Eye className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <EyeOff className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <span className="min-w-0 flex-1 truncate">
+            {oculta ? 'Mostrar en el mapa' : 'Ocultar del mapa'}
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function RutasPanel({
   rutas,
   paradasAsignadas,
@@ -269,6 +355,7 @@ export function RutasPanel({
   const abrirAccesorios = usePlannerStore((s) => s.abrirAccesorios)
   const cerrarAccesorios = usePlannerStore((s) => s.cerrarAccesorios)
   const setAccesorio = usePlannerStore((s) => s.setAccesorio)
+  const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -364,20 +451,18 @@ export function RutasPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* ── Cabecera: el select-search, y nada más ──
-          ANTES TENÍA DOS BOTONES AL LADO (ojo y encuadrar) y se veían mal por una razón concreta: son
-          acciones sobre "la ruta elegida" viviendo AFUERA del control que la elige, así que con el
-          popover cerrado quedaban dos íconos sueltos sin dueño visible. El ojo, además, pasó a estar
-          duplicado desde que cada opción de la lista tiene el suyo.
-
-          El encuadre se fue con ellos: clickear cualquier fila de la tabla de abajo ya vuela el mapa a
-          esa parada — mismo resultado, un click, y además decís a dónde vas. */}
+      {/* ── Cabecera: el select-search y el engranaje de la ruta ──
+          ANTES TENÍA DOS BOTONES AL LADO (ojo y encuadrar) y se veían mal por una razón concreta: dos
+          íconos mudos sueltos, sin dueño visible con el popover cerrado. La vuelta no son esos botones
+          otra vez: es UN engranaje —"qué puedo hacer con esta ruta"— con las acciones nombradas
+          adentro. Un control en vez de dos, y con lugar para la próxima acción. */}
       <div className="shrink-0 space-y-2 border-b border-border px-2 py-2">
+        <div className="flex items-center gap-1">
           <Popover open={abierto} onOpenChange={setAbierto}>
             <PopoverTrigger
               className={cn(
                 buttonVariants({ variant: 'outline', size: 'sm' }),
-                'h-7 w-full min-w-0 justify-start gap-1.5 px-2 text-xs',
+                'h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs',
               )}
             >
               {esSinAsignar ? (
@@ -542,6 +627,20 @@ export function RutasPanel({
             </PopoverContent>
           </Popover>
 
+          {/* Solo para rutas reales: "Sin asignar" no es un camión —no tiene bandeo, no se dibuja ni se
+              apaga— así que un engranaje ahí ofrecería tres acciones que no aplican. */}
+          {!esSinAsignar && ruta && (
+            <RutaMenu
+              ruta={ruta}
+              totalAccesorios={totalAccesorios(accesoriosDeRuta)}
+              oculta={oculta}
+              onAccesorios={() => abrirAccesorios(ruta.id)}
+              onEncuadrar={() => pedirEncuadre('ruta')}
+              onToggleVisible={() => toggleRutaVisible(ruta.id)}
+            />
+          )}
+        </div>
+
         {esSinAsignar ? (
           <p className="text-[11px] leading-snug text-muted-foreground">
             No entran en ningún camión con la capacidad elegida. Sumá flota o sacá pedidos.
@@ -573,31 +672,23 @@ export function RutasPanel({
                 </span>
               </div>
 
-              {/* BANDEO. Vive en el detalle de la ruta y no en un panel aparte porque es un atributo
-                  del camión que sale, igual que su ocupación: se decide mirando lo mismo. Una fila
-                  chica y no una tabla — el 90% de las rutas lleva dos tipos, y la lista completa está
-                  a un click. */}
-              <button
-                type="button"
-                onClick={() => abrirAccesorios(ruta.id)}
-                className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-left text-[11px] leading-snug transition-colors hover:border-solid hover:bg-muted/60"
-              >
-                <Boxes size={12} className="shrink-0 text-muted-foreground" />
-                {accesoriosDeRuta.length > 0 ? (
-                  <>
-                    <span className="min-w-0 flex-1 truncate">{resumenAccesorios(accesoriosDeRuta)}</span>
-                    <span className="shrink-0 font-semibold tabular-nums">
-                      {totalAccesorios(accesoriosDeRuta)}
-                    </span>
-                  </>
-                ) : (
-                  // El estado vacío nombra el gesto, no la ausencia. "Sin accesorios" describe algo
-                  // que ya se ve (la fila está vacía) y no dice que se pueda tocar.
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                    Agregar accesorios (pallets, carritos…)
+              {/* BANDEO, solo cuando hay. La ACCIÓN se mudó al engranaje de arriba; acá queda el DATO,
+                  que sigue perteneciendo al detalle de la ruta —es un atributo del camión que sale,
+                  igual que su ocupación—. Antes esta fila era un botón punteado que decía "Agregar
+                  accesorios (pallets, carritos…)" incluso vacía: un campo de formulario en un panel
+                  que no es un formulario, ocupando alto en las 9 de 10 rutas que no lo tocan.
+
+                  Sin accesorios no se dibuja nada: la ausencia ya se ve, y anunciarla es gastar dos
+                  renglones en decir "no hay". */}
+              {accesoriosDeRuta.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] leading-snug text-muted-foreground">
+                  <Boxes size={12} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{resumenAccesorios(accesoriosDeRuta)}</span>
+                  <span className="shrink-0 font-semibold tabular-nums text-foreground">
+                    {totalAccesorios(accesoriosDeRuta)}
                   </span>
-                )}
-              </button>
+                </div>
+              )}
 
               {/* Sobrecarga de capacidad. Solo el nivel CRÍTICO trae cartel: entre 90 y 150 el color
                   de la barra alcanza —es un "va apretado" que se resuelve acomodando—, pero pasado el

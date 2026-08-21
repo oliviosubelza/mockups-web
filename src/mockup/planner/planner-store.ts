@@ -43,6 +43,9 @@ export type { CapaBase } from '../map/tiles'
  */
 export type ColorPor = 'canal' | 'ruta'
 
+/** A qué vuela la cámara cuando alguien pide un encuadre. */
+export type EncuadreObjetivo = 'foco' | 'ruta' | 'todo'
+
 interface PlannerState {
   /**
    * Qué panel muestra el dock. SIEMPRE hay uno elegido (no es nullable): "ninguno" no es un panel, es
@@ -102,9 +105,15 @@ interface PlannerState {
    * está abierta.
    */
   fichaAbierta: boolean
-  /** Pedido de encuadre: cambia el número y el mapa vuela a `paradaFoco` (o a todo, si es null). */
+  /**
+   * Pedido de encuadre: cambia el número y el mapa vuela.
+   *
+   * `foco` = la parada en foco · `ruta` = las paradas de `rutaFoco` · `todo` = el plan completo.
+   * `ruta` existe porque "mostrame este recorrido" es una pregunta distinta de las otras dos: con seis
+   * rutas repartidas, encuadrar todo deja la que estás revisando del tamaño de una moneda.
+   */
   encuadreToken: number
-  encuadreObjetivo: 'foco' | 'todo' | null
+  encuadreObjetivo: EncuadreObjetivo | null
   /** Ids de parada marcados con rectángulo/lazo. Alimenta la barra de acciones de abajo. */
   seleccion: string[]
 
@@ -144,7 +153,7 @@ interface PlannerState {
   /** Click en un marcador: enfoca la parada y abre su ficha. */
   abrirFicha: (id: string) => void
   cerrarFicha: () => void
-  pedirEncuadre: (objetivo: 'foco' | 'todo') => void
+  pedirEncuadre: (objetivo: EncuadreObjetivo) => void
   setSeleccion: (ids: string[]) => void
   /** Suma o saca UNA parada de la selección (click en el marcador, o Shift+click). */
   alternarSeleccion: (id: string) => void
@@ -191,7 +200,7 @@ const INICIAL = {
   paradaFoco: null as string | null,
   fichaAbierta: false,
   encuadreToken: 0,
-  encuadreObjetivo: null as 'foco' | 'todo' | null,
+  encuadreObjetivo: null as EncuadreObjetivo | null,
   seleccion: [] as string[],
   menuParada: null as { id: string; x: number; y: number } | null,
   atajosAbiertos: false,

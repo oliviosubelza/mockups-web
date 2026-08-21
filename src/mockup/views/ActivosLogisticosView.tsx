@@ -107,7 +107,7 @@ const columns = defineColumns<ActivoLogistico>([
   },
   {
     id: 'tareWeightKg',
-    header: 'Tara (kg)',
+    header: 'Peso (kg)',
     accessorKey: 'tareWeightKg',
     size: 110,
     meta: { align: 'right' },

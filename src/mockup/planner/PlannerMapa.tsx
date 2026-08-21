@@ -289,6 +289,7 @@ function Camara({
   const map = useMap()
   const token = usePlannerStore((s) => s.encuadreToken)
   const objetivo = usePlannerStore((s) => s.encuadreObjetivo)
+  const rutaFoco = usePlannerStore((s) => s.rutaFoco)
   const teniaParadas = useRef(false)
 
   // Márgenes por ref: cambian al abrir/cerrar un panel, y no queremos que ESO dispare un vuelo.
@@ -301,12 +302,27 @@ function Camara({
   const focoRef = useRef(foco)
   focoRef.current = foco
 
+  // Por ref, como todo lo que lee el efecto: el encuadre es un evento y no puede volar de nuevo solo
+  // porque cambió la ruta elegida en el panel.
+  const paradasRef = useRef(paradas)
+  paradasRef.current = paradas
+  const rutaFocoRef = useRef(rutaFoco)
+  rutaFocoRef.current = rutaFoco
+
   useEffect(() => {
     if (!objetivo) return
+    // El depósito entra en el encuadre de un recorrido igual que en el del plan: la ruta sale y vuelve
+    // de ahí, así que un cuadro que lo deja afuera muestra medio viaje.
+    const deRuta = (): [number, number][] =>
+      paradasRef.current
+        .filter((p) => p.rutaId === rutaFocoRef.current)
+        .map((p) => [p.lat, p.lng] as [number, number])
     const destino =
       objetivo === 'foco' && focoRef.current
         ? [[focoRef.current.lat, focoRef.current.lng] as [number, number]]
-        : [...puntos.current, [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
+        : objetivo === 'ruta' && rutaFocoRef.current
+          ? [...deRuta(), [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
+          : [...puntos.current, [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
     encuadrar(map, destino, {
       ...margenes.current,
       zoomMax: objetivo === 'foco' ? 16 : 14,

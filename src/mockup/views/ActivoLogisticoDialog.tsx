@@ -5,17 +5,17 @@
 // alguien se acuerda de uno solo. Lo único que cambia es el título y el botón, así que sale del `activo`
 // que llega por props: `null` = alta.
 //
-// LA DECISIÓN DEL FORMULARIO ES `isSerialized`, no el nombre. Determina cómo se controla la unidad el
-// resto de su vida —por cantidad o por número de serie— y eso no se puede cambiar sin reinterpretar los
-// viajes ya registrados. Por eso no es un switch suelto entre los demás campos: son dos opciones
-// explicadas, con el tipo proponiendo la que corresponde y el usuario pudiendo pisarla.
+// EL FORMULARIO PIDE CUATRO COSAS: código, nombre, tipo y las dos medidas. `isSerialized` NO se pregunta
+// —lo propone el tipo— y la distribuidora tampoco: el catálogo se da de alta global y el día que haya que
+// acotarlo a una distribuidora se agrega el campo. Preguntar de entrada algo que hoy siempre se responde
+// igual es pedirle al usuario que confirme un default.
 //
 // EL CÓDIGO ES EL IDENTIFICADOR OPERATIVO (es lo que se dicta por radio y lo que se escanea), así que se
 // normaliza a mayúsculas y se valida único contra el catálogo vivo. La unicidad se avisa MIENTRAS se
 // escribe y no al guardar: enterarte de que el código está tomado después de llenar seis campos es la
 // forma más cara de decirlo.
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Boxes, Hash, ListOrdered } from 'lucide-react'
+import { AlertTriangle, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,7 +29,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { DISTRIBUIDORAS } from '../mock-data'
 import {
   codigoEnUso,
   normalizarCodigo,
@@ -40,19 +39,17 @@ import {
   type TipoActivo,
 } from '../logistic-assets-store'
 
-/** Valor del `<Select>` para "sin distribuidora". Un `<SelectItem value="">` no es seleccionable. */
-const GLOBAL = 'global'
-
 /**
  * Tipos que por naturaleza se controlan por serie.
  *
- * Es una SUGERENCIA, no una regla: al elegir el tipo se propone el control que corresponde, y el usuario
- * lo puede pisar. Una distribuidora puede llevar sus jabas numeradas, y al revés, una que no controla sus
- * refrigeradores de a uno no debería tener que inventar seriales para poder guardar.
+ * `isSerialized` sigue siendo el corazón del modelo (define cómo se cuenta la unidad el resto de su vida),
+ * pero ya no se pregunta: lo decide el TIPO, que es un enumerado cerrado y siempre acierta —un refrigerador
+ * es un activo fijo con código propio, un pallet es intercambiable—. En una edición se respeta lo que ya
+ * tenía la fila mientras no se cambie el tipo, para no reinterpretar los viajes ya registrados.
  */
 const SERIE_POR_DEFECTO: TipoActivo[] = ['REFRIGERATOR', 'THERMO_LOGGER']
 
-/** Campo con etiqueta. Repetido siete veces, así que vale el componente de cuatro líneas. */
+/** Campo con etiqueta. Repetido cinco veces, así que vale el componente de cuatro líneas. */
 function Campo({
   label,
   htmlFor,
@@ -75,56 +72,6 @@ function Campo({
         {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
       </div>
       {children}
-    </div>
-  )
-}
-
-/** Las dos formas de contar, como opciones explicadas y no como un switch sin contexto. */
-function ControlUnidad({
-  serializado,
-  onChange,
-}: {
-  serializado: boolean
-  onChange: (v: boolean) => void
-}) {
-  const opciones = [
-    {
-      valor: false,
-      icono: Boxes,
-      titulo: 'Por cantidad',
-      detalle: 'Son intercambiables. Salió con 12, volvió con 10: faltan 2 y no importa cuáles.',
-    },
-    {
-      valor: true,
-      icono: ListOrdered,
-      titulo: 'Por número de serie',
-      detalle: 'Cada unidad es un activo fijo con código propio. Se sabe exactamente cuál no volvió.',
-    },
-  ]
-  return (
-    <div role="radiogroup" aria-label="Control de la unidad" className="grid grid-cols-2 gap-2">
-      {opciones.map(({ valor, icono: Icono, titulo, detalle }) => {
-        const elegido = serializado === valor
-        return (
-          <button
-            key={titulo}
-            type="button"
-            role="radio"
-            aria-checked={elegido}
-            onClick={() => onChange(valor)}
-            className={cn(
-              'flex flex-col gap-1 rounded-md border p-2 text-left transition-colors',
-              elegido ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/60',
-            )}
-          >
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <Icono size={13} className={elegido ? 'text-primary' : 'text-muted-foreground'} />
-              {titulo}
-            </span>
-            <span className="text-[11px] leading-snug text-muted-foreground">{detalle}</span>
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -156,7 +103,6 @@ export function ActivoLogisticoDialog({
   const [isSerialized, setIsSerialized] = useState(false)
   const [pesoTexto, setPesoTexto] = useState('0')
   const [volumenTexto, setVolumenTexto] = useState('0')
-  const [distribuidora, setDistribuidora] = useState<string>(GLOBAL)
 
   // Cada apertura arranca desde la fila que se va a editar (o limpia, en un alta). Va en un efecto y no
   // en el `useState` inicial porque el diálogo NO se desmonta al cerrarse: sin esto, abrir el alta
@@ -169,7 +115,6 @@ export function ActivoLogisticoDialog({
     setIsSerialized(activo?.isSerialized ?? false)
     setPesoTexto(String(activo?.tareWeightKg ?? 0))
     setVolumenTexto(String(activo?.tareVolumeM3 ?? 0))
-    setDistribuidora(activo?.distributorId ? String(activo.distributorId) : GLOBAL)
   }, [abierto, activo])
 
   const codigoDuplicado = useMemo(
@@ -194,7 +139,9 @@ export function ActivoLogisticoDialog({
       isSerialized,
       tareWeightKg: aDecimal(pesoTexto),
       tareVolumeM3: aDecimal(volumenTexto),
-      distributorId: distribuidora === GLOBAL ? null : Number(distribuidora),
+      // El catálogo se da de alta para la flota global: la columna es NULLABLE y hoy nadie acota un
+      // activo a una distribuidora sola.
+      distributorId: null,
     })
   }
 
@@ -264,13 +211,20 @@ export function ActivoLogisticoDialog({
                 if (!v) return
                 const tipo = v as TipoActivo
                 setAssetType(tipo)
-                // El tipo PROPONE el control (un refrigerador va por serie, un pallet por cantidad) y se
-                // puede pisar después. Sin esto, el caso normal exige dos decisiones donde una alcanza.
+                // El tipo DECIDE el control (un refrigerador va por serie, un pallet por cantidad). Es
+                // lo único que se pregunta: el formulario ya no tiene el selector de control de unidad.
                 setIsSerialized(SERIE_POR_DEFECTO.includes(tipo))
               }}
             >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
+              {/* `w-full` y no el `w-fit` por defecto del trigger: el popup se dimensiona con el ancho del
+                  trigger (`w-(--anchor-width)`), así que un trigger angosto deja "Registrador de
+                  temperatura" apretado contra el check. */}
+              <SelectTrigger className="h-8 w-full text-xs">
+                {/* La etiqueta se renderiza ACÁ y no se deja al `SelectValue` vacío: los `SelectItem`
+                    viven en el popup, que se monta recién al abrirlo, así que hasta entonces el value no
+                    encuentra su ítem y el trigger mostraba el valor crudo del enumerado
+                    ("REFRIGERATOR") en vez de "Refrigerador". */}
+                <SelectValue>{TIPO_ACTIVO_META[assetType].label}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TIPOS_ACTIVO.map((t) => (
@@ -283,12 +237,8 @@ export function ActivoLogisticoDialog({
             {notaTipo && <p className="text-[11px] leading-snug text-muted-foreground">{notaTipo}</p>}
           </Campo>
 
-          <Campo label="Control de la unidad">
-            <ControlUnidad serializado={isSerialized} onChange={setIsSerialized} />
-          </Campo>
-
           <div className="grid grid-cols-2 gap-2">
-            <Campo label="Tara" htmlFor="activo-peso" hint="kg">
+            <Campo label="Peso" htmlFor="activo-peso" hint="kg">
               <Input
                 id="activo-peso"
                 value={pesoTexto}
@@ -307,31 +257,13 @@ export function ActivoLogisticoDialog({
               />
             </Campo>
           </div>
-          {/* La tara se declara pero todavía NO descuenta de la capacidad del camión: encenderlo cambia
+          {/* El peso se declara pero todavía NO descuenta de la capacidad del camión: encenderlo cambia
               el número que decide si una ruta sale o no, y esa decisión no está tomada. Decirlo acá evita
               que alguien cargue pesos esperando ver moverse la ocupación de la ruta. */}
           <p className="text-[11px] leading-snug text-muted-foreground">
-            La tara se guarda para el día que el bandeo descuente capacidad del camión. Hoy no afecta la
+            El peso se guarda para el día que el bandeo descuente capacidad del camión. Hoy no afecta la
             ocupación de las rutas.
           </p>
-
-          <Campo label="Distribuidora" hint="vacío = flota global">
-            {/* `?? GLOBAL`: el Select de base-ui puede emitir `null` al deseleccionar, y acá "ninguna
-                distribuidora" ya tiene su propio valor — no es la ausencia de valor. */}
-            <Select value={distribuidora} onValueChange={(v) => setDistribuidora(v ?? GLOBAL)}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={GLOBAL}>Flota global (todas)</SelectItem>
-                {DISTRIBUIDORAS.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
         </div>
 
         <DialogFooter>
