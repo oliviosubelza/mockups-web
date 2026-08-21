@@ -7,7 +7,7 @@
 import L from 'leaflet'
 import type { LatLngTuple } from './geo/polyline'
 
-/** Respiro vertical. Arriba y abajo no hay paneles, solo la barra de herramientas. */
+/** Respiro vertical mínimo: lo que pide la barra de herramientas de arriba. */
 const MARGEN_VERTICAL = 32
 
 /**
@@ -29,6 +29,14 @@ export interface MargenesMapa {
   margenIzq: number
   /** Ancho (px) que le tapa el panel derecho. */
   margenDer: number
+  /**
+   * Alto (px) que le tapa un panel apoyado ABAJO. Opcional: la mayoría de las pantallas no tiene uno.
+   *
+   * Existe porque los márgenes laterales por sí solos dejaban de alcanzar: un panel al pie mide alto,
+   * no ancho, y sin declararlo el encuadre manda paradas justo abajo de él. Es el mismo problema que
+   * ya resolvían `margenIzq`/`margenDer`, en el otro eje.
+   */
+  margenAbajo?: number
 }
 
 /**
@@ -45,6 +53,7 @@ export function encuadrar(
   {
     margenIzq,
     margenDer,
+    margenAbajo = 0,
     zoomMax = 15,
     /** `false` solo para el primer encuadre, si algún día se quiere entrar ya posicionado. */
     animado = true,
@@ -55,7 +64,9 @@ export function encuadrar(
   const bounds = L.latLngBounds(puntos)
   const opciones = {
     paddingTopLeft: [margenIzq, MARGEN_VERTICAL] as [number, number],
-    paddingBottomRight: [margenDer, MARGEN_VERTICAL] as [number, number],
+    // El panel de abajo se suma al respiro, no lo reemplaza: sin los 32 px el punto quedaría pegado
+    // al borde superior del panel, técnicamente visible y de hecho ilegible.
+    paddingBottomRight: [margenDer, MARGEN_VERTICAL + margenAbajo] as [number, number],
     // Sin tope, un solo punto (o un viaje de una parada) entra hasta el nivel de manzana y se pierde
     // toda referencia de dónde está.
     maxZoom: zoomMax,

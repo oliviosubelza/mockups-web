@@ -290,11 +290,13 @@ function Camara({
   foco,
   margenIzq,
   margenDer,
+  margenAbajo,
 }: {
   paradas: Parada[]
   foco: Parada | null
   margenIzq: number
   margenDer: number
+  margenAbajo: number
 }) {
   const map = useMap()
   const token = usePlannerStore((s) => s.encuadreToken)
@@ -302,9 +304,10 @@ function Camara({
   const rutaFoco = usePlannerStore((s) => s.rutaFoco)
   const teniaParadas = useRef(false)
 
-  // Márgenes por ref: cambian al abrir/cerrar un panel, y no queremos que ESO dispare un vuelo.
-  const margenes = useRef({ margenIzq, margenDer })
-  margenes.current = { margenIzq, margenDer }
+  // Márgenes por ref: cambian al abrir/cerrar un panel —y `margenAbajo` además con cada píxel de un
+  // arrastre— y no queremos que ESO dispare un vuelo.
+  const margenes = useRef({ margenIzq, margenDer, margenAbajo })
+  margenes.current = { margenIzq, margenDer, margenAbajo }
 
   const puntos = useRef<[number, number][]>([])
   puntos.current = paradas.map((p) => [p.lat, p.lng] as [number, number])
@@ -390,6 +393,7 @@ export function PlannerMapa({
   rutas,
   margenIzq,
   margenDer,
+  margenAbajo,
 }: {
   /** Paradas YA proyectadas con su asignación (ver `aplicarAsignaciones`). */
   paradas: Parada[]
@@ -397,6 +401,8 @@ export function PlannerMapa({
   /** Ancho que le tapan los paneles flotantes. Lo usa la cámara para no encuadrar debajo de ellos. */
   margenIzq: number
   margenDer: number
+  /** Alto que le tapa la tabla de rutas apoyada al pie, cuando está encendida. */
+  margenAbajo: number
 }) {
   const capa = usePlannerStore((s) => s.capa)
   const herramienta = usePlannerStore((s) => s.herramienta)
@@ -413,6 +419,7 @@ export function PlannerMapa({
   const rutaFoco = usePlannerStore((s) => s.rutaFoco)
   const panel = usePlannerStore((s) => s.panel)
   const dockAbierto = usePlannerStore((s) => s.dockAbierto)
+  const verRutas = usePlannerStore((s) => s.verRutas)
   const setParadaFoco = usePlannerStore((s) => s.setParadaFoco)
   const abrirMenuParada = usePlannerStore((s) => s.abrirMenuParada)
   const alternarSeleccion = usePlannerStore((s) => s.alternarSeleccion)
@@ -536,15 +543,17 @@ export function PlannerMapa({
    * es que la que estás mirando esté arriba y sola. El panel ya trabaja de a UNA ruta y el mapa no lo
    * acompañaba.
    *
-   * SOLO MIENTRAS EL PANEL DE RUTAS ESTÁ A LA VISTA. `rutaFoco` se elige solo al entrar, así que sin
-   * esta condición el mapa abriría con cinco rutas apagadas por una decisión que el usuario no tomó.
-   * Mirando Flota o Pedidos, las rutas valen todas lo mismo.
+   * SOLO MIENTRAS ALGO QUE HABLA DE RUTAS ESTÁ A LA VISTA: el panel lateral de rutas, o la tabla de
+   * rutas generadas del pie. `rutaFoco` se elige solo al entrar, así que sin esta condición el mapa
+   * abriría con cinco rutas apagadas por una decisión que el usuario no tomó. Mirando Flota o Pedidos,
+   * las rutas valen todas lo mismo.
    */
   const destacada = useMemo(() => {
-    if (!dockAbierto || panel !== 'rutas') return null
+    const mirandoRutas = (dockAbierto && panel === 'rutas') || verRutas
+    if (!mirandoRutas) return null
     // `rutas.some`: `rutaFoco` también puede valer "Sin asignar", que no es una ruta y no se dibuja.
     return rutas.some((r) => r.id === rutaFoco) ? rutaFoco : null
-  }, [dockAbierto, panel, rutaFoco, rutas])
+  }, [dockAbierto, panel, rutaFoco, rutas, verRutas])
 
   /**
    * Las capas de color, por id de ruta. Existen para poder subir la destacada al frente.
@@ -609,7 +618,13 @@ export function PlannerMapa({
       <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
       <InvalidateOnResize />
       <ZoomWatch onZoom={setZoom} />
-      <Camara paradas={paradas} foco={foco} margenIzq={margenIzq} margenDer={margenDer} />
+      <Camara
+        paradas={paradas}
+        foco={foco}
+        margenIzq={margenIzq}
+        margenDer={margenDer}
+        margenAbajo={margenAbajo}
+      />
 
       {/* Mercados de fondo: su pane propio (z 350) los deja debajo de trazos y pines, así que prender
           la capa no le quita legibilidad a nada de lo que ya estaba. No responden al click mientras hay
@@ -712,6 +727,27 @@ export function PlannerMapa({
               const aplicar = () => {
                 const el = capa.getElement()
                 if (!el) return false
+                /**
+                 * UNA SOLA VEZ POR ELEMENTO, y esto no es una optimización: es la diferencia entre que
+                 * la ruta se dibuje al aparecer y que se redibuje sola cada vez que la pantalla
+                 * renderiza.
+                 *
+                 * El `ref` es una función inline, así que React la reinvoca en CADA render (la llama
+                 * con `null` y otra vez con la capa). Mientras la clase se agregaba y nunca se sacaba,
+                 * reinvocar era inofensivo: `classList.add` de algo ya presente no hace nada. Desde
+                 * que se saca en `animationend`, volver a entrar acá la REPONE y la animación arranca
+                 * de nuevo — y con un arrastre que renderiza sesenta veces por segundo, los trazos se
+                 * ven recargando sin parar.
+                 *
+                 * La marca va en el DOM y no en un ref del componente a propósito: lo que no hay que
+                 * repetir es la animación de ESTE elemento, y si Leaflet lo reemplaza (cambia el
+                 * `key` al pasar de recto a ruteado) el nuevo llega sin marca y se dibuja, que es
+                 * justo lo que se quiere.
+                 */
+                // `getAttribute` y no `dataset`: `getElement()` devuelve `Element`, que no lo tiene
+                // tipado —es de `HTMLOrSVGElement`— y castear para leer una marca propia no vale.
+                if (el.getAttribute('data-trazado') === '1') return true
+                el.setAttribute('data-trazado', '1')
                 el.setAttribute('pathLength', '1')
                 el.classList.add('ruta-trazo')
                 /**

@@ -62,6 +62,26 @@ interface PlannerState {
    */
   verMetricas: boolean
   verAcciones: boolean
+  /**
+   * Tabla de rutas generadas, apoyada al pie del mapa.
+   *
+   * Vive acá y no en `PlannerView` como estado local por lo mismo que los otros dos: lo prende y apaga
+   * el menú "Ver" de la barra de herramientas, que está en otra rama del árbol.
+   */
+  verRutas: boolean
+  /**
+   * Alto (px) de esa tabla. Es estado de la sesión y no del componente: el panel se desmonta al
+   * apagarlo, y volver a encenderlo con el alto por defecto obligaría a re-estirarlo cada vez.
+   */
+  altoRutas: number
+  /**
+   * La tabla de rutas, plegada a su cabecera.
+   *
+   * Estado aparte de `verRutas` y de `altoRutas` porque son tres cosas distintas: si el panel existe,
+   * de qué tamaño vuelve, y si ahora mismo muestra el cuerpo. Plegar arrastrando no puede pisar el
+   * alto elegido ni apagar el panel.
+   */
+  rutasPlegado: boolean
   herramienta: Herramienta
   capa: CapaBase
   colorPor: ColorPor
@@ -124,6 +144,9 @@ interface PlannerState {
   cerrarDock: () => void
   setVerMetricas: (v: boolean) => void
   setVerAcciones: (v: boolean) => void
+  setVerRutas: (v: boolean) => void
+  setAltoRutas: (px: number) => void
+  setRutasPlegado: (v: boolean) => void
   setHerramienta: (h: Herramienta) => void
   setCapa: (c: CapaBase) => void
   setColorPor: (c: ColorPor) => void
@@ -181,6 +204,11 @@ const INICIAL = {
   dockAbierto: true,
   verMetricas: true,
   verAcciones: true,
+  // Encendida: la tabla solo se dibuja cuando el plan YA está optimizado, así que hasta entonces no
+  // ocupa nada, y cuando aparece es justo lo que se acaba de generar.
+  verRutas: true,
+  altoRutas: 200,
+  rutasPlegado: false,
   herramienta: 'pan' as Herramienta,
   capa: CAPA_POR_DEFECTO,
   colorPor: 'canal' as ColorPor,
@@ -220,6 +248,9 @@ export const usePlannerStore = create<PlannerState>((set) => ({
   cerrarDock: () => set({ dockAbierto: false }),
   setVerMetricas: (verMetricas) => set({ verMetricas }),
   setVerAcciones: (verAcciones) => set({ verAcciones }),
+  setVerRutas: (verRutas) => set({ verRutas }),
+  setAltoRutas: (altoRutas) => set({ altoRutas }),
+  setRutasPlegado: (rutasPlegado) => set({ rutasPlegado }),
   // Cambiar de herramienta ya NO limpia lo marcado. Antes lo hacía porque la selección solo existía
   // mientras se veía la forma dibujada; ahora se arma click a click y sobrevive al cambio de modo —
   // marcar tres con el lazo, pasar a `punto` y sumar una cuarta es exactamente el flujo esperado.

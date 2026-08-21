@@ -37,11 +37,17 @@ export function PanelesMapa() {
   const setVerMetricas = usePlannerStore((s) => s.setVerMetricas)
   const verAcciones = usePlannerStore((s) => s.verAcciones)
   const setVerAcciones = usePlannerStore((s) => s.setVerAcciones)
+  const verRutas = usePlannerStore((s) => s.verRutas)
+  const setVerRutas = usePlannerStore((s) => s.setVerRutas)
+  const setRutasPlegado = usePlannerStore((s) => s.setRutasPlegado)
+  const optimizado = usePlannerStore((s) => s.optimizado)
   const paradaFoco = usePlannerStore((s) => s.paradaFoco)
   const setParadaFoco = usePlannerStore((s) => s.setParadaFoco)
   const setAtajosAbiertos = usePlannerStore((s) => s.setAtajosAbiertos)
 
-  const algoOculto = !dockAbierto || !verMetricas || !verAcciones
+  // La tabla de rutas solo cuenta como "oculta" si hay rutas que mostrar: antes de optimizar no está
+  // apagada, no existe, y ofrecer "Mostrar todo" por ella prendería un panel vacío.
+  const algoOculto = !dockAbierto || !verMetricas || !verAcciones || (optimizado && !verRutas)
 
   // Apertura por hover + flecha: el patrón compartido de las barras de mapa. Ver `map/menu-mapa`.
   const menu = useMenuHover()
@@ -102,6 +108,21 @@ export function PanelesMapa() {
             Panel lateral
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
+            checked={verRutas}
+            // Deshabilitada hasta optimizar por lo mismo que el detalle de la parada: sin rutas
+            // generadas el interruptor prendería un panel sin filas.
+            disabled={!optimizado}
+            // Prender desde el menú la trae DESPLEGADA: si el usuario la había plegado y después la
+            // cerró, volver a encenderla para que aparezca una barrita es no contestar el pedido.
+            onCheckedChange={(v) => {
+              setVerRutas(v)
+              if (v) setRutasPlegado(false)
+            }}
+            className="text-xs"
+          >
+            Rutas generadas
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
             checked={paradaFoco !== null}
             // Solo se puede APAGAR: el detalle se enciende eligiendo una parada, no desde un menú —
             // sin parada elegida no hay nada que mostrar.
@@ -136,6 +157,7 @@ export function PanelesMapa() {
               onClick={() => {
                 setVerMetricas(true)
                 setVerAcciones(true)
+                if (optimizado) setVerRutas(true)
                 mostrarPanel(panel)
               }}
             >
