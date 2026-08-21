@@ -1,10 +1,11 @@
 // Chrome de la app para los tableros: el MISMO AppSidebar del workbench (alimentado con rutas
 // falsas registradas en el RouteRegistry) + una top bar con el toggle de theme a la derecha.
 import type { ReactNode } from 'react'
-import { Bell, Moon, PanelLeft, Search, Sun } from 'lucide-react'
+import { useEffect } from 'react'
+import { Bell, Menu, Moon, Search, Sun } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarResizeHandle } from '@/components/sidebar-resize-handle'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,9 +43,16 @@ function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellPro
   const toggleSidebar = useSidebarWidthStore((s) => s.toggle)
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={toggleSidebar}>
-        <PanelLeft size={16} />
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 relative z-10">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 hover:bg-accent cursor-pointer"
+        onClick={toggleSidebar}
+        aria-label="Abrir o cerrar menú"
+        title="Menú"
+      >
+        <Menu size={18} />
       </Button>
       <Separator orientation="vertical" className="mx-1 h-5" />
 
@@ -102,8 +110,7 @@ function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellPro
   )
 }
 
-/** Alto de la top bar. El Sidebar es `position: fixed`, así que no "sabe" que hay una barra arriba:
- *  se le pasa por `--sidebar-offset` (mismo mecanismo que usa App.tsx con el TitleBar de Electron). */
+/** Alto de la top bar. */
 const TOPBAR_HEIGHT = '3rem'
 
 export function MockupShell({
@@ -115,36 +122,79 @@ export function MockupShell({
   fullBleed = false,
 }: MockupShellProps) {
   const sidebarWidth = useSidebarWidthStore((s) => s.width)
+  const isOpen = useSidebarWidthStore((s) => s.isOpen)
+  const closeSidebar = useSidebarWidthStore((s) => s.close)
+
+  // Cerrar el menú flotante con Escape
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeSidebar()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, closeSidebar])
 
   return (
-    // Mismo armado que el shell real (App.tsx): barra superior a lo ANCHO de la ventana y el
-    // sidebar por debajo — no el sidebar de borde a borde con la barra a su derecha.
     <div
-      className="flex h-full min-h-0 flex-col"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden"
       style={{ '--sidebar-offset': TOPBAR_HEIGHT } as React.CSSProperties}
     >
       <TopBar title={title} breadcrumb={breadcrumb} theme={theme} onThemeChange={onThemeChange} />
-      <SidebarProvider
-        className="min-h-0 flex-1"
-        style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
-      >
-        <AppSidebar />
-        <SidebarResizeHandle />
-        {/* min-w-0: sin esto, una tabla ancha (min-width:auto del inset flex) empuja el ancho de
-            toda la vista y desborda el board (que es overflow-hidden) → se recorta el contenido. */}
-        <SidebarInset className="flex min-h-0 min-w-0 flex-col">
-          {/* A sangre además va `overflow-hidden`: una vista que llena exactamente su caja no debe
-              poder generar una barra de scroll por un subpíxel. */}
+
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Backdrop / oscurecido cuando el menú se despliega ('over') */}
+        <div
+          role="presentation"
+          aria-hidden={!isOpen}
+          onClick={closeSidebar}
+          className={cn(
+            'absolute inset-0 z-30 bg-black/50 backdrop-blur-[0.5px] transition-opacity duration-200 ease-in-out',
+            isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          )}
+        />
+
+        {/* Menú drawer desplegado por encima ('over') */}
+        <div
+          className={cn(
+            'absolute top-0 bottom-0 left-0 z-40 flex bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-out shadow-2xl',
+            isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+          )}
+          style={
+            {
+              width: `${sidebarWidth}px`,
+              '--sidebar-width': `${sidebarWidth}px`,
+            } as React.CSSProperties
+          }
+        >
+          <SidebarProvider
+            className="h-full w-full bg-sidebar"
+            style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+          >
+            <div className="flex h-full w-full flex-row bg-sidebar border-r border-sidebar-border shadow-2xl">
+              <div className="flex-1 min-w-0 h-full overflow-hidden bg-sidebar">
+                <AppSidebar />
+              </div>
+              <SidebarResizeHandle />
+            </div>
+          </SidebarProvider>
+        </div>
+
+        {/* Contenido principal — ocupa todo el ancho y no es empujado por el menú */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
           <div
             className={cn(
               'min-h-0 min-w-0 flex-1',
-              fullBleed ? 'overflow-hidden' : 'overflow-auto p-4',
+              fullBleed ? 'overflow-hidden' : 'overflow-auto p-4'
             )}
           >
             {children}
           </div>
-        </SidebarInset>
-      </SidebarProvider>
+        </main>
+      </div>
     </div>
   )
 }
+

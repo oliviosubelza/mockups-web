@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, ClipboardCheck, ClipboardList, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
+import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -27,6 +27,8 @@ import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
 import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
 import { ActivosLogisticosView } from './views/ActivosLogisticosView'
+import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
+import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -85,6 +87,7 @@ export interface MockRoute {
  */
 export const MODULOS = {
   planificacion: 'Planificación',
+  reportesEHistoriales: 'Reportes e Historiales',
 } as const
 
 // ── Pantallas (wrappers de vistas existentes con sus props por defecto) ──────────────────────────
@@ -369,6 +372,26 @@ export const routes: MockRoute[] = [
     order: 3,
   },
   {
+    // Módulo Reportes e Historiales: Historial de órdenes de transporte
+    id: 'historial-ordenes-transporte',
+    path: '/reportes/historial-ordenes-transporte',
+    label: 'Historial de órdenes de transporte',
+    icon: FileClock,
+    component: HistorialOrdenesTransporteView,
+    order: 4,
+    group: MODULOS.reportesEHistoriales,
+    separatorBefore: true,
+  },
+  {
+    // Detalle de orden de transporte individual (tiempos en parada, productos, cobros, POD)
+    id: 'detalle-orden-transporte',
+    path: '/reportes/historial-ordenes-transporte/:otId',
+    label: 'Detalle de orden de transporte',
+    component: DetalleOrdenTransporteView,
+    order: 4,
+    showInSidebar: false,
+  },
+  {
     id: 'reoptimizar-plan',
     path: '/ordenes-transporte/reoptimizar',
     label: 'Reoptimizar',
@@ -431,7 +454,7 @@ export function registerMockRoutes(): void {
 }
 
 /** Navega a una ruta por id. Este es "el método" al que se le pasa la ruta. */
-export function navigateTo(routeId: string): void {
+export function navigateTo(routeId: string, params?: Record<string, string>): void {
   // Una ruta deprecada sigue navegable (links viejos), pero si el que la llama es NUESTRA propia UI
   // es un bug: alguien quedó apuntando a la pantalla retirada. Falla ruidosa en consola.
   const deprecada = findRoute(routeId)?.deprecated
@@ -440,5 +463,5 @@ export function navigateTo(routeId: string): void {
       `[routing] navigateTo('${routeId}') apunta a una ruta DEPRECADA. ${deprecada.motivo} Usá '${deprecada.reemplazo}'.`,
     )
   }
-  openRoute(routeId)
+  openRoute(routeId, params)
 }

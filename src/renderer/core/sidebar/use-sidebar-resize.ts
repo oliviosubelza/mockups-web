@@ -4,39 +4,56 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { persistedStorage } from '@/lib/storage/zustand-storage'
 import { StorageKeys } from '@/lib/storage/keys'
 
-export const SIDEBAR_WIDTH_DEFAULT = 158
-export const SIDEBAR_WIDTH_MIN = 48
-export const SIDEBAR_WIDTH_MAX = SIDEBAR_WIDTH_DEFAULT
+export const SIDEBAR_WIDTH_DEFAULT = 260
+export const SIDEBAR_WIDTH_MIN = 220
+export const SIDEBAR_WIDTH_MAX = 360
 export const SIDEBAR_ICON_THRESHOLD = 72
 
 interface SidebarWidthState {
   width: number
+  isOpen: boolean
   lastFullWidth: number
   setWidth: (w: number) => void
+  setOpen: (open: boolean) => void
   toggle: () => void
+  close: () => void
+  open: () => void
 }
 
 export const useSidebarWidthStore = create<SidebarWidthState>()(
   persist(
     (set, get) => ({
       width: SIDEBAR_WIDTH_DEFAULT,
+      isOpen: false,
       lastFullWidth: SIDEBAR_WIDTH_DEFAULT,
       setWidth: (width) => {
-        const isExpanding = width >= SIDEBAR_ICON_THRESHOLD
+        const isExpanding = width >= SIDEBAR_WIDTH_MIN
         set({ width, ...(isExpanding && { lastFullWidth: width }) })
       },
+      setOpen: (isOpen) => set({ isOpen }),
       toggle: () => {
-        const { width, lastFullWidth } = get()
-        if (width >= SIDEBAR_ICON_THRESHOLD) {
-          set({ width: SIDEBAR_WIDTH_MIN })
-        } else {
-          set({ width: lastFullWidth })
-        }
+        set((s) => ({ isOpen: !s.isOpen }))
       },
+      close: () => set({ isOpen: false }),
+      open: () => set({ isOpen: true }),
     }),
     {
       name: StorageKeys.sidebar.width,
       storage: createJSONStorage(() => persistedStorage),
+      merge: (persistedState, currentState) => {
+        const state = persistedState as Partial<SidebarWidthState> | undefined
+        if (!state) return currentState
+        const width =
+          typeof state.width === 'number' && state.width >= SIDEBAR_WIDTH_MIN
+            ? state.width
+            : SIDEBAR_WIDTH_DEFAULT
+        return {
+          ...currentState,
+          ...state,
+          width,
+          lastFullWidth: width,
+        }
+      },
     }
   )
 )

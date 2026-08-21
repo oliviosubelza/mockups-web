@@ -186,7 +186,10 @@ function NavItem({ route }: { route: RouteConfig }) {
               <SidebarMenuSubItem key={child.id}>
                 <SidebarMenuSubButton
                   isActive={isRouteActive(child)}
-                  onClick={() => openRoute(child.id)}
+                  onClick={() => {
+                    openRoute(child.id)
+                    useSidebarWidthStore.getState().close()
+                  }}
                 >
                   <RouteIcon route={child} size={Math.max(12, iconSize - 2)} />
                   <span className={navLabelClass}>{routeLabel(t, child)}</span>
@@ -203,7 +206,10 @@ function NavItem({ route }: { route: RouteConfig }) {
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={active}
-        onClick={() => openRoute(route.id)}
+        onClick={() => {
+          openRoute(route.id)
+          useSidebarWidthStore.getState().close()
+        }}
         className={cn(!entitled && 'opacity-60')}
       >
         <RouteIcon route={route} size={iconSize} />
@@ -222,7 +228,13 @@ function MenuActionItem({ item }: { item: ResolvedMenuItem }) {
   const iconSize = useAppearanceStore((s) => s.sidebarIconSize)
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton disabled={!item.enabled} onClick={() => void item.run()}>
+      <SidebarMenuButton
+        disabled={!item.enabled}
+        onClick={() => {
+          void item.run()
+          useSidebarWidthStore.getState().close()
+        }}
+      >
         {item.icon && <MenuIcon name={item.icon} style={{ width: iconSize, height: iconSize }} />}
         <span>{item.label}</span>
       </SidebarMenuButton>
@@ -381,7 +393,7 @@ export function AppSidebar() {
   }, [toggle])
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="none" className="w-full h-full border-0 bg-sidebar">
       <SidebarHeader>
         <SidebarBrand iconOnly={iconOnly} />
       </SidebarHeader>
@@ -428,7 +440,10 @@ export function AppSidebar() {
               size="sm"
               disabled={!item.enabled}
               className="w-full justify-start gap-2 overflow-hidden"
-              onClick={() => void item.run()}
+              onClick={() => {
+                void item.run()
+                useSidebarWidthStore.getState().close()
+              }}
             >
               {item.icon && <MenuIcon name={item.icon} size={15} className="shrink-0" />}
               <span className="truncate">{item.label}</span>
@@ -439,7 +454,10 @@ export function AppSidebar() {
           <Tooltip>
             <TooltipTrigger
               className={iconBtnClass(false)}
-              onClick={() => commandRegistry.execute('settings.action.open')}
+              onClick={() => {
+                commandRegistry.execute('settings.action.open')
+                useSidebarWidthStore.getState().close()
+              }}
             >
               <Settings size={16} />
             </TooltipTrigger>
@@ -452,7 +470,10 @@ export function AppSidebar() {
             variant="ghost"
             size="sm"
             className="w-full justify-start gap-2 overflow-hidden"
-            onClick={() => commandRegistry.execute('settings.action.open')}
+            onClick={() => {
+              commandRegistry.execute('settings.action.open')
+              useSidebarWidthStore.getState().close()
+            }}
           >
             <Settings size={15} className="shrink-0" />
             <span className="truncate">{t('sidebar.settings')}</span>
