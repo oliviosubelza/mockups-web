@@ -61,7 +61,31 @@ export interface MockRoute {
    * ruta que ocupó su lugar.
    */
   deprecated?: { motivo: string; reemplazo: string }
+  /**
+   * MÓDULO del sidebar. Las rutas que comparten el mismo `group` se dibujan anidadas bajo una
+   * sección colapsable; las que no lo declaran quedan de primer nivel.
+   *
+   * NO ES JERARQUÍA DE URLS. El path de cada ruta sigue siendo absoluto y el matcher las sigue
+   * viendo planas: agrupar es cómo se PRESENTA el menú, así que ningún link ni deep link cambia.
+   *
+   * El string ES el título de la sección (no hay label aparte), así que dos variantes del mismo
+   * nombre son dos secciones distintas. De ahí que salga de una constante y no escrito a mano.
+   */
+  group?: string
+  /** Dibuja un separador antes de esta sección/ítem en el sidebar (no si es el primero). */
+  separatorBefore?: boolean
 }
+
+/**
+ * Módulos del sidebar.
+ *
+ * Constante y no literales sueltos: el agrupado se hace comparando el string, así que un
+ * "Planificacion" sin tilde en una sola ruta abriría una segunda sección con un solo hijo, y la
+ * pantalla se vería bien pero mal ordenada. Con la constante eso lo agarra el compilador.
+ */
+export const MODULOS = {
+  planificacion: 'Planificación',
+} as const
 
 // ── Pantallas (wrappers de vistas existentes con sus props por defecto) ──────────────────────────
 // Las vistas del flujo toman props (`state`, `initialFase`); las rutas necesitan componentes sin
@@ -204,7 +228,11 @@ export const routes: MockRoute[] = [
     label: 'Planificaciones',
     icon: ClipboardList,
     component: PlanificacionesScreen,
+    // El `order` de una ruta agrupada es su lugar DENTRO de la sección, y la sección se ordena por
+    // el menor `order` de sus hijos. Este 1 es el que le da a "Planificación" el primer lugar
+    // después de Monitoreo, que es donde estaba esta pantalla cuando era un ítem suelto.
     order: 1,
+    group: MODULOS.planificacion,
   },
   {
     id: 'camiones',
@@ -216,7 +244,10 @@ export const routes: MockRoute[] = [
     label: 'Confirmar rutas',
     icon: Flag,
     component: CamionesScreen,
-    order: 1,
+    // Bajó de 1 a 2 al agruparse Planificación: la sección hereda el `order` 1 de su primer hijo, y
+    // con el empate el desempate lo decidía el orden de inserción (las secciones se agregan al
+    // final), así que el módulo caía DEBAJO de estos dos ítems sueltos.
+    order: 2,
   },
   // Listado de órdenes de transporte: reemplazado por 'camiones'. Se deja comentado para revertir.
   {
@@ -225,7 +256,7 @@ export const routes: MockRoute[] = [
     label: 'Órdenes de transporte',
     icon: ClipboardCheck,
     component: OrdenesTransporteView,
-    order: 1,
+    order: 2,
   },
   {
     id: 'monitoreo',
@@ -271,6 +302,7 @@ export const routes: MockRoute[] = [
     icon: MapIcon,
     component: PlannerPlansScreen,
     order: 2,
+    group: MODULOS.planificacion,
   },
   {
     // Vista del mapa a pantalla completa para crear / editar una planificación en vivo.
@@ -295,8 +327,11 @@ export const routes: MockRoute[] = [
     label: 'Zonas',
     icon: LandPlot,
     component: ZonasWorkspaceView,
-    order: 2,
+    order: 3,
     fullBleed: true,
+    // Los dos catálogos arrancan bloque: la línea dice "de acá para abajo es dato maestro" sin
+    // gastar un encabezado de sección en dos ítems.
+    separatorBefore: true,
   },
   {
     // Entra al mismo workspace pero arrancando en modo dibujo. Se conserva como ruta propia para no
@@ -331,7 +366,7 @@ export const routes: MockRoute[] = [
     label: 'Activos logísticos',
     icon: Boxes,
     component: ActivosLogisticosView,
-    order: 2,
+    order: 3,
   },
   {
     id: 'reoptimizar-plan',
@@ -373,6 +408,10 @@ function toRouteConfig(route: MockRoute): RouteConfig {
     element: null,
     order: route.order,
     showInSidebar: route.showInSidebar,
+    // Sin estas dos, `MockRoute.group` sería un campo que nadie lee: el sidebar arma sus secciones
+    // desde el `RouteConfig` del registro, no desde esta lista.
+    group: route.group,
+    separatorBefore: route.separatorBefore,
   }
 }
 
