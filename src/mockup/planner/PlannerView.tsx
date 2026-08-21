@@ -97,6 +97,9 @@ const MARGEN_PX = 12
  * que este número es el que las mantiene lado a lado en vez de una encima de la otra.
  */
 const HERRAMIENTAS_PX = 32
+
+/** Kilos enteros, con separador de miles: el peso marcado se lee de un vistazo, no se audita. */
+const fmt0 = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 0 })
 /**
  * Dónde empieza la columna izquierda (métricas + panel): pegada al borde de arriba.
  *
@@ -571,6 +574,15 @@ export function PlannerView() {
     [paradas, seleccion],
   )
 
+  /**
+   * Peso de lo MARCADO. Es la cuenta que se hace armando una ruta a mano: se marca un área, se mira
+   * cuánto pesa, se suma un punto más.
+   */
+  const marcado = useMemo(
+    () => ({ pesoKg: paradasMarcadas.reduce((acc, p) => acc + p.pesoTotal, 0) }),
+    [paradasMarcadas],
+  )
+
   const conteoPanel: Record<PanelId, number> = {
     pedidos: paradas.length,
     flota: selectedTruckIds.length,
@@ -887,6 +899,14 @@ export function PlannerView() {
           </span>
           <span className="text-xs text-muted-foreground">
             {paradasMarcadas.reduce((acc, p) => acc + p.pedidos.length, 0)} pedidos
+          </span>
+
+          {/* PESO DE LO MARCADO, en kg y nada más. Es la cuenta que se hace armando una ruta a mano:
+              se marca, se mira cuánto pesa, se marca uno más. En kg y no en toneladas porque los
+              incrementos que interesan son de a cien y pico, y en toneladas eso es "1,2" tres veces
+              seguidas. */}
+          <span className="text-xs font-medium tabular-nums">
+            Peso: {fmt0.format(marcado.pesoKg)} kg
           </span>
 
           {/* MOVER A… SOLO EXISTE CON EL REPARTO HECHO, igual que "Nueva ruta" en la barra de arriba y
