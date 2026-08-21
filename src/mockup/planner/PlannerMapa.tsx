@@ -12,6 +12,7 @@
 // formas compactas y chicas—; cerca, vista de detalle.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Warehouse } from 'lucide-react'
+import type { Polyline as CapaPolyline } from 'leaflet'
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { SUBDOMINIOS, TILES } from '../map/tiles'
@@ -44,6 +45,15 @@ const SANTA_CRUZ: [number, number] = [-17.786, -63.17]
 const INITIAL_ZOOM = 12
 /** Gris de "todavía sin ruta". Deliberadamente apagado: es una parada que reclama una decisión. */
 const SIN_RUTA = '#94a3b8'
+
+/**
+ * Guionado de los trazos, uno por ruta (ciclado por índice).
+ *
+ * `null` = línea sólida, y va PRIMERA a propósito: con una sola ruta en el plan, guionarla sería
+ * decorar. Los patrones se eligieron para distinguirse a simple vista y no entre sí de a poco: largo,
+ * punteado fino, y raya-punto. Están en píxeles de pantalla, así que se ven iguales a cualquier zoom.
+ */
+const PATRONES_TRAZO: (string | null)[] = [null, '12 7', '2 7', '18 6 3 6', '7 5']
 const SELECCION = '#2563eb'
 
 /**
@@ -400,6 +410,9 @@ export function PlannerMapa({
   const seleccion = usePlannerStore((s) => s.seleccion)
   const setSeleccion = usePlannerStore((s) => s.setSeleccion)
   const paradaFoco = usePlannerStore((s) => s.paradaFoco)
+  const rutaFoco = usePlannerStore((s) => s.rutaFoco)
+  const panel = usePlannerStore((s) => s.panel)
+  const dockAbierto = usePlannerStore((s) => s.dockAbierto)
   const setParadaFoco = usePlannerStore((s) => s.setParadaFoco)
   const abrirMenuParada = usePlannerStore((s) => s.abrirMenuParada)
   const alternarSeleccion = usePlannerStore((s) => s.alternarSeleccion)
@@ -512,6 +525,65 @@ export function PlannerMapa({
     [porCalles, ruteando, trazos],
   )
 
+  /**
+   * La ruta PROTAGONISTA del mapa: la que está elegida en el panel de rutas.
+   *
+   * EL PROBLEMA QUE RESUELVE. Dos rutas que comparten avenida reciben del ruteador la MISMA geometría,
+   * así que sus polilíneas son idénticas y la última dibujada tapa a la anterior por completo — no se
+   * ve apretada, desaparece. El halo blanco no ayuda contra eso: separa líneas vecinas, no apiladas.
+   *
+   * La respuesta no es hacer que las siete se lean a la vez (eso es un offset paralelo, otro problema):
+   * es que la que estás mirando esté arriba y sola. El panel ya trabaja de a UNA ruta y el mapa no lo
+   * acompañaba.
+   *
+   * SOLO MIENTRAS EL PANEL DE RUTAS ESTÁ A LA VISTA. `rutaFoco` se elige solo al entrar, así que sin
+   * esta condición el mapa abriría con cinco rutas apagadas por una decisión que el usuario no tomó.
+   * Mirando Flota o Pedidos, las rutas valen todas lo mismo.
+   */
+  const destacada = useMemo(() => {
+    if (!dockAbierto || panel !== 'rutas') return null
+    // `rutas.some`: `rutaFoco` también puede valer "Sin asignar", que no es una ruta y no se dibuja.
+    return rutas.some((r) => r.id === rutaFoco) ? rutaFoco : null
+  }, [dockAbierto, panel, rutaFoco, rutas])
+
+  /**
+   * Las capas de color, por id de ruta. Existen para poder subir la destacada al frente.
+   *
+   * POR QUÉ NO SE ORDENA EL ARRAY. El z-order del SVG es el orden de inserción, pero reordenar el
+   * `.map()` no lo cambia: los `<path>` los crea Leaflet imperativamente dentro de su propio
+   * contenedor, así que React reconcilia sus componentes sin mover un solo nodo del SVG. Subir una
+   * ruta al frente es pedírselo a Leaflet, y para eso hay que tener la capa a mano.
+   */
+  const capasColor = useRef(new Map<string, CapaPolyline>())
+
+  /**
+   * La destacada va al frente. Es la mitad del arreglo: sin esto, una ruta que comparte avenida con
+   * otra dibujada después sigue tapada, solo que ahora la de arriba está atenuada y la deja entrever.
+   *
+   * Depende también de `dibujables`: cuando una ruta se remonta (pasó de recta a ruteada) su capa es
+   * nueva y hay que volver a pedirlo.
+   */
+  useEffect(() => {
+    if (!destacada) return
+    capasColor.current.get(destacada)?.bringToFront()
+  }, [destacada, dibujables])
+
+  /**
+   * Patrón de línea por ruta: el SEGUNDO canal, además del color.
+   *
+   * Con siete rutas los colores empiezan a parecerse, y dos que se pisan exacto son indistinguibles
+   * aunque una esté arriba. Guionadas distinto, la de arriba deja ver la de abajo por los huecos. Y de
+   * paso el trazo deja de depender SOLO del color, que es lo que falla con daltonismo.
+   *
+   * Sale del índice en `rutas` y no de un hash del id: así dos rutas consecutivas —las que más chance
+   * tienen de compartir calle, porque el optimizador reparte por cercanía— nunca caen en el mismo
+   * patrón. El primero es sólido: el caso de una sola ruta tiene que verse como una línea normal.
+   */
+  const patrones = useMemo(
+    () => new Map(rutas.map((r, i) => [r.id, PATRONES_TRAZO[i % PATRONES_TRAZO.length]])),
+    [rutas],
+  )
+
   const foco = useMemo(() => paradas.find((p) => p.id === paradaFoco) ?? null, [paradaFoco, paradas])
   // Rango de peso del conjunto VISIBLE: la escala compara las paradas del plan entre sí, no contra un
   // máximo absoluto que no significa nada para quien mira esta pantalla.
@@ -583,21 +655,30 @@ export function PlannerMapa({
           Delgados: 4 px de halo y 2 de color. Con siete rutas saliendo del mismo depósito, líneas de
           6,5 px se fusionan en una sola mancha y deja de leerse cuántas hay. `round` en punta y unión
           evita las esquinas en pico de los giros cerrados. */}
-      {dibujables.map(({ ruta, path }) => (
-        <Polyline
-          key={ruta.id}
-          positions={porCalles.get(ruta.id) ?? path}
-          pathOptions={{
-            color: '#ffffff',
-            weight: 4,
-            opacity: 0.85,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-        />
-      ))}
+      {dibujables.map(({ ruta, path }) => {
+        const esDestacada = ruta.id === destacada
+        const atenuada = destacada !== null && !esDestacada
+        return (
+          <Polyline
+            key={ruta.id}
+            positions={porCalles.get(ruta.id) ?? path}
+            // El halo va SÓLIDO aunque su línea de color esté guionada: es justamente el fondo blanco
+            // continuo el que hace legible el guionado, y una línea de guiones sobre otra de guiones
+            // se lee como una sola línea rota.
+            pathOptions={{
+              color: '#ffffff',
+              weight: esDestacada ? 5 : 4,
+              opacity: atenuada ? 0.3 : 0.85,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        )
+      })}
       {dibujables.map(({ ruta, path }) => {
         const calles = porCalles.get(ruta.id)
+        const esDestacada = ruta.id === destacada
+        const atenuada = destacada !== null && !esDestacada
         return (
           <Polyline
             // El `key` sigue distinguiendo el trazo RUTEADO del recto aunque ya no se dibujen los dos
@@ -620,12 +701,38 @@ export function PlannerMapa({
              * entera y sólida — mientras que un `dasharray: 1` sin `pathLength` la haría desaparecer.
              */
             ref={(capa) => {
-              if (!capa) return
+              if (!capa) {
+                capasColor.current.delete(ruta.id)
+                return
+              }
+              capasColor.current.set(ruta.id, capa)
+              // Una ruta que se monta YA destacada también tiene que quedar arriba: el efecto de más
+              // arriba corre antes de que esta capa exista.
+              if (ruta.id === destacada) capa.bringToFront()
               const aplicar = () => {
                 const el = capa.getElement()
                 if (!el) return false
                 el.setAttribute('pathLength', '1')
                 el.classList.add('ruta-trazo')
+                /**
+                 * La clase se saca cuando la animación TERMINA, y no es prolijidad: es lo que deja
+                 * ver el guionado por ruta.
+                 *
+                 * `.ruta-trazo` declara `stroke-dasharray: 1` en la hoja de estilos, y una regla de
+                 * CSS le gana al ATRIBUTO de presentación que Leaflet escribe para `dashArray`. O
+                 * sea: mientras la clase esté puesta, todos los trazos se dibujan con el mismo dash
+                 * de la animación y el patrón propio de la ruta no existe. Son dos usos del mismo
+                 * `stroke-dasharray` que no pueden convivir, así que van en orden: primero se
+                 * dibuja, después se guiona.
+                 *
+                 * Con `prefers-reduced-motion` no hay animación y `animationend` nunca llega: la
+                 * clase queda, y su regla de movimiento reducido pone `stroke-dasharray: none`. El
+                 * trazo se ve sólido y sin patrón — que es la degradación correcta (color y realce
+                 * siguen ahí), no una línea invisible.
+                 */
+                el.addEventListener('animationend', () => el.classList.remove('ruta-trazo'), {
+                  once: true,
+                })
                 return true
               }
               // Un reintento en el próximo frame: el `<path>` recién existe cuando Leaflet agrega la
@@ -636,8 +743,13 @@ export function PlannerMapa({
             }}
             pathOptions={{
               color: ruta.color,
-              weight: 2,
-              opacity: 1,
+              // La destacada gana UN píxel y nada más. Dos serían una línea de otra naturaleza; uno,
+              // sobre el resto atenuado, alcanza para que se lea como la que estás mirando.
+              weight: esDestacada ? 3 : 2,
+              // Atenuar y no ocultar: las demás rutas siguen siendo el contexto que dice si este
+              // recorrido pisa al de al lado. Apagarlas contestaría otra pregunta.
+              opacity: atenuada ? 0.4 : 1,
+              dashArray: patrones.get(ruta.id) ?? undefined,
               lineCap: 'round',
               lineJoin: 'round',
             }}
