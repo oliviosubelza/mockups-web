@@ -8,11 +8,24 @@
 // están escritas juntas: la ocupación, el peso, el volumen y los conteos se leen en columna, y la que se
 // pasó salta sola sin que haya que buscarla.
 //
-// POR QUÉ ES UNA TABLA DE VERDAD Y NO FILAS DE DIVS. Todo el sentido de esta pantalla es la comparación
-// VERTICAL: el 118% de la ruta 3 vale porque al lado está el 41% de la ruta 4, y para eso las celdas
-// tienen que alinearse entre filas. Con divs y flex cada fila negocia sus anchos por su cuenta según lo
-// que le tocó de contenido —una placa más larga, un volumen de tres dígitos— y las columnas se
-// desalinean justo cuando hay más para comparar. `<table>` reparte el ancho una vez para todas.
+// POR QUÉ LA TABLA ES LA REUTILIZABLE Y NO UN `<table>` A MANO. La razón de fondo sigue siendo la
+// misma —la comparación es VERTICAL, y para eso las celdas tienen que alinearse entre filas, cosa que
+// un `<table>` hace y un montón de divs con flex no—, solo que ese reparto de anchos lo da igual el
+// `DataTable` del repo, y encima trae gratis lo que acá se estaba escribiendo a mano o directamente
+// faltaba: ORDENAR por cualquier columna (ordenar por ocupación es literalmente la pregunta del
+// panel), el SELECTOR DE COLUMNAS (nueve columnas en un panel de 200 px: el que no mira bandeo lo
+// apaga), la DENSIDAD, el ancho de cada columna arrastrable, y la PERSISTENCIA de todo eso por
+// `tableId` —el orden y las columnas elegidas sobreviven al reload—.
+//
+// Y hay una razón que antes jugaba en contra y ahora juega a favor: el `DataTable` SIEMPRE dibuja su
+// toolbar. Cuando la tabla era a mano eso era peso muerto que no se quería pagar; hoy es justo el
+// lugar donde había que poner las herramientas de la flota (ver/ocultar/aislar rutas), que hasta
+// ahora vivían escondidas dentro del popover del panel de la izquierda.
+//
+// SIN PAGINADOR Y SIN BUSCADOR, A PROPÓSITO. Son seis rutas —nueve en el peor caso—: el paginador se
+// come 30 px de alto en un panel que arranca en 180 y no divide nada, y buscar entre seis nombres es
+// más trabajo que leerlos. El buscador que sí hace falta es el de CLIENTES, y ese vive en el panel de
+// la izquierda, sobre las paradas, que son sesenta.
 //
 // POR QUÉ SE PLIEGA HASTA UNA BARRITA. Arrastrar para abajo NO se detiene en el alto mínimo: pasado el
 // piso, el panel se PLIEGA y queda solo su cabecera. Un panel que se resiste a bajar de tres filas
@@ -25,6 +38,8 @@
 // movimiento, y arrastrar hacia arriba agranda —de ahí el `yInicial - clientY` del cálculo—.
 import { useCallback, useMemo } from 'react'
 import { Boxes, ChevronDown, ChevronUp, Crosshair, Eye, EyeOff, PackageX, X } from 'lucide-react'
+import { DataTable, DENSITY, defineColumns } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
 import { resumenAccesorios, totalAccesorios } from '../accesorios'
@@ -36,11 +51,14 @@ const fmt = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 /**
  * Alto mínimo y máximo del panel, en px. El arrastre recorta contra estos dos números.
  *
- * El piso deja ver la cabecera y dos o tres filas: menos que eso no es un panel chico, es un panel que
- * no sirve para nada y conviene cerrar. El techo evita que el panel se coma el mapa que está tapando —
- * si hace falta más alto que 520 px, la pantalla que se quiere es la de rutas, no esta.
+ * EL PISO ES 180 Y NO 140 desde que la tabla es el `DataTable`: el componente dibuja SIEMPRE su
+ * toolbar —tres botones de ícono, unos 32 px más el gap— y con densidad compacta su encabezado
+ * pegajoso mide 28 px. Sumando la manija y la cabecera del panel, arriba de 70 px son cromo antes de
+ * la primera fila: en 140 px entraba UNA fila y media, o sea nada que comparar, que es lo único que
+ * este panel hace. El techo sigue evitando que el panel se coma el mapa que está tapando — si hace
+ * falta más alto que 520 px, la pantalla que se quiere es la de rutas, no esta.
  */
-export const RUTAS_TABLA_MIN_PX = 140
+export const RUTAS_TABLA_MIN_PX = 180
 export const RUTAS_TABLA_MAX_PX = 520
 
 /**
@@ -72,8 +90,35 @@ const HOLGURA_PLEGADO_PX = 28
  */
 const SIN_ASIGNAR = '__sin-asignar__'
 
-/** Alto de fila y padding, una sola vez: son nueve celdas y a mano se despintan de a una. */
-const CELDA = 'h-7 px-2 align-middle'
+/**
+ * Una fila de la tabla. PLANA a propósito, y no `{ ruta, carga }`.
+ *
+ * `ColumnDefConfig.accessorKey` es `keyof T & string`: la columna solo puede ordenar por un campo que
+ * exista EN LA RAÍZ de la fila. Con la forma anidada, ocupación, peso, volumen y conteos quedarían
+ * detrás de `carga.` y ninguna de esas seis columnas —justo las que se ordenan— podría declarar
+ * accessor; habría que escribir comparadores a mano y perder el orden persistido por `tableId`.
+ * Así que la fila se aplana una vez en un `useMemo` y las columnas leen campos sueltos.
+ */
+interface FilaRuta {
+  id: string
+  nombre: string
+  color: string
+  placa: string
+  clase: string
+  tipo: 'Frío' | 'Seco'
+  ocupacionPct: number
+  nivel: CargaRuta['nivel']
+  excedeClientes: boolean
+  pesoTon: number
+  capacidadPeso: number
+  volumenM3: number
+  capacidadVolumen: number
+  paradas: number
+  pedidos: number
+  bandeo: number
+  bandeoResumen: string
+  oculta: boolean
+}
 
 /**
  * Barra de ocupación dentro de una celda.
@@ -84,9 +129,19 @@ const CELDA = 'h-7 px-2 align-middle'
  * dos códigos distintos obligaría a aprenderlo dos veces. No se importa el otro porque es local a ese
  * archivo; se copia el patrón adaptado a una celda —más angosta, sin gap grande— en vez de exportarlo
  * y tocar el archivo de al lado.
+ *
+ * Recibe `ocupacionPct` y `nivel` sueltos y no una `CargaRuta` entera porque la fila de esta tabla es
+ * plana (ver `FilaRuta`) y no tiene un objeto `carga` para pasarle.
  */
-function BarraOcupacion({ carga, color }: { carga: CargaRuta; color: string }) {
-  const { nivel, ocupacionPct } = carga
+function BarraOcupacion({
+  ocupacionPct,
+  nivel,
+  color,
+}: {
+  ocupacionPct: number
+  nivel: CargaRuta['nivel']
+  color: string
+}) {
   // Mismo criterio que en `RutasPanel`: el exceso se dibuja proporcional con un piso de 6% —al 101%
   // tiene que verse ALGO— y un techo de 40%, para que al 1200% la barra siga siendo una barra.
   const excesoPct =
@@ -191,12 +246,234 @@ export function RutasTablaPanel({
   const setRutaFoco = usePlannerStore((s) => s.setRutaFoco)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
+  const setRutasOcultas = usePlannerStore((s) => s.setRutasOcultas)
   const accesorios = usePlannerStore((s) => s.accesorios)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
-  const filas = useMemo(
-    () => rutas.map((r) => ({ ruta: r, carga: cargaDeRuta(paradasAsignadas, r) })),
-    [rutas, paradasAsignadas],
+  const filas = useMemo<FilaRuta[]>(
+    () =>
+      rutas.map((ruta) => {
+        const carga = cargaDeRuta(paradasAsignadas, ruta)
+        const items = accesorios[ruta.id] ?? []
+        return {
+          id: ruta.id,
+          nombre: ruta.nombre,
+          color: ruta.color,
+          placa: ruta.camion.placa,
+          clase: ruta.camion.clase,
+          tipo: ruta.camion.tipo,
+          ocupacionPct: carga.ocupacionPct,
+          nivel: carga.nivel,
+          excedeClientes: carga.excedeClientes,
+          pesoTon: carga.pesoKg / 1000,
+          capacidadPeso: ruta.camion.capacidadPeso,
+          volumenM3: carga.volumenM3,
+          capacidadVolumen: ruta.camion.capacidadVolumen,
+          paradas: carga.paradas.length,
+          pedidos: carga.pedidos,
+          bandeo: totalAccesorios(items),
+          bandeoResumen: resumenAccesorios(items),
+          oculta: rutasOcultas.includes(ruta.id),
+        }
+      }),
+    [rutas, paradasAsignadas, accesorios, rutasOcultas],
+  )
+
+  const columnas = useMemo(
+    () =>
+      defineColumns<FilaRuta>([
+        {
+          id: 'ruta',
+          header: 'Ruta',
+          accessorKey: 'nombre',
+          size: 180,
+          cell: (f) => (
+            <div className="flex items-center gap-2">
+              {/* Barra del color de la RUTA, solo en la elegida. El borde de la fila dice "esta está
+                  elegida" en el color de marca; esta dice "y es esta ruta" en el color del trazo que
+                  el mapa está resaltando. `invisible` y no condicional para que la columna mida
+                  siempre igual. */}
+              <span
+                className={cn('h-5 w-1.5 shrink-0 rounded-full', rutaFoco !== f.id && 'invisible')}
+                style={{ background: f.color }}
+                aria-hidden
+              />
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: f.color }}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate font-medium">{f.nombre}</span>
+              {/* Si la ruta no se está dibujando, la fila tiene que decirlo: la tabla la lista con
+                  todos sus números y el mapa no muestra nada, y eso parece un bug. */}
+              {f.oculta && (
+                <EyeOff
+                  size={11}
+                  className="shrink-0 text-muted-foreground"
+                  aria-label="Oculta en el mapa"
+                />
+              )}
+            </div>
+          ),
+        },
+        {
+          id: 'camion',
+          header: 'Camión',
+          accessorKey: 'placa',
+          size: 150,
+          // Placa y clase EN LA MISMA LÍNEA: la fila mide 28 px en densidad compacta y dos renglones
+          // apilados no entran sin estirar todas las filas por un dato secundario.
+          cell: (f) => (
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono text-[11px]">{f.placa}</span>
+              <span className="truncate text-[10px] text-muted-foreground">{f.clase}</span>
+            </div>
+          ),
+        },
+        {
+          id: 'tipo',
+          header: 'Tipo',
+          accessorKey: 'tipo',
+          size: 70,
+          // Una palabra y no un badge: es una columna más de la comparación, y un badge por fila
+          // metería seis cápsulas de color compitiendo con las barras de ocupación.
+          cell: (f) => (
+            <span
+              className={cn(
+                'text-[11px]',
+                f.tipo === 'Frío'
+                  ? 'font-medium text-sky-600 dark:text-sky-400'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {f.tipo}
+            </span>
+          ),
+        },
+        {
+          id: 'ocupacionPct',
+          header: 'Ocupación',
+          accessorKey: 'ocupacionPct',
+          size: 130,
+          cell: (f) => (
+            <BarraOcupacion ocupacionPct={f.ocupacionPct} nivel={f.nivel} color={f.color} />
+          ),
+        },
+        {
+          id: 'pesoTon',
+          header: 'Peso',
+          accessorKey: 'pesoTon',
+          size: 110,
+          meta: { align: 'right' },
+          cell: (f) => (
+            <span className="text-[11px] tabular-nums">
+              <span className="font-medium">{fmt.format(f.pesoTon)}</span>
+              <span className="text-muted-foreground"> / {f.capacidadPeso} t</span>
+            </span>
+          ),
+        },
+        {
+          id: 'volumenM3',
+          header: 'Volumen',
+          accessorKey: 'volumenM3',
+          size: 120,
+          meta: { align: 'right' },
+          cell: (f) => (
+            <span className="text-[11px] tabular-nums">
+              <span className="font-medium">{fmt.format(f.volumenM3)}</span>
+              <span className="text-muted-foreground"> / {f.capacidadVolumen} m³</span>
+            </span>
+          ),
+        },
+        {
+          id: 'paradas',
+          header: 'Paradas',
+          accessorKey: 'paradas',
+          size: 90,
+          meta: { align: 'right' },
+          // El conteo se pinta cuando pasa el techo de clientes: es la MISMA cifra cambiando de
+          // color, no un cartel nuevo al lado. Mismo criterio que el panel de Rutas.
+          cell: (f) => (
+            <span
+              className={cn(
+                'text-[11px] tabular-nums',
+                f.excedeClientes && 'font-semibold text-amber-600 dark:text-amber-400',
+              )}
+              title={
+                f.excedeClientes
+                  ? `Más de ${MAX_CLIENTES_POR_CAMION} clientes en un camión: no le da la jornada aunque le sobre capacidad`
+                  : undefined
+              }
+            >
+              {f.paradas}
+            </span>
+          ),
+        },
+        {
+          id: 'pedidos',
+          header: 'Pedidos',
+          accessorKey: 'pedidos',
+          size: 90,
+          meta: { align: 'right' },
+          cell: (f) => <span className="text-[11px] tabular-nums">{f.pedidos}</span>,
+        },
+        {
+          id: 'bandeo',
+          header: 'Bandeo',
+          accessorKey: 'bandeo',
+          size: 90,
+          meta: { align: 'right' },
+          // BANDEO = DATO, NO ACCIÓN. Acá no se abre el diálogo de accesorios: el `AccesoriosDialog`
+          // se monta DENTRO de `RutasPanel`, así que si el dock de la izquierda no está en "rutas"
+          // ese diálogo no existe y el click no haría nada. Editar el bandeo se sigue haciendo desde
+          // el engranaje de la ruta; esta columna solo contesta "¿esta ruta lleva algo además de
+          // mercadería?".
+          cell: (f) =>
+            f.bandeo === 0 ? (
+              <span className="text-[11px] text-muted-foreground">—</span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-medium tabular-nums"
+                title={f.bandeoResumen}
+              >
+                <Boxes size={11} className="shrink-0 text-muted-foreground" />
+                {f.bandeo}
+              </span>
+            ),
+        },
+        {
+          id: 'acciones',
+          header: '',
+          size: 70,
+          enableSorting: false,
+          enableHiding: false,
+          meta: { align: 'right' },
+          cell: (f) => (
+            <div className="flex items-center justify-end gap-0.5">
+              <AccionFila
+                titulo={f.oculta ? `Mostrar ${f.nombre} en el mapa` : `Ocultar ${f.nombre} del mapa`}
+                onClick={() => toggleRutaVisible(f.id)}
+              >
+                {f.oculta ? <EyeOff size={12} /> : <Eye size={12} />}
+              </AccionFila>
+              <AccionFila
+                titulo={`Encuadrar ${f.nombre} en el mapa`}
+                // `pedirEncuadre('ruta')` encuadra la ruta EN FOCO, no una ruta por id: hay que
+                // hacer foco ANTES o el mapa vuela a la ruta que estaba elegida.
+                onClick={() => {
+                  setRutaFoco(f.id)
+                  pedirEncuadre('ruta')
+                }}
+              >
+                <Crosshair size={12} />
+              </AccionFila>
+            </div>
+          ),
+        },
+      ]),
+    // `rutaFoco` entra en las deps porque la celda "Ruta" dibuja la barra de la elegida: sin él, las
+    // columnas quedan memoizadas con el foco viejo y la barra nunca se mueve de la primera fila.
+    [pedirEncuadre, rutaFoco, setRutaFoco, toggleRutaVisible],
   )
 
   const sinAsignar = useMemo(() => paradasAsignadas.filter((p) => !p.rutaId), [paradasAsignadas])
@@ -205,6 +482,28 @@ export function RutasTablaPanel({
   // así el resumen cierra con la suma de las filas de abajo, incluida la de "Sin asignar".
   const totalParadas = paradasAsignadas.length
   const totalPedidos = paradasAsignadas.reduce((acc, p) => acc + p.pedidos.length, 0)
+
+  /**
+   * Totales del plan: peso, volumen y ocupación promedio.
+   *
+   * VAN EN LA CABECERA DEL PANEL, no abajo de la tabla, porque el `DataTable` no ofrece `tfoot`: no
+   * hay slot para una fila de totales y meterla como una fila más de `data` la haría ordenable —se
+   * iría al medio en cuanto alguien ordene por ocupación— y contable en el "N filas". Arriba, además,
+   * el total queda pegado al resumen que ya estaba y se lee incluso con el panel plegado.
+   */
+  const totales = useMemo(() => {
+    const pesoTon = filas.reduce((acc, f) => acc + f.pesoTon, 0)
+    const volumenM3 = filas.reduce((acc, f) => acc + f.volumenM3, 0)
+    const ocupacionPct =
+      filas.length === 0
+        ? 0
+        : Math.round(filas.reduce((acc, f) => acc + f.ocupacionPct, 0) / filas.length)
+    return { pesoTon, volumenM3, ocupacionPct }
+  }, [filas])
+
+  const enMapa = rutas.length - rutasOcultas.length
+  /** "Aislar" necesita una RUTA en foco: `rutaFoco` también puede valer `SIN_ASIGNAR` o `null`. */
+  const focoEsRuta = rutas.some((r) => r.id === rutaFoco)
 
   /**
    * Arrastre del borde de arriba. Mismo patrón que `useSidebarResize`: en el mousedown se capturan la
@@ -251,12 +550,71 @@ export function RutasTablaPanel({
     [alto, onAlto, onPlegado, plegado],
   )
 
-  /** Elegir con teclado la fila que tiene el foco. Espacio se corta o la página scrollea. */
-  const alTeclear = (e: React.KeyboardEvent, id: string) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return
-    e.preventDefault()
-    setRutaFoco(id)
-  }
+  /**
+   * Herramientas de la FLOTA de rutas, en el slot `toolbar` de la tabla.
+   *
+   * Prender y apagar rutas de a una sirve para AISLAR un recorrido, y aislar es justo lo que más se
+   * hace cuando dos rutas se pisan en el mapa: hoy son cinco clicks de ojito en el popover del panel
+   * de la izquierda. "Aislar la elegida" lo hace de uno, y va acá y no allá porque acá está la lista
+   * completa con sus números: se decide y se aísla sin cambiar de panel.
+   */
+  const herramientas = (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 shrink-0 px-1.5 text-[11px]"
+        title="Mostrar todas las rutas en el mapa"
+        disabled={rutasOcultas.length === 0}
+        onClick={() => setRutasOcultas([])}
+      >
+        Ver todas
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 shrink-0 px-1.5 text-[11px]"
+        title="Ocultar todas las rutas del mapa"
+        disabled={enMapa === 0}
+        onClick={() => setRutasOcultas(rutas.map((r) => r.id))}
+      >
+        Ocultar todas
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 shrink-0 px-1.5 text-[11px]"
+        title="Dejar en el mapa solo la ruta elegida"
+        disabled={!focoEsRuta}
+        onClick={() => setRutasOcultas(rutas.filter((r) => r.id !== rutaFoco).map((r) => r.id))}
+      >
+        Aislar la elegida
+      </Button>
+      <span className="shrink-0 px-1 text-[11px] tabular-nums text-muted-foreground">
+        {enMapa} de {rutas.length} en el mapa
+      </span>
+      {/* ── "Sin asignar": UN CHIP, NO UNA FILA ──
+          Antes era la última fila de la tabla y se la saca a propósito. No es una ruta: no tiene
+          camión, ni placa, ni tipo, ni capacidad contra la que medir una ocupación, así que como fila
+          obligaba a que las diez columnas toleraran nulos —y a decidir qué dice cada celda vacía, con
+          el riesgo de que un 0% se leyera como "va vacío" cuando lo que pasa es que no hay camión—.
+          Peor todavía con la tabla reutilizable: una fila así se ordena junto a las otras (se iría al
+          medio al ordenar por ocupación) y se cuenta en el total de filas. Como chip dice lo único
+          real que tenía —cuánto quedó afuera— y sigue haciendo foco en el grupo. */}
+      {sinAsignar.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 shrink-0 gap-1 border-amber-500/50 px-1.5 text-[11px] text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+          title="Paradas que no entraron en ningún camión del plan"
+          onClick={() => setRutaFoco(SIN_ASIGNAR)}
+        >
+          <PackageX size={11} className="shrink-0" />
+          {sinAsignar.length} sin asignar
+        </Button>
+      )}
+    </>
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -285,6 +643,14 @@ export function RutasTablaPanel({
         <span className="min-w-0 flex-1 truncate text-[11px] tabular-nums text-muted-foreground">
           {rutas.length} rutas · {totalParadas} paradas · {totalPedidos} pedidos
         </span>
+        {/* Los totales del plan (ver `totales`): la suma que la tabla no puede firmar abajo. */}
+        <span
+          className="shrink-0 truncate text-[11px] tabular-nums text-muted-foreground"
+          title="Totales del plan: peso, volumen y ocupación promedio de las rutas"
+        >
+          {fmt.format(totales.pesoTon)} t · {fmt.format(totales.volumenM3)} m³ ·{' '}
+          {totales.ocupacionPct}% prom.
+        </span>
         {/* Plegar y CERRAR son dos cosas distintas y por eso son dos botones: plegado el panel sigue
             en pantalla diciendo qué es y cuánto hay —y se vuelve a abrir de un click—; cerrado
             desaparece y hay que ir a buscarlo al menú "Ver". */}
@@ -312,249 +678,53 @@ export function RutasTablaPanel({
       {/* Plegado no se dibuja NADA del cuerpo, y no es solo que no se vea: una tabla recortada a 0 px
           sigue costando su layout y sus filas, y el panel se pliega justo cuando lo que se quiere es
           el mapa. */}
-      {plegado ? null : rutas.length === 0 ? (
-        <p className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs text-muted-foreground">
-          Todavía no hay rutas generadas.
-        </p>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full text-xs">
-            {/* El `sticky` va en los `th` y no solo en el `thead`: el navegador no pega un `thead`
-                completo de forma confiable, pero sí cada celda de encabezado. */}
-            <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/40">
-              <tr className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="h-6 px-2 text-left font-semibold">Ruta</th>
-                <th className="h-6 px-2 text-left font-semibold">Camión</th>
-                <th className="h-6 px-2 text-left font-semibold">Tipo</th>
-                <th className="h-6 w-40 px-2 text-left font-semibold">Ocupación</th>
-                <th className="h-6 px-2 text-right font-semibold">Peso</th>
-                <th className="h-6 px-2 text-right font-semibold">Volumen</th>
-                <th className="h-6 px-2 text-right font-semibold">Paradas</th>
-                <th className="h-6 px-2 text-right font-semibold">Pedidos</th>
-                <th className="h-6 px-2 text-right font-semibold">Bandeo</th>
-                <th className="h-6 w-14 px-2 text-right font-semibold">
-                  <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filas.map(({ ruta, carga }) => {
-                const enFoco = rutaFoco === ruta.id
-                const oculta = rutasOcultas.includes(ruta.id)
-                const items = accesorios[ruta.id] ?? []
-                const bandeo = totalAccesorios(items)
-
-                return (
-                  <tr
-                    key={ruta.id}
-                    tabIndex={0}
-                    onClick={() => setRutaFoco(ruta.id)}
-                    onKeyDown={(e) => alTeclear(e, ruta.id)}
-                    className={cn(
-                      'cursor-pointer border-b border-border/60 outline-none transition-colors focus-visible:bg-accent/60',
-                      enFoco ? 'bg-accent/60' : 'hover:bg-muted/50',
-                      // Una ruta apagada se lee apagada, igual que en el select del panel de la
-                      // izquierda: mismo dato, menos tinta.
-                      oculta && 'opacity-50',
-                    )}
-                  >
-                    {/* La barra vertical del color va como sombra INTERNA de la primera celda y no del
-                        `<tr>`: con `border-collapse` el navegador no dibuja `box-shadow` sobre una
-                        fila, pero sí sobre sus celdas. */}
-                    <td
-                      className={cn(CELDA, 'max-w-40')}
-                      style={enFoco ? { boxShadow: `inset 2px 0 0 ${ruta.color}` } : undefined}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-full"
-                          style={{ background: ruta.color }}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">{ruta.nombre}</span>
-                        {/* Si la ruta no se está dibujando, la fila tiene que decirlo: la tabla la
-                            lista con todos sus números y el mapa no muestra nada, y eso parece un bug. */}
-                        {oculta && (
-                          <EyeOff
-                            size={11}
-                            className="shrink-0 text-muted-foreground"
-                            aria-label="Oculta en el mapa"
-                          />
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Placa y clase EN LA MISMA LÍNEA: la fila mide 28 px y dos renglones apilados no
-                        entran sin estirar todas las filas de la tabla por un dato secundario. */}
-                    <td className={CELDA}>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-mono text-[11px]">{ruta.camion.placa}</span>
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {ruta.camion.clase}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Una palabra y no un badge: es una columna más de la comparación, y un badge por
-                        fila metería seis cápsulas de color compitiendo con las barras de ocupación. */}
-                    <td className={CELDA}>
-                      <span
-                        className={cn(
-                          'text-[11px]',
-                          ruta.camion.tipo === 'Frío'
-                            ? 'font-medium text-sky-600 dark:text-sky-400'
-                            : 'text-muted-foreground',
-                        )}
-                      >
-                        {ruta.camion.tipo}
-                      </span>
-                    </td>
-
-                    <td className={CELDA}>
-                      <BarraOcupacion carga={carga} color={ruta.color} />
-                    </td>
-
-                    <td className={cn(CELDA, 'text-right text-[11px] tabular-nums')}>
-                      <span className="font-medium">{fmt.format(carga.pesoKg / 1000)}</span>
-                      <span className="text-muted-foreground">
-                        {' '}
-                        / {ruta.camion.capacidadPeso} t
-                      </span>
-                    </td>
-
-                    <td className={cn(CELDA, 'text-right text-[11px] tabular-nums')}>
-                      <span className="font-medium">{fmt.format(carga.volumenM3)}</span>
-                      <span className="text-muted-foreground">
-                        {' '}
-                        / {ruta.camion.capacidadVolumen} m³
-                      </span>
-                    </td>
-
-                    {/* El conteo se pinta cuando pasa el techo de clientes: es la MISMA cifra cambiando
-                        de color, no un cartel nuevo al lado. Mismo criterio que el panel de Rutas. */}
-                    <td
-                      className={cn(
-                        CELDA,
-                        'text-right text-[11px] tabular-nums',
-                        carga.excedeClientes && 'font-semibold text-amber-600 dark:text-amber-400',
-                      )}
-                      title={
-                        carga.excedeClientes
-                          ? `Más de ${MAX_CLIENTES_POR_CAMION} clientes en un camión: no le da la jornada aunque le sobre capacidad`
-                          : undefined
-                      }
-                    >
-                      {carga.paradas.length}
-                    </td>
-
-                    <td className={cn(CELDA, 'text-right text-[11px] tabular-nums')}>
-                      {carga.pedidos}
-                    </td>
-
-                    {/* BANDEO = DATO, NO ACCIÓN. Acá no se abre el diálogo de accesorios: el
-                        `AccesoriosDialog` se monta DENTRO de `RutasPanel`, así que si el dock de la
-                        izquierda no está en "rutas" ese diálogo no existe y el click no haría nada.
-                        Editar el bandeo se sigue haciendo desde el engranaje de la ruta; esta columna
-                        solo contesta "¿esta ruta lleva algo además de mercadería?". */}
-                    <td className={cn(CELDA, 'text-right text-[11px] tabular-nums')}>
-                      {bandeo === 0 ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 font-medium"
-                          title={resumenAccesorios(items)}
-                        >
-                          <Boxes size={11} className="shrink-0 text-muted-foreground" />
-                          {bandeo}
-                        </span>
-                      )}
-                    </td>
-
-                    <td className={CELDA}>
-                      <div className="flex items-center justify-end gap-0.5">
-                        <AccionFila
-                          titulo={
-                            oculta
-                              ? `Mostrar ${ruta.nombre} en el mapa`
-                              : `Ocultar ${ruta.nombre} del mapa`
-                          }
-                          onClick={() => toggleRutaVisible(ruta.id)}
-                        >
-                          {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </AccionFila>
-                        <AccionFila
-                          titulo={`Encuadrar ${ruta.nombre} en el mapa`}
-                          // `pedirEncuadre('ruta')` encuadra la ruta EN FOCO, no una ruta por id: hay
-                          // que hacer foco ANTES o el mapa vuela a la ruta que estaba elegida.
-                          onClick={() => {
-                            setRutaFoco(ruta.id)
-                            pedirEncuadre('ruta')
-                          }}
-                        >
-                          <Crosshair size={12} />
-                        </AccionFila>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-
-              {/* ── "Sin asignar", ÚLTIMA y solo si hay ──
-                  Es el resto de empaquetado del optimizador, no un camión: no tiene placa, ni tipo, ni
-                  capacidad contra la que medir una ocupación. Por eso esas celdas van VACÍAS en vez de
-                  con un cero o un guión en cada una: un 0% de ocupación diría "va vacío", cuando lo que
-                  pasa es que no hay camión. Lo único real de esta fila son los conteos —cuánto quedó
-                  afuera—, que es justo el número que hay que mirar cuando existe. */}
-              {sinAsignar.length > 0 && (
-                <tr
-                  tabIndex={0}
-                  onClick={() => setRutaFoco(SIN_ASIGNAR)}
-                  onKeyDown={(e) => alTeclear(e, SIN_ASIGNAR)}
-                  className={cn(
-                    'cursor-pointer outline-none transition-colors focus-visible:bg-accent/60',
-                    rutaFoco === SIN_ASIGNAR ? 'bg-accent/60' : 'hover:bg-muted/50',
-                  )}
-                >
-                  <td className={CELDA}>
-                    <div className="flex items-center gap-2">
-                      <PackageX
-                        size={12}
-                        className="shrink-0 text-amber-600 dark:text-amber-400"
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1 truncate font-medium text-amber-700 dark:text-amber-300">
-                        Sin asignar
-                      </span>
-                    </div>
-                  </td>
-                  <td className={CELDA} />
-                  <td className={CELDA} />
-                  <td className={CELDA} />
-                  <td className={CELDA} />
-                  <td className={CELDA} />
-                  <td
-                    className={cn(
-                      CELDA,
-                      'text-right text-[11px] font-semibold tabular-nums text-amber-600 dark:text-amber-400',
-                    )}
-                    title="Paradas que no entraron en ningún camión del plan"
-                  >
-                    {sinAsignar.length}
-                  </td>
-                  <td
-                    className={cn(
-                      CELDA,
-                      'text-right text-[11px] font-semibold tabular-nums text-amber-600 dark:text-amber-400',
-                    )}
-                  >
-                    {sinAsignar.reduce((acc, p) => acc + p.pedidos.length, 0)}
-                  </td>
-                  <td className={CELDA} />
-                  <td className={CELDA} />
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {plegado ? null : (
+        // `fillHeight` pide que el padre sea un flex-col ACOTADO: este envoltorio cede el alto que
+        // sobra (`min-h-0 flex-1`) y no scrollea él —scrollea el cuerpo de la tabla, con el encabezado
+        // pegado—.
+        //
+        // Y ES `flex flex-col`, NO UN BLOQUE: con `fillHeight` el DataTable se declara `min-h-0
+        // flex-1`, y eso solo mide algo si su padre es flex. Como bloque, el alto de la tabla lo daba
+        // su contenido, el `overflow-hidden` de acá lo recortaba, y las filas de abajo desaparecían
+        // sin barra de scroll: se veía exactamente como una tabla que no scrollea.
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
+          <DataTable
+            tableId="planner-rutas-generadas"
+            columns={columnas}
+            data={filas}
+            getRowId={(f) => f.id}
+            fillHeight
+            stickyHeader
+            defaultDensity={DENSITY.compact}
+            // La pregunta del panel es "¿cuál va apretada?": la tabla arranca contestándola.
+            initialSort={{ id: 'ocupacionPct', desc: true }}
+            onRowClick={(f) => setRutaFoco(f.id)}
+            // La franja vertical del color de la ruta que marcaba la fila en foco ya no se puede: era
+            // un `box-shadow: inset` en la primera celda, y las celdas ahora las pinta el DataTable.
+            // Queda solo el fondo, que es de todos modos la señal que se lee de lejos.
+            rowClassName={(f) =>
+              cn(
+                'cursor-pointer',
+                // CUATRO señales para la fila elegida, y no es de más: es la fila que manda qué
+                // resalta el mapa, así que tiene que encontrarse sin leer. Se probó con `bg-accent/60`
+                // (invisible en tema claro) y después con `bg-primary/10` (se notaba, no saltaba).
+                // Ahora: fondo del color de marca al 20%, texto en negrita, el texto pasa al color de
+                // marca, y la barra del color de la ruta en la primera celda.
+                //
+                // El borde izquierdo lo llevan TODAS las filas, transparente en las no elegidas: si
+                // solo lo tuviera la elegida, el contenido de su primera celda se correría 2 px y la
+                // tabla temblaría en cada click.
+                'border-l-2 border-l-transparent',
+                rutaFoco === f.id && 'border-l-primary bg-primary/20 font-semibold text-primary',
+                // Una ruta apagada se lee apagada, igual que en el select del panel de la izquierda:
+                // mismo dato, menos tinta.
+                f.oculta && 'opacity-50',
+              )
+            }
+            emptyTitle="Todavía no hay rutas generadas"
+            emptyMessage="Elegí camiones y pedidos, y generá el plan."
+            toolbar={herramientas}
+          />
         </div>
       )}
     </div>

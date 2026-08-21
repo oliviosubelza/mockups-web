@@ -48,6 +48,8 @@ export function CapasMapa({
   const setColorPor = usePlannerStore((s) => s.setColorPor)
   const verMercados = usePlannerStore((s) => s.verMercados)
   const setVerMercados = usePlannerStore((s) => s.setVerMercados)
+  const verZonas = usePlannerStore((s) => s.verZonas)
+  const setVerZonas = usePlannerStore((s) => s.setVerZonas)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const setVerEtiquetas = usePlannerStore((s) => s.setVerEtiquetas)
   const verTrazos = usePlannerStore((s) => s.verTrazos)
@@ -93,7 +95,7 @@ export function CapasMapa({
         {/* Punto de "hay algo apagado". Sin él, un mapa al que le falta media información se ve igual
             que uno completo y se pierde tiempo buscando paradas que están ocultas. Sigue arriba a la
             derecha: la flecha ocupa el lado izquierdo, así que esa esquina quedó libre. */}
-        {(ocultas > 0 || !verTrazos || verMercados || verEtiquetas) && (
+        {(ocultas > 0 || !verTrazos || verMercados || verEtiquetas || verZonas) && (
           <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" aria-hidden />
         )}
       </DropdownMenuTrigger>
@@ -140,6 +142,16 @@ export function CapasMapa({
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel className="text-xs">Capas</DropdownMenuLabel>
+          {/* Las zonas van PRIMERAS de las capas de fondo: son el perímetro dentro del cual todo lo
+              demás cae, así que prenderlas cambia cómo se lee el resto y no solo suma dibujo. Salen
+              del mismo dato maestro que la pantalla de Zonas — lo que se dibujó allá se ve acá. */}
+          <DropdownMenuCheckboxItem
+            checked={verZonas}
+            onCheckedChange={setVerZonas}
+            className="text-xs"
+          >
+            Zonas de reparto
+          </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={verMercados}
             onCheckedChange={setVerMercados}

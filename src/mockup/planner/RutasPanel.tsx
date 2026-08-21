@@ -33,7 +33,6 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   AlertTriangle,
   Boxes,
-  ChevronsUpDown,
   Crosshair,
   GripVertical,
   Eye,
@@ -45,14 +44,6 @@ import {
 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -62,7 +53,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { CanalGlyph } from '../canal-glyph'
 import { CANAL_META, MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
@@ -147,46 +137,6 @@ function FilaParada({
         </span>
       </button>
     </div>
-  )
-}
-
-/**
- * Ojo de visibilidad de UNA ruta, pensado para vivir DENTRO de una opción del select.
- *
- * El detalle que lo hace funcionar es cortar la propagación: `CommandItem` de cmdk dispara su
- * `onSelect` desde el `onClick` del div, así que sin `stopPropagation` cada click en el ojo también
- * elegiría la ruta y cerraría el popover. Con el corte, el cuerpo de la opción sigue siendo lo único
- * que selecciona y cierra; el ojo solo prende y apaga el dibujo en el mapa, y el select queda abierto
- * para seguir encendiendo y apagando rutas de a una sin reabrirlo.
- */
-function OjoRuta({
-  oculta,
-  nombre,
-  onToggle,
-}: {
-  oculta: boolean
-  nombre: string
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      // El pointerdown también se corta: sin esto el gesto empieza a "elegir" la fila antes del click.
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      title={oculta ? `Mostrar ${nombre} en el mapa` : `Ocultar ${nombre} del mapa`}
-      aria-label={oculta ? `Mostrar ${nombre} en el mapa` : `Ocultar ${nombre} del mapa`}
-      aria-pressed={!oculta}
-      className={cn(
-        'flex size-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-background hover:text-foreground',
-        oculta ? 'text-muted-foreground' : 'text-foreground',
-      )}
-    >
-      {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
-    </button>
   )
 }
 
@@ -349,7 +299,8 @@ export function RutasPanel({
   const setRutaFoco = usePlannerStore((s) => s.setRutaFoco)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
-  const setRutasOcultas = usePlannerStore((s) => s.setRutasOcultas)
+  const setVerRutas = usePlannerStore((s) => s.setVerRutas)
+  const setRutasPlegado = usePlannerStore((s) => s.setRutasPlegado)
   const accesorios = usePlannerStore((s) => s.accesorios)
   const accesoriosRuta = usePlannerStore((s) => s.accesoriosRuta)
   const abrirAccesorios = usePlannerStore((s) => s.abrirAccesorios)
@@ -357,8 +308,13 @@ export function RutasPanel({
   const setAccesorio = usePlannerStore((s) => s.setAccesorio)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
-  const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+
+  /** Trae la tabla de rutas del pie a la vista: encendida y desplegada. */
+  const mostrarTabla = () => {
+    setVerRutas(true)
+    setRutasPlegado(false)
+  }
 
   const sinAsignar = useMemo(
     () => paradasAsignadas.filter((p) => !p.rutaId),
@@ -380,9 +336,6 @@ export function RutasPanel({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-
-  /** Cuántas se están dibujando. Alimenta el conteo y el gate de los dos botones masivos. */
-  const enMapa = rutas.filter((r) => !rutasOcultas.includes(r.id)).length
 
   const ruta = rutas.find((r) => r.id === rutaFoco) ?? null
   const esSinAsignar = rutaFoco === SIN_ASIGNAR
@@ -458,174 +411,42 @@ export function RutasPanel({
           adentro. Un control en vez de dos, y con lugar para la próxima acción. */}
       <div className="shrink-0 space-y-2 border-b border-border px-2 py-2">
         <div className="flex items-center gap-1">
-          <Popover open={abierto} onOpenChange={setAbierto}>
-            <PopoverTrigger
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs',
-              )}
-            >
-              {esSinAsignar ? (
-                <PackageX size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
-              ) : (
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ background: ruta?.color }}
-                  aria-hidden
-                />
-              )}
-              <span className="min-w-0 flex-1 truncate text-left font-medium">{etiqueta}</span>
-              {/* Si la ruta que estás mirando está apagada, el trigger tiene que decirlo: si no, el
-                  panel lista sus paradas, el mapa no dibuja nada, y parece un bug. */}
-              {oculta && <EyeOff size={12} className="shrink-0 text-muted-foreground" />}
-              {!esSinAsignar && ruta && (
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {ruta.camion.placa}
-                </span>
-              )}
-              <ChevronsUpDown size={12} className="shrink-0 opacity-50" />
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 p-0">
-              <Command>
-                <CommandInput placeholder="Buscar ruta o placa…" className="h-8 text-xs" />
+          {/* IDENTIDAD, no selector. Acá había un select-search con las seis rutas, su ocupación y
+              un ojito por opción — y eso es exactamente lo que ahora hace la tabla del pie, con más
+              ancho y sin abrir un popover. Dos lugares para elegir ruta es el mismo dato mantenido
+              dos veces: el que se olvida de agregar una columna deja los dos hablando distinto.
 
-                {/* Prender y apagar de a una sirve para AISLAR una ruta; para eso primero hay que
-                    apagar las otras ocho, y hacerlo de a una es justo el trabajo que estos dos botones
-                    borran. Van arriba de la lista, con el conteo al lado: el número dice en qué estado
-                    estás sin tener que contar ojitos fila por fila. */}
-                <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[11px] tabular-nums text-muted-foreground">
-                    {enMapa} de {rutas.length} en el mapa
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 shrink-0 px-1.5 text-[11px]"
-                    disabled={rutasOcultas.length === 0}
-                    onClick={() => setRutasOcultas([])}
-                  >
-                    Mostrar todas
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 shrink-0 px-1.5 text-[11px]"
-                    disabled={enMapa === 0}
-                    onClick={() => setRutasOcultas(rutas.map((r) => r.id))}
-                  >
-                    Ocultar todas
-                  </Button>
-                </div>
-
-                <CommandList>
-                  <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
-                    Sin resultados
-                  </CommandEmpty>
-                  {/* El conjunto completo se ve ACÁ: color, placa, ocupación y conteos de cada ruta,
-                      que es lo que la lista de tarjetas mostraba a costa de todo el panel. */}
-                  <CommandGroup>
-                    {rutas.map((r) => {
-                      const c = cargaDeRuta(paradasAsignadas, r)
-                      const rOculta = rutasOcultas.includes(r.id)
-                      return (
-                        <CommandItem
-                          key={r.id}
-                          value={`${r.nombre} ${r.camion.placa}`}
-                          data-checked={rutaFoco === r.id}
-                          onSelect={() => {
-                            setRutaFoco(r.id)
-                            setAbierto(false)
-                          }}
-                          // `[&>svg]:hidden` tapa el check que `CommandItem` dibuja SIEMPRE al final
-                          // (invisible cuando no está elegida). Quedaba después del ojo, como un
-                          // cuarto ícono en el borde, y era la mitad de por qué la fila se veía
-                          // amontonada. La marca de "elegida" se dibuja acá abajo, en su propia
-                          // columna a la IZQUIERDA: así el ancho de la fila no depende de cuál esté
-                          // seleccionada y las columnas quedan alineadas de arriba a abajo.
-                          className="gap-2 pl-1 pr-1 text-xs [&>svg]:hidden"
-                        >
-                          <span
-                            className={cn(
-                              'w-3 shrink-0 text-center text-[11px] font-bold leading-none',
-                              rutaFoco === r.id ? 'text-primary' : 'text-transparent',
-                            )}
-                            aria-hidden
-                          >
-                            •
-                          </span>
-                          {/* Una ruta apagada se lee apagada: mismo dato, menos tinta. Sin esta señal
-                              el ojo sería el único indicio y habría que recorrerlos uno por uno. */}
-                          <span
-                            className={cn(
-                              'flex min-w-0 flex-1 items-center gap-2 transition-opacity',
-                              rOculta && 'opacity-45',
-                            )}
-                          >
-                            <span
-                              className="size-2.5 shrink-0 rounded-full"
-                              style={{ background: r.color }}
-                              aria-hidden
-                            />
-                            <span className="min-w-0 flex-1 truncate">{r.nombre}</span>
-                            {/* El aviso viaja en la lista y no solo en la ruta abierta: si hubiera que
-                                entrar a cada una para descubrir cuál se pasó de clientes, con seis
-                                camiones son seis clicks para una pregunta de un vistazo. */}
-                            {c.excedeClientes && (
-                              <AlertTriangle
-                                size={11}
-                                className="shrink-0 text-amber-600 dark:text-amber-400"
-                              />
-                            )}
-                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                              {r.camion.placa}
-                            </span>
-                            <span
-                              className={cn(
-                                'w-9 shrink-0 text-right text-[11px] font-semibold tabular-nums',
-                                TEXTO_OCUPACION[c.nivel],
-                              )}
-                            >
-                              {c.ocupacionPct}%
-                            </span>
-                          </span>
-                          {/* Línea fina antes del ojo: sin ella el ícono se lee como una columna más
-                              del dato de la ruta, cuando es un control. */}
-                          <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
-                          <OjoRuta
-                            oculta={rOculta}
-                            nombre={r.nombre}
-                            onToggle={() => toggleRutaVisible(r.id)}
-                          />
-                        </CommandItem>
-                      )
-                    })}
-                  </CommandGroup>
-
-                  {/* "Sin asignar" es el resto de empaquetado del optimizador. Va en el mismo select y
-                      no escondido en otro lado: es la ruta más importante de revisar cuando existe. */}
-                  {sinAsignar.length > 0 && (
-                    <CommandGroup heading="Pendiente">
-                      <CommandItem
-                        value="Sin asignar"
-                        data-checked={esSinAsignar}
-                        onSelect={() => {
-                          setRutaFoco(SIN_ASIGNAR)
-                          setAbierto(false)
-                        }}
-                        className="gap-2 text-xs"
-                      >
-                        <PackageX size={12} className="text-amber-600 dark:text-amber-400" />
-                        <span className="min-w-0 flex-1 truncate">Sin asignar</span>
-                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-                          {sinAsignar.length}
-                        </span>
-                      </CommandItem>
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+              Clickeable a propósito: si la tabla de abajo está cerrada o plegada, este es el camino
+              de vuelta al lugar donde se elige. Sin eso, cerrar la tabla dejaba al panel sin ninguna
+              forma de cambiar de ruta. */}
+          <button
+            type="button"
+            onClick={mostrarTabla}
+            title="Ver todas las rutas en la tabla de abajo"
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              'h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs',
+            )}
+          >
+            {esSinAsignar ? (
+              <PackageX size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: ruta?.color }}
+                aria-hidden
+              />
+            )}
+            <span className="min-w-0 flex-1 truncate text-left font-medium">{etiqueta}</span>
+            {/* Si la ruta que estás mirando está apagada, la cabecera tiene que decirlo: si no, el
+                panel lista sus paradas, el mapa no dibuja nada, y parece un bug. */}
+            {oculta && <EyeOff size={12} className="shrink-0 text-muted-foreground" />}
+            {!esSinAsignar && ruta && (
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                {ruta.camion.placa}
+              </span>
+            )}
+          </button>
 
           {/* Solo para rutas reales: "Sin asignar" no es un camión —no tiene bandeo, no se dibuja ni se
               apaga— así que un engranaje ahí ofrecería tres acciones que no aplican. */}

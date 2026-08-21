@@ -18,6 +18,8 @@ import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { SUBDOMINIOS, TILES } from '../map/tiles'
 import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
+import { ZonasLayer } from '../zonas/ZonasLayer'
+import { useZonesStore } from '../zones-store'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
@@ -407,6 +409,7 @@ export function PlannerMapa({
   const capa = usePlannerStore((s) => s.capa)
   const herramienta = usePlannerStore((s) => s.herramienta)
   const verMercados = usePlannerStore((s) => s.verMercados)
+  const verZonas = usePlannerStore((s) => s.verZonas)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const optimizado = usePlannerStore((s) => s.optimizado)
@@ -459,6 +462,25 @@ export function PlannerMapa({
   const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const cityIds = useCityIdsDelMapa(paradas, 'santacruz')
+
+  /**
+   * Zonas de reparto de las ciudades del plan.
+   *
+   * Salen del MISMO `zones-store` que la pantalla de Zonas y no de una copia: son dato maestro, se
+   * dibujan una vez y las reusan todos los planes. Así, una zona que se acaba de redibujar allá ya se
+   * ve acá sin recargar nada.
+   *
+   * Se filtran por ciudad y por vigencia: una zona dada de baja sigue nombrada en planes viejos, pero
+   * dibujarla hoy diría que el territorio está cubierto cuando no lo está.
+   */
+  const zonasTodas = useZonesStore((s) => s.zonas)
+  const zonas = useMemo(() => {
+    if (!verZonas) return []
+    const ciudades = new Set(cityIds)
+    return zonasTodas.filter(
+      (z) => z.isActive && !z.deletedAt && z.polygonGeoJson && ciudades.has(z.cityId),
+    )
+  }, [cityIds, verZonas, zonasTodas])
   const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
 
   const colorPorRuta = useMemo(() => new Map(rutas.map((r) => [r.id, r.color])), [rutas])
@@ -625,6 +647,18 @@ export function PlannerMapa({
         margenDer={margenDer}
         margenAbajo={margenAbajo}
       />
+
+      {/* Zonas de reparto, de FONDO y en papel de "contexto": grises, apagadas y sobre todo NO
+          interactivas. Ese último punto no es estético — un polígono con `interactive: true` se come
+          el click antes de que llegue al marcador de una parada o al mapa, así que con las zonas
+          clickeables no se podría elegir un punto que cae dentro de una, que son todos.
+
+          Es la MISMA capa que usa la pantalla de Zonas (`papel="contexto"`, el que ya usa cuando
+          estás dibujando): un segundo dibujante de polígonos sería otro lugar donde el color y la
+          holgura se despintan de a uno. */}
+      {zonas.length > 0 && (
+        <ZonasLayer zonas={zonas} papel="contexto" seleccionadaId={null} onSeleccionar={() => {}} />
+      )}
 
       {/* Mercados de fondo: su pane propio (z 350) los deja debajo de trazos y pines, así que prender
           la capa no le quita legibilidad a nada de lo que ya estaba. No responden al click mientras hay

@@ -141,7 +141,10 @@ const ELEGIBLES = DISPONIBLES.length
 const TITULOS: Record<PanelId, string> = {
   flota: 'Flota del plan',
   pedidos: 'Puntos de entrega',
-  rutas: 'Rutas del plan',
+  // "La ruta" y no "Las rutas": el listado de las seis se mudó a la tabla del pie, y este panel quedó
+  // siendo el DETALLE de la elegida —sus paradas en orden de visita—. El título tiene que decir cuál
+  // de las dos preguntas contesta, o el usuario busca acá la comparación que está abajo.
+  rutas: 'La ruta elegida',
 }
 
 export function PlannerView() {
@@ -785,11 +788,18 @@ export function PlannerView() {
 
       {/* ── Detalle de la parada (derecha) ──
           Mide su contenido y solo llega al alto completo cuando lo necesita: un punto con un pedido
-          dejaría media tarjeta en blanco. */}
+          dejaría media tarjeta en blanco.
+
+          SU TECHO DE ALTO DESCUENTA LA TABLA DEL PIE, y eso es lo que evita que abrir una parada
+          EMPUJE la tabla. Antes la tabla se angostaba para dejarle lugar: cada click en un punto le
+          movía el ancho y las columnas saltaban, cuando el detalle es una tarjeta corta que casi nunca
+          llega abajo. Ahora la tabla no se mueve nunca y el que cede es el detalle, que además ya
+          scrollea por dentro. */}
       <div
-        className={cn(FLOTANTE, DESLIZA, 'right-3 top-3 max-h-[calc(100%-1.5rem)]')}
+        className={cn(FLOTANTE, DESLIZA, 'right-3 top-3')}
         style={{
           width: DETALLE_PX,
+          maxHeight: `calc(100% - 1.5rem - ${margenAbajo}px)`,
           transform: detalleVisible ? 'translateX(0)' : `translateX(calc(100% + ${MARGEN_PX}px))`,
         }}
         aria-hidden={!detalleVisible}
@@ -827,10 +837,11 @@ export function PlannerView() {
             // Los bordes salen de las mismas medidas que los márgenes de la cámara, y no de un valor
             // propio: si se separan, la tabla y el encuadre dejan de hablar de la misma pantalla.
             left: MARGEN_PX + (dockAbierto || verMetricas ? PANEL_PX + 6 : 0),
-            // La barra de herramientas del mapa también está anclada abajo a la derecha, así que el
-            // borde derecho tiene que dejarla pasar: sin esto la tabla se le apoya encima y tapa los
-            // tres modos de selección justo cuando se está marcando en el mapa.
-            right: detalleVisible ? DETALLE_PX + MARGEN_PX + 6 : MARGEN_PX + HERRAMIENTAS_PX + 6,
+            // Fijo, y NO reactivo al detalle de la parada: lo único que descuenta es la barra de
+            // herramientas del mapa, que está anclada en la misma esquina y quedaría tapada justo
+            // cuando se está marcando en el mapa. El detalle no entra en esta cuenta porque el que se
+            // acorta para no pisarla es él (ver su `maxHeight`).
+            right: MARGEN_PX + HERRAMIENTAS_PX + 6,
             height: altoTabla,
             transform: verRutas ? 'translateY(0)' : `translateY(calc(100% + ${MARGEN_PX}px))`,
           }}

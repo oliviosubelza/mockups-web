@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment, createContext, useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -811,13 +811,23 @@ export function DataTable<T extends object>({
   // Selección REAL sobre `data`: no depende de la página visible ni del row model filtrado.
   // Para tablas con paginación/filtros (como "fuera de corte"), usar `getSelectedRowModel()` podía
   // perder filas ya seleccionadas pero no visibles y el caller las interpretaba como destildadas.
+  /**
+   * Id de fila con el MISMO fallback que TanStack: si el consumidor no pasó `getRowId` —es opcional en
+   * el tipo—, la tabla usa el índice, así que acá hay que usar el índice o los dos lados hablan de
+   * filas distintas. Sin esto, además, `getRowId(row)` se llamaba sin guarda y cualquier tabla con
+   * `selectable` y sin `getRowId` reventaba con "getRowId is not a function".
+   */
+  const idDeFila = useCallback(
+    (row: T, index: number) => getRowId?.(row) ?? String(index),
+    [getRowId],
+  )
   const selectedRows = useMemo(() => {
     if (!selectable) return []
-    return data.filter((row) => !!rowSelection[getRowId(row)])
-  }, [data, getRowId, rowSelection, selectable])
+    return data.filter((row, i) => !!rowSelection[idDeFila(row, i)])
+  }, [data, idDeFila, rowSelection, selectable])
   const selectionSignature = useMemo(
-    () => selectedRows.map((row) => getRowId(row)).join('|'),
-    [getRowId, selectedRows],
+    () => selectedRows.map((row, i) => idDeFila(row, i)).join('|'),
+    [idDeFila, selectedRows],
   )
   const onSelectionChangeRef = useRef(onSelectionChange)
   const selectedRowsRef = useRef(selectedRows)

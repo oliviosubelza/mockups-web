@@ -87,6 +87,14 @@ interface PlannerState {
   colorPor: ColorPor
   /** Ruta cuyo detalle está abierto en el panel de Rutas (`null` = todavía no eligió ninguna). */
   rutaFoco: string | null
+  /**
+   * Zonas de reparto dibujadas de fondo.
+   *
+   * Apagada por defecto, igual que los mercados: son polígonos grandes y el 90% del trabajo de esta
+   * pantalla es mirar puntos y trazos. Se prende cuando la pregunta es de zona ("¿esta ruta se está
+   * yendo de la suya?").
+   */
+  verZonas: boolean
   verMercados: boolean
   /** Etiqueta permanente (cliente + ventana) bajo cada pin. Apagada: a 30 paradas se pisan entre sí. */
   verEtiquetas: boolean
@@ -151,6 +159,7 @@ interface PlannerState {
   setCapa: (c: CapaBase) => void
   setColorPor: (c: ColorPor) => void
   setRutaFoco: (id: string | null) => void
+  setVerZonas: (v: boolean) => void
   setVerMercados: (v: boolean) => void
   setVerEtiquetas: (v: boolean) => void
   setVerTrazos: (v: boolean) => void
@@ -213,6 +222,7 @@ const INICIAL = {
   capa: CAPA_POR_DEFECTO,
   colorPor: 'canal' as ColorPor,
   rutaFoco: null as string | null,
+  verZonas: false,
   verMercados: false,
   verEtiquetas: false,
   verTrazos: true,
@@ -259,6 +269,7 @@ export const usePlannerStore = create<PlannerState>((set) => ({
   setCapa: (capa) => set({ capa }),
   setColorPor: (colorPor) => set({ colorPor }),
   setRutaFoco: (rutaFoco) => set({ rutaFoco }),
+  setVerZonas: (verZonas) => set({ verZonas }),
   setVerMercados: (verMercados) => set({ verMercados }),
   setVerEtiquetas: (verEtiquetas) => set({ verEtiquetas }),
   setVerTrazos: (verTrazos) => set({ verTrazos }),
