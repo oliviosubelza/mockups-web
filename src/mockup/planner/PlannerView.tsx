@@ -84,12 +84,19 @@ import {
   resecuenciar,
   rutaIdDeCamion,
 } from './planner-model'
+import { RutasTablaPanel, RUTAS_TABLA_PLEGADO_PX } from './RutasTablaPanel'
 import { usePlannerStore, type PanelId } from './planner-store'
 
 /** Medidas de los flotantes. En px porque la cámara del mapa las necesita para el padding. */
 const PANEL_PX = 300
 const DETALLE_PX = 320
 const MARGEN_PX = 12
+/**
+ * Ancho de la barra de herramientas del mapa (`PlannerHerramientas`): botones de 28 px con 2 px de
+ * padding a cada lado. Está anclada abajo a la derecha, en la MISMA franja que la tabla de rutas, así
+ * que este número es el que las mantiene lado a lado en vez de una encima de la otra.
+ */
+const HERRAMIENTAS_PX = 32
 /**
  * Dónde empieza la columna izquierda (métricas + panel): pegada al borde de arriba.
  *
@@ -162,6 +169,12 @@ export function PlannerView() {
   const setOptimizado = usePlannerStore((s) => s.setOptimizado)
   const verMetricas = usePlannerStore((s) => s.verMetricas)
   const verAcciones = usePlannerStore((s) => s.verAcciones)
+  const verRutas = usePlannerStore((s) => s.verRutas)
+  const setVerRutas = usePlannerStore((s) => s.setVerRutas)
+  const altoRutas = usePlannerStore((s) => s.altoRutas)
+  const setAltoRutas = usePlannerStore((s) => s.setAltoRutas)
+  const rutasPlegado = usePlannerStore((s) => s.rutasPlegado)
+  const setRutasPlegado = usePlannerStore((s) => s.setRutasPlegado)
   const optimizando = usePlannerStore((s) => s.optimizando)
   const setOptimizando = usePlannerStore((s) => s.setOptimizando)
   const procesando = usePlannerStore((s) => s.procesando)
@@ -247,6 +260,17 @@ export function PlannerView() {
   // tiene que reservarlos igual, o encuadrar mandaría paradas debajo de las métricas.
   const margenIzq = MARGEN_PX * 2 + (dockAbierto || verMetricas ? PANEL_PX : 0)
   const margenDer = detalleVisible ? DETALLE_PX + MARGEN_PX * 2 : MARGEN_PX * 3
+
+  /**
+   * La tabla de rutas del pie EXISTE solo con el reparto hecho: antes de optimizar no hay rutas
+   * generadas, y una tabla vacía apoyada sobre el mapa es alto robado para decir "todavía nada".
+   */
+  const tablaRutas = optimizado && rutas.length > 0
+  const tablaVisible = tablaRutas && verRutas
+  /** Lo que la tabla mide AHORA: plegada es su cabecera y nada más. */
+  const altoTabla = rutasPlegado ? RUTAS_TABLA_PLEGADO_PX : altoRutas
+  /** Lo que la tabla le tapa al mapa por abajo. Es el mismo contrato que los márgenes laterales. */
+  const margenAbajo = tablaVisible ? altoTabla + MARGEN_PX : 0
 
   const enfocar = useCallback(
     (id: string) => {
@@ -572,6 +596,7 @@ export function PlannerView() {
           rutas={rutas}
           margenIzq={margenIzq}
           margenDer={margenDer}
+          margenAbajo={margenAbajo}
         />
       </div>
 
@@ -783,14 +808,58 @@ export function PlannerView() {
         )}
       </div>
 
+      {/* ── Tabla de rutas generadas (al pie, entre las dos columnas) ──
+          POR QUÉ ABAJO Y NO EN LA COLUMNA IZQUIERDA. El panel de Rutas muestra UNA ruta a la vez y eso
+          está bien para "¿este recorrido tiene sentido?", pero deja sin lugar la otra pregunta: "de las
+          seis, ¿cuál va apretada y cuál vacía?". Eso es comparar filas, y comparar filas pide ANCHO —
+          justo lo que a la columna de 300 px le falta y a la franja del pie le sobra.
+
+          VIVE ENTRE LAS DOS COLUMNAS, no de borde a borde: apoyada debajo del panel lateral lo
+          acortaría, y el panel lateral es el que se usa para trabajar. Los flotantes de los costados
+          mandan; la tabla ocupa lo que sobra en el medio.
+
+          Montada mientras haya rutas y desplazada con `translateY` al apagarla, igual que el panel
+          lateral: remontar la tabla en cada apertura perdería el scroll y el alto se vería saltar. */}
+      {tablaRutas && (
+        <div
+          className={cn(FLOTANTE, DESLIZA, 'bottom-3')}
+          style={{
+            // Los bordes salen de las mismas medidas que los márgenes de la cámara, y no de un valor
+            // propio: si se separan, la tabla y el encuadre dejan de hablar de la misma pantalla.
+            left: MARGEN_PX + (dockAbierto || verMetricas ? PANEL_PX + 6 : 0),
+            // La barra de herramientas del mapa también está anclada abajo a la derecha, así que el
+            // borde derecho tiene que dejarla pasar: sin esto la tabla se le apoya encima y tapa los
+            // tres modos de selección justo cuando se está marcando en el mapa.
+            right: detalleVisible ? DETALLE_PX + MARGEN_PX + 6 : MARGEN_PX + HERRAMIENTAS_PX + 6,
+            height: altoTabla,
+            transform: verRutas ? 'translateY(0)' : `translateY(calc(100% + ${MARGEN_PX}px))`,
+          }}
+          aria-hidden={!verRutas}
+        >
+          <RutasTablaPanel
+            rutas={rutas}
+            paradasAsignadas={paradas}
+            alto={altoRutas}
+            onAlto={setAltoRutas}
+            plegado={rutasPlegado}
+            onPlegado={setRutasPlegado}
+            onCerrar={() => setVerRutas(false)}
+          />
+        </div>
+      )}
+
       {/* ── Barra de selección múltiple (abajo, centrada) ──
           Aparece SOLO con paradas marcadas por rectángulo o lazo. Es una barra y no un diálogo a
           propósito: mover un grupo se decide MIRANDO dónde están esos puntos, y un modal tapa
           justamente eso. Entra deslizando desde abajo para que el cambio de estado se note sin robar
           el foco. */}
       <div
+        // El `bottom` es dinámico porque la tabla de rutas se apoya en la misma franja: la barra tiene
+        // que subir por encima de ella o queda tapada justo cuando hace falta (marcar paradas en el
+        // mapa y mirar en qué ruta caen es el mismo gesto).
+        style={{ bottom: tablaVisible ? altoTabla + MARGEN_PX + 10 : 16 }}
         className={cn(
-          'absolute inset-x-0 bottom-4 z-10 flex justify-center px-4',
+          'absolute inset-x-0 z-20 flex justify-center px-4',
           // Ver la nota de la pestaña: en Tailwind v4 `translate-y-*` es la propiedad `translate`.
           'transition-[opacity,translate] duration-300 ease-out',
           seleccion.length > 0
