@@ -46,6 +46,7 @@ export function exportarHistorialAExcel(
     'Cobrado Efectivo (Bs)',
     'Cobrado QR (Bs)',
     'Cobrado Transferencia (Bs)',
+    'Cobrado Cheque (Bs)',
     'Estado Operativo',
   ]
   lineas.push(encabezadosOT.join(';'))
@@ -75,6 +76,7 @@ export function exportarHistorialAExcel(
       ot.kpis.collectedCash.toFixed(2),
       ot.kpis.collectedQr.toFixed(2),
       ot.kpis.collectedTransfer.toFixed(2),
+      (ot.kpis.collectedCheck || 0).toFixed(2),
       `"${ot.statusLabel}"`,
     ]
     lineas.push(fila.join(';'))
@@ -83,8 +85,8 @@ export function exportarHistorialAExcel(
   lineas.push('')
   lineas.push('')
 
-  // ── SECCIÓN 2: DETALLE PUNTO POR PUNTO (PARADAS, TIEMPOS, PRODUCTOS Y COBRANZAS) ──
-  lineas.push('2. DETALLE DE PARADAS Y ENTREGAS (PUNTO POR PUNTO)')
+  // ── SECCIÓN 2: DETALLE PUNTO POR PUNTO (PARADAS, TIEMPOS, PRODUCTOS Y DESGLOSE DE COBRANZAS) ──
+  lineas.push('2. DETALLE DE PARADAS Y ENTREGAS (PUNTO POR PUNTO CON DESGLOSE DE MÉTODOS DE PAGO)')
   const encabezadosParadas = [
     'Código OT',
     'Secuencia',
@@ -99,9 +101,13 @@ export function exportarHistorialAExcel(
     'Tiempo Traslado',
     'Tiempo Atención',
     'Resultado Entrega',
-    'Monto Cobrado Parada (Bs)',
-    'Método de Pago',
-    'Nro Comprobante / Recibo',
+    'Total Cobrado Parada (Bs)',
+    'Cobro Efectivo (Bs)',
+    'Cobro QR (Bs)',
+    'Cobro Transferencia (Bs)',
+    'Cobro Cheque (Bs)',
+    'Modalidad de Cobro',
+    'Desglose y Nros de Comprobante / Referencia',
     'Receptor',
     'CI / Documento',
     'Incidencias / Motivo Rechazo',
@@ -110,8 +116,27 @@ export function exportarHistorialAExcel(
 
   for (const ot of ordenes) {
     for (const p of ot.paradas) {
-      const pagosParada = p.payments.map((pay) => `${pay.paymentMethodLabel} (${pay.amount.toFixed(2)} Bs - Ref: ${pay.referenceNumber})`).join(' | ') || 'Sin cobro'
       const montoCobrado = p.payments.reduce((acc, pay) => acc + pay.amount, 0)
+      const montoEfectivo = p.payments.filter((pay) => pay.paymentMethod === 'CASH').reduce((acc, pay) => acc + pay.amount, 0)
+      const montoQr = p.payments.filter((pay) => pay.paymentMethod === 'QR').reduce((acc, pay) => acc + pay.amount, 0)
+      const montoTransfer = p.payments.filter((pay) => pay.paymentMethod === 'TRANSFER').reduce((acc, pay) => acc + pay.amount, 0)
+      const montoCheque = p.payments.filter((pay) => pay.paymentMethod === 'CHECK').reduce((acc, pay) => acc + pay.amount, 0)
+
+      // Modalidad de cobro (Pago Único vs Pago Mixto)
+      const numMetodos = p.payments.length
+      const modalidadCobro =
+        numMetodos === 0
+          ? 'SIN COBRO (Crédito / Rechazo)'
+          : numMetodos === 1
+          ? `PAGO ÚNICO (${p.payments[0].paymentMethodLabel})`
+          : `PAGO MIXTO (${numMetodos} métodos)`
+
+      // Cadena detallada de desglose para auditoría contable
+      const desgloseTexto =
+        p.payments
+          .map((pay) => `${pay.paymentMethodLabel}: ${pay.amount.toFixed(2)} Bs (Ref: ${pay.referenceNumber})`)
+          .join(' | ') || 'N/A'
+
       const motivosRechazo = p.items.filter((it) => it.rejectionReason).map((it) => `${it.productName}: ${it.rejectionReason}`).join(' | ')
       const incidenciaTexto = p.incident ? `[${p.incident.code}] ${p.incident.description}` : (motivosRechazo || 'Ninguna')
 
@@ -130,13 +155,56 @@ export function exportarHistorialAExcel(
         `"${p.serviceDuration}"`,
         `"${p.resultCode}"`,
         montoCobrado.toFixed(2),
-        `"${p.payments.map((pay) => pay.paymentMethodLabel).join(', ') || 'N/A'}"`,
-        `"${p.payments.map((pay) => pay.referenceNumber).join(', ') || 'N/A'}"`,
+        montoEfectivo.toFixed(2),
+        montoQr.toFixed(2),
+        montoTransfer.toFixed(2),
+        montoCheque.toFixed(2),
+        `"${modalidadCobro}"`,
+        `"${desgloseTexto}"`,
         `"${p.proofOfDelivery.receiverName}"`,
         `"${p.proofOfDelivery.receiverDocument}"`,
         `"${incidenciaTexto}"`,
       ]
       lineas.push(filaParada.join(';'))
+    }
+  }
+
+  lineas.push('')
+  lineas.push('')
+
+  // ── SECCIÓN 3: LIBRO DE COBRANZAS Y TRANSACCIONES INDIVIDUALES (ARQUEO DETALLADO) ──
+  lineas.push('3. LIBRO DE COBRANZAS Y TRANSACCIONES (ARQUEO INDIVIDUAL POR COMPROBANTE)')
+  const encabezadosTransacciones = [
+    'Código OT',
+    'Parada #',
+    'Cliente',
+    'Nro Factura',
+    'Método de Pago',
+    'Monto Cobrado (Bs)',
+    'Moneda',
+    'Nro Comprobante / Recibo / Ref',
+    'Estado Transacción',
+    'Observaciones',
+  ]
+  lineas.push(encabezadosTransacciones.join(';'))
+
+  for (const ot of ordenes) {
+    for (const p of ot.paradas) {
+      for (const pay of p.payments) {
+        const filaTransaccion = [
+          `"${ot.codeFormatted}"`,
+          p.sequence,
+          `"${p.customerName}"`,
+          `"${pay.invoiceId}"`,
+          `"${pay.paymentMethodLabel}"`,
+          pay.amount.toFixed(2),
+          `"${pay.currency || 'BOB'}"`,
+          `"${pay.referenceNumber}"`,
+          `"${pay.status}"`,
+          `"${pay.notes || ''}"`,
+        ]
+        lineas.push(filaTransaccion.join(';'))
+      }
     }
   }
 
