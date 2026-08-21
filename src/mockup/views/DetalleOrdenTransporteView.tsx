@@ -33,6 +33,7 @@ import {
   List,
   MapPin,
   Maximize2,
+  Navigation,
   Package,
   Phone,
   QrCode,
@@ -77,6 +78,7 @@ import {
 } from '../historial-orders-data'
 import { exportarHistorialAExcel } from '../utils/excel-export'
 import { navigateTo } from '../routes'
+import { RutaOrdenTransporteMapaDrawer } from './RutaOrdenTransporteMapaDrawer'
 
 export function DetalleOrdenTransporteView() {
   const { otId } = useParams<{ otId?: string }>()
@@ -89,6 +91,19 @@ export function DetalleOrdenTransporteView() {
   const [searchProduct, setSearchProduct] = useState('')
   const [productCategoryFilter, setProductCategoryFilter] = useState('TODOS')
   const [activeStopTab, setActiveStopTab] = useState<'productos' | 'cobranzas' | 'pod'>('productos')
+
+  // Estado del Panel Deslizante Lateral del Mapa (Drawer 75% ancho)
+  const [isMapDrawerOpen, setIsMapDrawerOpen] = useState(false)
+  const [mapTargetStopId, setMapTargetStopId] = useState<string | null>(null)
+
+  const handleOpenMapDrawer = (stopId?: string) => {
+    if (stopId) {
+      setMapTargetStopId(stopId)
+    } else {
+      setMapTargetStopId(selectedStopId || null)
+    }
+    setIsMapDrawerOpen(true)
+  }
 
   // Buscar la orden por ID o caer a la primera
   const orden: OrdenTransporteHistorial | undefined = useMemo(() => {
@@ -631,6 +646,16 @@ export function DetalleOrdenTransporteView() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleOpenMapDrawer()}
+            className="gap-2 cursor-pointer font-semibold border-primary/40 text-primary hover:bg-primary/10 transition-all shadow-xs"
+          >
+            <Navigation size={14} />
+            Ver Mapa de Ruta (75%)
+          </Button>
+
           <Button variant="outline" size="sm" onClick={handleExportSingle} className="gap-2">
             <Download size={15} />
             Exportar Detalle a Excel
@@ -1030,22 +1055,34 @@ export function DetalleOrdenTransporteView() {
                     </div>
                   </div>
 
-                  <Badge
-                    variant={
-                      selectedStop.resultCode === 'EXITOSO'
-                        ? 'default'
-                        : selectedStop.resultCode === 'RECHAZO_PARCIAL'
-                        ? 'secondary'
-                        : 'destructive'
-                    }
-                    className={
-                      selectedStop.resultCode === 'EXITOSO'
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-0.5'
-                        : 'text-xs px-2.5 py-0.5'
-                    }
-                  >
-                    {selectedStop.resultCode}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenMapDrawer(selectedStop.id)}
+                      className="h-7 px-2.5 text-xs gap-1.5 cursor-pointer font-medium text-primary border-primary/30 hover:bg-primary/10 transition-all"
+                      title="Ver y centrar este punto en el mapa de ruta (75%)"
+                    >
+                      <Navigation size={12} />
+                      Ver en Mapa
+                    </Button>
+                    <Badge
+                      variant={
+                        selectedStop.resultCode === 'EXITOSO'
+                          ? 'default'
+                          : selectedStop.resultCode === 'RECHAZO_PARCIAL'
+                          ? 'secondary'
+                          : 'destructive'
+                      }
+                      className={
+                        selectedStop.resultCode === 'EXITOSO'
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-0.5'
+                          : 'text-xs px-2.5 py-0.5'
+                      }
+                    >
+                      {selectedStop.resultCode}
+                    </Badge>
+                  </div>
                 </div>
 
                 {/* Mini KPIs de la Parada */}
@@ -1448,55 +1485,172 @@ export function DetalleOrdenTransporteView() {
                 )}
 
                 {activeStopTab === 'cobranzas' && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-border pb-2">
-                      <span className="text-xs font-bold text-foreground">Comprobantes y Métodos de Cobro</span>
-                      <span className="text-sm font-bold text-primary">{fmtMoney(totalStopAmount)}</span>
+                  <div className="space-y-3.5">
+                    {/* Cabecera y Resumen de Cobranza */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-foreground">Comprobantes y Métodos de Cobro</span>
+                          {selectedStop.payments.length > 1 ? (
+                            <Badge variant="outline" className="text-[10px] text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-300 font-bold gap-1">
+                              <Layers size={11} className="text-purple-600" />
+                              Pago Mixto ({selectedStop.payments.length} Métodos)
+                            </Badge>
+                          ) : selectedStop.payments.length === 1 ? (
+                            <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 font-semibold gap-1">
+                              <CheckCircle2 size={11} className="text-emerald-600" />
+                              Pago Único ({selectedStop.payments[0].paymentMethodLabel})
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Liquidación de facturas y recibos asociados a la remisión <b className="font-mono text-foreground">{selectedStop.deliveryNoteNumber}</b>
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-[10px] text-muted-foreground block font-medium">Total Cobrado en Parada</span>
+                        <span className="text-base font-extrabold text-foreground">{fmtMoney(totalStopAmount)}</span>
+                      </div>
                     </div>
 
+                    {/* Desglose por Método de Pago (Ribbon de resumen cuando hay pagos mixtos) */}
+                    {selectedStop.payments.length > 1 && (
+                      <div className="p-2.5 rounded-lg bg-muted/40 border border-border space-y-1.5">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                          Distribución de la Cobranza Mixta:
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {selectedStop.payments.filter((p) => p.paymentMethod === 'TRANSFER').length > 0 && (
+                            <div className="p-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-xs">
+                              <span className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold block flex items-center gap-1">
+                                <Building size={11} /> Transferencia
+                              </span>
+                              <span className="font-bold text-foreground block">
+                                {fmtMoney(selectedStop.payments.filter((p) => p.paymentMethod === 'TRANSFER').reduce((a, b) => a + b.amount, 0))}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground">
+                                {((selectedStop.payments.filter((p) => p.paymentMethod === 'TRANSFER').reduce((a, b) => a + b.amount, 0) / totalStopAmount) * 100).toFixed(1)}% del total
+                              </span>
+                            </div>
+                          )}
+
+                          {selectedStop.payments.filter((p) => p.paymentMethod === 'CHECK').length > 0 && (
+                            <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-xs">
+                              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold block flex items-center gap-1">
+                                <FileText size={11} /> Cheque
+                              </span>
+                              <span className="font-bold text-foreground block">
+                                {fmtMoney(selectedStop.payments.filter((p) => p.paymentMethod === 'CHECK').reduce((a, b) => a + b.amount, 0))}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground">
+                                {((selectedStop.payments.filter((p) => p.paymentMethod === 'CHECK').reduce((a, b) => a + b.amount, 0) / totalStopAmount) * 100).toFixed(1)}% del total
+                              </span>
+                            </div>
+                          )}
+
+                          {selectedStop.payments.filter((p) => p.paymentMethod === 'QR').length > 0 && (
+                            <div className="p-1.5 rounded bg-purple-500/10 border border-purple-500/20 text-xs">
+                              <span className="text-[10px] text-purple-700 dark:text-purple-400 font-semibold block flex items-center gap-1">
+                                <QrCode size={11} /> QR Simple
+                              </span>
+                              <span className="font-bold text-foreground block">
+                                {fmtMoney(selectedStop.payments.filter((p) => p.paymentMethod === 'QR').reduce((a, b) => a + b.amount, 0))}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground">
+                                {((selectedStop.payments.filter((p) => p.paymentMethod === 'QR').reduce((a, b) => a + b.amount, 0) / totalStopAmount) * 100).toFixed(1)}% del total
+                              </span>
+                            </div>
+                          )}
+
+                          {selectedStop.payments.filter((p) => p.paymentMethod === 'CASH').length > 0 && (
+                            <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold block flex items-center gap-1">
+                                <Wallet size={11} /> Efectivo
+                              </span>
+                              <span className="font-bold text-foreground block">
+                                {fmtMoney(selectedStop.payments.filter((p) => p.paymentMethod === 'CASH').reduce((a, b) => a + b.amount, 0))}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground">
+                                {((selectedStop.payments.filter((p) => p.paymentMethod === 'CASH').reduce((a, b) => a + b.amount, 0) / totalStopAmount) * 100).toFixed(1)}% del total
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tarjetas individuales de cada transacción */}
                     {selectedStop.payments.length === 0 ? (
                       <div className="p-6 text-center text-muted-foreground border rounded-lg">
                         Sin cobros registrados en esta parada (Entrega a crédito o rechazo total).
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {selectedStop.payments.map((pay, idx) => (
-                          <div key={idx} className="border rounded-lg p-3 bg-muted/20 space-y-2 text-xs">
-                            <div className="flex items-center justify-between border-b border-border/60 pb-1.5">
-                              <span className="font-semibold flex items-center gap-1.5">
-                                {pay.paymentMethod === 'QR' ? (
-                                  <QrCode size={14} className="text-primary" />
-                                ) : pay.paymentMethod === 'CASH' ? (
-                                  <Wallet size={14} className="text-emerald-600" />
-                                ) : (
-                                  <Building size={14} className="text-blue-600" />
+                        {selectedStop.payments.map((pay, idx) => {
+                          const percentOfStop = totalStopAmount > 0 ? ((pay.amount / totalStopAmount) * 100).toFixed(1) : '100'
+
+                          return (
+                            <div key={idx} className="border rounded-lg p-3 bg-card shadow-xs space-y-2.5 text-xs">
+                              <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                                <span className="font-bold flex items-center gap-1.5 text-foreground">
+                                  {pay.paymentMethod === 'QR' ? (
+                                    <div className="p-1 rounded bg-purple-500/10 text-purple-600">
+                                      <QrCode size={14} />
+                                    </div>
+                                  ) : pay.paymentMethod === 'CASH' ? (
+                                    <div className="p-1 rounded bg-emerald-500/10 text-emerald-600">
+                                      <Wallet size={14} />
+                                    </div>
+                                  ) : pay.paymentMethod === 'CHECK' ? (
+                                    <div className="p-1 rounded bg-amber-500/10 text-amber-600">
+                                      <FileText size={14} />
+                                    </div>
+                                  ) : (
+                                    <div className="p-1 rounded bg-blue-500/10 text-blue-600">
+                                      <Building size={14} />
+                                    </div>
+                                  )}
+                                  {pay.paymentMethodLabel}
+                                </span>
+
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="secondary" className="text-[10px] font-mono py-0 h-4">
+                                    {percentOfStop}%
+                                  </Badge>
+                                  <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 py-0 h-4 font-semibold gap-1">
+                                    <CheckCircle2 size={10} className="text-emerald-600" />
+                                    {pay.status}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5 text-[11px]">
+                                <div className="flex justify-between items-center bg-muted/30 p-1.5 rounded">
+                                  <span className="text-muted-foreground">N° Comprobante / Ref:</span>
+                                  <span className="font-mono font-bold text-foreground">{pay.referenceNumber}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Factura Asociada:</span>
+                                  <span className="font-mono">{pay.invoiceId}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Total Facturado:</span>
+                                  <span>{fmtMoney(pay.invoiceAmount)}</span>
+                                </div>
+                                {pay.notes && (
+                                  <div className="text-[10px] text-amber-700 bg-amber-50 dark:bg-amber-950/30 p-1 rounded border border-amber-200">
+                                    Nota: {pay.notes}
+                                  </div>
                                 )}
-                                {pay.paymentMethodLabel}
-                              </span>
-                              <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40">
-                                {pay.status}
-                              </Badge>
-                            </div>
-                            <div className="space-y-1 text-[11px]">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">N° Comprobante / Recibo:</span>
-                                <span className="font-mono font-semibold">{pay.referenceNumber}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Factura Asociada:</span>
-                                <span className="font-mono">{pay.invoiceId}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Monto Facturado:</span>
-                                <span>{fmtMoney(pay.invoiceAmount)}</span>
-                              </div>
-                              <div className="flex justify-between border-t border-border pt-1 font-bold text-foreground">
-                                <span>Monto Cobrado:</span>
-                                <span className="text-primary">{fmtMoney(pay.amount)}</span>
+                                <div className="flex justify-between border-t border-border pt-1.5 font-bold text-foreground items-baseline">
+                                  <span className="text-xs">Monto Cobrado:</span>
+                                  <span className="text-sm text-primary font-extrabold">{fmtMoney(pay.amount)}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -1514,8 +1668,9 @@ export function DetalleOrdenTransporteView() {
                           <div>
                             <h3 className="font-bold text-xs text-foreground flex items-center gap-1.5">
                               Prueba de Entrega Digital (POD)
-                              <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 py-0 h-4 border-emerald-500/30 font-semibold">
-                                ✓ VALIDADO
+                              <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 py-0 h-4 border-emerald-500/30 font-semibold flex items-center gap-1">
+                                <CheckCircle2 size={10} className="text-emerald-600" />
+                                VALIDADO
                               </Badge>
                             </h3>
                             <p className="text-[11px] text-muted-foreground">
@@ -1907,8 +2062,8 @@ export function DetalleOrdenTransporteView() {
                 </div>
 
                 <div className="flex items-start gap-3 border-l-2 border-emerald-600 pl-4">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white font-bold">
-                    ✓
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+                    <CheckCircle2 size={13} />
                   </div>
                   <div>
                     <span className="font-bold text-emerald-600">Retorno a Base y Liquidación de Ruta</span>
@@ -2163,6 +2318,18 @@ export function DetalleOrdenTransporteView() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Panel Deslizante Lateral (Slide-Over Drawer al 75%) del Mapa de Ruta */}
+      <RutaOrdenTransporteMapaDrawer
+        isOpen={isMapDrawerOpen}
+        onOpenChange={setIsMapDrawerOpen}
+        orden={orden}
+        initialSelectedStopId={mapTargetStopId}
+        onSelectStopAndSwitchTab={(stop) => {
+          setSelectedStopId(stop.id)
+          setActiveTab('paradas')
+        }}
+      />
     </div>
   )
 }
