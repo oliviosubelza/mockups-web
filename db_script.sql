@@ -140,6 +140,7 @@
         total_volume_m3 DECIMAL(12, 2), -- Sumatoria de volumen acumulado
         total_neto DECIMAL(12, 2), -- Valor monetario de la parada
         forced_planning_truck_id BIGINT NULL, -- Camión forzado en unificación manual
+        observations TEXT, -- observaciones del chofer, en caso de fotografia mal tomada, cambio de direccion, cambio de nuemero de telefono
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
