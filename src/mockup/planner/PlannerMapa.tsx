@@ -20,6 +20,8 @@ import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { ZonasLayer } from '../zonas/ZonasLayer'
 import { useZonesStore } from '../zones-store'
+import { momentoDelPlan } from '../restricciones/momento'
+import { vigenteEn } from '../restricciones/vigencia'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
@@ -410,11 +412,14 @@ export function PlannerMapa({
   const herramienta = usePlannerStore((s) => s.herramienta)
   const verMercados = usePlannerStore((s) => s.verMercados)
   const verZonas = usePlannerStore((s) => s.verZonas)
+  const verZonasRestringidas = usePlannerStore((s) => s.verZonasRestringidas)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const optimizado = usePlannerStore((s) => s.optimizado)
   const colorPor = usePlannerStore((s) => s.colorPor)
   const verTrazos = usePlannerStore((s) => s.verTrazos)
+  const resaltarRuta = usePlannerStore((s) => s.resaltarRuta)
+  const zonasActivas = usePlannerStore((s) => s.zonasActivas)
   const verDeposito = usePlannerStore((s) => s.verDeposito)
   const seleccion = usePlannerStore((s) => s.seleccion)
   const setSeleccion = usePlannerStore((s) => s.setSeleccion)
@@ -460,6 +465,9 @@ export function PlannerMapa({
   }, [])
 
   const [mercadoSelId, setMercadoSelId] = useState<number | null>(null)
+  // Zona resaltada desde el mapa. Local y no en el store: es un resaltado de esta capa, no una decisión
+  // del plan — nadie más lo lee y no tiene que sobrevivir a nada.
+  const [zonaSelId, setZonaSelId] = useState<number | null>(null)
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const cityIds = useCityIdsDelMapa(paradas, 'santacruz')
 
@@ -472,15 +480,57 @@ export function PlannerMapa({
    *
    * Se filtran por ciudad y por vigencia: una zona dada de baja sigue nombrada en planes viejos, pero
    * dibujarla hoy diría que el territorio está cubierto cuando no lo está.
+   *
+   * UN INTERRUPTOR POR TIPO, y no un filtro fijo. Las restringidas viven en el mismo store y significan
+   * lo contrario —no son territorio cubierto, son territorio recortado—, así que mezclarlas bajo la
+   * misma casilla haría que prender "zonas" trajera dos capas con lecturas opuestas y que apagarla
+   * escondiera una restricción para poder dejar de ver un particionamiento. Son preguntas distintas:
+   * "¿de quién es este barrio?" se prende cuando hace falta, "¿acá se puede?" viene prendida sola. Lo
+   * que las mantiene juntas en un mismo array es que `ZonasLayer` ya sabe pintar cada tipo como
+   * corresponde —roja y punteada la restringida, azul la de reparto—, así que la separación es de
+   * VISIBILIDAD y no de capa.
+   *
+   * Y LAS RESTRINGIDAS PASAN ADEMÁS POR EL FILTRO DEL TIEMPO, que es para lo que existe
+   * `restricciones/vigencia.ts`. Una obra que empieza la semana que viene no le recorta nada al plan
+   * de mañana. Se evalúa contra `momentoDelPlan()` —la fecha OPERATIVA del plan, o sea mañana— y no
+   * contra hoy: planificar es una actividad de víspera y evaluar contra hoy acierta un día de cada
+   * siete (ver `restricciones/momento.ts`).
+   *
+   * LA QUE NO RIGE NO SE DIBUJA, Y NO SE ATENÚA. Fue la decisión discutida acá y va a contramano del
+   * reflejo habitual, que sería pintarla al 30% "por las dudas". Este mapa contesta UNA pregunta —qué
+   * le recorta a ESTE plan— y ya tiene encima rutas, pines de entrega, mercados y zonas de reparto. Una
+   * franja roja pálida que no aplica no es información de menos riesgo: es un objeto más que hay que
+   * mirar, entender y descartar en cada barrido, y el que la ve en el borde del ojo no va a leer la
+   * opacidad, va a leer "acá no se puede". Peor todavía, entrena a dudar de las que SÍ rigen. Para
+   * "¿qué restricciones existen?" está la pantalla de Zonas, que las muestra todas con su vigencia
+   * escrita al lado; acá solo entran las que cambian el plan que se está armando.
+   *
+   * El filtro NO se le aplica a las de reparto aunque el campo exista en las dos: una zona de reparto
+   * es un particionamiento del territorio y no una regla con horario (ver `zones-store`). Su `vigencia`
+   * es `[]` siempre, así que `vigenteEn` devolvería `true` igual; el `if` explícito está para que la
+   * regla se lea, y para que el día que alguien cargue una vigencia en una zona de reparto por error
+   * eso no le haga desaparecer territorio al mapa.
    */
   const zonasTodas = useZonesStore((s) => s.zonas)
   const zonas = useMemo(() => {
-    if (!verZonas) return []
+    // Con los dos apagados se corta antes de recorrer nada: es el atajo del caso más común de todos,
+    // no una condición redundante con el filtro de abajo.
+    if (!verZonas && !verZonasRestringidas) return []
     const ciudades = new Set(cityIds)
+    // Un solo momento para todo el recorrido: son todas la misma pregunta sobre el mismo plan, y
+    // recalcularlo por zona abriría la puerta a que dos se evalúen contra fechas distintas si el
+    // filtro corre justo al cruzar la medianoche.
+    const momento = momentoDelPlan()
     return zonasTodas.filter(
-      (z) => z.isActive && !z.deletedAt && z.polygonGeoJson && ciudades.has(z.cityId),
+      (z) =>
+        (z.tipo === 'restringida' ? verZonasRestringidas : verZonas) &&
+        (z.tipo !== 'restringida' || vigenteEn(z.vigencia, momento)) &&
+        z.isActive &&
+        !z.deletedAt &&
+        z.polygonGeoJson &&
+        ciudades.has(z.cityId),
     )
-  }, [cityIds, verZonas, zonasTodas])
+  }, [cityIds, verZonas, verZonasRestringidas, zonasTodas])
   const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
 
   const colorPorRuta = useMemo(() => new Map(rutas.map((r) => [r.id, r.color])), [rutas])
@@ -569,13 +619,19 @@ export function PlannerMapa({
    * rutas generadas del pie. `rutaFoco` se elige solo al entrar, así que sin esta condición el mapa
    * abriría con cinco rutas apagadas por una decisión que el usuario no tomó. Mirando Flota o Pedidos,
    * las rutas valen todas lo mismo.
+   *
+   * Y AHORA TAMBIÉN SOLO SI SE PIDIÓ: `resaltarRuta` viene apagado, así que por defecto esto devuelve
+   * `null` y las siete rutas se dibujan sólidas. Sin `destacada` no hay atenuación, no hay línea más
+   * gruesa y no hay `bringToFront` — un solo flag apaga el modo entero porque todo lo demás cuelga de
+   * este valor. Ver la nota de `resaltarRuta` en el store para el porqué del defecto.
    */
   const destacada = useMemo(() => {
+    if (!resaltarRuta) return null
     const mirandoRutas = (dockAbierto && panel === 'rutas') || verRutas
     if (!mirandoRutas) return null
     // `rutas.some`: `rutaFoco` también puede valer "Sin asignar", que no es una ruta y no se dibuja.
     return rutas.some((r) => r.id === rutaFoco) ? rutaFoco : null
-  }, [dockAbierto, panel, rutaFoco, rutas, verRutas])
+  }, [dockAbierto, panel, resaltarRuta, rutaFoco, rutas, verRutas])
 
   /**
    * Las capas de color, por id de ruta. Existen para poder subir la destacada al frente.
@@ -648,16 +704,28 @@ export function PlannerMapa({
         margenAbajo={margenAbajo}
       />
 
-      {/* Zonas de reparto, de FONDO y en papel de "contexto": grises, apagadas y sobre todo NO
-          interactivas. Ese último punto no es estético — un polígono con `interactive: true` se come
-          el click antes de que llegue al marcador de una parada o al mapa, así que con las zonas
-          clickeables no se podría elegir un punto que cae dentro de una, que son todos.
+      {/* Zonas de reparto. De FONDO por defecto —grises, apagadas y NO interactivas—, porque un polígono
+          con `interactive: true` se come el click antes de que llegue al marcador de una parada, y acá
+          casi toda parada cae dentro de una zona.
 
-          Es la MISMA capa que usa la pantalla de Zonas (`papel="contexto"`, el que ya usa cuando
-          estás dibujando): un segundo dibujante de polígonos sería otro lugar donde el color y la
-          holgura se despintan de a uno. */}
+          Pero eso dejó de ser una ley del mapa y pasó a ser una preferencia: con "Zonas en primer plano"
+          suben a `contenido` —azules, con hover y con click que resalta— porque a veces la pregunta es
+          justamente cuál es el perímetro y no dónde cae el pin.
+
+          El `interactivo` es la salvaguarda que hace que la preferencia no rompa nada: aun en primer
+          plano, con el lazo o el rectángulo activos las zonas se ven pero no reciben el mouse. Es la
+          misma regla que ya cumplen los mercados dos bloques más abajo.
+
+          Es la MISMA capa que usa la pantalla de Zonas: un segundo dibujante de polígonos sería otro
+          lugar donde el color y la holgura se despintan de a uno. */}
       {zonas.length > 0 && (
-        <ZonasLayer zonas={zonas} papel="contexto" seleccionadaId={null} onSeleccionar={() => {}} />
+        <ZonasLayer
+          zonas={zonas}
+          papel={zonasActivas ? 'contenido' : 'contexto'}
+          interactivo={herramienta === 'pan'}
+          seleccionadaId={zonaSelId}
+          onSeleccionar={setZonaSelId}
+        />
       )}
 
       {/* Mercados de fondo: su pane propio (z 350) los deja debajo de trazos y pines, así que prender

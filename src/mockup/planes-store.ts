@@ -167,13 +167,35 @@ interface PlanesState {
   removePlan: (id: number) => void
 }
 
-/** ISO (YYYY-MM-DD) fecha de hoy */
-function fechaHoy(): string {
-  const d = new Date()
+/** ISO (YYYY-MM-DD) de una fecha. */
+function aIso(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** ISO (YYYY-MM-DD) fecha de hoy */
+function fechaHoy(): string {
+  return aIso(new Date())
+}
+
+/**
+ * Fecha operativa de un plan nuevo: SIEMPRE el día siguiente. Es `dispatch_plans.plan_date`.
+ *
+ * NO ES UN CAMPO NI UN SELECTOR, y esa es la decisión. Planificar es una actividad de víspera: se arma
+ * hoy el reparto de mañana, sin excepciones. Ofrecer un calendario abriría la puerta a planes con una
+ * fecha que nadie quiso —el que se olvida de cambiarla, el que la mueve para "probar"— y esa fecha no
+ * es cosmética: es contra la que se evalúan las restricciones de circulación (pico y placa, ventanas
+ * horarias). Un plan con el día equivocado calcula la flota disponible del día equivocado, que es peor
+ * que no tener restricciones.
+ *
+ * Se calcula al CREAR y no se vuelve a tocar — ver `saveActivePlan`.
+ */
+export function fechaDelPlanNuevo(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return aIso(d)
 }
 
 function resolvePlanCount(value: number | undefined, fallback: number): number {
@@ -192,7 +214,7 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
 
     const newPlan: Plan = {
       id: newId,
-      fecha: fechaHoy(),
+      fecha: fechaDelPlanNuevo(),
       estado: input?.estado ?? 'borrador',
       distribuidora: PLAN_DISTRIBUIDORA_UNICA,
       pedidos: resolvePlanCount(input?.pedidos, 24),
@@ -217,7 +239,11 @@ export const usePlanesStore = create<PlanesState>((set, get) => ({
 
     const updatedPlan: Plan = {
       ...current,
-      fecha: fechaHoy(),
+      // La fecha NO se re-estampa al guardar. Antes acá iba `fechaHoy()`, y eso hacía que volver a
+      // guardar un plan lo mudara de día: el que se armó anoche para hoy pasaba a ser de mañana con
+      // solo tocar Guardar. La fecha operativa se fija cuando el plan nace y es parte de su identidad
+      // —contra ella se evaluaron las restricciones y se eligió la flota—, así que guardar de nuevo
+      // no puede moverla. Se hereda del `...current`.
       estado: input?.estado ?? current.estado,
       distribuidora: PLAN_DISTRIBUIDORA_UNICA,
       pedidos: resolvePlanCount(input?.pedidos, current.pedidos),
