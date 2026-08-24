@@ -21,16 +21,12 @@
 // pide, que es responder al cliente que dice que no recibió la mercadería.
 import { useState } from 'react'
 import {
-  Banknote,
-  Building2,
   Camera,
   CheckCircle2,
   CircleAlert,
-  FileText,
   Image,
   MapPin,
   PenLine,
-  QrCode,
   Receipt,
   X,
 } from 'lucide-react'
@@ -44,7 +40,8 @@ import { PuntoEntregaDialog } from '../PuntoEntregaDialog'
 import { FotoAmpliable, SinFoto } from '../VisorFoto'
 import { EstadoEntregaBadge } from './EstadoEntregaBadge'
 import { atencionMin, duracionTexto } from './monitoreo-data'
-import type { CobroEntrega, EntregaMonitoreo, IncidenciaEntrega, MetodoPago } from './monitoreo-data'
+import type { EntregaMonitoreo, IncidenciaEntrega } from './monitoreo-data'
+import { bs, ESTADO_COBRO, METODO_PAGO } from './cobro-estilo'
 import { ESTADO_ENTREGA } from './monitoreo-estado'
 
 const SEVERIDAD: Record<IncidenciaEntrega['severidad'], { label: string; badge: string }> = {
@@ -53,24 +50,6 @@ const SEVERIDAD: Record<IncidenciaEntrega['severidad'], { label: string; badge: 
   alta: { label: 'Alta', badge: 'border-destructive/30 bg-destructive/10 text-destructive' },
 }
 
-const ESTADO_COBRO: Record<CobroEntrega['estado'], { label: string; badge: string }> = {
-  cobrado: { label: 'Cobrado', badge: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
-  parcial: { label: 'Cobro parcial', badge: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400' },
-  en_proceso: { label: 'Esperando al banco', badge: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400' },
-  pendiente: { label: 'Sin cobrar', badge: 'border-destructive/30 bg-destructive/10 text-destructive' },
-  no_corresponde: { label: 'No corresponde', badge: 'border-border bg-muted text-muted-foreground' },
-}
-
-/** Los cuatro métodos de la app del chofer. Mismos nombres y mismos íconos que el mockup móvil. */
-const METODO_PAGO: Record<MetodoPago, { label: string; icono: typeof Banknote }> = {
-  efectivo: { label: 'Efectivo', icono: Banknote },
-  transferencia: { label: 'Transferencia', icono: Building2 },
-  qr: { label: 'Pago QR', icono: QrCode },
-  cheque: { label: 'Cheque', icono: FileText },
-}
-
-/** Bs con separador de miles y dos decimales. La moneda va en la etiqueta, no en cada número. */
-const bs = (n: number) => n.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /**
  * Formatea el par de coordenadas para mostrarlo. Cinco decimales son ~1 m: más dígitos en una etiqueta

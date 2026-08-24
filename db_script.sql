@@ -48,6 +48,108 @@
         is_active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
+    -- ── RESTRICCIONES DE PLANIFICACIÓN ────────────────────────────────────────────────────────
+    -- Zonas restringidas, vías cerradas y placas de circulación: los límites que la planificación
+    -- tiene que respetar y que no salen ni de los pedidos ni de la flota.
+    --
+    -- UNA SOLA CABECERA PARA LOS TRES TIPOS, y no tres tablas. No son tres entidades: son tres
+    -- combinaciones de los mismos ejes —un DÓNDE (geometría, o ninguna), un CUÁNDO y un A QUIÉN—.
+    -- Separarlas obligaría a escribir tres veces la vigencia, tres CRUD y tres evaluaciones.
+    --
+    -- NO VAN EN `zones`, y eso es deliberado. `zones` es un PARTICIONAMIENTO del territorio que
+    -- Ventas referencia por id: no puede tener huecos ni solapes, por eso su regla de holgura
+    -- mínima entre bordes. Una zona restringida es un RECORTE: se apila libremente sobre las de
+    -- reparto y sobre otras restringidas —una avenida en obra que cruza tres zonas es el caso
+    -- normal—. Compartir tabla rompería la invariante de holgura para la mitad de las filas y
+    -- haría que la consulta de "resolver la zona de un punto" devuelva restricciones como si
+    -- fueran territorio de reparto.
+    CREATE TABLE planning_restrictions (
+        id BIGSERIAL PRIMARY KEY,
+        distributor_id BIGINT NOT NULL, -- Centro de distribución que administra la restricción
+        name VARCHAR(50) NOT NULL, -- Nombre con el que se la reconoce (ej. 'Centro histórico')
+        description VARCHAR(100), -- Detalle libre: ordenanza, motivo de la obra, etc.
+        restriction_type VARCHAR(30) NOT NULL, -- 'RESTRICTED_AREA', 'CLOSED_ROAD', 'PLATE_ROTATION'
+        effect VARCHAR(30) NOT NULL, -- Qué prohíbe: 'NO_TRANSIT', 'NO_DELIVERY', 'NO_VEHICLE'
+        severity VARCHAR(20) NOT NULL DEFAULT 'WARNING', -- 'BLOCKING', 'WARNING'
+        -- Geometría INLINE y no en tabla satélite: una restricción tiene exactamente una geometría
+        -- o ninguna (1:1). Polygon para un área, LineString para un tramo de vía, NULL en
+        -- PLATE_ROTATION, que no es geográfica. Mismo formato que `zones.polygon_geojson`.
+        geometry_geojson JSONB, -- Geometría GeoJSON: Polygon (área) o LineString (vía). NULL en PLATE_ROTATION
+        is_active BOOLEAN NOT NULL DEFAULT TRUE, -- Dada de baja no restringe nada, aunque esté vigente
+
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,
+
+        CONSTRAINT fk_planning_restriction_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
+    );
+
+    -- CUÁNDO rige. SIN FILAS = PERMANENTE.
+    --
+    -- Es 1:N y no un juego de columnas en la cabecera porque "lunes y martes de 7 a 9, y sábados
+    -- de 8 a 12" son TRES reglas sobre la misma restricción. Con columnas hay que inventar
+    -- `horario_2`, `horario_3`, y no hay número que alcance.
+    --
+    -- COMBINACIÓN: dentro de una fila los campos van con Y (day_of_week + start_time es "los lunes
+    -- de 7 en adelante"); entre filas van con O. Un campo NULL no estrecha: sin día es todos los
+    -- días, sin horas son las 24 h, sin fechas es para siempre.
+    --
+    -- OJO CON LA FRANJA NOCTURNA: si start_time > end_time la franja cruza la medianoche (22:00 a
+    -- 06:00) y la comparación se invierte —rige del inicio a medianoche O de medianoche al fin—.
+    -- Con un `start <= h AND h < end` ingenuo esa fila no rige NUNCA. Cuando envuelve, day_of_week
+    -- se refiere al día en que la franja EMPIEZA.
+    CREATE TABLE planning_restriction_schedules (
+        id BIGSERIAL PRIMARY KEY,
+        planning_restriction_id BIGINT NOT NULL, -- FK a planning_restrictions. Restricción a la que pertenece la franja
+        valid_from DATE, -- Primer día, inclusive. NULL = sin inicio
+        valid_to DATE, -- Último día, inclusive. NULL = sin fin
+        day_of_week SMALLINT, -- 0=domingo … 6=sábado. NULL = todos los días
+        start_time TIME, -- NULL = desde las 00:00
+        end_time TIME, -- NULL = hasta las 24:00. EXCLUSIVO
+
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,
+
+        CONSTRAINT fk_restriction_schedule_restriction FOREIGN KEY (planning_restriction_id) REFERENCES planning_restrictions(id)
+    );
+
+    -- A QUIÉN le aplica. SIN FILAS = A TODA LA FLOTA.
+    --
+    -- Misma combinación que los horarios: Y dentro de una fila, O entre filas. Una fila con
+    -- plate_last_digit = 3 y min_capacity_weight_kg = 3500 es "los pesados terminados en 3";
+    -- "los lunes no circulan el 1 y el 2" son dos filas.
+    --
+    -- LOS DOS PRIMEROS CAMPOS SE COMPUTAN, NO SE TILDAN. El usuario configura la regla y el
+    -- sistema deriva a qué camiones les pega leyendo `trucks`. Si hubiera que marcar camiones a
+    -- mano, el día que entra uno nuevo a la flota nadie se acuerda y el plan sale con un vehículo
+    -- que no puede circular. `plate` es la excepción: es la lista negra puntual.
+    --
+    -- EL ÚLTIMO DÍGITO NO ES EL ÚLTIMO CARÁCTER: el formato de placa es 4821-XKD (números primero,
+    -- letras después), así que hay que extraer el bloque numérico y tomar su último dígito. Y el
+    -- tonelaje NO sale de la placa: sale de trucks.capacity_weight_kg. Ninguna serie de placa
+    -- codifica peso.
+    CREATE TABLE planning_restriction_vehicle_rules (
+        id BIGSERIAL PRIMARY KEY,
+        planning_restriction_id BIGINT NOT NULL, -- FK a planning_restrictions. Restricción a la que pertenece la regla
+        plate_last_digit SMALLINT, -- Pico y placa. Se computa desde trucks.plate
+        min_capacity_weight_kg DECIMAL(12, 2), -- "Solo pesados". Se lee de trucks.capacity_weight_kg
+        truck_type VARCHAR(50), -- Espeja trucks.truck_type
+        plate VARCHAR(20), -- Lista negra: una placa puntual inhabilitada
+
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,
+
+        CONSTRAINT fk_restriction_vehicle_restriction FOREIGN KEY (planning_restriction_id) REFERENCES planning_restrictions(id)
+    );
+
     CREATE TABLE trucks (
         id BIGSERIAL PRIMARY KEY,
         distributor_id BIGINT NULL, -- Distribuidora a la que está asignado el camión
@@ -111,6 +213,12 @@
         assigned_weight_kg DECIMAL(12,2) DEFAULT 0.00, -- Peso total asignado en este plan
         assigned_volume_m3 DECIMAL(12,2) DEFAULT 0.00, -- Volumen total asignado en este plan
         is_included_in_routing BOOLEAN DEFAULT TRUE, -- Bandera para incluir/excluir en optimización
+        -- POR QUÉ el camión quedó fuera del ruteo. El booleano de arriba no alcanza: no distingue
+        -- "el planificador lo destildó" de "no puede circular hoy por pico y placa". El primero se
+        -- revierte con un click; el segundo no, y sin el motivo a la vista el planificador lo va a
+        -- intentar prender de nuevo y va a pensar que la pantalla está rota.
+        exclusion_reason VARCHAR(50), -- NULL | 'MANUAL' | 'RESTRICTION'
+        excluded_by_restriction_id BIGINT NULL, -- Qué restricción lo sacó, si fue 'RESTRICTION'
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -119,7 +227,8 @@
         deleted_at TIMESTAMP NULL,
 
         CONSTRAINT fk_planning_truck_plan FOREIGN KEY (dispatch_plan_id) REFERENCES dispatch_plans(id),
-        CONSTRAINT fk_planning_truck_master FOREIGN KEY (truck_id) REFERENCES trucks(id)
+        CONSTRAINT fk_planning_truck_master FOREIGN KEY (truck_id) REFERENCES trucks(id),
+        CONSTRAINT fk_planning_truck_restriction FOREIGN KEY (excluded_by_restriction_id) REFERENCES planning_restrictions(id)
     );
 
     CREATE TABLE dispatch_delivery_points (

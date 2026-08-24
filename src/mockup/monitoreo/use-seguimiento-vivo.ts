@@ -62,6 +62,7 @@
 // pin se anima acá, no se pide más seguido. Ver la nota de tracking en UltimaVersion.sql — la
 // telemetría NO vive en Postgres, vive en DynamoDB.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { aMinutos } from '../mock-data'
 import { avanceSobre } from '../map/geo/recorrido'
 import type { LatLngTuple } from '../map/geo/polyline'
 import {
@@ -69,8 +70,9 @@ import {
   MOTIVOS_FALLO,
   construirCobro,
   construirComprobante,
-  horaEntregaPlanificada,
-  horaLlegadaPlanificada,
+  horaDeMinutos,
+  MIN_DESCARGA_PLANIFICADA,
+  MIN_POR_PARADA,
   repartirItems,
   type ComprobanteEntrega,
   type EntregaMonitoreo,
@@ -118,6 +120,24 @@ const motivoDe = (id: string, estado: EstadoEntrega): string => {
   if (estado === 'fallido') return MOTIVOS_FALLO[h % MOTIVOS_FALLO.length]
   if (estado === 'devuelto') return MOTIVOS_DEVOLUCION[h % MOTIVOS_DEVOLUCION.length]
   return ''
+}
+
+/**
+ * Cuándo llega el camión a la parada que la simulación está por cerrar.
+ *
+ * Se cuenta desde el CIERRE REAL de la parada anterior y NO desde la grilla planificada. La diferencia
+ * importa desde que el dataset genera atrasos que se acumulan: fechar el evento contra el plan hacía
+ * que la parada cerrada en vivo apareciera puntual entre vecinas corridas media hora, y la línea de
+ * tiempo mostraba un escalón que ningún camión puede hacer. El atraso tiene que arrastrarse acá igual
+ * que en el dataset.
+ *
+ * Sin parada anterior cerrada, el origen es la salida REAL del viaje — que ya incluye la demora de
+ * rampa, así que el arrastre empieza bien desde el primer tramo.
+ */
+function horasDeParada(previaCerradaAt: string | null, salida: string) {
+  const origen = aMinutos(previaCerradaAt ?? salida)
+  const llegada = origen + MIN_POR_PARADA - MIN_DESCARGA_PLANIFICADA
+  return { llegada: horaDeMinutos(llegada), cierre: horaDeMinutos(llegada + MIN_DESCARGA_PLANIFICADA) }
 }
 
 export interface SeguimientoVivo {
@@ -223,6 +243,18 @@ export function useSeguimientoVivo(
     const vigente = (entrega: EntregaMonitoreo): EntregaMonitoreo => ({ ...entrega, ...overrides.get(entrega.id) })
 
     /**
+     * `delivered_at` de la parada anterior a la que se está atendiendo, ya con los overrides aplicados.
+     * Es el origen desde el que se fechan los eventos de la parada actual — ver `horasDeParada`.
+     *
+     * `entregas[i]` es la parada de secuencia `i + 1`, así que la anterior a `secuencia` está en
+     * `secuencia - 2`. `null` en la primera parada del viaje o si la anterior no cerró.
+     */
+    const cierrePrevio = (secuencia: number): string | null => {
+      const previa = secuencia > 1 ? entregas[secuencia - 2] : undefined
+      return previa ? (vigente(previa).entregaAt ?? null) : null
+    }
+
+    /**
      * Un evento `tracking`: escribe el ping (los DOS ítems) y se queda con el ACTUAL que devuelve.
      * `trackedAt` es el reloj del dispositivo AHORA; `receivedAt` lo pone el "servidor" adentro de
      * `escribirPing`, siempre después.
@@ -279,7 +311,10 @@ export function useSeguimientoVivo(
             overrides.set(activa.id, {
               ...overrides.get(activa.id),
               estado: 'en_camino',
-              historial: [...actual.historial, { estado: 'en_camino', hora: horaLlegadaPlanificada(salida, activa.secuencia) }],
+              historial: [
+                ...actual.historial,
+                { estado: 'en_camino', hora: horasDeParada(cierrePrevio(activa.secuencia), salida).llegada },
+              ],
             })
           }
           // `t` es fracción de LONGITUD del camino, no de la recta: en una calle con curvas los
@@ -291,7 +326,7 @@ export function useSeguimientoVivo(
 
         // ── Llegó al punto: es el botón "Iniciar entrega" de la app del chofer (arrived_at) ──
         ticksEnSitio = 1
-        const llegada = horaLlegadaPlanificada(salida, activa.secuencia)
+        const llegada = horasDeParada(cierrePrevio(activa.secuencia), salida).llegada
         overrides.set(activa.id, {
           ...overrides.get(activa.id),
           estado: 'en_sitio',
@@ -312,7 +347,7 @@ export function useSeguimientoVivo(
       // ── Cierra la parada: es el botón "Finalizar" (delivered_at + delivery_result_code) ──
       const estado = resultadoDe(activa.id)
       const motivo = motivoDe(activa.id, estado)
-      const hora = horaEntregaPlanificada(salida, activa.secuencia)
+      const hora = horasDeParada(cierrePrevio(activa.secuencia), salida).cierre
       // Mismos constructores que el dataset (`construirComprobante`, `construirCobro`) y no una copia
       // local: una parada cerrada en vivo tiene que quedar indistinguible de las que ya venían cerradas.
       // Con dos implementaciones, la firma, el GPS o el recibo saldrían distintos según CUÁNDO cerró.

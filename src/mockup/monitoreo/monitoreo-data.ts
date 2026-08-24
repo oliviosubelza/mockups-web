@@ -81,7 +81,17 @@ const MIN_RECARGA = 45
  */
 const PARADAS_CARGA_LARGA = 5
 
-const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+/**
+ * Minutos del día → "HH:MM", envolviendo en 24 h.
+ *
+ * Se exporta porque la simulación en vivo tiene que fechar los eventos que fabrica con la MISMA regla
+ * que el dataset: dos formateos distintos daban paradas cerradas en vivo con un minuto de diferencia
+ * respecto de las sembradas, y en una línea de tiempo esa diferencia se ve.
+ */
+export const horaDeMinutos = (min: number) =>
+  `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+
+const hhmm = horaDeMinutos
 
 // ── Formas ───────────────────────────────────────────────────────────────────────────────────
 
@@ -265,6 +275,12 @@ export interface EntregaMonitoreo {
   paradaId: string
   /** route_delivery_points.sequence — el orden de visita. */
   secuencia: number
+  /**
+   * `delivery_orders.executed_sequence` — el orden REAL de visita, que no siempre es el planificado.
+   * `null` mientras el camión no llegó. Cuando difiere de `secuencia`, el chofer se salteó una parada y
+   * volvió después; sin esta columna el monitoreo no puede explicar por qué la 3 cerró antes que la 2.
+   */
+  secuenciaEjecutada: number | null
   cliente: string
   puntoEntrega: string
   /**
@@ -349,6 +365,20 @@ export interface ViajeMonitoreo {
   estado: EstadoViaje
   /** trips.departure_date */
   salida: string
+  /**
+   * Salida PLANIFICADA del depósito. `salida` es cuándo arrancó DE VERDAD.
+   *
+   * Ninguna de las dos tiene columna propia: el esquema solo guarda
+   * `transport_orders.departure_date`, que es la real. La planificada se necesita igual — sin ella, un
+   * camión que salió 35 minutos tarde arranca su línea de tiempo en cero y el atraso más importante del
+   * día, el de la rampa, se vuelve invisible.
+   */
+  salidaPlan: string
+  /**
+   * Retorno real al depósito — `transport_orders.completed_date` → "HH:MM". `null` mientras el viaje
+   * no cerró.
+   */
+  cierreAt: string | null
   /** La orden que esta carga entrega. */
   ordenId: string
   /**
@@ -779,9 +809,17 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
   // haberse generado en otro orden.
   const ahora = Date.now()
 
-  // Reloj por camión: la segunda carga del día no puede salir antes de que la primera haya vuelto.
-  // Sin esto, dos viajes del mismo camión saldrían los dos a las 08:00 y el listado se contradiría.
-  const libreDesde = new Map<string, number>()
+  // DOS relojes por camión, porque el día planificado y el día real no son el mismo día.
+  //   · `libreDesdePlan` lleva la AGENDA: cuándo la planificación dijo que este camión vuelve a estar
+  //     disponible. Es la referencia contra la que se mide el desvío, así que no se contamina nunca con
+  //     el atraso real — si se moviera, el plan se acomodaría solo a la ejecución y no habría nada que
+  //     comparar.
+  //   · `libreDesdeReal` lleva cuándo el camión VOLVIÓ de verdad. La salida real de la carga siguiente
+  //     no puede ser anterior a ese retorno: es la invariante #1 que este archivo ya protege más abajo
+  //     —un camión no está en dos lugares—, y sin el segundo reloj un atraso grande hacía salir la
+  //     segunda carga antes de que la primera hubiera vuelto.
+  const libreDesdePlan = new Map<string, number>()
+  const libreDesdeReal = new Map<string, number>()
 
   // Las cargas que efectivamente salen: una orden sin paradas no produce viaje. Se resuelve ANTES
   // del bucle porque el estado de cada carga depende de CUÁNTAS tiene su camión, y eso no se puede
@@ -829,7 +867,11 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
 
   cargas.forEach(({ orden, paradas }, i) => {
     const total = paradas.length
-    const salidaMin = libreDesde.get(orden.camion) ?? SALIDA_MIN
+    const salidaPlanMin = libreDesdePlan.get(orden.camion) ?? SALIDA_MIN
+    // Demora de rampa: papeles, conteo físico, esperar al ayudante. Es el atraso que más pesa en el día
+    // porque se arrastra hasta la última parada, y es el que hoy no se veía en ninguna pantalla.
+    const demoraSalida = rand.int(-6, 40)
+    const salidaMin = Math.max(salidaPlanMin + demoraSalida, libreDesdeReal.get(orden.camion) ?? 0)
 
     // El estado NO se sortea acá: sale de comparar esta carga contra la que el camión tiene en curso.
     const indiceCarga = emitidas.get(orden.camion) ?? 0
@@ -848,14 +890,49 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
         : rand.int(1, Math.max(1, total - 1))
     const cursor = estadoViaje === 'pendiente' ? 0 : estadoViaje === 'finalizado' ? total : cursorEnRuta
 
-    const estados = paradas.map((_, idx) => estadoDeParada(idx, cursor, estadoViaje))
+    // ── El orden en que el chofer visitó las paradas ──
+    // `paradas` viene en el orden PLANIFICADO (`route_delivery_points.sequence`). El orden ejecutado puede
+    // ser otro: el chofer llegó, encontró el local cerrado, siguió y volvió más tarde. Uno de cada cuatro
+    // viajes con 4+ paradas lo hace.
+    //
+    // El intercambio se limita a paradas YA CERRADAS a propósito: `cursor` cuenta avance sobre el
+    // `recorrido`, que está en orden planificado, y reordenar paradas abiertas dejaría al mapa dibujando el
+    // camión en un tramo que todavía no recorrió.
+    const ordenEjecutado = paradas.map((_, idx) => idx)
+    if (cursor >= 4 && rand.chance(0.25)) {
+      const desde = rand.int(1, cursor - 3)
+      // Se saltea UNA y se la retoma dos paradas después: es el caso real, no una permutación cualquiera.
+      const [saltada] = ordenEjecutado.splice(desde, 1)
+      ordenEjecutado.splice(desde + 2, 0, saltada)
+    }
+
+    // ── El reloj REAL del viaje ──
+    // Arranca en la salida real y se va corriendo parada por parada. El atraso SE ACUMULA porque así se
+    // atrasa un reparto de verdad: nadie recupera el tiempo perdido, se arrastra hasta el final del día.
+    // El plan, en cambio, es una grilla pareja de `MIN_POR_PARADA` — la distancia entre las dos líneas es
+    // justamente lo que la pantalla de línea de tiempo existe para mostrar.
+    const tiempos = new Map<number, { estado: EstadoEntrega; llegada: number; entrega: number; ejecutada: number }>()
+    let reloj = salidaMin
+    ordenEjecutado.forEach((idxPlan, posicion) => {
+      // `estadoDeParada` se mide contra el AVANCE del camión, así que recibe la POSICIÓN EJECUTADA y no el
+      // índice planificado: si el chofer se salteó la 2 y cerró la 3 antes, la que está cerrada es la 3.
+      const estado = estadoDeParada(posicion, cursor, estadoViaje)
+      // Tránsito y descarga con su propio ruido, los dos sesgados a favor del atraso pero capaces de
+      // ir en contra: si el ruido fuera siempre positivo, el tier "adelantado" no lo alcanzaría ningún
+      // viaje y la leyenda mostraría un color imposible. La media es de ~3 min por parada, así que un
+      // reparto de 12 termina una hora corrido — que es el orden de magnitud del dibujo de logística.
+      reloj += MIN_POR_PARADA - MIN_DESCARGA_PLANIFICADA + rand.int(-8, 11)
+      const llegada = reloj
+      reloj += MIN_DESCARGA_PLANIFICADA + rand.int(-4, 8)
+      tiempos.set(idxPlan, { estado, llegada, entrega: reloj, ejecutada: posicion + 1 })
+    })
 
     {
       const entregas: EntregaMonitoreo[] = paradas
         .map((parada, idx) => {
-          const estado = estados[idx]
-          const llegada = salidaMin + (idx + 1) * MIN_POR_PARADA
-          const entrega = llegada + rand.int(4, 14)
+          // El map recorre `paradas`, o sea el orden PLANIFICADO: `idx` es la secuencia del plan y por eso
+          // es la clave con la que se buscan los tiempos, que ya se fecharon siguiendo el orden ejecutado.
+          const { estado, llegada, entrega, ejecutada } = tiempos.get(idx)!
           const cerrada = estado === 'entregado' || estado === 'fallido' || estado === 'devuelto'
           const motivo =
             estado === 'fallido' ? rand.pick(MOTIVOS_FALLO) : estado === 'devuelto' ? rand.pick(MOTIVOS_DEVOLUCION) : ''
@@ -882,6 +959,8 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
             ordenId: orden.id,
             paradaId: parada.id,
             secuencia: idx + 1,
+            // Sin llegada no hay orden ejecutado que informar: la parada todavía no se visitó.
+            secuenciaEjecutada: estado === 'pendiente' || estado === 'en_camino' ? null : ejecutada,
             cliente: parada.cliente,
             puntoEntrega: parada.puntoEntrega,
             puntoEntregaId: parada.puntoEntregaId,
@@ -968,6 +1047,9 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
           })
         : null
 
+      // El retorno al depósito: un tramo más después de la última parada.
+      const retornoMin = reloj + (MIN_POR_PARADA - MIN_DESCARGA_PLANIFICADA) + rand.int(-4, 12)
+
       viajes.push({
         tripId,
         camion: orden.camion,
@@ -975,6 +1057,8 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
         auxiliar: orden.auxiliar,
         estado: estadoViaje,
         salida: hhmm(salidaMin),
+        salidaPlan: hhmm(salidaPlanMin),
+        cierreAt: estadoViaje === 'finalizado' ? hhmm(retornoMin) : null,
         ordenId: orden.id,
         employeeId,
         color: rutaPorCamionId(camion?.id ?? null)?.color ?? '#2563eb',
@@ -984,7 +1068,9 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
       })
 
       // El camión queda libre recién cuando volvió al almacén: ida + vuelta + recarga.
-      libreDesde.set(orden.camion, salidaMin + (total + 1) * MIN_POR_PARADA + MIN_RECARGA)
+      // La agenda planificada NO se contamina con el atraso real: es contra ella que se mide el desvío.
+      libreDesdePlan.set(orden.camion, salidaPlanMin + (total + 1) * MIN_POR_PARADA + MIN_RECARGA)
+      libreDesdeReal.set(orden.camion, retornoMin + MIN_RECARGA)
     }
   })
 
@@ -1027,6 +1113,8 @@ function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitore
       ordenId: orden.id,
       paradaId: parada.id,
       secuencia: index + 1,
+      // La orden recién entra al monitoreo: no hay ninguna parada visitada todavía.
+      secuenciaEjecutada: null,
       cliente: parada.cliente,
       puntoEntrega: parada.puntoEntrega,
       puntoEntregaId: parada.puntoEntregaId,
@@ -1091,6 +1179,10 @@ function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitore
       auxiliar: orden.auxiliar,
       estado: 'en_ruta',
       salida,
+      // Recién incorporada: no hay desvío que mostrar, el plan y la ejecución arrancan iguales y el
+      // viaje no cerró.
+      salidaPlan: salida,
+      cierreAt: null,
       ordenId: orden.id,
       employeeId: idEmpleado(orden.chofer),
       color: rutaPorCamionId(camion?.id ?? null)?.color ?? '#2563eb',
