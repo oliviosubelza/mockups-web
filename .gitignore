@@ -12,4 +12,5 @@ format.*
 diagrams
 .env
 .pdf
-./analisis
+analisis
+!db_script.sql
