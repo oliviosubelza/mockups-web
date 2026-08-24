@@ -12,3 +12,4 @@ format.*
 diagrams
 .env
 .pdf
+!db_script.sql
