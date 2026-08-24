@@ -186,10 +186,17 @@ planificador en pantalla, persistido.
 
 ---
 
-## 2.5 Antes de aplicar nada
+## 2.5 Dónde está aplicado
 
-**`diagrams/UltimaVersionUltima.sql` del repo está desactualizado** (verificado el 2026-08-24 contra la
-versión que maneja el equipo). Le faltan cuatro tablas — `transport_order_count_sessions`,
-`transport_order_count_session_items`, `logistic_assets`, `transport_order_assets` — y todavía tiene
-`truck_inventory_histories`, que en la versión nueva desapareció, reemplazada por las sesiones de
-conteo. Hay que sincronizarlo primero.
+**El DDL de esta sección ya está escrito en `db_script.sql`** (raíz del repo), que es el esquema al día
+—28 tablas, con las sesiones de conteo y los activos logísticos—.
+
+Ubicación dentro del script: las tres tablas nuevas van **antes de `trucks`**, porque son dato de
+configuración y `planning_trucks` les hace FK. Las dos columnas de `planning_trucks` están inline en su
+`CREATE TABLE`, no como `ALTER`: el script es un `DROP SCHEMA` + recreación completa, así que un ALTER
+al final sería ruido.
+
+> ⚠️ **`diagrams/UltimaVersionUltima.sql` quedó viejo** y no hay que usarlo. Le faltan cuatro tablas
+> —`transport_order_count_sessions`, `transport_order_count_session_items`, `logistic_assets`,
+> `transport_order_assets`— y todavía tiene `truck_inventory_histories`, que ya no existe. El vigente
+> es `db_script.sql`.

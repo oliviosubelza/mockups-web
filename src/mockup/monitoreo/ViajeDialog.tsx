@@ -30,7 +30,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useFilasVivas } from './destello'
 import { EstadoViajeBadge } from './EstadoEntregaBadge'
-import { RutaGantt } from './RutaGantt'
+import { RutaParalela } from './RutaParalela'
 import { Frescura } from './ProgresoEntregas'
 import { TablaViajeMonitoreo } from './TablaViajeMonitoreo'
 import { useSeguimientoVivo } from './use-seguimiento-vivo'
@@ -273,7 +273,7 @@ function Cuerpo({
           vivas={vivas}
         />
       ) : (
-        <RutaGantt linea={linea} seleccion={seleccion} onSeleccionar={setSeleccion} />
+        <RutaParalela linea={linea} seleccion={seleccion} onSeleccionar={setSeleccion} />
       )}
     </>
   )
