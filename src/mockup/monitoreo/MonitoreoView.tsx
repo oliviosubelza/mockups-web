@@ -13,7 +13,7 @@
 // eran una foto. Ahora salen de `useFlotaViva` —snapshot + SSE de flota, con los pings agrupados a ~30 s
 // como manda el contrato— y el filtrado se aplica sobre lo que el stream fue parcheando.
 import { useMemo, useState } from 'react'
-import { AlertTriangle, MapPin, Radio, Truck } from 'lucide-react'
+import { AlertTriangle, ChartGantt, MapPin, Radio, Truck } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -22,6 +22,7 @@ import { EstadoViajeBadge } from './EstadoEntregaBadge'
 import { Frescura, ProgresoEntregas } from './ProgresoEntregas'
 import { Destello, useFilasVivas } from './destello'
 import { useFlotaViva, type FilaMonitoreo } from './use-flota-viva'
+import { ViajeDialog } from './ViajeDialog'
 import { UMBRAL_SENAL_VIEJA_MIN, minutosSinSenal, type ItemActual } from './tracking-dynamo'
 import { duracionTexto, promedioMin } from './monitoreo-data'
 import type { EstadoViaje } from './monitoreo-estado'
@@ -143,6 +144,14 @@ export function MonitoreoView() {
 
   // La orden viaja en la URL, no en un store: así el detalle sobrevive un F5 y el link se puede pasar.
   const abrir = (fila: FilaMonitoreo) => openRoute('monitoreo-detalle', { ordenId: fila.id })
+
+  /**
+   * El resumen del viaje, en cambio, NO viaja en la URL: es una consulta de paso sobre la fila que se
+   * está mirando —"¿este camión viene en hora?", "¿cuánto le queda por cobrar?"— y sacar al usuario del
+   * listado para contestarla es justo lo que logística pidió evitar. Al cerrar el diálogo la tabla
+   * sigue donde estaba, con su scroll y sus filtros.
+   */
+  const [viajeAbierto, setViajeAbierto] = useState<FilaMonitoreo | null>(null)
 
   const columns = useMemo(
     () =>
@@ -277,10 +286,22 @@ export function MonitoreoView() {
         {
           id: 'acciones',
           header: '',
-          size: 130,
+          size: 190,
           enableSorting: false,
           cell: (row) => (
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-1">
+              {/* El resumen primero como ícono y el "Seguir" con texto: son dos verbos distintos
+                  —comparar contra el plan y mirar dónde está— y el que saca de la pantalla es el
+                  segundo, así que es el que lleva la etiqueta. */}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                title="Línea de tiempo y detalle del viaje"
+                onClick={() => setViajeAbierto(row)}
+              >
+                <ChartGantt className="size-4" />
+                <span className="sr-only">Línea de tiempo y detalle</span>
+              </Button>
               <Button size="sm" variant="outline" onClick={() => abrir(row)}>
                 <MapPin className="size-3.5" />
                 Seguir
@@ -289,7 +310,7 @@ export function MonitoreoView() {
           ),
         },
       ]),
-    // `abrir` solo usa el router: estable entre renders.
+    // `abrir` solo usa el router y `setViajeAbierto` es el setter de useState: ambos estables.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
@@ -346,6 +367,8 @@ export function MonitoreoView() {
           />
         }
       />
+
+      {viajeAbierto && <ViajeDialog fila={viajeAbierto} onClose={() => setViajeAbierto(null)} />}
     </div>
   )
 }

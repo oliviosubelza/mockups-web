@@ -39,7 +39,10 @@ export const PREFIJOS_POR_CANAL = {
   // Supermercados: cadenas reales del mercado boliviano + sucursal (ver SUCURSALES_CADENA).
   supermercado: ['Hipermaxi', 'Fidalga', 'IC Norte', 'Ketal', 'Slan Center', 'Tía', 'Súper Ecológico'],
   // Provincia: el nombre lo cierra la LOCALIDAD (ver LOCALIDADES), no un barrio de la capital.
-  provincia: ['Distribuidora', 'Comercial', 'Mercado', 'Abarrotes', 'Depósito'],
+  // Son los ÚNICOS clientes cuyo nombre no tiene un pool libre detrás: hay exactamente
+  // `prefijos × LOCALIDADES` nombres posibles y `clientesDeProvincia` tira error al quedarse corto.
+  // Con 5 prefijos el techo eran 60 pedidos por canal, menos de los que hoy pide VOLUMEN.
+  provincia: ['Distribuidora', 'Comercial', 'Mercado', 'Abarrotes', 'Depósito', 'Almacén', 'Proveedora', 'Casa'],
   // Ecommerce no tiene razón social: el "cliente" es el número de pedido web.
   ecommerce: [] as string[],
 } as const

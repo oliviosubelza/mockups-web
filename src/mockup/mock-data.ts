@@ -55,13 +55,32 @@ const SEMILLA = 20260728
 /**
  * Cuántas filas tiene cada listado. `pedidosPorCanal` es el que más se nota: es lo que se ve al
  * abrir el detalle de un canal, y con 3-4 el diálogo parecía vacío.
+ *
+ * ── El techo de `pedidosPorCanal` no es estético: es geográfico ──────────────────────────────
+ * Cada pedido saca UNA coordenada de `PUNTOS_CALLE_SCZ` (110 por zona, 440 en total) y la marca
+ * usada, incluso cuando después comparte el punto de entrega de otro. O sea: el pool alcanza para
+ * ~440 pedidos y ni uno más. Pasado ese número `calleLibre` se queda sin calles libres y devuelve
+ * `pool[0]` una y otra vez — decenas de puntos de entrega distintos dibujados exactamente uno
+ * encima del otro, que es justo lo que ese pool existe para evitar. Medido: con 78 por canal (468
+ * pedidos) ya aparecen 4 coordenadas repetidas por decenas de paradas cada una.
+ *
+ * Por eso 68 y no más: con 408 pedidos ninguna coordenada se repite. El precio ya está pagado y es
+ * chico —26 pedidos se colocan por barrido en vez de por sorteo, y la zona sur, que se lleva 120 de
+ * los sorteos, agota sus 110 calles y empuja 10 pedidos a una zona vecina—, pero es exactamente el
+ * intercambio que `calleLibre` documenta: antes zona corrida que dos pines encimados. Subir de acá
+ * exige AMPLIAR el pool de calles, no tocar este número.
+ *
+ * El otro techo lo pone el canal PROVINCIA, que nombra a sus clientes con prefijo + localidad: son
+ * `PREFIJOS_POR_CANAL.provincia × LOCALIDADES` combinaciones y `clientesDeProvincia` tira error si
+ * no alcanzan. Con 8 prefijos × 12 localidades hay 96, que cubre estos 68 con aire.
  */
 const VOLUMEN = {
-  camiones: 36,
-  pedidosPorCanal: 36,
+  camiones: 54,
+  pedidosPorCanal: 68,
   planes: 36,
   corridas: 30,
-  ordenesTransporte: 36,
+  /** Techo del listado de órdenes de transporte. Hoy no llega a tocarlo: el reparto por camión da ~57. */
+  ordenesTransporte: 72,
   transferencias: 36,
   devoluciones: 36,
   choferes: 40,
@@ -69,8 +88,16 @@ const VOLUMEN = {
   vendedores: 30,
   planificadores: 20,
   distribuidoras: 10,
-  /** Camiones que participan del ruteo (define cuántas RUTAS y órdenes de despacho hay). */
-  camionesEnRuta: 30,
+  /**
+   * Camiones que participan del ruteo (define cuántas RUTAS y órdenes de despacho hay).
+   *
+   * Es un equilibrio, no un máximo: como las paradas se reparten POR PESO hasta llenar cada camión,
+   * más camiones en ruteo = más rutas pero más FLACAS. Con 38 sobre 324 paradas quedan rutas de 1 a
+   * 23 paradas —que es la dispersión que el monitoreo necesita para no mostrar 30 viajes iguales— y
+   * apenas ~4% de paradas sin asignar. Con 30 el reparto no daba abasto y ~50 paradas se quedaban
+   * sin camión; con 44 casi ninguna ruta pasaba de 14 paradas.
+   */
+  camionesEnRuta: 38,
 }
 
 const rand = createRand(SEMILLA)
@@ -720,8 +747,8 @@ export const PEDIDOS: Pedido[] = (() => {
    * Coordenadas ya asignadas, para que DOS puntos de entrega distintos no caigan en el mismo lugar.
    *
    * Es la contrapartida de elegir de un pool en vez de sortear con jitter. El jitter daba coordenadas
-   * prácticamente únicas por construcción; una lista de 440 posiciones, no: el dataset necesita ~200
-   * puntos, y eligiendo con reemplazo la paradoja del cumpleaños predice ~44 repeticiones. Cada
+   * prácticamente únicas por construcción; una lista de 440 posiciones, no: el dataset necesita ~325
+   * puntos, y eligiendo con reemplazo la paradoja del cumpleaños predice cientos de repeticiones. Cada
    * repetición son dos clientes distintos, con su propio `DP-xxxx` y sus propios pedidos, dibujados
    * exactamente uno ENCIMA del otro — un pin que tapa a otro sin que nadie pueda saberlo, que es el
    * mismo problema que el `zIndexOffset` del mapa existe para evitar.
@@ -734,7 +761,12 @@ export const PEDIDOS: Pedido[] = (() => {
   /**
    * Una calle libre de la zona. Si la zona se agotó cae a cualquier otra: preferimos un pedido con la
    * zona un poco corrida antes que dos pines superpuestos, porque lo primero no se ve y lo segundo sí.
-   * Con 110 posiciones por zona y ~50 pedidos por zona, la caída no debería ocurrir nunca.
+   *
+   * Con los volúmenes de hoy la caída SÍ ocurre, y está medida: de 408 sorteos, la zona sur se lleva
+   * 120 sobre 110 calles, así que 26 pedidos terminan colocados por barrido y 10 de ellos en otra
+   * zona. Ninguna coordenada se repite, que es lo único que no se puede negociar. El margen es
+   * angosto a propósito —ver el techo de `pedidosPorCanal` en VOLUMEN—: pasando los ~440 pedidos el
+   * pool se agota entero y los pines empiezan a superponerse de verdad.
    */
   const calleLibre = (zona: ZonaId): readonly [number, number] => {
     const clave = (p: readonly [number, number]) => `${p[0]},${p[1]}`
@@ -746,8 +778,9 @@ export const PEDIDOS: Pedido[] = (() => {
     // SORTEO CON REINTENTO, y no "la primera libre de la lista". Barrer la lista en orden daría
     // coordenadas correctas y un mapa mentiroso: el pool está ordenado por distancia al ancla, así que
     // los primeros pedidos se apilarían todos alrededor del centro de su zona y la dispersión que este
-    // cambio venía a arreglar se perdería por otro lado. Con ~50 de 110 tomadas, la mitad de los
-    // sorteos cae en una libre y doce intentos alcanzan de sobra.
+    // cambio venía a arreglar se perdería por otro lado. Los doce intentos alcanzan mientras la zona
+    // vaya por debajo de las ~90 de 110 tomadas; recién sobre el final del canal empiezan a fallar, y
+    // por eso abajo hay barrido.
     const pool = PUNTOS_CALLE_SCZ[zona]
     for (let intento = 0; intento < 12; intento++) {
       const p = rand.pick(pool)
@@ -1226,8 +1259,13 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
    * Cuántas cargas concentran TODAS sus paradas en una sola orden, en vez de repartirlas entre 2-3.
    * Son las que el monitoreo usa para mostrar un viaje largo: con el reparto normal, un viaje queda con
    * 1-3 paradas y la simulación en vivo dura menos de un minuto.
+   *
+   * Eran 5 cuando había 26 rutas; hoy hay ~37 y solo una de cada tres órdenes sale despachada, así que
+   * con 5 los viajes largos casi nunca llegaban al monitoreo — quedaban en una orden pendiente. Con 20
+   * el listado en vivo abre con viajes de 4 a 23 paradas en vez de una fila de viajes de 2. Sigue
+   * dejando ~17 rutas repartidas en 2-3 órdenes, que son las que le dan material a "unificar".
    */
-  const CARGAS_CONCENTRADAS = 5
+  const CARGAS_CONCENTRADAS = 20
   let concentradas = 0
 
   const candidatos = RUTAS.map((r) => {
@@ -1269,10 +1307,10 @@ export const ORDENES_TRANSPORTE: OrdenTransporte[] = (() => {
     // EXCEPCIÓN — las primeras `CARGAS_CONCENTRADAS` con tripulación NO se reparten. El monitoreo emite
     // un viaje por orden, así que repartir 6 paradas en 3 órdenes daba viajes de 2 paradas y la
     // simulación en vivo de esa carga se terminaba en menos de un minuto. Concentrándolas, esas cargas
-    // salen con 4-6 paradas y el seguimiento tiene algo que mostrar. No cambia ningún peso ni ninguna
+    // salen con 4-23 paradas y el seguimiento tiene algo que mostrar. No cambia ningún peso ni ninguna
     // asignación de parada: es el MISMO conjunto, agrupado distinto — así que el mapa del planificador
     // y las alertas de capacidad quedan igual. El costo es que esos camiones no sirven para ensayar
-    // "unificar"; los otros diez sí.
+    // "unificar"; las ~17 rutas restantes sí.
     // El `rand.int` se consume IGUAL cuando la carga se concentra, para no correr el PRNG: si se
     // saltara, todo el dataset de abajo (estados, incidencias, telemetría) cambiaría de golpe.
     const reparto = Math.min(elegidas.length, rand.int(2, 3))
