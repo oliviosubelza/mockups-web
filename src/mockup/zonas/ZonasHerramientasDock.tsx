@@ -30,6 +30,7 @@ export function ZonasHerramientasDock({
   snap,
   onSnap,
   snapDisponible,
+  motivoSinSnap,
   puedeDeshacer,
   onDeshacer,
   puedeRehacer,
@@ -45,6 +46,15 @@ export function ZonasHerramientasDock({
   snap: boolean
   onSnap: () => void
   snapDisponible: boolean
+  /**
+   * Por qué el imantado está apagado, cuando el motivo no es el de siempre ("no hay vecinas").
+   *
+   * Va como TEXTO y no como un `tipoZona` porque el dock no sabe —ni tiene por qué— que las zonas
+   * tienen tipos: es una caja de instrumentos sobre un contorno, y darle esa categoría lo obligaría a
+   * decidir con qué reglas se dibuja cada tipo, que es justamente lo que resuelve el workspace. Acá
+   * solo cambia una frase.
+   */
+  motivoSinSnap?: string
   puedeDeshacer: boolean
   onDeshacer: () => void
   puedeRehacer: boolean
@@ -67,7 +77,7 @@ export function ZonasHerramientasDock({
         onClick={onSnap}
         title={
           !snapDisponible
-            ? 'Imantado: no hay zonas vecinas en esta ciudad'
+            ? (motivoSinSnap ?? 'Imantado: no hay zonas vecinas en esta ciudad')
             : snap
               ? `Imantado a ${formatearMetros(METROS_HOLGURA)} del borde vecino — activado (Alt lo suspende)`
               : 'Imantado desactivado — los vértices caen donde clickeás'

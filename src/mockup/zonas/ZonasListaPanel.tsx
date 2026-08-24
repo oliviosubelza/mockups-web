@@ -18,25 +18,46 @@
 //
 // Lo que queda acá es una sola cosa y bien hecha: buscar, filtrar y elegir. La acción se hace donde está
 // la zona.
-import { AlertTriangle, MapPin, Search } from 'lucide-react'
+import { AlertTriangle, Ban, MapPin, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { TipoConflicto } from '../map/geo/holgura'
-import { CIUDAD_META, ciudadDeCityId, type CiudadId } from '../mock-data'
-import type { Zona } from '../zones-store'
+import { CIUDAD_META, ciudadDeCityId } from '../mock-data'
+import { describirVigencia } from '../restricciones/vigencia'
+import { TIPO_ZONA_META, type TipoZona, type Zona } from '../zones-store'
 
+/**
+ * SIN FILTRO POR CIUDAD, y no es que sobrara: molestaba.
+ *
+ * Eran cinco chips (Santa Cruz, Montero, Warnes, La Guardia, Cotoca) que llenaban la fila entera en 320
+ * px y empujaban los de ESTADO y TIPO a un segundo y tercer renglón, o directamente fuera de vista. Los
+ * dos que quedaron son los que se usan —"mostrame las restricciones", "mostrame las que saqué de
+ * circulación"— y ahora entran los tres grupos en un solo renglón.
+ *
+ * La ciudad no desapareció de la pantalla: sigue en su columna, en cada fila. Es un dato para leer, no
+ * una pregunta que alguien haga cincuenta veces por sesión — y para la vez que sí, el buscador de arriba
+ * está a un tab de distancia y el mapa ya te muestra cuáles caen dónde.
+ */
 export interface FiltrosZonas {
   texto: string
-  ciudad?: CiudadId
   estado?: 'activa' | 'inactiva'
+  tipo?: TipoZona
 }
 
 const ESTADOS: { label: string; value: 'activa' | 'inactiva' }[] = [
   { label: 'Activas', value: 'activa' },
   { label: 'Inactivas', value: 'inactiva' },
 ]
+
+/** Sin chip "Todas": deseleccionar el que está activo ES ver todas, igual que en estado. Un
+ *  tercer chip para el valor neutro agregaría un estado que ya se puede expresar y, peor, dejaría dos
+ *  formas de pedir lo mismo (tocar "Todas" o volver a tocar el que estaba). */
+const TIPOS = (Object.keys(TIPO_ZONA_META) as TipoZona[]).map((value) => ({
+  value,
+  label: TIPO_ZONA_META[value].plural,
+}))
 
 export function ZonasListaPanel({
   zonas,
@@ -85,23 +106,11 @@ export function ZonasListaPanel({
         </div>
 
         {/* Filtros como chips y no como <Select>: son pocos valores y alternarlos es un click en vez de
-            abrir un desplegable, elegir y que se cierre. */}
-        <div className="flex flex-wrap gap-1">
-          {Object.entries(CIUDAD_META).map(([id, meta]) => {
-            const activo = filtros.ciudad === id
-            return (
-              <Button
-                key={id}
-                variant={activo ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 px-2 text-[11px]"
-                onClick={() => onFiltros({ ...filtros, ciudad: activo ? undefined : (id as CiudadId) })}
-              >
-                {meta.label}
-              </Button>
-            )
-          })}
-          <span className="mx-0.5 my-auto h-4 w-px bg-border" aria-hidden />
+            abrir un desplegable, elegir y que se cierre.
+            UN SOLO RENGLÓN (`flex` sin `wrap`): con los cinco chips de ciudad afuera, estado y tipo entran
+            justos, y dejarlo envolviendo haría que la fila se partiera en dos por un par de píxeles y el
+            listado empezara más abajo sin motivo. */}
+        <div className="flex items-center gap-1">
           {ESTADOS.map(({ label, value }) => {
             const activo = filtros.estado === value
             return (
@@ -116,13 +125,37 @@ export function ZonasListaPanel({
               </Button>
             )
           })}
+          <span className="mx-0.5 my-auto h-4 w-px bg-border" aria-hidden />
+          {/* El filtro por tipo es lo que hace usable la lista con los dos tipos mezclados: "ver solo
+              las restricciones" es una pregunta entera —qué le está recortando el mapa al planificador—
+              y sin esto habría que leerlas una por una entre las de reparto, que siempre son más. */}
+          {TIPOS.map(({ label, value }) => {
+            const activo = filtros.tipo === value
+            return (
+              <Button
+                key={value}
+                variant={activo ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={() => onFiltros({ ...filtros, tipo: activo ? undefined : value })}
+              >
+                {label}
+              </Button>
+            )
+          })}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {zonas.length === 0 ? (
+          // DOS vacíos distintos, y desde que la pantalla arranca sin zonas de ejemplo el segundo es el
+          // primero que ve cualquiera. "Ninguna zona con estos filtros" delante de una lista que nunca
+          // tuvo nada manda a revisar unos chips que no están tocados; el mensaje tiene que decir que
+          // falta dibujar, no que falta destildar.
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            Ninguna zona con estos filtros.
+            {filtros.texto || filtros.estado || filtros.tipo
+              ? 'Ninguna zona con estos filtros.'
+              : 'Todavía no hay zonas. Dibujá la primera con «Nueva zona».'}
           </p>
         ) : (
           <ul className="space-y-0.5">
@@ -130,6 +163,7 @@ export function ZonasListaPanel({
               const sel = zona.id === seleccionadaId
               const conflicto = enConflicto?.get(zona.id)
               const ciudad = ciudadDeCityId(zona.cityId)
+              const restringida = zona.tipo === 'restringida'
               return (
                 <li key={zona.id}>
                   <button
@@ -140,36 +174,79 @@ export function ZonasListaPanel({
                     onClick={() => onSeleccionar(sel ? null : zona.id)}
                     onDoubleClick={() => !deshabilitado && onEditar(zona.id)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                      'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
                       sel ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/60',
                     )}
                   >
-                    {/* El ícono de la fila hace de indicador de estado: un conflicto de bordes lo
-                        reemplaza por el triángulo, en vez de sumar una segunda marca al renglón. En 320
-                        px de ancho cada elemento nuevo le come lugar al nombre, que es lo que se lee. */}
-                    {conflicto ? (
-                      <AlertTriangle
-                        size={13}
-                        className={cn(
-                          'shrink-0',
-                          conflicto === 'solapa' ? 'text-destructive' : 'text-amber-500',
-                        )}
-                        aria-label={conflicto === 'solapa' ? 'Se pisa con otra zona' : 'Borde demasiado cerca de otra zona'}
-                      />
-                    ) : (
-                      <MapPin
-                        size={13}
-                        className={cn('shrink-0', zona.isActive ? 'text-primary' : 'text-muted-foreground')}
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{zona.name}</span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {ciudad ? CIUDAD_META[ciudad].label : `city ${zona.cityId}`}
+                    <span className="flex w-full items-center gap-2">
+                      {/* El ícono de la fila hace de indicador de estado: un conflicto de bordes lo
+                          reemplaza por el triángulo, en vez de sumar una segunda marca al renglón. En 320
+                          px de ancho cada elemento nuevo le come lugar al nombre, que es lo que se lee. */}
+                      {conflicto ? (
+                        <AlertTriangle
+                          size={13}
+                          className={cn(
+                            'shrink-0',
+                            conflicto === 'solapa' ? 'text-destructive' : 'text-amber-500',
+                          )}
+                          aria-label={conflicto === 'solapa' ? 'Se pisa con otra zona' : 'Borde demasiado cerca de otra zona'}
+                        />
+                      ) : restringida ? (
+                        // Ícono propio para las restringidas, además del badge: es lo que se lee de un
+                        // barrido vertical por la columna de íconos, sin tener que llegar al final de
+                        // cada renglón. El `Ban` dice lo mismo que el rojo punteado del mapa.
+                        <Ban
+                          size={13}
+                          className={cn('shrink-0', zona.isActive ? 'text-destructive' : 'text-muted-foreground')}
+                        />
+                      ) : (
+                        <MapPin
+                          size={13}
+                          className={cn('shrink-0', zona.isActive ? 'text-primary' : 'text-muted-foreground')}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-medium">{zona.name}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {ciudad ? CIUDAD_META[ciudad].label : `city ${zona.cityId}`}
+                      </span>
+                      {/* Badge SOLO en las restringidas, no uno por tipo en cada fila. En 320 px de ancho
+                          una etiqueta "Reparto" en el 90% de los renglones le come lugar al nombre —que
+                          es lo único que se lee para encontrar una zona— para repetir lo que ya es el
+                          caso por defecto. Mismo criterio que la píldora "Inactiva", que tampoco tiene su
+                          opuesta "Activa". */}
+                      {restringida && (
+                        <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
+                          {TIPO_ZONA_META.restringida.label}
+                        </Badge>
+                      )}
+                      {!zona.isActive && (
+                        <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">
+                          Inactiva
+                        </Badge>
+                      )}
                     </span>
-                    {!zona.isActive && (
-                      <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">
-                        Inactiva
-                      </Badge>
+
+                    {/* CUÁNDO RIGE, en un segundo renglón y SOLO en las restringidas.
+                        No entra en el primero: ahí ya conviven el ícono, el nombre, la ciudad y hasta
+                        dos badges en 320 px, y meterle "Lu a Vi · 07:00–19:00" obligaría a truncar el
+                        NOMBRE, que es lo único que se usa para encontrar una zona en la lista. Un
+                        renglón entero para el resumen es más barato que eso y además lo deja completo.
+
+                        Solo en las restringidas por lo mismo que el badge: en una de reparto el campo
+                        no significa nada (ver `zones-store`), así que un "Permanente" en el 90% de las
+                        filas sería una columna de ruido que empuja la lista al doble de alto para
+                        repetir la misma palabra.
+
+                        SE MUESTRA TAMBIÉN CUANDO ES "Permanente", que es el caso más común. Es
+                        deliberado: la pregunta que contesta esta línea no es "¿tiene horario?" sino
+                        "¿esto recorta hoy?", y esconderla en el caso permanente dejaría al que audita
+                        sin saber si la zona rige siempre o si el dato no está cargado. Con dos
+                        restricciones vecinas, una permanente y otra de fin de semana, la diferencia es
+                        justo la que hay que ver. */}
+                    {restringida && (
+                      <span className="w-full pl-[21px] text-[11px] leading-tight text-muted-foreground">
+                        {describirVigencia(zona.vigencia)}
+                      </span>
                     )}
                   </button>
                 </li>

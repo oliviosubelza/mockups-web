@@ -50,10 +50,16 @@ export function CapasMapa({
   const setVerMercados = usePlannerStore((s) => s.setVerMercados)
   const verZonas = usePlannerStore((s) => s.verZonas)
   const setVerZonas = usePlannerStore((s) => s.setVerZonas)
+  const verZonasRestringidas = usePlannerStore((s) => s.verZonasRestringidas)
+  const setVerZonasRestringidas = usePlannerStore((s) => s.setVerZonasRestringidas)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const setVerEtiquetas = usePlannerStore((s) => s.setVerEtiquetas)
   const verTrazos = usePlannerStore((s) => s.verTrazos)
   const setVerTrazos = usePlannerStore((s) => s.setVerTrazos)
+  const resaltarRuta = usePlannerStore((s) => s.resaltarRuta)
+  const setResaltarRuta = usePlannerStore((s) => s.setResaltarRuta)
+  const zonasActivas = usePlannerStore((s) => s.zonasActivas)
+  const setZonasActivas = usePlannerStore((s) => s.setZonasActivas)
   const verDeposito = usePlannerStore((s) => s.verDeposito)
   const setVerDeposito = usePlannerStore((s) => s.setVerDeposito)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
@@ -92,10 +98,24 @@ export function CapasMapa({
             <Layers className="size-3.5" />
           )}
         </IconoConFlecha>
-        {/* Punto de "hay algo apagado". Sin él, un mapa al que le falta media información se ve igual
-            que uno completo y se pierde tiempo buscando paradas que están ocultas. Sigue arriba a la
-            derecha: la flecha ocupa el lado izquierdo, así que esa esquina quedó libre. */}
-        {(ocultas > 0 || !verTrazos || verMercados || verEtiquetas || verZonas) && (
+        {/* Punto de "el mapa no está como sale de fábrica". Sin él, un mapa al que le falta media
+            información se ve igual que uno completo y se pierde tiempo buscando paradas que están
+            ocultas. Sigue arriba a la derecha: la flecha ocupa el lado izquierdo, así que esa esquina
+            quedó libre.
+
+            CADA CAPA ENTRA POR EL LADO QUE ESCONDE ALGO, y ese lado depende de su default: las que
+            arrancan apagadas (`verMercados`, `verEtiquetas`, `verZonas`) avisan cuando están PRENDIDAS
+            —el mapa muestra de más y conviene saber de dónde salió ese dibujo—, y las que arrancan
+            prendidas (`verTrazos`, `verZonasRestringidas`) avisan cuando están APAGADAS. Por eso la
+            condición mezcla negadas y sin negar: no es una inconsistencia, es la misma regla leída
+            desde el default de cada una. Y `verZonasRestringidas` es el caso donde más importa: apagar
+            las restricciones deja un mapa en el que TODO parece planificable. */}
+        {(ocultas > 0 ||
+          !verTrazos ||
+          !verZonasRestringidas ||
+          verMercados ||
+          verEtiquetas ||
+          verZonas) && (
           <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" aria-hidden />
         )}
       </DropdownMenuTrigger>
@@ -115,16 +135,6 @@ export function CapasMapa({
             Ruta asignada
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
-
-        {/* El TAMAÑO del punto también codifica algo y eso no se adivina: sin decirlo, un punto grande
-            se lee como "importante" o "seleccionado". Vive acá —y no en una leyenda flotante sobre el
-            mapa— porque es una regla fija que se consulta una vez, no un dato que haya que tener a la
-            vista todo el tiempo tapando ciudad. */}
-        <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-0.5 text-[10px] text-muted-foreground">
-          <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
-          <span className="size-2.5 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
-          <span>El tamaño es el peso de la parada</span>
-        </div>
 
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup value={capa} onValueChange={(v) => setCapa(v as CapaBase)}>
@@ -151,6 +161,18 @@ export function CapasMapa({
             className="text-xs"
           >
             Zonas de reparto
+          </DropdownMenuCheckboxItem>
+          {/* Pegada a las de reparto porque salen del mismo dato maestro y se dibujan en la misma capa,
+              pero con interruptor PROPIO y encendido por defecto: no son una variante de las otras sino
+              lo contrario —territorio recortado, no territorio cubierto—, y esconderlas por omisión
+              dejaría planificar sobre una restricción que nadie vio. Ver `verZonasRestringidas` en el
+              store. */}
+          <DropdownMenuCheckboxItem
+            checked={verZonasRestringidas}
+            onCheckedChange={setVerZonasRestringidas}
+            className="text-xs"
+          >
+            Zonas restringidas
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={verMercados}
@@ -180,6 +202,39 @@ export function CapasMapa({
             className="text-xs"
           >
             Almacén de salida
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuGroup>
+
+        {/* ÉNFASIS, y no una capa más. Las de arriba contestan "¿esto se dibuja?"; esta contesta "¿cómo
+            se dibuja lo que ya está?". Mezclarlas haría creer que apagarla esconde rutas, y no: las
+            atenuadas siguen ahí. Por eso el grupo aparte.
+
+            Sale APAGADA: el mapa abre mostrando el reparto completo, con las siete rutas iguales.
+            Prenderla lo pasa a "estoy siguiendo esta". Ver `resaltarRuta` en el store. */}
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-xs">Énfasis</DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={resaltarRuta}
+            onCheckedChange={setResaltarRuta}
+            // Sin trazos no hay nada que atenuar, y sin optimizar no hay trazos: el ítem se apaga por
+            // la misma razón que "Trazos de ruta", no por una regla propia.
+            disabled={!optimizado || !verTrazos}
+            className="text-xs"
+          >
+            Resaltar la ruta elegida
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={zonasActivas}
+            onCheckedChange={setZonasActivas}
+            // Sin NINGUNA capa de zonas prendida no hay zona que traer al frente. Son las dos y no
+            // solo las de reparto: desde que las restringidas arrancan encendidas, el caso normal al
+            // abrir el mapa es tener zonas a la vista con `verZonas` apagado, y mirar sólo el
+            // `verZonas` dejaba el ítem gris con polígonos dibujados en pantalla.
+            disabled={!verZonas && !verZonasRestringidas}
+            className="text-xs"
+          >
+            Zonas en primer plano
           </DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
 

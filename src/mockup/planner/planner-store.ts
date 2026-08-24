@@ -95,11 +95,44 @@ interface PlannerState {
    * yendo de la suya?").
    */
   verZonas: boolean
+  /**
+   * Zonas RESTRINGIDAS dibujadas sobre el mapa.
+   *
+   * ENCENDIDA POR DEFECTO, al revés que `verZonas`, y la asimetría es deliberada: una restricción
+   * escondida por defecto es peor que una visible de más. Las de reparto son un particionamiento del
+   * territorio que el planificador ya se sabe —prenderlas contesta una pregunta puntual y no cambia lo
+   * que puede hacer—, mientras que una zona restringida CAMBIA lo que se puede planificar, y
+   * descubrirla después de armar el reparto es tarde: hay que rehacer el trabajo. Además son pocas, así
+   * que el costo de tenerlas prendidas siempre es unos pocos polígonos y no el mapa tapado que
+   * justifica el default apagado de las de reparto.
+   */
+  verZonasRestringidas: boolean
   verMercados: boolean
   /** Etiqueta permanente (cliente + ventana) bajo cada pin. Apagada: a 30 paradas se pisan entre sí. */
   verEtiquetas: boolean
   /** Trazos de las rutas. Apagarlos deja los pines con su color y su número, sin las líneas. */
   verTrazos: boolean
+  /**
+   * Resaltar la ruta que se está mirando: la suya queda sólida y el resto se atenúa.
+   *
+   * APAGADO POR DEFECTO, y eso es una decisión. El mapa arranca contestando "cómo quedó repartida la
+   * ciudad", y para esa pregunta las siete rutas valen lo mismo: bajarle la opacidad a seis porque el
+   * panel tiene una seleccionada es una jerarquía que el usuario no pidió. Quien sí está siguiendo UNA
+   * ruta lo prende y el mapa cambia de modo. Es la misma idea que el resto de las capas: el aspecto
+   * del mapa se elige, no viene impuesto.
+   */
+  resaltarRuta: boolean
+  /**
+   * Las zonas pasan de FONDO a PRIMER PLANO: azules como en la pantalla de Zonas, con hover, y el
+   * click resalta una.
+   *
+   * Apagado por defecto, y acá el defecto pesa más que en `resaltarRuta`: un polígono interactivo se
+   * come el click antes de que llegue al pin que está adentro, y en este mapa casi toda parada cae
+   * dentro de una zona. El fondo gris e inerte es lo correcto mientras el trabajo es repartir puntos;
+   * prenderlo es decir "ahora estoy mirando los perímetros". Aun prendido, las zonas solo reciben el
+   * mouse con la herramienta `pan` — con el lazo o el rectángulo el click es parte del gesto de marcar.
+   */
+  zonasActivas: boolean
   /** Polígono del almacén de salida. Se puede apagar cuando estorba en el centro del cuadro. */
   verDeposito: boolean
   /** Rutas ocultas del mapa (el "ojo" de la lista de rutas). Vacío = se ven todas. */
@@ -160,9 +193,12 @@ interface PlannerState {
   setColorPor: (c: ColorPor) => void
   setRutaFoco: (id: string | null) => void
   setVerZonas: (v: boolean) => void
+  setVerZonasRestringidas: (v: boolean) => void
   setVerMercados: (v: boolean) => void
   setVerEtiquetas: (v: boolean) => void
   setVerTrazos: (v: boolean) => void
+  setResaltarRuta: (v: boolean) => void
+  setZonasActivas: (v: boolean) => void
   setVerDeposito: (v: boolean) => void
   toggleRutaVisible: (rutaId: string) => void
   /** Prende o apaga TODAS de una: la lista vacía muestra todo. */
@@ -223,9 +259,12 @@ const INICIAL = {
   colorPor: 'canal' as ColorPor,
   rutaFoco: null as string | null,
   verZonas: false,
+  verZonasRestringidas: true,
   verMercados: false,
   verEtiquetas: false,
   verTrazos: true,
+  resaltarRuta: false,
+  zonasActivas: false,
   verDeposito: true,
   rutasOcultas: [] as string[],
   nombresRuta: {} as Record<string, string>,
@@ -270,9 +309,12 @@ export const usePlannerStore = create<PlannerState>((set) => ({
   setColorPor: (colorPor) => set({ colorPor }),
   setRutaFoco: (rutaFoco) => set({ rutaFoco }),
   setVerZonas: (verZonas) => set({ verZonas }),
+  setVerZonasRestringidas: (verZonasRestringidas) => set({ verZonasRestringidas }),
   setVerMercados: (verMercados) => set({ verMercados }),
   setVerEtiquetas: (verEtiquetas) => set({ verEtiquetas }),
   setVerTrazos: (verTrazos) => set({ verTrazos }),
+  setResaltarRuta: (resaltarRuta) => set({ resaltarRuta }),
+  setZonasActivas: (zonasActivas) => set({ zonasActivas }),
   setVerDeposito: (verDeposito) => set({ verDeposito }),
   toggleRutaVisible: (rutaId) =>
     set((s) => ({

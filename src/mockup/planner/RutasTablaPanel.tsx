@@ -603,9 +603,12 @@ export function RutasTablaPanel({
           real que tenía —cuánto quedó afuera— y sigue haciendo foco en el grupo. */}
       {sinAsignar.length > 0 && (
         <Button
-          variant="outline"
+          // SÓLIDO y no `outline`. Es el único aviso de la barra —lo que quedó afuera del plan— y en
+          // outline competía de igual a igual con los dos controles neutros que tiene al lado: mismo
+          // peso visual, apenas otro tono. Relleno, se lee de un vistazo sin leerlo.
+          variant="default"
           size="sm"
-          className="h-6 shrink-0 gap-1 border-amber-500/50 px-1.5 text-[11px] text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+          className="h-6 shrink-0 gap-1 bg-amber-500 px-1.5 text-[11px] text-white hover:bg-amber-600 dark:bg-amber-500 dark:text-white dark:hover:bg-amber-600"
           title="Paradas que no entraron en ningún camión del plan"
           onClick={() => setRutaFoco(SIN_ASIGNAR)}
         >
