@@ -258,9 +258,9 @@ export function HistorialOrdenesTransporteView() {
     new Intl.NumberFormat('es-BO', { style: 'currency', currency: 'BOB' }).format(n)
 
   const handleExportExcel = () => {
-    exportarHistorialAExcel(filteredOrders, 'Historial_Ordenes_Transporte.csv')
-    toast.success(`Exportando ${filteredOrders.length} órdenes de transporte a Excel`, {
-      description: 'Archivo CSV/Excel con resumen general y detalle de paradas.',
+    exportarHistorialAExcel(filteredOrders, 'Historial_Ordenes_Transporte_Venado.xls')
+    toast.success(`Exportando ${filteredOrders.length} órdenes a Libro Excel Multi-Hoja (.xls)`, {
+      description: 'Libro con 4 pestañas: Resumen OTs, Paradas, Libro de Cobranzas y Auditoría.',
     })
   }
 

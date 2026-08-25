@@ -1506,7 +1506,7 @@ export function HistorialRevisionesView() {
                       size="sm"
                       onClick={() => {
                         exportarOrdenRevisionIndividualAExcel(selectedOrder)
-                        toast.success(`Acta de ${selectedOrder.orderCode} descargada en Excel (.csv)`)
+                        toast.success(`Acta de ${selectedOrder.orderCode} descargada en Libro Excel (.xls)`)
                       }}
                       className="h-8 text-xs gap-1.5 cursor-pointer bg-white text-slate-700 hover:bg-slate-50 border-slate-200 shadow-xs dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
                       title="Exportar conciliación de esta orden a CSV/Excel"
@@ -2316,7 +2316,7 @@ export function HistorialRevisionesView() {
                         size="sm"
                         onClick={() => {
                           exportarOrdenRevisionIndividualAExcel(selectedOrder)
-                          toast.success(`Acta de ${selectedOrder.orderCode} descargada en Excel (.csv)`)
+                          toast.success(`Acta de ${selectedOrder.orderCode} descargada en Libro Excel (.xls)`)
                         }}
                         className="h-8 text-xs gap-1.5 cursor-pointer"
                         title="Descargar matriz en formato CSV/Excel"

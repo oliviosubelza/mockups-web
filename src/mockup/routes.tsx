@@ -30,6 +30,7 @@ import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { HistorialRevisionesView } from './views/HistorialRevisionesView'
+import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
 import {
   DevolucionAprobarScreen,
   DevolucionDetalleScreen,
@@ -102,6 +103,22 @@ export const MODULOS = {
 // ── Pantallas (wrappers de vistas existentes con sus props por defecto) ──────────────────────────
 // Las vistas del flujo toman props (`state`, `initialFase`); las rutas necesitan componentes sin
 // props, así que se envuelven acá. El botón "Nueva planificación" de la lista entra al flujo.
+
+function MonitoreoEHistorialScreen() {
+  return <MonitoreoEHistorialOTView />
+}
+
+function MonitoreoEnVivoScreen() {
+  return <MonitoreoEHistorialOTView initialTab="LIVE" />
+}
+
+function HistorialOrdenesScreen() {
+  return <MonitoreoEHistorialOTView initialTab="HISTORY" />
+}
+
+function HistorialRevisionesScreen() {
+  return <MonitoreoEHistorialOTView initialTab="AUDIT" />
+}
 
 function PlanificacionesScreen() {
   return (
@@ -327,12 +344,21 @@ export const routes: MockRoute[] = [
     showInSidebar: false,
   },
   {
+    id: 'monitoreo-historial',
+    path: '/monitoreo-historial',
+    label: 'Monitoreo e Historial de OT',
+    icon: Radar,
+    component: MonitoreoEHistorialScreen,
+    order: 0,
+  },
+  {
     id: 'monitoreo',
     path: '/monitoreo',
     label: 'Monitoreo',
     icon: Radar,
-    component: MonitoreoView,
+    component: MonitoreoEnVivoScreen,
     order: 0,
+    showInSidebar: false,
   },
   {
     // Seguimiento arrancando desde un pedido comercial. Resuelve la orden y enfoca la parada que lo
@@ -447,25 +473,24 @@ export const routes: MockRoute[] = [
     order: 3,
   },
   {
-    // Módulo Reportes e Historiales: Historial de órdenes de transporte
+    // Módulo Unificado: Historial de órdenes de transporte (redirecciona a Tab 2 del Hub)
     id: 'historial-ordenes-transporte',
     path: '/reportes/historial-ordenes-transporte',
     label: 'Historial de órdenes de transporte',
     icon: FileClock,
-    component: HistorialOrdenesTransporteView,
+    component: HistorialOrdenesScreen,
     order: 4,
-    group: MODULOS.reportesEHistoriales,
-    separatorBefore: true,
+    showInSidebar: false,
   },
   {
-    // Módulo Reportes e Historiales: Historial de revisiones y conteos
+    // Módulo Unificado: Historial de revisiones y conteos (redirecciona a Tab 3 del Hub)
     id: 'historial-revisiones',
     path: '/reportes/historial-revisiones',
     label: 'Historial de revisiones',
     icon: ClipboardCheck,
-    component: HistorialRevisionesView,
+    component: HistorialRevisionesScreen,
     order: 5,
-    group: MODULOS.reportesEHistoriales,
+    showInSidebar: false,
   },
   {
     // Detalle de orden de transporte individual (tiempos en parada, productos, cobros, POD)
