@@ -356,6 +356,14 @@
         dispatch_plan_id BIGINT,
         distributor_id BIGINT NOT NULL,
         route_id BIGINT,
+        truck_id BIGINT NULL, -- FK directa al camión asignado para tracking y consultas rápidas sin JOINs
+
+        driver_employee_id BIGINT NULL, -- ID del chofer titular del viaje
+        name_driver_employee VARCHAR(100) NULL, -- Nombre congelado del chofer asignado
+        helper_employee_id BIGINT NULL, -- ID del ayudante de reparto asignado
+        name_helper_employee VARCHAR(100) NULL, -- Nombre del ayudante de reparto
+        supervisor_employee_id BIGINT NULL, -- ID del supervisor de rampa/despacho
+        name_supervisor_employee VARCHAR(100) NULL, -- Nombre del supervisor responsable
 
         code BIGINT, -- Código numérico de OT (ej. 1000456)
         status VARCHAR(50), -- Estado operativo (CREATED, ENROUTE, CHECKED_OK, DISCREPANCY)
@@ -367,6 +375,11 @@
         assigned_weight_kg DECIMAL(12,2) DEFAULT 0.00,
         assigned_volume_m3 DECIMAL(12,2) DEFAULT 0.00,
 
+        total_stops_count INTEGER DEFAULT 0, -- Total de paradas planificadas en la OT
+        completed_stops_count INTEGER DEFAULT 0, -- Total de paradas entregadas exitosamente
+        total_revenue_expected DECIMAL(12, 2) DEFAULT 0.00, -- Monto total proyectado a cobrar en ruta (Bs)
+        total_revenue_collected DECIMAL(12, 2) DEFAULT 0.00, -- Monto real recaudado en calle (Bs)
+
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -375,7 +388,8 @@
 
         CONSTRAINT fk_transport_orders_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id),
         CONSTRAINT fk_transport_orders_plan FOREIGN KEY (dispatch_plan_id) REFERENCES dispatch_plans(id),
-        CONSTRAINT fk_transport_orders_route FOREIGN KEY (route_id) REFERENCES routes(id)
+        CONSTRAINT fk_transport_orders_route FOREIGN KEY (route_id) REFERENCES routes(id),
+        CONSTRAINT fk_transport_orders_truck FOREIGN KEY (truck_id) REFERENCES trucks(id)
     );
 
     CREATE TABLE transport_order_histories (
@@ -442,7 +456,10 @@
         expected_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Cantidad oficial esperada según los pedidos de la OT (Ej: 100.00)
         loaded_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,            -- Cantidad física final validada en el camión (Ej: 95.00)
         variance_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Diferencia acumulada final: loaded_qty - expected_qty (Ej: -5.00)
+        damaged_qty DECIMAL(12, 2) DEFAULT 0.00,                     -- Cantidad de merma física descartada en rampa
+        returned_warehouse_qty DECIMAL(12, 2) DEFAULT 0.00,          -- Cantidad devuelta a bodega por sobrepasar capacidad de carga
 
+        temperature_celsius DECIMAL(4, 1) NULL,                      -- Temperatura medida en rampa para productos de cadena de frío (ej: 4.2 °C)
         status VARCHAR(50) DEFAULT 'PENDING',                        -- Estado consolidado ('PENDING', 'MATCH', 'MISMATCH', 'APPROVED')
         verified_supervisor_id BIGINT NULL,                          -- FK a usuarios/empleados. ID del supervisor que aprobó el descuadre (Ej: 98)
 
@@ -464,10 +481,15 @@
         transport_order_id BIGINT NOT NULL,                          -- FK a transport_orders. OT auditada/contada en esta sesión (Ej: 10045)
 
         session_type VARCHAR(50) NOT NULL,                           -- Origen del conteo: 'DRIVER_INITIAL', 'SUPERVISOR_DISCREPANCY', 'SUPERVISOR_SEMAPHORE'
+        review_scope VARCHAR(20) DEFAULT 'FULL',                     -- Alcance: 'PARTIAL' (solo discrepancias), 'FULL' (todos los ítems), 'NONE'
         status VARCHAR(30) NOT NULL DEFAULT 'PENDING',               -- Estado del conteo: 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'
 
         executor_id BIGINT NOT NULL,                                 -- ID del usuario que ejecuta el conteo físicamente (Ej: 1024)
         executor_role VARCHAR(50) NOT NULL,                          -- Rol del ejecutor para validación de permisos en API: 'DRIVER', 'SUPERVISOR'
+
+        duration_minutes INTEGER NULL,                               -- Duración en minutos del conteo en rampa (para cálculo de Lead Time)
+        signature_svg TEXT NULL,                                     -- Firma caligráfica digital vectorial SVG capturada en el móvil
+        device_metadata JSONB NULL,                                  -- Metadatos de auditoría móvil (ej: {"model": "Samsung A54", "battery": 85})
 
         started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,              -- Fecha/Hora exacta en que se abrió la pantalla de conteo en la app
         completed_at TIMESTAMP NULL,                                 -- Fecha/Hora exacta en que se guardó y envió el conteo
@@ -492,9 +514,13 @@
 
         expected_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Foto congelada del valor oficial al iniciar la sesión (Ej: 100.00)
         counted_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,           -- Cantidad física ingresada por el usuario en esta sesión (Ej: 95.00)
+        counted_boxes DECIMAL(12, 2) DEFAULT 0.00,                  -- Cajas completas digitadas por el usuario en pantalla (ej: 7 cajas)
+        counted_loose_units DECIMAL(12, 2) DEFAULT 0.00,            -- Unidades sueltas digitadas por el usuario (ej: 9 unidades)
         variance_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Diferencia en este intento: counted_qty - expected_qty (Ej: -5.00)
         equivalence_box_unit DECIMAL(12, 2) NULL,                    -- Factor de conversión del SKU (Ej: 12.00 unidades por caja)
 
+        is_damaged BOOLEAN DEFAULT FALSE,                            -- Flag que marca si el descuadre fue por producto dañado en rampa
+        damage_reason_code VARCHAR(50) NULL,                         -- Motivo de la merma: 'BOTELLA_ROTA', 'EMPAQUE_ABIERTO', etc.
         item_status VARCHAR(30) DEFAULT 'PENDING',                   -- Estado del ítem en este intento: 'MATCH', 'MISMATCH', 'SKIPPED'
         observation TEXT,                                            -- Comentario puntual del producto (Ej: "Faltaban 5 botellas rotas")
 
@@ -577,9 +603,11 @@
         status VARCHAR(50) NOT NULL, -- Estado (PENDING, ENROUTE, ARRIVED, DELIVERED, REJECTED)
         arrival_latitude DECIMAL(12, 6), -- Coordenada GPS de llegada al cliente
         arrival_longitude DECIMAL(12, 6),
-    --     verification_pin VARCHAR(10) NULL, -- Código OTP opcional de validación
         arrived_at TIMESTAMP, -- Fecha/Hora exacta de llegada
         delivered_at TIMESTAMP NULL, -- Fecha/Hora de finalización y firma
+        departure_at TIMESTAMP NULL, -- Fecha/Hora de salida hacia la siguiente parada
+        service_time_seconds INTEGER NULL, -- Tiempo de atención efectivo en segundos
+        travel_time_seconds INTEGER NULL, -- Tiempo de viaje desde la parada anterior en segundos
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -615,13 +643,15 @@
 
         payment_method VARCHAR(20) NOT NULL,   -- 'CASH', 'QR', 'TRANSFER', 'CHECK'
         reference_number VARCHAR(100),         -- Absorbe el id_qr, nro de recibo, nro de operación o cheque
+        bank_name VARCHAR(100) NULL,           -- Banco emisor para cheques y transferencias
+        authorization_code VARCHAR(100) NULL,  -- Código de autorización/aprobación de la transacción
         amount DECIMAL(12, 2) NOT NULL,        -- Monto exacto cobrado
         currency VARCHAR(10) DEFAULT 'BOB',
         status VARCHAR(30) DEFAULT 'PENDING',  -- PENDING, COMPLETED, EXPIRED, CANCELLED
 
-    --     proof_image_url TEXT,                  -- URL de AWS S3 (Evidencia de cheque o comprobante)
-        metadata JSONB,                        -- Datos extra (ej. {"bank_name": "BNB", "account": "1234"})
-        notes VARCHAR(100),                            -- Glosa o comentario del pago ingresado por el chofer
+        cash_breakdown JSONB NULL,             -- Arqueo de efectivo rápido (ej. {"b100": 5, "b50": 2})
+        metadata JSONB,                        -- Datos extra
+        notes VARCHAR(100),                    -- Glosa o comentario del pago ingresado por el chofer
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -631,7 +661,7 @@
 
 
         CONSTRAINT fk_delivery_payment_order
-            FOREIGN KEY (delivery_order_sale_id) --- REFERENCIA A LA ORDEN DIVIDIDA POR EMPRESA
+            FOREIGN KEY (delivery_order_sale_id)
             REFERENCES delivery_order_sales(id)
             ON DELETE CASCADE
     );

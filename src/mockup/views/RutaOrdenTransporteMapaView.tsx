@@ -423,7 +423,7 @@ export function RutaOrdenTransporteMapaView({
               </div>
 
               <div className="pl-8 text-[11px] text-muted-foreground flex items-center justify-between">
-                <span>Odómetro: <b className="font-mono text-foreground">{CD_CENTRAL.initialOdometerKm.toLocaleString()} km</b></span>
+                {/* <span>Odómetro: <b className="font-mono text-foreground">{CD_CENTRAL.initialOdometerKm.toLocaleString()} km</b></span> */}
                 <span>Despacho: <b className="text-foreground">{CD_CENTRAL.dispatchedWeightKg} kg</b></span>
               </div>
             </div>
@@ -558,7 +558,7 @@ export function RutaOrdenTransporteMapaView({
               </div>
 
               <div className="pl-8 text-[11px] text-muted-foreground flex items-center justify-between">
-                <span>Odómetro final: <b className="font-mono text-foreground">{CD_CENTRAL.finalOdometerKm.toLocaleString()} km</b></span>
+                {/* <span>Odómetro final: <b className="font-mono text-foreground">{CD_CENTRAL.finalOdometerKm.toLocaleString()} km</b></span> */}
                 <span className="text-emerald-600 font-semibold flex items-center gap-1">
                   <CheckCircle2 size={11} /> Arqueo Validado
                 </span>
@@ -740,14 +740,14 @@ export function RutaOrdenTransporteMapaView({
                   <span className="text-[10px] text-muted-foreground block">Retorno a Base:</span>
                   <span className="font-bold text-foreground">{CD_CENTRAL.returnTime}</span>
                 </div>
-                <div>
+                {/* <div>
                   <span className="text-[10px] text-muted-foreground block">Odómetro Inicial:</span>
                   <span className="font-mono text-xs">{CD_CENTRAL.initialOdometerKm.toLocaleString()} km</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground block">Odómetro Final:</span>
                   <span className="font-mono text-xs">{CD_CENTRAL.finalOdometerKm.toLocaleString()} km</span>
-                </div>
+                </div> */}
               </div>
             </div>
           )}

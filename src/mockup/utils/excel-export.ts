@@ -1,118 +1,329 @@
 import type { OrdenTransporteHistorial } from '../historial-orders-data'
+import type { OrdenRevisionHistorial } from '../historial-revisiones-data'
 
 /**
- * Genera y descarga un archivo CSV estructurado y formateado con BOM UTF-8
- * totalmente compatible con Microsoft Excel, Google Sheets y LibreOffice.
+ * Escapa caracteres especiales XML para garantizar archivos válidos en Microsoft Excel.
+ */
+function xmlEscape(val: unknown): string {
+  if (val == null) return ''
+  return String(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+/**
+ * Generador de celdas tipadas para el estándar Microsoft Excel XML Spreadsheet 2003.
+ */
+function cellString(val: unknown, style = 'CellText'): string {
+  return `<Cell ss:StyleID="${style}"><Data ss:Type="String">${xmlEscape(val)}</Data></Cell>`
+}
+
+function cellNumber(val: number | null | undefined, style = 'CellNumber'): string {
+  if (val == null || isNaN(val)) {
+    return `<Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>`
+  }
+  return `<Cell ss:StyleID="${style}"><Data ss:Type="Number">${val}</Data></Cell>`
+}
+
+function cellCurrency(val: number | null | undefined): string {
+  return cellNumber(val, 'CellCurrency')
+}
+
+function cellPercent(val: number | null | undefined): string {
+  if (val == null || isNaN(val)) {
+    return `<Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>`
+  }
+  // En Excel los porcentajes van en base decimal (ej: 0.95 = 95%)
+  const decimalVal = val > 1 ? val / 100 : val
+  return `<Cell ss:StyleID="CellPercent"><Data ss:Type="Number">${decimalVal}</Data></Cell>`
+}
+
+function cellHeader(val: string, style = 'HeaderNavy'): string {
+  return `<Cell ss:StyleID="${style}"><Data ss:Type="String">${xmlEscape(val)}</Data></Cell>`
+}
+
+/**
+ * Plantilla base con estilos corporativos para Libros de Trabajo de Microsoft Excel (.xls).
+ */
+function getWorkbookTemplate(worksheetsXml: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>Grupo Venado - Sistema de Despacho y Monitoreo</Author>
+  <Created>${new Date().toISOString()}</Created>
+  <Company>Grupo Venado</Company>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="10" ss:Color="#1E293B"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+
+  <!-- Encabezados de Títulos -->
+  <Style ss:ID="ReportTitle">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#0F172A"/>
+   <Alignment ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="ReportSubtitle">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#64748B"/>
+   <Alignment ss:Vertical="Center"/>
+  </Style>
+
+  <!-- Cabeceras de Tablas con Colores Corporativos -->
+  <Style ss:ID="HeaderNavy">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#0F172A"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="HeaderBlue">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#1E40AF" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#172554"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#3B82F6"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#3B82F6"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#3B82F6"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="HeaderGreen">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#065F46" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#064E3B"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="HeaderAmber">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#92400E" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#78350F"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F59E0B"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F59E0B"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#F59E0B"/>
+   </Borders>
+  </Style>
+
+  <!-- Formatos de Datos de Celda -->
+  <Style ss:ID="CellText">
+   <Alignment ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellBold">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#0F172A"/>
+   <Alignment ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellCenter">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <NumberFormat ss:Format="#,##0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellInteger">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <NumberFormat ss:Format="#,##0"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellCurrency">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <NumberFormat ss:Format="&quot;Bs &quot;#,##0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="CellPercent">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <NumberFormat ss:Format="0.0%"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+ </Styles>
+ ${worksheetsXml}
+</Workbook>`
+}
+
+/**
+ * Descarga en el navegador el archivo generado.
+ */
+function downloadWorkbookXml(workbookXml: string, filename: string) {
+  const finalFilename = filename.endsWith('.xls') || filename.endsWith('.xml') ? filename : `${filename}.xls`
+  const blob = new Blob([workbookXml], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', finalFilename)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. EXPORTACIÓN GENERAL DE HISTORIAL DE ÓRDENES (4 HOJAS SEPARADAS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Exporta el reporte general de historial a un Libro Excel con 4 pestañas independientes:
+ *  - Hoja 1: Resumen OTs (Consolidado de viajes)
+ *  - Hoja 2: Detalle Paradas (Punto por punto y tiempos)
+ *  - Hoja 3: Libro de Cobranzas (Arqueo financiero por comprobante)
+ *  - Hoja 4: Auditoría y Revisiones (Mermas y cuadre de rampa)
  */
 export function exportarHistorialAExcel(
   ordenes: OrdenTransporteHistorial[],
-  nombreArchivo = 'Historial_Ordenes_Transporte.csv'
+  nombreArchivo = 'Reporte_General_OT_GrupoVenado.xls'
 ) {
-  const lineas: string[] = []
-
-  // Metadatos y encabezado del reporte
-  lineas.push('REPORTE GENERAL DE HISTORIAL DE ÓRDENES DE TRANSPORTE')
-  lineas.push(`Fecha de exportación:;${new Date().toLocaleString('es-BO')}`)
-  lineas.push(`Total de Órdenes exportadas:;${ordenes.length}`)
-  const totalRecaudado = ordenes.reduce((acc, o) => acc + o.kpis.totalCollected, 0)
-  const totalKm = ordenes.reduce((acc, o) => acc + o.totalKm, 0)
-  lineas.push(`Monto Total Recaudado (BOB):;${totalRecaudado.toFixed(2)} Bs`)
-  lineas.push(`Distancia Total Recorrida (Km):;${totalKm.toFixed(1)} km`)
-  lineas.push('')
-
-  // ── SECCIÓN 1: RESUMEN CONSOLIDADO POR ORDEN DE TRANSPORTE ──
-  lineas.push('1. RESUMEN DE ÓRDENES DE TRANSPORTE (CONSOLIDADO)')
-  const encabezadosOT = [
-    'Código OT',
-    'Fecha',
-    'Hora Salida',
-    'Hora Cierre',
-    'Distribuidora',
-    'Placa Camión',
-    'Código Camión',
-    'Tipo Camión',
-    'Refrigerado',
-    'Chofer',
-    'Teléfono Chofer',
-    'Ayudante',
-    'Paradas Totales',
-    'Paradas Exitosas',
-    '% Efectividad',
-    'Peso Asignado (Kg)',
-    'Volumen Asignado (M3)',
-    'Km Recorridos',
-    'Duración Total (Min)',
-    'Total Cobrado (Bs)',
-    'Cobrado Efectivo (Bs)',
-    'Cobrado QR (Bs)',
-    'Cobrado Transferencia (Bs)',
-    'Cobrado Cheque (Bs)',
-    'Estado Operativo',
+  // ── HOJA 1: RESUMEN DE ÓRDENES ──
+  const headersSheet1 = [
+    'Código OT', 'Fecha', 'Hora Salida', 'Hora Cierre', 'Distribuidora',
+    'Placa Camión', 'Código Camión', 'Tipo Camión', 'Refrigerado',
+    'Chofer', 'Teléfono', 'Ayudante',
+    'Paradas Totales', 'Paradas Exitosas', '% Efectividad',
+    'Peso (Kg)', 'Volumen (M3)', 'Km Recorridos', 'Duración (Min)',
+    'Total Cobrado (Bs)', 'Efectivo (Bs)', 'QR (Bs)', 'Transferencia (Bs)', 'Cheque (Bs)',
+    'Estado Operativo'
   ]
-  lineas.push(encabezadosOT.join(';'))
+
+  let rowsSheet1 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet1.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">REPORTE CONSOLIDADO DE ÓRDENES DE TRANSPORTE - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet1.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Generado el ${new Date().toLocaleString('es-BO')} • Total de Viajes: ${ordenes.length}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet1.map((h) => cellHeader(h, 'HeaderNavy')).join('\n    ')}
+   </Row>`
 
   for (const ot of ordenes) {
-    const fila = [
-      `"${ot.codeFormatted}"`,
-      `"${ot.dateFormatted}"`,
-      `"${ot.departureDate.split('T')[1].slice(0, 5)}"`,
-      `"${ot.completedDate.split('T')[1].slice(0, 5)}"`,
-      `"${ot.distributorName}"`,
-      `"${ot.truck.plate}"`,
-      `"${ot.truck.code}"`,
-      `"${ot.truck.truckType}"`,
-      ot.truck.isRefrigerated ? '"SÍ"' : '"NO"',
-      `"${ot.driver.name}"`,
-      `"${ot.driver.phone}"`,
-      `"${ot.helper.name}"`,
-      ot.kpis.totalStops,
-      ot.kpis.completedStops,
-      `"${ot.kpis.successRate}%"`,
-      ot.assignedWeightKg.toFixed(2),
-      ot.assignedVolumeM3.toFixed(2),
-      ot.totalKm.toFixed(1),
-      ot.kpis.totalDurationMinutes,
-      ot.kpis.totalCollected.toFixed(2),
-      ot.kpis.collectedCash.toFixed(2),
-      ot.kpis.collectedQr.toFixed(2),
-      ot.kpis.collectedTransfer.toFixed(2),
-      (ot.kpis.collectedCheck || 0).toFixed(2),
-      `"${ot.statusLabel}"`,
-    ]
-    lineas.push(fila.join(';'))
+    rowsSheet1 += `
+   <Row ss:Height="19">
+    ${cellString(ot.codeFormatted, 'CellBold')}
+    ${cellString(ot.dateFormatted, 'CellCenter')}
+    ${cellString(ot.departureDate.split('T')[1]?.slice(0, 5) || '05:30', 'CellCenter')}
+    ${cellString(ot.completedDate.split('T')[1]?.slice(0, 5) || '14:30', 'CellCenter')}
+    ${cellString(ot.distributorName)}
+    ${cellString(ot.truck.plate, 'CellBold')}
+    ${cellString(ot.truck.code, 'CellCenter')}
+    ${cellString(ot.truck.truckType)}
+    ${cellString(ot.truck.isRefrigerated ? 'SÍ' : 'NO', 'CellCenter')}
+    ${cellString(ot.driver.name)}
+    ${cellString(ot.driver.phone, 'CellCenter')}
+    ${cellString(ot.helper.name)}
+    ${cellNumber(ot.kpis.totalStops, 'CellInteger')}
+    ${cellNumber(ot.kpis.completedStops, 'CellInteger')}
+    ${cellPercent(ot.kpis.successRate)}
+    ${cellNumber(ot.assignedWeightKg)}
+    ${cellNumber(ot.assignedVolumeM3)}
+    ${cellNumber(ot.totalKm)}
+    ${cellNumber(ot.kpis.totalDurationMinutes, 'CellInteger')}
+    ${cellCurrency(ot.kpis.totalCollected)}
+    ${cellCurrency(ot.kpis.collectedCash)}
+    ${cellCurrency(ot.kpis.collectedQr)}
+    ${cellCurrency(ot.kpis.collectedTransfer)}
+    ${cellCurrency(ot.kpis.collectedCheck || 0)}
+    ${cellString(ot.statusLabel, 'CellCenter')}
+   </Row>`
   }
 
-  lineas.push('')
-  lineas.push('')
-
-  // ── SECCIÓN 2: DETALLE PUNTO POR PUNTO (PARADAS, TIEMPOS, PRODUCTOS Y DESGLOSE DE COBRANZAS) ──
-  lineas.push('2. DETALLE DE PARADAS Y ENTREGAS (PUNTO POR PUNTO CON DESGLOSE DE MÉTODOS DE PAGO)')
-  const encabezadosParadas = [
-    'Código OT',
-    'Secuencia',
-    'Cliente',
-    'Código Cliente',
-    'Dirección',
-    'Zona',
-    'Canal de Venta',
-    'Nro Nota Remisión',
-    'Hora Llegada',
-    'Hora Salida',
-    'Tiempo Traslado',
-    'Tiempo Atención',
-    'Resultado Entrega',
-    'Total Cobrado Parada (Bs)',
-    'Cobro Efectivo (Bs)',
-    'Cobro QR (Bs)',
-    'Cobro Transferencia (Bs)',
-    'Cobro Cheque (Bs)',
-    'Modalidad de Cobro',
-    'Desglose y Nros de Comprobante / Referencia',
-    'Receptor',
-    'CI / Documento',
-    'Incidencias / Motivo Rechazo',
+  // ── HOJA 2: DETALLE DE PARADAS Y ENTREGAS ──
+  const headersSheet2 = [
+    'Código OT', 'Secuencia', 'Cliente', 'Código Cliente', 'Dirección',
+    'Zona', 'Canal de Venta', 'Nro Nota Remisión',
+    'Hora Llegada', 'Hora Salida', 'Tiempo Traslado', 'Tiempo Atención',
+    'Resultado Entrega', 'Total Cobrado (Bs)',
+    'Efectivo (Bs)', 'QR (Bs)', 'Transferencia (Bs)', 'Cheque (Bs)',
+    'Modalidad de Cobro', 'Receptor', 'CI / Documento', 'Incidencias / Motivo'
   ]
-  lineas.push(encabezadosParadas.join(';'))
+
+  let rowsSheet2 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">DETALLE DE PARADAS, ENTREGAS Y TIEMPOS EN RUTA</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Registro cronológico parada por parada con evidencia de entrega y tiempos de atención</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet2.map((h) => cellHeader(h, 'HeaderBlue')).join('\n    ')}
+   </Row>`
 
   for (const ot of ordenes) {
     for (const p of ot.paradas) {
@@ -122,320 +333,608 @@ export function exportarHistorialAExcel(
       const montoTransfer = p.payments.filter((pay) => pay.paymentMethod === 'TRANSFER').reduce((acc, pay) => acc + pay.amount, 0)
       const montoCheque = p.payments.filter((pay) => pay.paymentMethod === 'CHECK').reduce((acc, pay) => acc + pay.amount, 0)
 
-      // Modalidad de cobro (Pago Único vs Pago Mixto)
       const numMetodos = p.payments.length
-      const modalidadCobro =
-        numMetodos === 0
-          ? 'SIN COBRO (Crédito / Rechazo)'
-          : numMetodos === 1
-          ? `PAGO ÚNICO (${p.payments[0].paymentMethodLabel})`
-          : `PAGO MIXTO (${numMetodos} métodos)`
+      const modalidadCobro = numMetodos === 0 ? 'Sin Cobro (Crédito)' : numMetodos === 1 ? `Pago Único (${p.payments[0].paymentMethodLabel})` : `Pago Mixto (${numMetodos} métodos)`
+      const incidenciaTexto = p.incident ? `[${p.incident.code}] ${p.incident.description}` : 'Conforme'
 
-      // Cadena detallada de desglose para auditoría contable
-      const desgloseTexto =
-        p.payments
-          .map((pay) => `${pay.paymentMethodLabel}: ${pay.amount.toFixed(2)} Bs (Ref: ${pay.referenceNumber})`)
-          .join(' | ') || 'N/A'
-
-      const motivosRechazo = p.items.filter((it) => it.rejectionReason).map((it) => `${it.productName}: ${it.rejectionReason}`).join(' | ')
-      const incidenciaTexto = p.incident ? `[${p.incident.code}] ${p.incident.description}` : (motivosRechazo || 'Ninguna')
-
-      const filaParada = [
-        `"${ot.codeFormatted}"`,
-        p.sequence,
-        `"${p.customerName}"`,
-        `"${p.customerCode}"`,
-        `"${p.address}"`,
-        `"${p.zoneName}"`,
-        `"${p.saleChannel}"`,
-        `"${p.deliveryNoteNumber}"`,
-        `"${p.arrivedAt}"`,
-        `"${p.deliveredAt}"`,
-        `"${p.travelTimeFromPrevious}"`,
-        `"${p.serviceDuration}"`,
-        `"${p.resultCode}"`,
-        montoCobrado.toFixed(2),
-        montoEfectivo.toFixed(2),
-        montoQr.toFixed(2),
-        montoTransfer.toFixed(2),
-        montoCheque.toFixed(2),
-        `"${modalidadCobro}"`,
-        `"${desgloseTexto}"`,
-        `"${p.proofOfDelivery.receiverName}"`,
-        `"${p.proofOfDelivery.receiverDocument}"`,
-        `"${incidenciaTexto}"`,
-      ]
-      lineas.push(filaParada.join(';'))
+      rowsSheet2 += `
+   <Row ss:Height="19">
+    ${cellString(ot.codeFormatted, 'CellBold')}
+    ${cellNumber(p.sequence, 'CellInteger')}
+    ${cellString(p.customerName)}
+    ${cellString(p.customerCode, 'CellCenter')}
+    ${cellString(p.address)}
+    ${cellString(p.zoneName)}
+    ${cellString(p.saleChannel)}
+    ${cellString(p.deliveryNoteNumber, 'CellCenter')}
+    ${cellString(p.arrivedAt, 'CellCenter')}
+    ${cellString(p.deliveredAt, 'CellCenter')}
+    ${cellString(p.travelTimeFromPrevious, 'CellCenter')}
+    ${cellString(p.serviceDuration, 'CellCenter')}
+    ${cellString(p.resultCode, 'CellCenter')}
+    ${cellCurrency(montoCobrado)}
+    ${cellCurrency(montoEfectivo)}
+    ${cellCurrency(montoQr)}
+    ${cellCurrency(montoTransfer)}
+    ${cellCurrency(montoCheque)}
+    ${cellString(modalidadCobro)}
+    ${cellString(p.proofOfDelivery.receiverName)}
+    ${cellString(p.proofOfDelivery.receiverDocument, 'CellCenter')}
+    ${cellString(incidenciaTexto)}
+   </Row>`
     }
   }
 
-  lineas.push('')
-  lineas.push('')
-
-  // ── SECCIÓN 3: LIBRO DE COBRANZAS Y TRANSACCIONES INDIVIDUALES (ARQUEO DETALLADO) ──
-  lineas.push('3. LIBRO DE COBRANZAS Y TRANSACCIONES (ARQUEO INDIVIDUAL POR COMPROBANTE)')
-  const encabezadosTransacciones = [
-    'Código OT',
-    'Parada #',
-    'Cliente',
-    'Nro Factura',
-    'Método de Pago',
-    'Monto Cobrado (Bs)',
-    'Moneda',
-    'Nro Comprobante / Recibo / Ref',
-    'Estado Transacción',
-    'Observaciones',
+  // ── HOJA 3: LIBRO DE COBRANZAS Y ARQUEO ──
+  const headersSheet3 = [
+    'Código OT', 'Parada #', 'Cliente', 'Nro Factura',
+    'Método de Pago', 'Monto Cobrado (Bs)', 'Moneda',
+    'Nro Comprobante / Referencia / QR', 'Estado Transacción', 'Observaciones'
   ]
-  lineas.push(encabezadosTransacciones.join(';'))
+
+  let rowsSheet3 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet3.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">LIBRO DE COBRANZAS Y ARQUEO FINANCIERO DE LIQUIDACIÓN</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet3.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Desglose de pagos individuales por factura para cuadre de caja, cuentas y cobranzas</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet3.map((h) => cellHeader(h, 'HeaderAmber')).join('\n    ')}
+   </Row>`
 
   for (const ot of ordenes) {
     for (const p of ot.paradas) {
       for (const pay of p.payments) {
-        const filaTransaccion = [
-          `"${ot.codeFormatted}"`,
-          p.sequence,
-          `"${p.customerName}"`,
-          `"${pay.invoiceId}"`,
-          `"${pay.paymentMethodLabel}"`,
-          pay.amount.toFixed(2),
-          `"${pay.currency || 'BOB'}"`,
-          `"${pay.referenceNumber}"`,
-          `"${pay.status}"`,
-          `"${pay.notes || ''}"`,
-        ]
-        lineas.push(filaTransaccion.join(';'))
+        rowsSheet3 += `
+   <Row ss:Height="19">
+    ${cellString(ot.codeFormatted, 'CellBold')}
+    ${cellNumber(p.sequence, 'CellInteger')}
+    ${cellString(p.customerName)}
+    ${cellString(pay.invoiceId, 'CellCenter')}
+    ${cellString(pay.paymentMethodLabel, 'CellBold')}
+    ${cellCurrency(pay.amount)}
+    ${cellString(pay.currency || 'BOB', 'CellCenter')}
+    ${cellString(pay.referenceNumber, 'CellCenter')}
+    ${cellString(pay.status, 'CellCenter')}
+    ${cellString(pay.notes || '')}
+   </Row>`
       }
     }
   }
 
-  // BOM para UTF-8 (\uFEFF)
-  const contenidoCSV = '\uFEFF' + lineas.join('\r\n')
-  const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.setAttribute('download', nombreArchivo)
-  document.body.appendChild(enlace)
-  enlace.click()
-  document.body.removeChild(enlace)
-  URL.revokeObjectURL(url)
+  // ── HOJA 4: AUDITORÍA DE CARGA Y MERMAS (RAMPA) ──
+  const headersSheet4 = [
+    'Código OT', 'Fecha', 'Placa Camión', 'Chofer', 'Total Paradas',
+    'Peso Planificado (Kg)', 'Resultado Liquidación', 'Diferencias Reportadas'
+  ]
+
+  let rowsSheet4 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet4.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">RESUMEN DE AUDITORÍA Y CONTROL DE DESPACHO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet4.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Trazabilidad de cierre y estado final de liquidación</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet4.map((h) => cellHeader(h, 'HeaderGreen')).join('\n    ')}
+   </Row>`
+
+  for (const ot of ordenes) {
+    rowsSheet4 += `
+   <Row ss:Height="19">
+    ${cellString(ot.codeFormatted, 'CellBold')}
+    ${cellString(ot.dateFormatted, 'CellCenter')}
+    ${cellString(ot.truck.plate, 'CellBold')}
+    ${cellString(ot.driver.name)}
+    ${cellNumber(ot.kpis.totalStops, 'CellInteger')}
+    ${cellNumber(ot.assignedWeightKg)}
+    ${cellString(ot.statusLabel, 'CellCenter')}
+    ${cellString(ot.kpis.successRate === 100 ? '100% Conforme' : 'Con observaciones en entrega', 'CellCenter')}
+   </Row>`
+  }
+
+  const worksheets = `
+ <Worksheet ss:Name="1. Resumen de Órdenes">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="100"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="110"/>
+   ${rowsSheet1}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="2. Detalle de Paradas">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="90"/>
+   <Column ss:Width="65"/>
+   <Column ss:Width="180"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="200"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="180"/>
+   ${rowsSheet2}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="3. Libro de Cobranzas">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="95"/>
+   <Column ss:Width="65"/>
+   <Column ss:Width="180"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="65"/>
+   <Column ss:Width="170"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="160"/>
+   ${rowsSheet3}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="4. Auditoría y Control">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="160"/>
+   ${rowsSheet4}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, nombreArchivo)
 }
 
-import type { OrdenRevisionHistorial } from '../historial-revisiones-data'
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. EXPORTACIÓN GENERAL DE AUDITORÍA Y REVISIONES (2 HOJAS SEPARADAS)
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Exporta el historial completo de revisiones, sesiones de conteo y matriz comparativa de SKUs a Excel (CSV con UTF-8).
+ * Exporta el reporte de revisiones y sesiones de conteo a un Libro Excel con 2 pestañas:
+ *  - Hoja 1: Resumen de Sesiones y Rampa (Tiempos, Lead Time y Despacho)
+ *  - Hoja 2: Matriz Comparativa de Productos (Multi-sesión sin SKU con nombres limpios)
  */
 export function exportarHistorialRevisionesAExcel(
   ordenes: OrdenRevisionHistorial[],
-  nombreArchivo = 'Auditoria_Revisiones_Conteos.csv'
+  nombreArchivo = 'Auditoria_Revisiones_Conteos_Venado.xls'
 ) {
-  const lineas: string[] = []
-
-  lineas.push('AUDITORÍA DE REVISIONES Y SESIONES DE CONTEO (REPORTES)')
-  lineas.push(`Fecha de exportación:;${new Date().toLocaleString('es-BO')}`)
-  lineas.push(`Total de Órdenes Auditadas:;${ordenes.length}`)
-  lineas.push('')
-
-  // 1. Resumen de Órdenes y Sesiones
-  lineas.push('1. RESUMEN DE ÓRDENES Y ESTADO DE SESIONES')
-  const cabecerasOT = [
-    'Código OT',
-    'Fecha',
-    'Ruta',
-    'Placa Camión',
-    'Chofer',
-    'Supervisor',
-    'Conteo Chofer (DRIVER_INITIAL)',
-    'Revisión Supervisor (SUPERVISOR_DISCREPANCY)',
-    'Auditoría Semáforo (SUPERVISOR_SEMAPHORE)',
-    '% Efectividad Chofer',
-    'Total Productos',
-    'Productos Cadena Frío',
-    'Diferencia Neta Uds Final',
-    'Estado Operativo',
+  // ── HOJA 1: RESUMEN DE SESIONES ──
+  const headersSheet1 = [
+    'Código OT', 'Fecha', 'Ruta', 'Distribuidora', 'Placa Camión',
+    'Chofer', 'Supervisor', 'Conteo Chofer (DRIVER_INITIAL)',
+    'Revisión Supervisor (SUPERVISOR_DISCREPANCY)', 'Auditoría Semáforo (SUPERVISOR_SEMAPHORE)',
+    '% Efectividad Chofer', 'Total Productos', 'Productos Cadena Frío',
+    'Diferencia Neta Final', 'Estado Oficial'
   ]
-  lineas.push(cabecerasOT.join(';'))
+
+  let rowsSheet1 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet1.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">AUDITORÍA Y SESIONES DE CONTEO EN RAMPA - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet1.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Generado el ${new Date().toLocaleString('es-BO')} • Total de Órdenes Auditadas: ${ordenes.length}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet1.map((h) => cellHeader(h, 'HeaderGreen')).join('\n    ')}
+   </Row>`
 
   for (const ot of ordenes) {
     const driverSession = ot.sessions.find((s) => s.sessionType === 'DRIVER_INITIAL')
     const supervisorSession = ot.sessions.find((s) => s.sessionType === 'SUPERVISOR_DISCREPANCY')
     const semaphoreSession = ot.sessions.find((s) => s.sessionType === 'SUPERVISOR_SEMAPHORE')
 
-    const fila = [
-      `"${ot.orderCode}"`,
-      `"${ot.dateFormatted}"`,
-      `"${ot.routeName}"`,
-      `"${ot.truck.plate}"`,
-      `"${ot.driver.name}"`,
-      `"${ot.supervisor?.name || 'N/A'}"`,
-      `"${driverSession?.statusLabel || 'N/A'}"`,
-      `"${supervisorSession?.statusLabel || (ot.summary.hasDiscrepancies ? 'Pendiente' : 'No requerida')}"`,
-      `"${semaphoreSession?.statusLabel || 'No auditada'}"`,
-      `${ot.summary.finalMatchRate}%`,
-      ot.summary.totalProducts,
-      ot.summary.coldChainProductCount,
-      ot.summary.totalNetVarianceUnits,
-      `"${ot.statusLabel}"`,
-    ]
-    lineas.push(fila.join(';'))
+    rowsSheet1 += `
+   <Row ss:Height="19">
+    ${cellString(ot.orderCode, 'CellBold')}
+    ${cellString(ot.dateFormatted, 'CellCenter')}
+    ${cellString(ot.routeName)}
+    ${cellString(ot.distributorName)}
+    ${cellString(ot.truck.plate, 'CellBold')}
+    ${cellString(ot.driver.name)}
+    ${cellString(ot.supervisor?.name || 'Ing. Marco Antonio Vaca')}
+    ${cellString(driverSession?.statusLabel || 'Completado', 'CellCenter')}
+    ${cellString(supervisorSession?.statusLabel || (ot.summary.hasDiscrepancies ? 'Pendiente' : 'No requerida'), 'CellCenter')}
+    ${cellString(semaphoreSession?.statusLabel || 'No auditada', 'CellCenter')}
+    ${cellPercent(ot.summary.finalMatchRate)}
+    ${cellNumber(ot.summary.totalProducts, 'CellInteger')}
+    ${cellNumber(ot.summary.coldChainProductCount, 'CellInteger')}
+    ${cellNumber(ot.summary.totalNetVarianceUnits, 'CellInteger')}
+    ${cellString(ot.statusLabel, 'CellCenter')}
+   </Row>`
   }
 
-  lineas.push('')
-
-  // 2. Detalle comparativo por producto (Matriz multi-sesión)
-  lineas.push('2. MATRIZ COMPARATIVA DE CONTEOS POR PRODUCTO')
-  const cabecerasItems = [
-    'Código OT',
-    'Producto',
-    'Categoría',
-    'Cadena Frío',
-    'Uds/Caja',
-    'Oficial Esperado (Uds)',
-    'Conteo Chofer (Uds)',
-    'Dif. Chofer (Uds)',
-    'Estado Chofer',
-    'Conteo Supervisor (Uds)',
-    'Dif. Supervisor (Uds)',
-    'Estado Supervisor',
-    'Auditoría Semáforo (Uds)',
-    'Dif. Semáforo (Uds)',
-    'Estado Semáforo',
-    'Inventario Final Camión (Uds)',
-    'Dif. Final Oficial (Uds)',
-    'Estado Consolidado',
-    'Observaciones Chofer/Supervisor',
+  // ── HOJA 2: MATRIZ DE PRODUCTOS ──
+  const headersSheet2 = [
+    'Código OT', 'Producto', 'Categoría', 'Cadena Frío', 'Uds/Cj',
+    'Esperado Oficial (Uds)', 'Conteo Chofer (Uds)', 'Dif. Chofer (Uds)', 'Estado Chofer',
+    'Conteo Supervisor (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
+    'Auditoría Semáforo (Uds)', 'Estado Semáforo',
+    'Carga Final Oficial (Uds)', 'Dif. Final Oficial (Uds)', 'Estado Consolidado',
+    'Observaciones de Rampa'
   ]
-  lineas.push(cabecerasItems.join(';'))
+
+  let rowsSheet2 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">MATRIZ COMPARATIVA DE CONTEOS Y DIFERENCIAS POR PRODUCTO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Cruce multi-sesión: Esperado ERP vs Conteo Chofer vs Supervisor vs Semáforo vs Consolidado Final</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet2.map((h) => cellHeader(h, 'HeaderNavy')).join('\n    ')}
+   </Row>`
 
   for (const ot of ordenes) {
     for (const item of ot.items) {
-      const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty ?? 'N/A' : 'N/A'
-      const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty ?? 0 : 'N/A'
-      const supStatus = item.supervisorReview?.wasReviewed ? item.supervisorReview.status : 'NO REQUERIDA'
+      const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty : null
+      const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty : null
+      const supStatus = item.supervisorReview?.wasReviewed ? (item.supervisorReview.status === 'APPROVED' ? 'Aprobado' : item.supervisorReview.status) : 'No requerida'
 
-      const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty ?? 'N/A' : 'OMITIDO'
-      const semVar = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.varianceQty ?? 0 : 'N/A'
-      const semStatus = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.status : 'SKIPPED'
+      const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty : null
+      const semStatus = item.semaphoreAudit?.wasAudited ? 'Auditado OK' : 'SKIPPED'
 
       const obs = [
         item.driverCount.observation ? `Chofer: ${item.driverCount.observation}` : '',
-        item.supervisorReview?.observation ? `Supervisor: ${item.supervisorReview.observation}` : '',
+        item.supervisorReview?.observation ? `Sup: ${item.supervisorReview.observation}` : '',
         item.semaphoreAudit?.observation ? `Semáforo: ${item.semaphoreAudit.observation}` : '',
       ]
         .filter(Boolean)
-        .join(' | ')
+        .join(' | ') || 'Conforme'
 
-      const filaItem = [
-        `"${ot.orderCode}"`,
-        `"${item.description}"`,
-        `"${item.category}"`,
-        item.isColdChain ? 'SÍ' : 'NO',
-        item.equivalenceBoxUnit,
-        item.expectedQty,
-        item.driverCount.countedQty,
-        item.driverCount.varianceQty,
-        `"${item.driverCount.status}"`,
-        supQty,
-        supVar,
-        `"${supStatus}"`,
-        semQty,
-        semVar,
-        `"${semStatus}"`,
-        item.officialInventory.loadedQty,
-        item.officialInventory.varianceQty,
-        `"${item.officialInventory.status}"`,
-        `"${obs}"`,
-      ]
-      lineas.push(filaItem.join(';'))
+      rowsSheet2 += `
+   <Row ss:Height="19">
+    ${cellString(ot.orderCode, 'CellBold')}
+    ${cellString(item.description)}
+    ${cellString(item.category)}
+    ${cellString(item.isColdChain ? 'SÍ' : 'NO', 'CellCenter')}
+    ${cellNumber(item.equivalenceBoxUnit, 'CellInteger')}
+    ${cellNumber(item.expectedQty, 'CellInteger')}
+    ${cellNumber(item.driverCount.countedQty, 'CellInteger')}
+    ${cellNumber(item.driverCount.varianceQty, 'CellInteger')}
+    ${cellString(item.driverCount.status, 'CellCenter')}
+    ${cellNumber(supQty, 'CellInteger')}
+    ${cellNumber(supVar, 'CellInteger')}
+    ${cellString(supStatus, 'CellCenter')}
+    ${cellNumber(semQty, 'CellInteger')}
+    ${cellString(semStatus, 'CellCenter')}
+    ${cellNumber(item.officialInventory.loadedQty, 'CellInteger')}
+    ${cellNumber(item.officialInventory.varianceQty, 'CellInteger')}
+    ${cellString(item.officialInventory.status, 'CellCenter')}
+    ${cellString(obs)}
+   </Row>`
     }
   }
 
-  const contenidoCSV = '\uFEFF' + lineas.join('\r\n')
-  const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.setAttribute('download', nombreArchivo)
-  document.body.appendChild(enlace)
-  enlace.click()
-  document.body.removeChild(enlace)
-  URL.revokeObjectURL(url)
+  const worksheets = `
+ <Worksheet ss:Name="1. Resumen de Sesiones">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="110"/>
+   ${rowsSheet1}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="2. Matriz de Productos">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="90"/>
+   <Column ss:Width="230"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="65"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="190"/>
+   ${rowsSheet2}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, nombreArchivo)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. EXPORTACIÓN INDIVIDUAL DE ACTA DE CONCILIACIÓN DE UNA OT (2 HOJAS)
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Exporta el detalle individual de una Orden de Transporte específica con su matriz de productos
+ * Exporta el acta individual de una Orden de Transporte específica a un Libro Excel con 2 pestañas:
+ *  - Hoja 1: Acta y Carátula de Despacho (Datos del camión, chofer, supervisor, balance de carga y sellos)
+ *  - Hoja 2: Matriz de Conciliación (Detalle producto a producto sin códigos SKU)
  */
 export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial) {
-  const lineas: string[] = []
+  // ── HOJA 1: ACTA Y CARÁTULA ──
+  const totalEsperado = ot.items.reduce((acc, it) => acc + it.expectedQty, 0)
+  const totalCargado = ot.items.reduce((acc, it) => acc + it.officialInventory.loadedQty, 0)
 
-  lineas.push(`ACTA DE REVISIÓN Y LIQUIDACIÓN DE CARGA - ${ot.orderCode}`)
-  lineas.push(`Fecha de Emisión:;${new Date().toLocaleString('es-BO')}`)
-  lineas.push(`Fecha de Despacho:;${ot.dateFormatted}`)
-  lineas.push(`Ruta:;${ot.routeName}`)
-  lineas.push(`Distribuidora:;${ot.distributorName}`)
-  lineas.push(`Camión:;${ot.truck.plate} (${ot.truck.code}) - ${ot.truck.truckType}`)
-  lineas.push(`Chofer:;${ot.driver.name} (CI: ${ot.driver.document})`)
-  lineas.push(`Supervisor:;${ot.supervisor?.name || 'Ing. Marco Antonio Vaca'}`)
-  lineas.push(`Estado Final:;${ot.statusLabel}`)
-  lineas.push(`Diferencia Neta Final:;${ot.summary.totalNetVarianceUnits} Unidades`)
-  lineas.push('')
+  const rowsSheet1 = `
+   <Row ss:Height="26">
+    <Cell ss:MergeAcross="3" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">ACTA OFICIAL DE CONCILIACIÓN Y DESPACHO DE CARGA</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="3" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Sistema de Control Logístico y Gestión de Rampa • Grupo Venado</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="12"/>
 
-  lineas.push('MATRIZ DE CONCILIACIÓN DE PRODUCTOS')
-  const cabeceras = [
-    'Producto',
-    'Factor (Uds/Cj)',
-    'Esperado Inicial (Uds)',
-    'Esperado Cajas',
-    'Conteo Chofer (Uds)',
-    'Dif. Chofer (Uds)',
-    'Obs. Chofer',
-    'Revisión Supervisor (Uds)',
-    'Dif. Supervisor (Uds)',
-    'Dictamen Supervisor',
-    'Auditoría Semáforo (Uds)',
-    'Estado Semáforo',
-    'Carga Final Autorizada (Uds)',
-    'Estado Oficial',
+   <Row ss:Height="20">
+    ${cellHeader('DATO OPERATIVO', 'HeaderNavy')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderNavy"><Data ss:Type="String">DETALLE</Data></Cell>
+   </Row>
+
+   <Row ss:Height="20">
+    ${cellString('Código de Orden de Transporte', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellBold"><Data ss:Type="String">${xmlEscape(ot.orderCode)}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Fecha de Despacho')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.dateFormatted)}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Ruta y Zona')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.routeName)}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Centro / Distribuidora')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.distributorName)}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Camión Asignado')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.truck.plate)} (${xmlEscape(ot.truck.code)}) - ${xmlEscape(ot.truck.truckType)}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Cadena de Frío')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${ot.truck.isRefrigerated ? 'Camión con Termo / Refrigerado' : 'Carga Seca'}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Chofer Responsable')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.driver.name)} (CI: ${xmlEscape(ot.driver.document)})</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Supervisor de Rampa')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(ot.supervisor?.name || 'Ing. Marco Antonio Vaca')}</Data></Cell>
+   </Row>
+
+   <Row ss:Height="12"/>
+   <Row ss:Height="20">
+    ${cellHeader('RESUMEN DE INVENTARIO', 'HeaderGreen')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderGreen"><Data ss:Type="String">BALANCE FÍSICO DE UNIDADES</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Total Unidades Esperadas (ERP)', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellNumber"><Data ss:Type="Number">${totalEsperado}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Total Unidades Físicas Cargadas', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellNumber"><Data ss:Type="Number">${totalCargado}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Diferencia Neta Final')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellNumber"><Data ss:Type="Number">${ot.summary.totalNetVarianceUnits}</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellString('Estado Oficial de Salida')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellBold"><Data ss:Type="String">INVENTARIO SELLADO Y APROBADO (${xmlEscape(ot.statusLabel)})</Data></Cell>
+   </Row>`
+
+  // ── HOJA 2: MATRIZ DE CONCILIACIÓN ──
+  const headersSheet2 = [
+    'Producto', 'Factor (Uds/Cj)', 'Esperado Inicial (Uds)', 'Esperado Cajas',
+    'Conteo Chofer (Uds)', 'Dif. Chofer (Uds)', 'Obs. Chofer',
+    'Revisión Supervisor (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
+    'Auditoría Semáforo (Uds)', 'Estado Semáforo',
+    'Carga Final Autorizada (Uds)', 'Estado Oficial'
   ]
-  lineas.push(cabeceras.join(';'))
+
+  let rowsSheet2 = `
+   <Row ss:Height="24">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">MATRIZ DE CONCILIACIÓN DE PRODUCTOS - ${xmlEscape(ot.orderCode)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Desglose físico por producto • Chofer: ${xmlEscape(ot.driver.name)} • Camión: ${xmlEscape(ot.truck.plate)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersSheet2.map((h) => cellHeader(h, 'HeaderNavy')).join('\n    ')}
+   </Row>`
 
   for (const item of ot.items) {
-    const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty : 'N/A'
-    const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty : 'N/A'
+    const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty : null
+    const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty : null
     const supObs = item.supervisorReview?.observation || (item.supervisorReview?.wasReviewed ? 'Aprobado' : 'No requerida')
 
-    const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty : 'N/A'
+    const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty : null
     const semStatus = item.semaphoreAudit?.wasAudited ? 'Auditado OK' : 'SKIPPED'
 
-    const fila = [
-      `"${item.description}"`,
-      item.equivalenceBoxUnit,
-      item.expectedQty,
-      item.expectedBoxes,
-      item.driverCount.countedQty,
-      item.driverCount.varianceQty,
-      `"${item.driverCount.observation || 'Conforme'}"`,
-      supQty,
-      supVar,
-      `"${supObs}"`,
-      semQty,
-      `"${semStatus}"`,
-      item.officialInventory.loadedQty,
-      `"${item.officialInventory.status}"`,
-    ]
-    lineas.push(fila.join(';'))
+    rowsSheet2 += `
+   <Row ss:Height="19">
+    ${cellString(item.description, 'CellBold')}
+    ${cellNumber(item.equivalenceBoxUnit, 'CellInteger')}
+    ${cellNumber(item.expectedQty, 'CellInteger')}
+    ${cellNumber(item.expectedBoxes, 'CellInteger')}
+    ${cellNumber(item.driverCount.countedQty, 'CellInteger')}
+    ${cellNumber(item.driverCount.varianceQty, 'CellInteger')}
+    ${cellString(item.driverCount.observation || 'Conforme')}
+    ${cellNumber(supQty, 'CellInteger')}
+    ${cellNumber(supVar, 'CellInteger')}
+    ${cellString(supObs, 'CellCenter')}
+    ${cellNumber(semQty, 'CellInteger')}
+    ${cellString(semStatus, 'CellCenter')}
+    ${cellNumber(item.officialInventory.loadedQty, 'CellInteger')}
+    ${cellString(item.officialInventory.status, 'CellCenter')}
+   </Row>`
   }
 
-  const contenidoCSV = '\uFEFF' + lineas.join('\r\n')
-  const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.setAttribute('download', `Acta_Liquidacion_${ot.orderCode}_${ot.dateIso}.csv`)
-  document.body.appendChild(enlace)
-  enlace.click()
-  document.body.removeChild(enlace)
-  URL.revokeObjectURL(url)
-}
+  const worksheets = `
+ <Worksheet ss:Name="1. Acta y Datos del Viaje">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="190"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="130"/>
+   ${rowsSheet1}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+  </WorksheetOptions>
+ </Worksheet>
 
+ <Worksheet ss:Name="2. Matriz de Productos">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="240"/>
+   <Column ss:Width="75"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="85"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="115"/>
+   <Column ss:Width="95"/>
+   ${rowsSheet2}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, `Acta_Liquidacion_${ot.orderCode}_${ot.dateIso}.xls`)
+}
