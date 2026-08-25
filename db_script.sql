@@ -1,5 +1,6 @@
     DROP SCHEMA public CASCADE;
     CREATE SCHEMA public;
+    CREATE EXTENSION postgis;
 
     CREATE TABLE distributors (
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -241,6 +242,8 @@
         owner_name VARCHAR(50),
         customer_id BIGINT NOT NULL, -- ID del cliente receptor
         customer_name VARCHAR(50),
+        phone_number VARCHAR(20), --NUMERO DE CONTACTO DEL CLIENTE
+        address VARCHAR(255), -- Dirección física del punto de entrega
         warehouse_destination_id BIGINT, -- Almacén de despacho
         priority INTEGER,
         delivery_window_start TIME NULL, -- Ventana horaria inicio recepción
@@ -249,6 +252,7 @@
         total_volume_m3 DECIMAL(12, 2), -- Sumatoria de volumen acumulado
         total_neto DECIMAL(12, 2), -- Valor monetario de la parada
         forced_planning_truck_id BIGINT NULL, -- Camión forzado en unificación manual
+        observations TEXT, -- observaciones del chofer, en caso de fotografia mal tomada, cambio de direccion, cambio de nuemero de telefono
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
