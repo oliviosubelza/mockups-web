@@ -54,7 +54,7 @@ import {
   type ResumenEntregas,
 } from './monitoreo-data'
 import { useTransportOrdersStore } from '../transport-orders-store'
-import type { OrdenTransporte } from '../mock-data'
+import type { CanalId, OrdenTransporte } from '../mock-data'
 import type { EstadoViaje } from './monitoreo-estado'
 import {
   DISTRIBUIDOR_ACTIVO,
@@ -140,7 +140,7 @@ export interface FilaPedidoMonitoreo {
   chofer: string
   estadoViaje: EstadoViaje
   estadoEntrega: EntregaMonitoreo['estado']
-  canal: string
+  canal: CanalId
   formaPago: string
   pesoKg: number
   volumenM3: number

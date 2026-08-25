@@ -195,7 +195,8 @@ export interface PedidoEntrega {
   salesOrder: string
   /** document_id — el documento SAP. */
   documento: string
-  canal: string
+  /** El canal del CLIENTE, heredado de la parada: `dispatch_delivery_points.sale_channel_id`. */
+  canal: CanalId
   pesoKg: number
   volumenM3: number
   /** Monto del pedido en Bs. Viene de SAP: `candidate_orders` NO tiene columna de monto. */

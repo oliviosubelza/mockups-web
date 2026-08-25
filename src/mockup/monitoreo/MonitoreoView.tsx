@@ -4,21 +4,19 @@
 //
 // Las dos leen el MISMO stream de flota: cambia el nivel al que se lo proyecta, no el contrato.
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ChartGantt, MapPin, Package, Radio, Truck } from 'lucide-react'
+import { AlertTriangle, ChartGantt, MapPin, Package, Radio, Store, Truck, User } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/routing/open-route'
+import { FiltroPopover } from '../FiltroPopover'
+import { CanalGlyph } from '../canal-glyph'
+import { CANAL_META, type CanalId } from '../mock-data'
 import { EstadoEntregaBadge, EstadoViajeBadge } from './EstadoEntregaBadge'
 import { Frescura, ProgresoEntregas } from './ProgresoEntregas'
 import { Destello, useFilasVivas } from './destello'
 import { bs } from './cobro-estilo'
-import {
-  pedidosDeFila,
-  useFlotaViva,
-  type FilaMonitoreo,
-  type FilaPedidoMonitoreo,
-} from './use-flota-viva'
+import { pedidosDeFila, useFlotaViva, type FilaMonitoreo, type FilaPedidoMonitoreo } from './use-flota-viva'
 import { ViajeDialog } from './ViajeDialog'
 import { UMBRAL_SENAL_VIEJA_MIN, minutosSinSenal, type ItemActual } from './tracking-dynamo'
 import { duracionTexto, promedioMin } from './monitoreo-data'
@@ -88,7 +86,11 @@ function SelectorVista({
   onCambiar: (vista: VistaMonitoreo) => void
 }) {
   return (
-    <div role="tablist" aria-label="Granularidad del monitoreo" className="flex flex-wrap items-center gap-1.5">
+    <div
+      role="tablist"
+      aria-label="Granularidad del monitoreo"
+      className="flex flex-wrap items-center gap-1.5"
+    >
       {VISTAS.map(({ id, label, icono: Icono, ayuda }) => {
         const activo = id === vista
         return (
@@ -129,11 +131,7 @@ function UltimaSenal({ tracking }: { tracking: ItemActual | null }) {
         vieja ? 'font-medium text-destructive' : 'text-muted-foreground',
       )}
     >
-      {vieja ? (
-        <AlertTriangle className="size-3" />
-      ) : (
-        <Radio className="senal-viva size-3 text-primary" />
-      )}
+      {vieja ? <AlertTriangle className="size-3" /> : <Radio className="senal-viva size-3 text-primary" />}
       hace {minutos} min
     </span>
   )
@@ -142,6 +140,18 @@ function UltimaSenal({ tracking }: { tracking: ItemActual | null }) {
 export function MonitoreoView() {
   const [filters, setFilters] = useState<MonitoreoFilters>({})
   const [vista, setVista] = useState<VistaMonitoreo>('ordenes')
+  /**
+   * Canal y cliente, SOLO en la vista de pedidos.
+   *
+   * No entran al `FilterBar` declarativo de al lado porque su `select` es de un valor y sin buscador:
+   * los canales son seis pero los clientes son cientos, y elegir uno de una lista sin búsqueda no es
+   * un filtro. Van en el mismo `FiltroPopover` que usa el planificador — multi-select y con buscador —
+   * y por eso los dos comparten control aunque uno tenga seis opciones y el otro trescientas.
+   *
+   * Vacío NO filtra: es la convención de narrowing del resto del mockup.
+   */
+  const [canales, setCanales] = useState<CanalId[]>([])
+  const [clientes, setClientes] = useState<string[]>([])
 
   // Snapshot + SSE de flota. El scope es el `distributorId` del hook: los endpoints del monitor
   // vienen ya acotados por distribuidora y se parchean por id.
@@ -166,6 +176,8 @@ export function MonitoreoView() {
       (pedido) =>
         (!filters.estadoViaje || pedido.estadoViaje === filters.estadoViaje) &&
         (!filters.estadoEntrega || pedido.estadoEntrega === filters.estadoEntrega) &&
+        (canales.length === 0 || canales.includes(pedido.canal)) &&
+        (clientes.length === 0 || clientes.includes(pedido.cliente)) &&
         (!texto ||
           pedido.pedido.toLowerCase().includes(texto) ||
           pedido.ordenCodigo.toLowerCase().includes(texto) ||
@@ -173,7 +185,52 @@ export function MonitoreoView() {
           pedido.cliente.toLowerCase().includes(texto) ||
           pedido.puntoEntrega.toLowerCase().includes(texto)),
     )
-  }, [filters, pedidos])
+  }, [filters, pedidos, canales, clientes])
+
+  /**
+   * Las opciones de canal y de cliente, con su peso escrito al costado y ordenadas por monto.
+   *
+   * Salen del universo COMPLETO del día y no de lo que ya quedó filtrado: si se recalcularan contra el
+   * resultado, elegir un canal borraría de la lista a los demás y no habría forma de cambiar de opinión
+   * sin limpiar el filtro primero.
+   *
+   * El monto al costado es lo que convierte al desplegable en un resumen: se ve el reparto entero antes
+   * de elegir, que es la pregunta que trae a alguien a agrupar por canal o por cliente.
+   */
+  const opcionesCanal = useMemo(() => {
+    const acumulado = new Map<CanalId, { pedidos: number; total: number }>()
+    for (const pedido of pedidos) {
+      const actual = acumulado.get(pedido.canal) ?? { pedidos: 0, total: 0 }
+      actual.pedidos += 1
+      actual.total += pedido.total
+      acumulado.set(pedido.canal, actual)
+    }
+    return [...acumulado.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([canal, datos]) => ({
+        value: canal,
+        label: CANAL_META[canal].label,
+        glyph: <CanalGlyph canal={canal} size={13} />,
+        hint: `${datos.pedidos} · ${bs(datos.total)}`,
+      }))
+  }, [pedidos])
+
+  const opcionesCliente = useMemo(() => {
+    const acumulado = new Map<string, { pedidos: number; total: number }>()
+    for (const pedido of pedidos) {
+      const actual = acumulado.get(pedido.cliente) ?? { pedidos: 0, total: 0 }
+      actual.pedidos += 1
+      actual.total += pedido.total
+      acumulado.set(pedido.cliente, actual)
+    }
+    return [...acumulado.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([cliente, datos]) => ({
+        value: cliente,
+        label: cliente,
+        hint: `${datos.pedidos} · ${bs(datos.total)}`,
+      }))
+  }, [pedidos])
 
   const flota = useMemo(
     () => ({
@@ -199,7 +256,12 @@ export function MonitoreoView() {
     filas,
     (fila) => fila.id,
     (fila) =>
-      [fila.estadoViaje, fila.resumen.progresoPct, fila.resumen.incidencias, fila.tracking?.trackedAt ?? '-'].join('|'),
+      [
+        fila.estadoViaje,
+        fila.resumen.progresoPct,
+        fila.resumen.incidencias,
+        fila.tracking?.trackedAt ?? '-',
+      ].join('|'),
   )
 
   // A nivel pedido NO se usa el ping para la barra lateral viva: una sola posicion no deberia encender
@@ -321,7 +383,10 @@ export function MonitoreoView() {
           enableSorting: false,
           meta: { align: 'right' },
           cell: (row) => (
-            <span className="tabular-nums text-muted-foreground" title="Promedio de tiempo parado en el punto de entrega">
+            <span
+              className="tabular-nums text-muted-foreground"
+              title="Promedio de tiempo parado en el punto de entrega"
+            >
               {duracionTexto(row.resumen.atencionPromedioMin)}
             </span>
           ),
@@ -333,7 +398,10 @@ export function MonitoreoView() {
           enableSorting: false,
           meta: { align: 'right' },
           cell: (row) => (
-            <span className="tabular-nums text-muted-foreground" title="Desde la salida del deposito hasta la ultima parada cerrada">
+            <span
+              className="tabular-nums text-muted-foreground"
+              title="Desde la salida del deposito hasta la ultima parada cerrada"
+            >
               {duracionTexto(row.resumen.enRutaMin)}
             </span>
           ),
@@ -389,10 +457,27 @@ export function MonitoreoView() {
           header: 'Cliente',
           size: 230,
           cell: (row) => (
-            <div className="flex min-w-0 flex-col leading-tight py-0.5" title={`${row.cliente} - ${row.puntoEntrega}`}>
+            <div
+              className="flex min-w-0 flex-col leading-tight py-0.5"
+              title={`${row.cliente} - ${row.puntoEntrega}`}
+            >
               <span className="truncate font-medium text-foreground">{row.cliente}</span>
               <span className="truncate text-[11px] text-muted-foreground">{row.puntoEntrega}</span>
             </div>
+          ),
+        },
+        {
+          // La columna existe PORQUE existe el filtro: acotar por una dimensión que la tabla no
+          // muestra deja al usuario sin poder verificar qué le quedó adelante.
+          id: 'canal',
+          header: 'Canal',
+          accessorKey: 'canal',
+          size: 140,
+          cell: (row) => (
+            <span className="flex items-center gap-1.5 text-xs">
+              <CanalGlyph canal={row.canal} size={12} />
+              <span className="truncate">{CANAL_META[row.canal].label}</span>
+            </span>
           ),
         },
         {
@@ -402,9 +487,7 @@ export function MonitoreoView() {
           cell: (row) => (
             <div className="flex flex-col items-end text-[11px] tabular-nums">
               <span className="font-medium text-foreground">#{row.secuencia}</span>
-              <span className="text-muted-foreground">
-                {row.pedidosEnParada} ped.
-              </span>
+              <span className="text-muted-foreground">{row.pedidosEnParada} ped.</span>
             </div>
           ),
           meta: { align: 'right' },
@@ -597,11 +680,61 @@ export function MonitoreoView() {
           emptyMessage="Ningun pedido comercial coincide con los filtros."
           fillHeight
           filterBar={
-            <FilterBar
-              defs={filterDefsPedidos}
-              values={filters}
-              onChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
-            />
+            <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+              <FilterBar
+                defs={filterDefsPedidos}
+                values={filters}
+                onChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
+              />
+              {/* Canal y cliente van DESPUÉS de los estados y separados por una línea: los de la
+                  izquierda acotan por situación del viaje, estos por a quién se le entrega. Son dos
+                  preguntas distintas y mezcladas en una fila se leen como cinco controles sueltos. */}
+              <div className="flex flex-wrap items-center gap-1.5 border-l border-border pl-3">
+                <FiltroPopover
+                  label="Canal"
+                  icon={Store}
+                  options={opcionesCanal}
+                  active={canales}
+                  onToggle={(value) =>
+                    setCanales((previos) =>
+                      previos.includes(value as CanalId)
+                        ? previos.filter((canal) => canal !== value)
+                        : [...previos, value as CanalId],
+                    )
+                  }
+                  searchPlaceholder="Buscar canal…"
+                  emptyText="Sin canales en la flota"
+                />
+                <FiltroPopover
+                  label="Cliente"
+                  icon={User}
+                  options={opcionesCliente}
+                  active={clientes}
+                  onToggle={(value) =>
+                    setClientes((previos) =>
+                      previos.includes(value)
+                        ? previos.filter((cliente) => cliente !== value)
+                        : [...previos, value],
+                    )
+                  }
+                  searchPlaceholder="Buscar cliente…"
+                  emptyText="Sin clientes en la flota"
+                />
+                {(canales.length > 0 || clientes.length > 0) && (
+                  <button
+                    type="button"
+                    title="Quitar los filtros de canal y cliente"
+                    onClick={() => {
+                      setCanales([])
+                      setClientes([])
+                    }}
+                    className="cursor-pointer px-1 text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
           }
         />
       )}

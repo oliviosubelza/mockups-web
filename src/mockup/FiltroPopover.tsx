@@ -1,9 +1,12 @@
 // Filtro multi-select con buscador y contador propio.
 //
-// DUPLICACIÓN CONOCIDA: `OrderSelectionPanel` tiene su propia copia de este componente. Se repite a
-// propósito mientras esto es una PROPUESTA — la pantalla nueva no debe poder romper el flujo actual
-// por un cambio de estilo acá. Si la propuesta se adopta, este archivo es el que queda y el otro se
-// borra (no al revés: acá el trigger es más compacto porque vive sobre el mapa).
+// SUBIÓ DE `planner/` A LA RAÍZ DEL MOCKUP porque ya lo usan dos módulos: el planificador y el
+// monitoreo. Un componente compartido colgando de una feature obliga a la otra a importar
+// `../planner/…`, que es una dependencia en la dirección equivocada entre hermanos.
+//
+// DUPLICACIÓN CONOCIDA: `OrderSelectionPanel` tiene su propia copia. Se repite a propósito porque
+// pertenece al flujo por steps, que está deprecado: este archivo es el que queda y el otro se va con
+// su pantalla.
 import { useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
@@ -22,6 +25,13 @@ export interface FiltroOption {
   value: string
   label: string
   glyph?: ReactNode
+  /**
+   * Dato al final de la fila: cuánto pesa esa opción en el conjunto que se está filtrando (un monto,
+   * un conteo). Opcional porque la mayoría de las dimensiones son un maestro y no tienen nada que
+   * contar; donde sí lo hay, es lo que convierte al filtro en un RESUMEN — se ve el reparto completo
+   * antes de elegir, en vez de tener que clickear opción por opción para descubrirlo.
+   */
+  hint?: ReactNode
 }
 
 export function FiltroPopover({
@@ -78,6 +88,11 @@ export function FiltroPopover({
                 >
                   {opt.glyph}
                   <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+                  {opt.hint && (
+                    <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">
+                      {opt.hint}
+                    </span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
