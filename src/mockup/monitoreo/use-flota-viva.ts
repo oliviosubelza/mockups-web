@@ -46,6 +46,7 @@ import { useEffect, useState } from 'react'
 import { createRand } from '../mock-random'
 import type { LatLngTuple } from '../map/geo/polyline'
 import {
+  type EntregaMonitoreo,
   obtenerMonitoreoOperativo,
   resumenEntregas,
   tiemposConUnaMas,
@@ -53,7 +54,7 @@ import {
   type ResumenEntregas,
 } from './monitoreo-data'
 import { useTransportOrdersStore } from '../transport-orders-store'
-import type { OrdenTransporte } from '../mock-data'
+import type { CanalId, OrdenTransporte } from '../mock-data'
 import type { EstadoViaje } from './monitoreo-estado'
 import {
   DISTRIBUIDOR_ACTIVO,
@@ -111,11 +112,41 @@ export interface FilaMonitoreo {
   estadoViaje: EstadoViaje
   salida: string
   paradas: number
+  /** Las paradas vivas del viaje. El detalle grande las vuelve a pedir por su propio canal. */
+  entregas: EntregaMonitoreo[]
   resumen: ResumenEntregas
   /**
    * El ítem ACTUAL crudo de `truck_tracking`. La columna "Última señal" se DERIVA de su `trackedAt`;
    * guardar los minutos ya calculados es lo que hacía que el número no pudiera envejecer.
    */
+  tracking: ItemActual | null
+}
+
+/** Una fila del monitoreo a nivel pedido comercial (sales order). */
+export interface FilaPedidoMonitoreo {
+  /** candidate_orders.id / pedido del plan. */
+  id: string
+  /** sales_order_id — el número con el que Ventas lo conoce. */
+  pedido: string
+  documento: string
+  ordenId: string
+  ordenCodigo: string
+  tripId: number
+  paradaId: string
+  secuencia: number
+  cliente: string
+  puntoEntrega: string
+  camion: string
+  chofer: string
+  estadoViaje: EstadoViaje
+  estadoEntrega: EntregaMonitoreo['estado']
+  canal: CanalId
+  formaPago: string
+  pesoKg: number
+  volumenM3: number
+  total: number
+  pedidosEnParada: number
+  incidencias: number
   tracking: ItemActual | null
 }
 
@@ -151,6 +182,7 @@ function snapshotFlota(distributorId: number, transportOrders: OrdenTransporte[]
       estadoViaje: viaje?.estado ?? 'pendiente',
       salida: viaje?.salida ?? '',
       paradas: orden.entregas.length,
+      entregas: orden.entregas,
       // La salida del viaje entra en el resumen: sin ella los tiempos (tránsito del primer tramo y
       // total en ruta) no se pueden medir. Un viaje sin ficha en `VIAJES_MONITOREO` los deja en `null`.
       resumen: resumenEntregas(orden.entregas, viaje?.salida),
@@ -168,8 +200,10 @@ function snapshotFlota(distributorId: number, transportOrders: OrdenTransporte[]
  * clavado en el snapshot mientras el resto de la fila avanza — la falla más difícil de ver, porque el
  * número se ve plausible.
  */
-function progresoConUnaMas(resumen: ResumenEntregas): ResumenEntregas {
-  if (resumen.pendientes === 0) return resumen
+type CierreEntrega = 'entregado' | 'fallido' | 'devuelto'
+
+function progresoConUnaMas(resumen: ResumenEntregas): { resumen: ResumenEntregas; cierre: CierreEntrega } {
+  if (resumen.pendientes === 0) return { resumen, cierre: 'entregado' }
   // Cuántas paradas ya estaban medidas: es el `n` con el que se dobla el promedio.
   const cerradasAntes = resumen.entregadas + resumen.fallidas + resumen.devueltas
   // Cómo cerró: la mayoría bien, el fallo y la devolución son la excepción — la misma proporción que
@@ -179,19 +213,91 @@ function progresoConUnaMas(resumen: ResumenEntregas): ResumenEntregas {
   const fallidas = resumen.fallidas + (suerte >= 0.87 && suerte < 0.95 ? 1 : 0)
   const devueltas = resumen.devueltas + (suerte >= 0.95 ? 1 : 0)
   const cerradas = entregadas + fallidas + devueltas
+  const cierre: CierreEntrega = suerte < 0.87 ? 'entregado' : suerte < 0.95 ? 'fallido' : 'devuelto'
   return {
-    ...resumen,
-    entregadas,
-    fallidas,
-    devueltas,
-    pendientes: resumen.total - cerradas,
-    progresoPct: resumen.total > 0 ? Math.round((cerradas / resumen.total) * 100) : 0,
-    // Una parada que falla SIEMPRE deja rastro: si no, el planificador ve un "no entregado" sin
-    // explicación y tiene que llamar por teléfono.
-    incidencias: resumen.incidencias + (suerte >= 0.87 ? 1 : 0),
-    // El sub-DTO `times`: se dobla la muestra de la parada que acaba de cerrar dentro de los promedios.
-    ...tiemposConUnaMas(resumen, cerradasAntes),
+    cierre,
+    resumen: {
+      ...resumen,
+      entregadas,
+      fallidas,
+      devueltas,
+      pendientes: resumen.total - cerradas,
+      progresoPct: resumen.total > 0 ? Math.round((cerradas / resumen.total) * 100) : 0,
+      // Una parada que falla SIEMPRE deja rastro: si no, el planificador ve un "no entregado" sin
+      // explicación y tiene que llamar por teléfono.
+      incidencias: resumen.incidencias + (suerte >= 0.87 ? 1 : 0),
+      // El sub-DTO `times`: se dobla la muestra de la parada que acaba de cerrar dentro de los promedios.
+      ...tiemposConUnaMas(resumen, cerradasAntes),
+    },
   }
+}
+
+const cerrada = (estado: EntregaMonitoreo['estado']) =>
+  estado === 'entregado' || estado === 'fallido' || estado === 'devuelto'
+
+function hhmmAhora(): string {
+  const ahora = new Date()
+  return `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * El stream de flota no trae qué parada cerró, solo el agregado `order_progress`.
+ * Para la vista por pedido se adelanta la siguiente pendiente en secuencia: suficiente para ubicar el
+ * pedido dentro del viaje sin inventar un segundo stream.
+ */
+function cerrarSiguienteEntrega(
+  entregas: EntregaMonitoreo[],
+  cierre: CierreEntrega,
+): EntregaMonitoreo[] {
+  const siguiente = entregas.findIndex((entrega) => !cerrada(entrega.estado))
+  if (siguiente < 0) return entregas
+
+  const hora = hhmmAhora()
+  return entregas.map((entrega, index) =>
+    index !== siguiente
+      ? entrega
+      : {
+          ...entrega,
+          estado: cierre,
+          llegadaAt: entrega.llegadaAt ?? hora,
+          entregaAt: hora,
+          motivo:
+            cierre === 'fallido'
+              ? entrega.motivo || 'No se pudo concretar la entrega.'
+              : cierre === 'devuelto'
+                ? entrega.motivo || 'La mercadería volvió con el camión.'
+                : entrega.motivo,
+        },
+  )
+}
+
+export function pedidosDeFila(fila: FilaMonitoreo): FilaPedidoMonitoreo[] {
+  return fila.entregas.flatMap((entrega) =>
+    entrega.pedidos.map((pedido) => ({
+      id: pedido.id,
+      pedido: pedido.salesOrder,
+      documento: pedido.documento,
+      ordenId: fila.id,
+      ordenCodigo: fila.codigo,
+      tripId: fila.tripId,
+      paradaId: entrega.paradaId,
+      secuencia: entrega.secuencia,
+      cliente: entrega.cliente,
+      puntoEntrega: entrega.puntoEntrega,
+      camion: fila.camion,
+      chofer: fila.chofer,
+      estadoViaje: fila.estadoViaje,
+      estadoEntrega: entrega.estado,
+      canal: pedido.canal,
+      formaPago: pedido.formaPago,
+      pesoKg: pedido.pesoKg,
+      volumenM3: pedido.volumenM3,
+      total: pedido.total,
+      pedidosEnParada: entrega.pedidos.length,
+      incidencias: entrega.incidencias.length,
+      tracking: fila.tracking,
+    })),
+  )
 }
 
 export interface FlotaViva {
@@ -318,14 +424,15 @@ export function useFlotaViva(distributorId: number = DISTRIBUIDOR_ACTIVO): Flota
 
       // `order_progress`: el contador de la orden avanza. La fila del listado no sabe de entregas
       // individuales, solo de su total cerrado.
-      const resumen = progresoConUnaMas(camion.fila.resumen)
-      camion.fila = { ...camion.fila, resumen }
-      parchear(camion.fila.id, (fila) => ({ ...fila, resumen }))
+      const avance = progresoConUnaMas(camion.fila.resumen)
+      const entregas = cerrarSiguienteEntrega(camion.fila.entregas, avance.cierre)
+      camion.fila = { ...camion.fila, resumen: avance.resumen, entregas }
+      parchear(camion.fila.id, (fila) => ({ ...fila, resumen: avance.resumen, entregas }))
 
       // `trip_status`: cerró la última parada, el viaje terminó. Y con el viaje termina su presencia en
       // la flota: el ítem ACTUAL sale de la partición `FLEET#{distributorId}` porque ya no hay nada
       // activo que listar. La TRAZA queda hasta que el TTL la limpie a los 30 días.
-      if (resumen.pendientes === 0) {
+      if (avance.resumen.pendientes === 0) {
         camion.terminado = true
         borrarActual(distributorId, camion.fila.tripId)
         pendientesDeEntregar.delete(camion.fila.id)

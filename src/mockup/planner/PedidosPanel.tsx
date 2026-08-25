@@ -60,7 +60,7 @@ import {
 import { BloqueadosDialog } from './BloqueadosDialog'
 import { agruparQuitados, QuitadosDialog } from './QuitadosDialog'
 import { BarraCanales, CanalesDialog } from './CanalesDialog'
-import { FiltroPopover } from './FiltroPopover'
+import { FiltroPopover } from '../FiltroPopover'
 import { FueraDeCorteDialog } from './FueraDeCorteDialog'
 import { Paginador, usePagina } from './Paginador'
 import type { RutaPlan } from './planner-model'

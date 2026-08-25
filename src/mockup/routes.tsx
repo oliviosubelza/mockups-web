@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, Radar, Route } from 'lucide-react'
+import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Route, Stamp } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -30,6 +30,13 @@ import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { HistorialRevisionesView } from './views/HistorialRevisionesView'
+import {
+  DevolucionAprobarScreen,
+  DevolucionDetalleScreen,
+  DevolucionesAprobacionesScreen,
+  DevolucionesListaScreen,
+  DevolucionFormScreen,
+} from './devoluciones/rutas'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -88,6 +95,7 @@ export interface MockRoute {
  */
 export const MODULOS = {
   planificacion: 'Planificación',
+  devoluciones: 'Devoluciones',
   reportesEHistoriales: 'Reportes e Historiales',
 } as const
 
@@ -262,6 +270,62 @@ export const routes: MockRoute[] = [
     component: OrdenesTransporteView,
     order: 2,
   },
+  // ── Devoluciones ────────────────────────────────────────────────────────────────────────────
+  // Módulo traído de `mockups_sales` (ver `devoluciones/rutas.tsx`). Los paths son los MISMOS que allá
+  // a propósito: cualquier link o captura que circule entre los dos proyectos sigue resolviendo.
+  {
+    id: 'devoluciones',
+    path: '/devoluciones',
+    label: 'Devoluciones',
+    icon: PackageX,
+    component: DevolucionesListaScreen,
+    order: 5,
+    group: MODULOS.devoluciones,
+    separatorBefore: true,
+  },
+  {
+    id: 'devoluciones-aprobaciones',
+    path: '/devoluciones/aprobaciones',
+    label: 'Aprobaciones',
+    icon: Stamp,
+    component: DevolucionesAprobacionesScreen,
+    order: 5,
+    group: MODULOS.devoluciones,
+  },
+  {
+    // Alta. Se llega por el botón del listado, no por el sidebar: es una ACCIÓN.
+    id: 'devolucion-nueva',
+    path: '/devoluciones/nueva',
+    label: 'Nueva devolución',
+    component: DevolucionFormScreen,
+    order: 5,
+    showInSidebar: false,
+  },
+  {
+    id: 'devolucion-detalle',
+    path: '/devoluciones/:id',
+    label: 'Detalle de devolución',
+    component: DevolucionDetalleScreen,
+    order: 5,
+    showInSidebar: false,
+  },
+  {
+    // Misma página que el alta: distingue por el `:id`, igual que en el original.
+    id: 'devolucion-editar',
+    path: '/devoluciones/:id/editar',
+    label: 'Editar devolución',
+    component: DevolucionFormScreen,
+    order: 5,
+    showInSidebar: false,
+  },
+  {
+    id: 'devolucion-aprobar',
+    path: '/devoluciones/:id/aprobar',
+    label: 'Aprobar devolución',
+    component: DevolucionAprobarScreen,
+    order: 5,
+    showInSidebar: false,
+  },
   {
     id: 'monitoreo',
     path: '/monitoreo',
@@ -269,6 +333,16 @@ export const routes: MockRoute[] = [
     icon: Radar,
     component: MonitoreoView,
     order: 0,
+  },
+  {
+    // Seguimiento arrancando desde un pedido comercial. Resuelve la orden y enfoca la parada que lo
+    // contiene, sin inventar una segunda pantalla de detalle.
+    id: 'monitoreo-detalle-pedido',
+    path: '/monitoreo/seguimiento/pedido/:pedidoId',
+    label: 'Seguimiento pedido',
+    component: MonitoreoDetalleView,
+    order: 3,
+    showInSidebar: false,
   },
   {
     // Detalle de seguimiento (mapa + paradas). Se llega desde una fila del listado, no del sidebar:

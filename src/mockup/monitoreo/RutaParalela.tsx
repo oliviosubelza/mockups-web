@@ -1,29 +1,38 @@
 // Ruta PLANIFICADA contra ruta EJECUTADA, en dos líneas paralelas.
 //
-// Es el "parallel timeline" clásico —dos ejes de tiempo apilados, hitos numerados y conectores entre
-// los pares— y es literalmente lo que logística dibujó a mano. Llegar acá costó dos intentos fallidos
-// que vale la pena dejar escritos para no repetirlos:
+// Es el "parallel timeline" clásico —dos ejes de tiempo apilados con hitos numerados— y es lo que
+// logística dibujó a mano. Llegar acá costó tres intentos; las razones de cada descarte quedan escritas
+// para no repetirlos:
 //
-//   1. Timeline estilo editor de video (CapCut). Mismo concepto de dos carriles, pero con TODO metido
-//      en dos franjas de 40 px: los hitos eran bloques de 15 px sin lugar para una hora, así que había
-//      que hacer zoom para leer cualquier cosa. El concepto estaba bien; la densidad, mal.
-//   2. Gantt de una fila por parada. Legible pero equivocado de forma: con 23 paradas hay que scrollear
-//      vertical, el viaje deja de verse de un vistazo y, sobre todo, SE PIERDE EL CRUCE — que es el
-//      dato que más importa.
+//   1. Timeline estilo editor de video (CapCut). Mismo concepto de dos carriles, pero con todo metido
+//      en franjas de 40 px: hitos de 15 px sin lugar para una hora, así que había que hacer zoom para
+//      leer cualquier cosa. El concepto estaba bien; la densidad, mal.
+//   2. Gantt de una fila por parada. Legible, pero con 23 paradas hay que scrollear vertical y el viaje
+//      deja de verse de un vistazo — que es justamente para lo que se abre esta pantalla.
+//   3. Parallel timeline CON una diagonal por parada uniendo cada hito con su par. Las diagonales se
+//      cruzan cuando el chofer se saltea una parada, y esa X delata el resecuenciamiento… pero veinte
+//      diagonales son una maraña y obligan a INTERPRETAR UNA FIGURA en vez de leer un dato.
 //
-// EL CRUCE. Cuando el chofer visita la parada 3 antes que la 2, sus conectores se cruzan: el de la 2
-// baja hacia la derecha y el de la 3 baja hacia la izquierda. Esa X es la lectura más rápida que hay de
-// un resecuenciamiento, y ninguna tabla ni ningún Gantt la pueden mostrar. Es exactamente lo que
-// logística encerró a mano con un círculo en su dibujo.
+// Lo que quedó:
+//   · El desvío va ESCRITO debajo de cada hora, en el color de su tier. Explícito, no interpretable, y
+//     no se ensucia con veinte paradas.
+//   · Un solo conector, el de la parada seleccionada, y en tres tramos (baja · cruza · baja) para que
+//     el tramo horizontal SEA el desvío y se pueda medir contra la regla. Una diagonal mezcla el
+//     corrimiento horizontal con la separación vertical entre líneas, que no significa nada.
+//   · El resecuenciamiento se ve igual, y mejor: los hitos de abajo van en ORDEN REAL, así que la línea
+//     dice ①③② — el mismo ①③② del dibujo a mano— y el anillo ámbar marca cuáles se corrieron.
 //
-// Lo que hace que esta vez SÍ se lea, que es donde falló el intento 1:
-//   · TODO EL VIAJE ENTRA SIN SCROLL VERTICAL. Dos líneas y punto, sin importar si son 4 paradas o 23.
-//   · LAS HORAS SE VEN SIEMPRE. Van fuera de la línea —arriba en el plan, abajo en lo ejecutado— y
-//     alternadas en dos filas, que es el truco de los timelines de presentación: duplica el ancho
-//     disponible por etiqueta y deja de haber colisiones a zoom de ajuste.
-//   · LA BANDA DEL MEDIO ESTÁ LIMPIA. Solo conectores. Los círculos y las etiquetas quedan del lado de
-//     afuera de cada línea, así que las diagonales no cruzan texto.
-//   · El zoom quedó de accesorio (Ctrl + rueda), no de requisito.
+// ZOOM. Alejar tiene fondo: el piso es el zoom con el que el viaje entero ya entra en la caja. Más
+// atrás no aparece información nueva —el día ya se ve completo— y lo único que pasa es que el dibujo
+// se aleja de una caja que no se achica. Acercar, en cambio, atraviesa tres escalones de densidad:
+// círculo con número → círculo sin número → punto de color. A cada escalón se cae lo que ya no se lee
+// y sobrevive el COLOR, que es lo que se lee de reojo.
+//
+// EL NÚMERO SIEMPRE ADENTRO DEL CÍRCULO. Hubo una versión que ponía el símbolo del estado (✓ ✕ ↩) en
+// lugar del número cuando la parada estaba cerrada. Se veía bien y rompía la vista: sin número no se
+// puede saber QUÉ parada es cada círculo, que es la mitad de lo que esta pantalla existe para mostrar
+// ("orden de entrega" fue uno de los tres datos que pidió logística). El estado ya viaja en el COLOR, y
+// el símbolo quedó como chapita al costado solo para los casos excepcionales — fallido y devuelto.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Flag, Maximize2, Warehouse, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -44,33 +53,72 @@ import {
 } from './linea-tiempo'
 
 // ── Geometría vertical ───────────────────────────────────────────────────────────────────────
-// De arriba abajo: regla · horas del plan · círculos del plan · LÍNEA PLAN · conectores · LÍNEA REAL ·
-// círculos de lo ejecutado · horas de lo ejecutado. Los números son absolutos y no proporciones porque
-// el eje horizontal ya es elástico: si además el alto respirara, dos hitos a distinto zoom dejarían de
-// ser comparables.
-const ALTO_REGLA = 26
-const ALTO_ETIQUETAS = 28
-const ALTO_CIRCULOS = 26
-const ALTO_CONECTORES = 54
-const Y_ETIQUETAS_PLAN = ALTO_REGLA + 4
-const Y_CIRCULOS_PLAN = Y_ETIQUETAS_PLAN + ALTO_ETIQUETAS
-const Y_LINEA_PLAN = Y_CIRCULOS_PLAN + ALTO_CIRCULOS + 2
-const Y_LINEA_REAL = Y_LINEA_PLAN + ALTO_CONECTORES
-const Y_CIRCULOS_REAL = Y_LINEA_REAL + 4
-const Y_ETIQUETAS_REAL = Y_CIRCULOS_REAL + ALTO_CIRCULOS
-const ALTO_TOTAL = Y_ETIQUETAS_REAL + ALTO_ETIQUETAS + 8
+// De arriba abajo: regla · horas del plan · círculos del plan · LÍNEA PLAN · conector · LÍNEA REAL ·
+// círculos ejecutados · horas + desvío. Los números son absolutos y no proporciones porque el eje
+// horizontal ya es elástico: si además el alto respirara, dos hitos a distinto zoom dejarían de ser
+// comparables.
+const ANCHO_GUTTER = 100
+const ALTO_REGLA = 30
+/** Aire entre la regla y las horas del plan. Sin él las dos filas de horas se leen como una sola. */
+const GAP_REGLA = 14
+const ALTO_FILA_PLAN = 15
+const ALTO_ETIQUETAS_PLAN = ALTO_FILA_PLAN * 2
+const GAP_ETIQUETA = 8
+const DIAMETRO = 26
+const GAP_LINEA = 10
+const ALTO_CONECTORES = 58
+/** Abajo cada etiqueta lleva hora Y desvío, así que la fila mide el doble. */
+const ALTO_FILA_REAL = 30
+const ALTO_ETIQUETAS_REAL = ALTO_FILA_REAL * 2
 
-const DIAMETRO = 24
-/** Alto de cada una de las dos filas de horas alternadas. */
-const ALTO_FILA_ETIQUETA = 13
+const Y_ETIQUETAS_PLAN = ALTO_REGLA + GAP_REGLA
+const Y_CIRCULOS_PLAN = Y_ETIQUETAS_PLAN + ALTO_ETIQUETAS_PLAN + GAP_ETIQUETA
+const Y_LINEA_PLAN = Y_CIRCULOS_PLAN + DIAMETRO + GAP_LINEA
+const Y_LINEA_REAL = Y_LINEA_PLAN + ALTO_CONECTORES
+const Y_CIRCULOS_REAL = Y_LINEA_REAL + GAP_LINEA
+const Y_ETIQUETAS_REAL = Y_CIRCULOS_REAL + DIAMETRO + GAP_ETIQUETA
+const ALTO_TOTAL = Y_ETIQUETAS_REAL + ALTO_ETIQUETAS_REAL + 10
+/** Lo que se le suma al scroller para que la barra horizontal no se coma la última fila de etiquetas. */
+const ALTO_BARRA = 14
+
 /** Ancho que ocupa una hora "HH:MM" a 10 px, más aire. Es lo que decide si dos etiquetas chocan. */
-const ANCHO_ETIQUETA = 38
+const ANCHO_ETIQUETA = 40
+/** Separación mínima entre dos círculos consecutivos para que no se toquen. */
+const SEPARACION_CIRCULOS = DIAMETRO + 8
 
 const COLCHON_IZQ = 26
-const COLCHON_DER = 34
+const COLCHON_DER = 40
 
+/**
+ * Piso absoluto del zoom. En la práctica casi nunca manda: el piso REAL es "entra todo" (ver
+ * `pxMinimo`), y este valor solo aparece cuando todavía no se midió la caja.
+ */
 const PX_MIN = 0.3
 const PX_MAX = 26
+
+/**
+ * Los tres tamaños del hito, de más a menos aire disponible.
+ *
+ * Alejar no puede significar "lo mismo pero ilegible": a cada escalón se cae lo que ya no se lee y
+ * sobrevive lo que sí. Primero el número, después la hora, y al final queda el COLOR — que es el dato
+ * que se lee de reojo y el único que sigue teniendo sentido a 3 px por hito.
+ */
+const DIAMETRO_CIRCULO = 15
+const DIAMETRO_PUNTO = 9
+type Densidad = 'numero' | 'circulo' | 'punto'
+const DIAMETRO_DE: Record<Densidad, number> = {
+  numero: DIAMETRO,
+  circulo: DIAMETRO_CIRCULO,
+  punto: DIAMETRO_PUNTO,
+}
+/**
+ * Techo del zoom que el encuadre inicial puede elegir solo.
+ *
+ * Con muchas paradas juntas, exigir que NINGÚN par se toque puede pedir un zoom absurdo (dos entregas a
+ * 3 minutos una de otra pedirían 11 px/min y el viaje entero mediría 20 pantallas). Pasado este techo
+ * se acepta que ese par quede apretado y se deja que el usuario acerque a mano.
+ */
+const PX_AJUSTE_MAX = 6
 const SENSIBILIDAD_RUEDA = 0.0022
 
 const acotar = (valor: number, min: number, max: number) => Math.min(Math.max(valor, min), max)
@@ -91,13 +139,20 @@ export const colorDe = (hito: HitoLineaTiempo): string => {
   return TIER_DESVIO[hito.tier].color
 }
 
+/** El hueco más chico, en minutos, entre dos marcas consecutivas de una lista ya ordenada. */
+function huecoMinimo(posiciones: number[]): number {
+  let minimo = Infinity
+  for (let i = 1; i < posiciones.length; i++) minimo = Math.min(minimo, posiciones[i] - posiciones[i - 1])
+  return Number.isFinite(minimo) && minimo > 0 ? minimo : Infinity
+}
+
 /**
  * Reparte etiquetas en dos filas para que no se pisen.
  *
- * Es el truco de los timelines de presentación: alternar arriba/abajo duplica el ancho disponible por
- * etiqueta. Se recorre de izquierda a derecha y cada una va a la primera fila donde entre; si no entra
- * en ninguna, se oculta y la hora queda disponible en el tooltip y en el pie. Ocultar es preferible a
- * dibujar dos horas encimadas, que no se leen ni por separado.
+ * Es el truco de los timelines de presentación: alternar duplica el ancho disponible por etiqueta. Se
+ * recorre de izquierda a derecha y cada una va a la primera fila donde entre; si no entra en ninguna se
+ * oculta, y la hora queda en el tooltip y en el pie. Ocultar es preferible a dibujar dos horas
+ * encimadas, que no se leen ni por separado.
  */
 function repartirEtiquetas(posiciones: number[]): (0 | 1 | null)[] {
   const finDeFila = [-Infinity, -Infinity]
@@ -129,17 +184,47 @@ export function RutaParalela({
   const scrollerRef = useRef<HTMLDivElement>(null)
   const anclaRef = useRef<{ min: number; offset: number } | null>(null)
   const ajustadoRef = useRef(false)
-  const arrastreRef = useRef<{ x: number; scroll: number; movio: boolean } | null>(null)
+  const arrastreRef = useRef<{
+    x: number
+    scroll: number
+    movio: boolean
+  } | null>(null)
   const pxRef = useRef(2)
   const [px, setPx] = usePxEstado(pxRef)
 
+  /**
+   * El ancho de la caja, medido. Hace falta en el render —no alcanza con leer el ref— porque de él
+   * salen el piso del zoom y el ancho del lienzo, y los dos tienen que recalcularse al redimensionar.
+   */
+  const [anchoCaja, setAnchoCaja] = useState(0)
+
+  /**
+   * El zoom más chico que tiene sentido: aquel con el que el viaje entero ya entra en la caja.
+   *
+   * Alejar más allá de esto no muestra nada nuevo —el día ya se ve completo— y en cambio encoge el
+   * dibujo contra una caja que no encoge: se termina leyendo un manchón de 300 px en una pantalla
+   * vacía. El piso se mueve con la caja, así que achicar la ventana vuelve a apretar el eje en vez de
+   * dejar el zoom viejo colgado.
+   */
+  const pxMinimo = useMemo(
+    () => (anchoCaja > 0 ? Math.max(PX_MIN, (anchoCaja - 16) / span) : PX_MIN),
+    [anchoCaja, span],
+  )
+
   const x = useCallback((min: number) => (min - t0) * px, [t0, px])
-  const ancho = Math.max(span * px, 320)
+  /**
+   * El lienzo nunca mide menos que la caja.
+   *
+   * Con `width: auto`, un hijo flex se dimensiona a su contenido: si el lienzo se achicaba, la caja se
+   * achicaba con él y el componente entero dejaba de ocupar la pantalla. Y como `span * px` es
+   * fraccionario, el `scrollWidth` redondeaba para arriba contra un `clientWidth` redondeado para
+   * abajo: 1 px de desborde y una barra de scroll fantasma, con el pulgar ocupando todo el riel.
+   * `Math.ceil` mata ese píxel; el `Math.max` mantiene la regla y la grilla llegando hasta el borde.
+   */
+  const ancho = Math.max(Math.ceil(span * px), anchoCaja)
 
   const paso = pasoRegla(px)
   const menor = pasoMenor(paso)
-  /** Con los hitos muy juntos los círculos se pisan; ahí se degradan a puntos y las horas desaparecen. */
-  const conCirculos = 25 * px >= DIAMETRO + 2
 
   const hito = useMemo(
     () => linea.hitos.find((h) => h.secuencia === seleccion) ?? null,
@@ -148,7 +233,7 @@ export function RutaParalela({
 
   /**
    * Las paradas ordenadas por su hora REAL. Es el orden en que se dibujan los hitos de la línea de
-   * abajo y el que hace que los conectores se crucen cuando el chofer se salteó una parada.
+   * abajo, y lo que hace que los números queden corridos cuando el chofer se saltea una parada.
    */
   const enOrdenReal = useMemo(
     () =>
@@ -158,19 +243,58 @@ export function RutaParalela({
     [linea.hitos],
   )
 
-  const filasPlan = useMemo(
-    () => repartirEtiquetas([x(linea.salidaPlanMin), ...linea.hitos.map((h) => x(h.planLlegada)), x(linea.cierrePlanMin)]),
-    [linea.hitos, linea.salidaPlanMin, linea.cierrePlanMin, x],
+  /** Las marcas de cada línea en minutos, ya ordenadas. De acá salen el reparto y el zoom mínimo. */
+  const marcasPlan = useMemo(
+    () => [linea.salidaPlanMin, ...linea.hitos.map((h) => h.planLlegada), linea.cierrePlanMin],
+    [linea.hitos, linea.salidaPlanMin, linea.cierrePlanMin],
   )
-  const filasReal = useMemo(
-    () =>
-      repartirEtiquetas([
-        x(linea.salidaRealMin),
-        ...enOrdenReal.map((h) => x(h.realLlegada as number)),
-        ...(linea.cierreRealMin === null ? [] : [x(linea.cierreRealMin)]),
-      ]),
-    [enOrdenReal, linea.salidaRealMin, linea.cierreRealMin, x],
+  const marcasReal = useMemo(
+    () => [
+      linea.salidaRealMin,
+      ...enOrdenReal.map((h) => h.realLlegada as number),
+      ...(linea.cierreRealMin === null ? [] : [linea.cierreRealMin]),
+    ],
+    [enOrdenReal, linea.salidaRealMin, linea.cierreRealMin],
   )
+
+  /**
+   * El zoom mínimo con el que NINGÚN par de círculos se toca.
+   *
+   * Es la pieza que prepara la vista para viajes largos: con 22 paradas, ajustar al ancho de la
+   * pantalla amontonaría los círculos hasta hacerlos ilegibles. En vez de eso, el encuadre inicial
+   * respeta esta separación y deja que el eje se desplace — un viaje grande se recorre, no se aplasta.
+   */
+  const pxLegible = useMemo(() => {
+    const hueco = Math.min(huecoMinimo(marcasPlan), huecoMinimo(marcasReal))
+    return acotar(SEPARACION_CIRCULOS / hueco, PX_MIN, PX_AJUSTE_MAX)
+  }, [marcasPlan, marcasReal])
+
+  /**
+   * En qué escalón de densidad está la vista, según el hueco más apretado del viaje.
+   *
+   * Se decide con el par MÁS JUNTO y no con el promedio: dos entregas a tres minutos una de otra son
+   * las que se pisan, y basta un par pisado para que la línea se lea mal. Que el escalón sea único
+   * para toda la línea es a propósito — círculos de dos tamaños en la misma fila se leen como dos
+   * categorías de parada, que es exactamente lo que no son.
+   */
+  const huecoReal = useMemo(
+    () => Math.min(huecoMinimo(marcasPlan), huecoMinimo(marcasReal)),
+    [marcasPlan, marcasReal],
+  )
+  const densidad: Densidad =
+    huecoReal * px >= DIAMETRO ? 'numero' : huecoReal * px >= DIAMETRO_CIRCULO ? 'circulo' : 'punto'
+  /**
+   * A escala de punto las etiquetas se apagan salvo la de la parada elegida.
+   *
+   * `repartirEtiquetas` ya oculta las que se pisan, pero con veinte hitos amontonados sobrevive una de
+   * cada cinco y el resultado es peor que ninguna: horas sueltas que no se sabe a qué punto pertenecen.
+   * La hora de la que importa sigue estando —abajo en el pie y en el tooltip—, así que no se pierde.
+   */
+  const soloEtiquetaActiva = densidad === 'punto'
+  const filaSi = (fila: 0 | 1 | null, activo: boolean) => (soloEtiquetaActiva && !activo ? null : fila)
+
+  const filasPlan = useMemo(() => repartirEtiquetas(marcasPlan.map(x)), [marcasPlan, x])
+  const filasReal = useMemo(() => repartirEtiquetas(marcasReal.map(x)), [marcasReal, x])
 
   const zoomAnclado = useCallback(
     (destino: number, clienteX?: number) => {
@@ -178,10 +302,13 @@ export function RutaParalela({
       if (!el) return
       const caja = el.getBoundingClientRect()
       const offset = clienteX === undefined ? el.clientWidth / 2 : clienteX - caja.left
-      anclaRef.current = { min: (el.scrollLeft + offset) / pxRef.current + t0, offset }
-      setPx(acotar(destino, PX_MIN, PX_MAX))
+      anclaRef.current = {
+        min: (el.scrollLeft + offset) / pxRef.current + t0,
+        offset,
+      }
+      setPx(acotar(destino, pxMinimo, PX_MAX))
     },
-    [t0, setPx],
+    [t0, pxMinimo, setPx],
   )
 
   // El scroll se corrige DESPUÉS del layout: en el handler todavía está el ancho viejo.
@@ -193,29 +320,52 @@ export function RutaParalela({
     el.scrollLeft = (ancla.min - t0) * px - ancla.offset
   }, [px, t0])
 
+  /** Comprime el viaje entero en el ancho disponible. Sirve para ver la FORMA del día de un vistazo. */
   const ajustar = useCallback(() => {
     const el = scrollerRef.current
     if (!el || el.clientWidth === 0) return
-    setPx(acotar((el.clientWidth - 12) / span, PX_MIN, PX_MAX))
+    setPx(acotar((el.clientWidth - 16) / span, pxMinimo, PX_MAX))
     el.scrollLeft = 0
-  }, [span, setPx])
+  }, [span, pxMinimo, setPx])
 
-  // El encuadre inicial muestra el viaje ENTERO, que es la premisa de esta vista: se abre y se ve todo.
-  // El ResizeObserver es porque el diálogo mide 0 hasta que monta el portal.
+  /**
+   * El encuadre con el que se abre: el MÁXIMO entre "entra todo" y "se lee".
+   *
+   * Un viaje de 5 paradas entra entero y sobra lugar. Uno de 22 no entra sin amontonar los círculos, y
+   * ahí gana la legibilidad: el eje se hace más ancho que la pantalla y se recorre. Un viaje grande se
+   * recorre, no se aplasta — para aplastarlo está el botón de ajustar.
+   */
+  const encuadreInicial = useCallback(() => {
+    const el = scrollerRef.current
+    if (!el || el.clientWidth === 0) return
+    setPx(acotar(Math.max((el.clientWidth - 16) / span, pxLegible), pxMinimo, PX_MAX))
+    el.scrollLeft = 0
+  }, [span, pxLegible, pxMinimo, setPx])
+
+  // El ResizeObserver es porque el diálogo mide 0 hasta que monta el portal. Además de disparar el
+  // encuadre inicial —una sola vez— deja el ancho medido en estado: de ahí sale el piso del zoom, que
+  // tiene que seguir a la caja cuando el usuario redimensiona la ventana.
   useLayoutEffect(() => {
     const el = scrollerRef.current
     if (!el) return
     const observador = new ResizeObserver(() => {
-      if (ajustadoRef.current || el.clientWidth === 0) return
+      if (el.clientWidth === 0) return
+      setAnchoCaja(el.clientWidth)
+      if (ajustadoRef.current) return
       ajustadoRef.current = true
-      ajustar()
+      encuadreInicial()
     })
     observador.observe(el)
     return () => observador.disconnect()
-  }, [ajustar])
+  }, [encuadreInicial])
 
-  // Ctrl + rueda acerca; la rueda sola no se toca. Acá no hay scroll vertical que robar, pero
-  // secuestrar la rueda igual sorprende — y es el gesto que ya se corrigió una vez.
+  // Si la caja se agranda —o se achica— el piso se mueve y el zoom actual puede quedar por debajo.
+  // Subirlo acá es lo que impide que quede un dibujo chiquito flotando en una caja grande.
+  useLayoutEffect(() => {
+    if (pxRef.current < pxMinimo) setPx(pxMinimo)
+  }, [pxMinimo, setPx])
+
+  // Ctrl + rueda acerca. La rueda sola no se toca: secuestrarla sorprende, y ya se corrigió una vez.
   useEffect(() => {
     const el = scrollerRef.current
     if (!el) return
@@ -237,7 +387,7 @@ export function RutaParalela({
       const el = scrollerRef.current
       if (!el) return
       const centro = x(siguiente.realLlegada ?? siguiente.planLlegada)
-      if (centro < el.scrollLeft + 60 || centro > el.scrollLeft + el.clientWidth - 60) {
+      if (centro < el.scrollLeft + 70 || centro > el.scrollLeft + el.clientWidth - 70) {
         el.scrollLeft = centro - el.clientWidth / 2
       }
     },
@@ -269,7 +419,7 @@ export function RutaParalela({
           {linea.fueraDeOrden > 0 && (
             <span
               className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400"
-              title="Paradas visitadas fuera del orden planificado. Sus conectores se cruzan."
+              title="Paradas visitadas fuera del orden planificado: en la línea de abajo su número queda corrido"
             >
               <span className="size-2.5 rounded-full ring-2 ring-amber-500" />
               {linea.fueraDeOrden} fuera de orden
@@ -277,22 +427,46 @@ export function RutaParalela({
           )}
         </div>
         <div className="flex items-center gap-1">
-          <span className="mr-1 hidden text-[11px] text-muted-foreground sm:inline">Ctrl + rueda para acercar</span>
-          <Button size="icon-sm" variant="ghost" title="Alejar" onClick={() => zoomAnclado(px / 1.6)}>
+          <span className="mr-1 hidden text-[11px] text-muted-foreground lg:inline">
+            Ctrl + rueda acerca · botón del medio desplaza
+          </span>
+          {/* Deshabilitados en los topes: un botón que ya no hace nada y no lo dice se siente roto.
+              Alejar toca fondo justo cuando el viaje entero entra — de ahí para atrás no hay nada más
+              que ver. */}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="Alejar"
+            disabled={px <= pxMinimo * 1.001}
+            onClick={() => zoomAnclado(px / 1.6)}
+          >
             <ZoomOut className="size-4" />
           </Button>
-          <Button size="icon-sm" variant="ghost" title="Acercar" onClick={() => zoomAnclado(px * 1.6)}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="Acercar"
+            disabled={px >= PX_MAX}
+            onClick={() => zoomAnclado(px * 1.6)}
+          >
             <ZoomIn className="size-4" />
           </Button>
-          <Button size="icon-sm" variant="ghost" title="Ajustar el viaje completo" onClick={ajustar}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="Comprimir el viaje entero en la pantalla"
+            onClick={ajustar}
+          >
             <Maximize2 className="size-4" />
           </Button>
         </div>
       </div>
 
       {/* ── Las dos líneas ───────────────────────────────────────────────────────────────── */}
+      {/* `items-center`: el bloque mide poco más de 270 px y el diálogo da bastante más. Centrado
+          verticalmente queda equilibrado; pegado arriba dejaba media pantalla vacía debajo. */}
       <div
-        className="relative min-h-0 flex-1 overflow-hidden outline-none"
+        className="flex min-h-0 flex-1 items-center overflow-hidden outline-none"
         tabIndex={0}
         onKeyDown={(evento) => {
           if (evento.key === 'ArrowRight') {
@@ -304,29 +478,48 @@ export function RutaParalela({
           }
         }}
       >
-        {/* Los nombres de las dos líneas van FLOTANDO sobre el scroller y no dentro: así no consumen
-            ancho del eje y siguen visibles con el eje desplazado. */}
-        <span
-          className="pointer-events-none absolute left-3 z-20 rounded bg-background/85 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm"
-          style={{ top: Y_LINEA_PLAN - 20 }}
+        {/* Los nombres de las dos líneas van en una columna PROPIA, fuera del scroller. Flotando encima
+            del eje se superponían con el primer hito apenas el viaje empezaba cerca del borde. */}
+        {/* Mismo alto que el scroller: el contenedor los centra a los dos por separado, así que con
+            alturas distintas los rótulos quedarían corridos respecto de sus líneas. */}
+        <div
+          className="relative shrink-0 border-r border-border"
+          style={{ width: ANCHO_GUTTER, height: ALTO_TOTAL + ALTO_BARRA }}
         >
-          Planificado
-        </span>
-        <span
-          className="pointer-events-none absolute left-3 z-20 rounded bg-background/85 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground backdrop-blur-sm"
-          style={{ top: Y_LINEA_REAL + 6 }}
-        >
-          Ejecutado
-        </span>
+          <span
+            className="absolute right-3 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            style={{ top: Y_LINEA_PLAN }}
+          >
+            Planificado
+          </span>
+          <span
+            className="absolute right-3 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-foreground"
+            style={{ top: Y_LINEA_REAL }}
+          >
+            Ejecutado
+          </span>
+        </div>
 
+        {/* `min-w-0 flex-1`: sin esto el scroller se dimensiona a su contenido y, apenas el lienzo mide
+            menos que la pantalla, la caja se encoge con él y el componente entero deja de ocupar el
+            ancho disponible. */}
         <div
           ref={scrollerRef}
-          className="h-full cursor-grab overflow-x-auto overflow-y-auto overscroll-x-contain active:cursor-grabbing [scrollbar-width:thin]"
+          className="min-w-0 flex-1 cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain active:cursor-grabbing [scrollbar-width:thin]"
+          style={{ height: ALTO_TOTAL + ALTO_BARRA }}
           onPointerDown={(evento) => {
-            if (evento.button !== 0) return
+            // Botón izquierdo o BOTÓN DEL MEDIO. El del medio es el gesto de desplazar de toda la vida
+            // en visores y editores; hay que frenarle el `preventDefault` para que Windows no dispare
+            // su propio autoscroll encima.
+            if (evento.button !== 0 && evento.button !== 1) return
+            if (evento.button === 1) evento.preventDefault()
             const el = scrollerRef.current
             if (!el) return
-            arrastreRef.current = { x: evento.clientX, scroll: el.scrollLeft, movio: false }
+            arrastreRef.current = {
+              x: evento.clientX,
+              scroll: el.scrollLeft,
+              movio: false,
+            }
           }}
           onPointerMove={(evento) => {
             const arrastre = arrastreRef.current
@@ -359,19 +552,21 @@ export function RutaParalela({
               />
             ))}
 
-            {/* Regla */}
+            {/* Regla. Deliberadamente tenue y chica: es la ESCALA, no un dato. Las horas que importan
+                son las de cada hito, y con los dos juegos del mismo tamaño se leían como una sola
+                fila de números sin saber cuál era cuál. */}
             <div className="absolute inset-x-0 top-0 border-b border-border" style={{ height: ALTO_REGLA }}>
               {ticks.map((min) => (
                 <div
                   key={min}
                   className={cn('absolute bottom-0 w-px', min % paso === 0 ? 'bg-border' : 'bg-border/60')}
-                  style={{ left: x(min), height: min % paso === 0 ? 8 : 4 }}
+                  style={{ left: x(min), height: min % paso === 0 ? 7 : 4 }}
                 />
               ))}
               {mayores.map((min) => (
                 <span
                   key={`rot-${min}`}
-                  className="absolute top-1 whitespace-nowrap text-[10px] font-medium tabular-nums text-muted-foreground"
+                  className="absolute top-1.5 whitespace-nowrap text-[9px] tabular-nums text-muted-foreground/70"
                   style={{ left: x(min) + 4 }}
                 >
                   {horaDeEje(min)}
@@ -382,7 +577,11 @@ export function RutaParalela({
             {/* Las dos líneas de tiempo */}
             <div
               className="absolute h-0.5 rounded-full bg-muted-foreground/35"
-              style={{ top: Y_LINEA_PLAN, left: x(linea.salidaPlanMin), width: Math.max((linea.cierrePlanMin - linea.salidaPlanMin) * px, 2) }}
+              style={{
+                top: Y_LINEA_PLAN,
+                left: x(linea.salidaPlanMin),
+                width: Math.max((linea.cierrePlanMin - linea.salidaPlanMin) * px, 2),
+              }}
             />
             <div
               className="absolute h-0.5 rounded-full bg-foreground/50"
@@ -396,41 +595,18 @@ export function RutaParalela({
               }}
             />
 
-            {/* ── Conectores ──
-                En SVG y no en divs porque son DIAGONALES: con divs habría que rotarlas y el largo real
-                dejaría de coincidir con el desvío. Y son el elemento central de la vista — cuando dos
-                se cruzan, el chofer cambió el orden de visita. */}
+            {/* El conector de la parada seleccionada, y solo esa. */}
             <svg
               className="pointer-events-none absolute"
-              style={{ top: Y_LINEA_PLAN, left: 0, width: ancho, height: ALTO_CONECTORES }}
+              style={{ top: Y_LINEA_PLAN, left: 0 }}
               width={ancho}
               height={ALTO_CONECTORES}
             >
-              {linea.demoraSalidaMin !== 0 && (
+              {hito && hito.realLlegada !== null && hito.desvioLlegada !== null && (
                 <Conector
-                  desde={x(linea.salidaPlanMin)}
-                  hasta={x(linea.salidaRealMin)}
-                  desvio={linea.demoraSalidaMin}
-                  activo={false}
-                />
-              )}
-              {linea.hitos.map((h) =>
-                h.realLlegada === null || h.desvioLlegada === null ? null : (
-                  <Conector
-                    key={h.secuencia}
-                    desde={x(h.planLlegada)}
-                    hasta={x(h.realLlegada)}
-                    desvio={h.desvioLlegada}
-                    activo={h.secuencia === seleccion}
-                  />
-                ),
-              )}
-              {linea.cierreRealMin !== null && (
-                <Conector
-                  desde={x(linea.cierrePlanMin)}
-                  hasta={x(linea.cierreRealMin)}
-                  desvio={linea.cierreRealMin - linea.cierrePlanMin}
-                  activo={false}
+                  desde={x(hito.planLlegada)}
+                  hasta={x(hito.realLlegada)}
+                  desvio={hito.desvioLlegada}
                 />
               )}
             </svg>
@@ -442,6 +618,7 @@ export function RutaParalela({
               yCirculo={Y_CIRCULOS_PLAN}
               yEtiqueta={Y_ETIQUETAS_PLAN}
               fila={filasPlan[0]}
+              altoFila={ALTO_FILA_PLAN}
               hora={horaDeEje(linea.salidaPlanMin)}
               ayuda={`Salida planificada · ${horaDeEje(linea.salidaPlanMin)}`}
             />
@@ -451,10 +628,11 @@ export function RutaParalela({
                 centro={x(h.planLlegada)}
                 yCirculo={Y_CIRCULOS_PLAN}
                 yEtiqueta={Y_ETIQUETAS_PLAN}
-                fila={filasPlan[i + 1]}
+                fila={filaSi(filasPlan[i + 1], h.secuencia === seleccion)}
+                altoFila={ALTO_FILA_PLAN}
                 numero={h.secuencia}
                 hora={horaDeEje(h.planLlegada)}
-                conCirculo={conCirculos}
+                densidad={densidad}
                 activo={h.secuencia === seleccion}
                 onClick={() => seleccionar(h.secuencia)}
                 ayuda={`Parada ${h.secuencia} · ${h.cliente}\n${h.puntoEntrega}\nLlegada planificada: ${horaDeEje(h.planLlegada)}`}
@@ -466,20 +644,23 @@ export function RutaParalela({
               yCirculo={Y_CIRCULOS_PLAN}
               yEtiqueta={Y_ETIQUETAS_PLAN}
               fila={filasPlan[filasPlan.length - 1]}
+              altoFila={ALTO_FILA_PLAN}
               hora={horaDeEje(linea.cierrePlanMin)}
               ayuda={`Retorno planificado al depósito · ${horaDeEje(linea.cierrePlanMin)}`}
             />
 
-            {/* ── Hitos EJECUTADOS: círculos abajo de la línea, horas abajo de los círculos ──
+            {/* ── Hitos EJECUTADOS: círculos abajo de la línea, hora + desvío abajo de los círculos ──
                 Se dibujan en ORDEN REAL, así que un chofer que se salteó una parada deja los números
-                desordenados sobre la línea. Es el mismo ①③② del dibujo de logística. */}
+                corridos sobre la línea. Es el mismo ①③② del dibujo de logística. */}
             <Extremo
               icono={Warehouse}
               centro={x(linea.salidaRealMin)}
               yCirculo={Y_CIRCULOS_REAL}
               yEtiqueta={Y_ETIQUETAS_REAL}
               fila={filasReal[0]}
+              altoFila={ALTO_FILA_REAL}
               hora={horaDeEje(linea.salidaRealMin)}
+              desvio={linea.demoraSalidaMin}
               ayuda={`Salida real · ${horaDeEje(linea.salidaRealMin)}`}
               resaltado
             />
@@ -489,13 +670,16 @@ export function RutaParalela({
                 centro={x(h.realLlegada as number)}
                 yCirculo={Y_CIRCULOS_REAL}
                 yEtiqueta={Y_ETIQUETAS_REAL}
-                fila={filasReal[i + 1]}
+                fila={filaSi(filasReal[i + 1], h.secuencia === seleccion)}
+                altoFila={ALTO_FILA_REAL}
                 numero={h.secuencia}
                 hora={horaDeEje(h.realLlegada as number)}
-                conCirculo={conCirculos}
+                desvio={h.desvioLlegada}
+                densidad={densidad}
                 activo={h.secuencia === seleccion}
                 color={colorDe(h)}
                 simbolo={ESTADO_ENTREGA[h.estado].simbolo}
+                excepcional={h.estado === 'fallido' || h.estado === 'devuelto'}
                 fueraDeOrden={h.fueraDeOrden}
                 incidencias={h.incidencias}
                 onClick={() => seleccionar(h.secuencia)}
@@ -518,14 +702,17 @@ export function RutaParalela({
                 yCirculo={Y_CIRCULOS_REAL}
                 yEtiqueta={Y_ETIQUETAS_REAL}
                 fila={filasReal[filasReal.length - 1]}
+                altoFila={ALTO_FILA_REAL}
                 hora={horaDeEje(linea.cierreRealMin)}
+                desvio={linea.cierreRealMin - linea.cierrePlanMin}
                 ayuda={`Retorno real al depósito · ${horaDeEje(linea.cierreRealMin)}`}
                 resaltado
               />
             )}
 
-            {/* Las paradas que todavía no ocurrieron: fantasmas grises sobre la línea real, en la
-                posición donde se las espera. El hueco vacío haría parecer que no existen. */}
+            {/* Las paradas que todavía no ocurrieron: fantasmas en la posición donde se las espera. El
+                hueco vacío haría parecer que no existen. Sin etiqueta: su hora ya está arriba, en el
+                plan, y repetirla acá solo agrega números que compiten con los reales. */}
             {linea.hitos
               .filter((h) => h.realLlegada === null)
               .map((h) => (
@@ -535,9 +722,10 @@ export function RutaParalela({
                   yCirculo={Y_CIRCULOS_REAL}
                   yEtiqueta={Y_ETIQUETAS_REAL}
                   fila={null}
+                  altoFila={ALTO_FILA_REAL}
                   numero={h.secuencia}
                   hora={horaDeEje(h.planLlegada)}
-                  conCirculo={conCirculos}
+                  densidad={densidad}
                   activo={h.secuencia === seleccion}
                   color={COLOR_PENDIENTE}
                   fantasma
@@ -546,13 +734,13 @@ export function RutaParalela({
                 />
               ))}
 
-            {/* Playhead */}
+            {/* Playhead. La chapita va ABAJO: arriba tapaba una hora de la regla. */}
             {linea.ahoraMin !== null && (
               <div
                 className="pointer-events-none absolute w-px bg-primary/70"
                 style={{ left: x(linea.ahoraMin), top: ALTO_REGLA, bottom: 0 }}
               >
-                <span className="absolute top-0 left-0 -translate-x-1/2 rounded-b-sm bg-primary px-1 py-px text-[9px] font-medium text-primary-foreground">
+                <span className="absolute bottom-0 left-0 -translate-x-1/2 rounded-t-sm bg-primary px-1 py-px text-[9px] font-medium text-primary-foreground">
                   ahora
                 </span>
               </div>
@@ -620,41 +808,33 @@ function usePxEstado(ref: { current: number }) {
 }
 
 /**
- * Una diagonal entre el hito planificado y el real. Coordenadas relativas a la banda del medio, que
- * empieza en la línea del plan (y = 0) y termina en la de lo ejecutado.
+ * El puente entre el hito planificado y el real de la parada SELECCIONADA. Se dibuja uno solo.
+ *
+ * Va en tres tramos —baja, cruza, baja— porque así el tramo horizontal ES el desvío: su largo se puede
+ * medir contra la regla de arriba. Una diagonal mezcla el corrimiento horizontal con la separación
+ * vertical entre las dos líneas, que no significa nada.
  */
-function Conector({
-  desde,
-  hasta,
-  desvio,
-  activo,
-}: {
-  desde: number
-  hasta: number
-  desvio: number
-  activo: boolean
-}) {
+function Conector({ desde, hasta, desvio }: { desde: number; hasta: number; desvio: number }) {
   const meta = TIER_DESVIO[tierDe(desvio)]
+  const medio = ALTO_CONECTORES / 2
   return (
-    <g opacity={activo ? 1 : 0.55}>
-      <line
-        x1={desde}
-        y1={0}
-        x2={hasta}
-        y2={ALTO_CONECTORES}
+    <g>
+      <path
+        d={`M ${desde} 0 L ${desde} ${medio} L ${hasta} ${medio} L ${hasta} ${ALTO_CONECTORES}`}
+        fill="none"
         stroke={meta.color}
-        strokeWidth={activo ? 2.5 : 1.5}
+        strokeWidth={2}
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      {/* La etiqueta del desvío solo en el hito activo: dibujar las veinte convierte la banda en ruido
-          y tapa justamente los cruces, que son lo que hay que ver. */}
-      {activo && Math.abs(desvio) > 0 && (
+      {Math.abs(desvio) > 0 && (
         <text
-          x={(desde + hasta) / 2 + 6}
-          y={ALTO_CONECTORES / 2 + 3}
+          x={(desde + hasta) / 2}
+          y={medio - 6}
           fill={meta.color}
           fontSize={10}
-          fontWeight={600}
+          fontWeight={700}
+          textAnchor="middle"
         >
           {desvioTexto(desvio)}
         </text>
@@ -663,15 +843,41 @@ function Conector({
   )
 }
 
-/** La hora debajo (o encima) del círculo, en la fila que le tocó del reparto. `null` = no entró. */
-function Etiqueta({ y, fila, centro, hora }: { y: number; fila: 0 | 1 | null; centro: number; hora: string }) {
+/**
+ * La hora del hito, en la fila que le tocó del reparto. `null` = no entró y se oculta.
+ *
+ * Del lado ejecutado lleva además el DESVÍO escrito. Es el reemplazo de la telaraña de conectores:
+ * decir "+12 min" en el color del tier es más directo que hacerle medir a alguien el largo de una
+ * diagonal, y no se ensucia cuando hay veinte paradas.
+ */
+function Etiqueta({
+  y,
+  fila,
+  altoFila,
+  centro,
+  hora,
+  desvio,
+}: {
+  y: number
+  fila: 0 | 1 | null
+  altoFila: number
+  centro: number
+  hora: string
+  desvio?: number | null
+}) {
   if (fila === null) return null
+  const meta = desvio === null || desvio === undefined ? null : TIER_DESVIO[tierDe(desvio)]
   return (
     <span
-      className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
-      style={{ left: centro, top: y + fila * ALTO_FILA_ETIQUETA }}
+      className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center whitespace-nowrap leading-tight"
+      style={{ left: centro, top: y + fila * altoFila }}
     >
-      {hora}
+      <span className="text-[10px] font-medium tabular-nums text-foreground">{hora}</span>
+      {meta && (
+        <span className={cn('text-[9px] font-semibold tabular-nums', meta.texto)}>
+          {desvioTexto(desvio as number)}
+        </span>
+      )}
     </span>
   )
 }
@@ -683,7 +889,9 @@ function Extremo({
   yCirculo,
   yEtiqueta,
   fila,
+  altoFila,
   hora,
+  desvio,
   ayuda,
   resaltado,
 }: {
@@ -692,7 +900,9 @@ function Extremo({
   yCirculo: number
   yEtiqueta: number
   fila: 0 | 1 | null
+  altoFila: number
   hora: string
+  desvio?: number | null
   ayuda: string
   resaltado?: boolean
 }) {
@@ -700,15 +910,20 @@ function Extremo({
     <>
       <span
         className={cn(
-          'absolute flex -translate-x-1/2 items-center justify-center rounded-full border',
-          resaltado ? 'border-foreground/50 bg-background' : 'border-border bg-background',
+          'absolute flex -translate-x-1/2 items-center justify-center rounded-full',
+          resaltado ? 'bg-foreground text-background' : 'bg-muted-foreground/25 text-foreground',
         )}
-        style={{ left: centro, top: yCirculo, width: DIAMETRO, height: DIAMETRO }}
+        style={{
+          left: centro,
+          top: yCirculo,
+          width: DIAMETRO,
+          height: DIAMETRO,
+        }}
         title={ayuda}
       >
-        <Icono className="size-3 text-muted-foreground" />
+        <Icono className="size-3.5" />
       </span>
-      <Etiqueta y={yEtiqueta} fila={fila} centro={centro} hora={hora} />
+      <Etiqueta y={yEtiqueta} fila={fila} altoFila={altoFila} centro={centro} hora={hora} desvio={desvio} />
     </>
   )
 }
@@ -718,12 +933,15 @@ function Hito({
   yCirculo,
   yEtiqueta,
   fila,
+  altoFila,
   numero,
   hora,
-  conCirculo,
+  desvio,
+  densidad,
   activo,
   color,
   simbolo,
+  excepcional,
   fueraDeOrden,
   incidencias,
   fantasma,
@@ -734,20 +952,32 @@ function Hito({
   yCirculo: number
   yEtiqueta: number
   fila: 0 | 1 | null
+  altoFila: number
   numero: number
   hora: string
-  conCirculo: boolean
+  desvio?: number | null
+  densidad: Densidad
   activo: boolean
   /** Sin color, el hito es del plan y va en gris. */
   color?: string
   simbolo?: string | null
+  /** Fallido o devuelto: son los únicos que se marcan con el símbolo del estado. */
+  excepcional?: boolean
   fueraDeOrden?: boolean
   incidencias?: number
   fantasma?: boolean
   onClick: () => void
   ayuda: string
 }) {
-  const alto = conCirculo ? DIAMETRO : 10
+  const alto = DIAMETRO_DE[densidad]
+  const conNumero = densidad === 'numero'
+  // Las chapitas viven pegadas al borde del círculo: a tamaño punto no tienen dónde apoyarse y se
+  // convierten en manchas sueltas. El estado excepcional sigue estando en el color y en el pie.
+  const conChapitas = densidad !== 'punto'
+  // Relleno SÓLIDO con el número en blanco. Los rellenos al 15 % se lavaban contra el fondo —peor en
+  // modo oscuro—, así que el semáforo, que es el dato principal de la línea de abajo, había que ir a
+  // buscarlo. Un círculo sólido se lee de reojo, que es como se lee un semáforo.
+  const relleno = fantasma ? 'transparent' : (color ?? 'var(--color-muted-foreground)')
   return (
     <>
       <button
@@ -755,35 +985,52 @@ function Hito({
         onClick={onClick}
         title={ayuda}
         className={cn(
-          'absolute flex -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border font-bold tabular-nums transition-transform hover:scale-110',
-          conCirculo ? 'text-[10px]' : 'text-[0px]',
-          fantasma && 'border-dashed',
-          activo && 'z-10 scale-125 shadow-md',
+          'absolute flex -translate-x-1/2 cursor-pointer items-center justify-center rounded-full font-bold tabular-nums transition-transform hover:scale-110',
+          conNumero ? 'text-[11px]' : 'text-[0px]',
+          fantasma && 'border border-dashed',
+          activo && 'z-10 scale-125 shadow-md ring-2 ring-foreground ring-offset-2 ring-offset-background',
           // El anillo ámbar marca la parada visitada fuera de orden. Es el círculo que logística dibujó
-          // a mano alrededor del ③ y el ②, y el mismo dato que hace que su conector se cruce.
-          fueraDeOrden && 'ring-2 ring-amber-500 ring-offset-1 ring-offset-background',
+          // a mano alrededor del ③ y el ②.
+          fueraDeOrden && !activo && 'ring-2 ring-amber-500 ring-offset-1 ring-offset-background',
         )}
         style={{
           left: centro,
           top: yCirculo + (DIAMETRO - alto) / 2,
           width: alto,
           height: alto,
-          backgroundColor: color ? (fantasma ? 'transparent' : `${color}26`) : 'var(--color-background)',
+          backgroundColor: relleno,
           borderColor: color ?? 'var(--color-muted-foreground)',
-          color: color ?? 'var(--color-muted-foreground)',
+          color: fantasma ? (color ?? 'var(--color-muted-foreground)') : '#fff',
         }}
       >
-        {conCirculo && (simbolo ?? numero)}
+        {conNumero && numero}
       </button>
-      {/* La incidencia se marca sobre el hito y no en el pie: es la razón por la que alguien va a hacer
-          click, así que tiene que verse antes del click. */}
-      {conCirculo && (incidencias ?? 0) > 0 && (
+
+      {/* Chapita del estado, solo en los casos EXCEPCIONALES (✕ fallido, ↩ devuelto). En las entregadas
+          sería ruido: son la mayoría y su color ya lo dice. */}
+      {conChapitas && excepcional && simbolo && (
+        <span
+          className="pointer-events-none absolute flex size-3.5 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-background"
+          style={{
+            left: centro + alto / 2 - 6,
+            top: yCirculo + (DIAMETRO - alto) / 2 - 3,
+            backgroundColor: color,
+          }}
+        >
+          {simbolo}
+        </span>
+      )}
+      {conChapitas && (incidencias ?? 0) > 0 && (
         <AlertTriangle
           className="pointer-events-none absolute size-3 text-destructive"
-          style={{ left: centro + DIAMETRO / 2 - 4, top: yCirculo - 4 }}
+          style={{
+            left: centro - alto / 2 - 5,
+            top: yCirculo + (DIAMETRO - alto) / 2 - 3,
+          }}
         />
       )}
-      <Etiqueta y={yEtiqueta} fila={fila} centro={centro} hora={hora} />
+
+      <Etiqueta y={yEtiqueta} fila={fila} altoFila={altoFila} centro={centro} hora={hora} desvio={desvio} />
     </>
   )
 }

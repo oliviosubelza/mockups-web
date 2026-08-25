@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useDispatchPlanStore } from '../dispatch-plan-store'
 import { CAMIONES, CLASES_CAMION, PRODUCT_TYPES, type Camion } from '../mock-data'
-import { FiltroPopover } from './FiltroPopover'
+import { FiltroPopover } from '../FiltroPopover'
 import { Paginador, usePagina } from './Paginador'
 
 const fmt = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
