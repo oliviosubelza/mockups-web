@@ -29,6 +29,7 @@ import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
 import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
+import { HistorialRevisionesView } from './views/HistorialRevisionesView'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -381,6 +382,16 @@ export const routes: MockRoute[] = [
     order: 4,
     group: MODULOS.reportesEHistoriales,
     separatorBefore: true,
+  },
+  {
+    // Módulo Reportes e Historiales: Historial de revisiones y conteos
+    id: 'historial-revisiones',
+    path: '/reportes/historial-revisiones',
+    label: 'Historial de revisiones',
+    icon: ClipboardCheck,
+    component: HistorialRevisionesView,
+    order: 5,
+    group: MODULOS.reportesEHistoriales,
   },
   {
     // Detalle de orden de transporte individual (tiempos en parada, productos, cobros, POD)
