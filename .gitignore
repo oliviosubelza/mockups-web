@@ -7,6 +7,7 @@ dist
 .atl
 *.sql
 *.puml
+format.json
 *.zip
 diagrams
 .env
