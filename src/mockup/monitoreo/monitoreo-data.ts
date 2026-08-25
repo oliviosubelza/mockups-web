@@ -1225,6 +1225,27 @@ export const ordenPorId = (id: string | null): OrdenMonitoreo | undefined =>
     ? obtenerMonitoreoOperativo(useTransportOrdersStore.getState().orders).ordenes.find((o) => o.id === id)
     : undefined
 
+export function pedidoPorId(id: string | null):
+  | {
+      orden: OrdenMonitoreo
+      viaje: ViajeMonitoreo
+      entrega: EntregaMonitoreo
+      pedido: PedidoEntrega
+    }
+  | undefined {
+  if (!id) return undefined
+  const monitoreo = obtenerMonitoreoOperativo(useTransportOrdersStore.getState().orders)
+  for (const orden of monitoreo.ordenes) {
+    const viaje = monitoreo.viajes.find((item) => item.tripId === orden.tripId)
+    if (!viaje) continue
+    for (const entrega of orden.entregas) {
+      const pedido = entrega.pedidos.find((item) => item.id === id)
+      if (pedido) return { orden, viaje, entrega, pedido }
+    }
+  }
+  return undefined
+}
+
 /**
  * Entregas del viaje en orden de visita — lo que se pinta en el mapa.
  *

@@ -32,6 +32,7 @@ import {
   duracionTexto,
   entregasDeViaje,
   ordenPorId,
+  pedidoPorId,
   resumenEntregas,
   viajePorTripId,
   type EntregaMonitoreo,
@@ -204,17 +205,22 @@ function Campo({
 
 export function MonitoreoDetalleView() {
   // `useRouteParams` y no `useParams`: el shell renderiza esta pantalla fuera de un <Route element>.
-  const { ordenId } = useRouteParams()
+  const { ordenId, pedidoId } = useRouteParams()
   const [paradasAbierto, setParadasAbierto] = useState(true)
   const [detalleAbierto, setDetalleAbierto] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState<FiltroParadas>('todas')
 
-  const orden = ordenPorId(ordenId ?? null)
-  const tripId = orden?.tripId ?? null
+  const pedido = useMemo(() => pedidoPorId(pedidoId ?? null), [pedidoId])
+  const orden = pedido?.orden ?? ordenPorId(ordenId ?? null)
+  const tripId = pedido?.orden.tripId ?? orden?.tripId ?? null
   // El puente orden → viaje es `transport_order.trip_id`, que la fila de Postgres ya trae: navegar por
   // orden y trackear por viaje no cuesta una consulta extra.
-  const viaje = useMemo(() => (tripId === null ? undefined : viajePorTripId(tripId)), [tripId])
+  const viaje = useMemo(
+    () => pedido?.viaje ?? (tripId === null ? undefined : viajePorTripId(tripId)),
+    [pedido, tripId],
+  )
+  const paradaObjetivoId = pedido?.entrega.paradaId ?? null
 
   // Las entregas de esta orden, en orden de visita. Un viaje = una carga = una orden.
   const base = useMemo(() => (tripId === null ? [] : entregasDeViaje(tripId)), [tripId])
@@ -236,7 +242,7 @@ export function MonitoreoDetalleView() {
   // La simulación en vivo es la única fuente del estado actual: devuelve las entregas ya mutadas y el
   // último ítem ACTUAL crudo (la posición y la batería se derivan de él, no se guardan).
   const { tracking, cursor, actualizadoAt, entregas } = useSeguimientoVivo(viaje, base, tramosCalles)
-  const [paradaFoco, setParadaFoco] = useState<string | null>(() => paradaInicial(entregas))
+  const [paradaFoco, setParadaFoco] = useState<string | null>(() => paradaObjetivoId ?? paradaInicial(entregas))
 
   /**
    * El último cambio de foco lo hizo la SIMULACIÓN al cerrar una parada, no el usuario.
@@ -284,6 +290,7 @@ export function MonitoreoDetalleView() {
   }, [viaje?.tripId])
 
   useEffect(() => {
+    if (paradaObjetivoId) return
     if (!paradaActual) {
       paradaActualRef.current = null
       return
@@ -297,7 +304,14 @@ export function MonitoreoDetalleView() {
     // inicial ya centra en el camión y encadenarle un tour sería moverle la vista a alguien que recién
     // llegó. El tour es para los avances: el camión cerró una parada y arrancó hacia la siguiente.
     setFocoAuto(anterior !== null)
-  }, [paradaActual])
+  }, [paradaActual, paradaObjetivoId])
+
+  useEffect(() => {
+    if (!paradaObjetivoId) return
+    setDetalleAbierto(true)
+    setParadaFoco(paradaObjetivoId)
+    setFocoAuto(false)
+  }, [paradaObjetivoId, viaje?.tripId])
 
   useEffect(() => {
     if (entregas.length === 0) {
@@ -375,7 +389,11 @@ export function MonitoreoDetalleView() {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3">
         <p className="text-sm text-muted-foreground">
-          {ordenId ? `La orden ${ordenId} no existe o ya no está en seguimiento.` : 'No hay ninguna orden en seguimiento.'}
+          {pedidoId
+            ? `El pedido ${pedidoId} no existe o ya no esta en seguimiento.`
+            : ordenId
+              ? `La orden ${ordenId} no existe o ya no esta en seguimiento.`
+              : 'No hay ninguna orden en seguimiento.'}
         </p>
         <Button variant="outline" size="sm" onClick={() => openRoute('monitoreo')}>
           <ArrowLeft className="size-3.5" />
@@ -452,6 +470,11 @@ export function MonitoreoDetalleView() {
 
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold leading-tight">Orden {orden.codigo}</span>
+              {pedido && (
+                <span className="block truncate text-[11px] leading-tight text-primary">
+                  Pedido {pedido.pedido.salesOrder}
+                </span>
+              )}
               {/* Estado del viaje como PUNTO + texto, no como badge. Un badge de color es correcto en
                   la tabla del listado, donde compite con otras 40 filas y necesita saltar; acá es el
                   único viaje en pantalla y el color solo agrega ruido. El punto alcanza, y además
@@ -648,6 +671,7 @@ export function MonitoreoDetalleView() {
         {seleccionada && detalleAbierto && (
           <DetalleParadaPanel
             entrega={seleccionada}
+            pedidoObjetivoId={pedido?.entrega.paradaId === seleccionada.paradaId ? pedido.pedido.id : null}
             actividadReciente={actividadSeleccionada}
             onCerrar={() => setDetalleAbierto(false)}
           />

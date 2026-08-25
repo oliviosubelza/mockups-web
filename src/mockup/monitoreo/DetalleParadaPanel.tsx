@@ -97,10 +97,12 @@ const TONO_ACTIVIDAD = {
 
 export function DetalleParadaPanel({
   entrega,
+  pedidoObjetivoId,
   actividadReciente,
   onCerrar,
 }: {
   entrega: EntregaMonitoreo
+  pedidoObjetivoId?: string | null
   actividadReciente?: { at: number; titulo: string; descripcion: string; tono: 'info' | 'success' | 'warning' | 'danger' } | null
   onCerrar: () => void
 }) {
@@ -446,9 +448,20 @@ export function DetalleParadaPanel({
             </p>
             <ul className="flex flex-col gap-1">
               {entrega.pedidos.map((pedido) => (
-                <li key={pedido.id} className="flex items-baseline gap-2 text-xs">
+                <li
+                  key={pedido.id}
+                  className={cn(
+                    'flex items-baseline gap-2 rounded-md px-1.5 py-1 text-xs',
+                    pedidoObjetivoId === pedido.id && 'bg-primary/10 text-primary',
+                  )}
+                >
                   <span className="font-mono font-medium">{pedido.salesOrder}</span>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">{pedido.canal}</span>
+                  {pedidoObjetivoId === pedido.id && (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Seguido
+                    </span>
+                  )}
                   <span className="shrink-0 tabular-nums text-muted-foreground">
                     {pedido.pesoKg.toLocaleString('es')} kg
                   </span>

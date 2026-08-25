@@ -270,6 +270,16 @@ export const routes: MockRoute[] = [
     order: 0,
   },
   {
+    // Seguimiento arrancando desde un pedido comercial. Resuelve la orden y enfoca la parada que lo
+    // contiene, sin inventar una segunda pantalla de detalle.
+    id: 'monitoreo-detalle-pedido',
+    path: '/monitoreo/seguimiento/pedido/:pedidoId',
+    label: 'Seguimiento pedido',
+    component: MonitoreoDetalleView,
+    order: 3,
+    showInSidebar: false,
+  },
+  {
     // Detalle de seguimiento (mapa + paradas). Se llega desde una fila del listado, no del sidebar:
     // sin una orden elegida no hay nada que seguir. Mismo patrón que 'reoptimizar-plan'.
     //
