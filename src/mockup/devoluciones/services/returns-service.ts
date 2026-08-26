@@ -22,6 +22,7 @@ import {
   itemDecisionBlockedReason,
   pendingLevelOf,
   relevantAmountOf,
+  reopenLinesBlockedReason,
   sourcesBlockedReason,
   statusOf,
   type ItemDecisionInput,
@@ -409,6 +410,7 @@ export const returnsService = {
       settlement: null,
       workflow,
       pastWorkflows: [],
+      pastLineSnapshots: [],
       approvedTotal: null,
       rejectedTotal: null,
       editCount: 0,
@@ -445,6 +447,10 @@ export const returnsService = {
     if (ineligible) return Promise.reject(new Error(ineligible));
     const unbalanced = linesBlockedReason(input.lines);
     if (unbalanced) return Promise.reject(new Error(unbalanced));
+    // A reopened return is narrower than a new claim: whoever holds the goods
+    // can reduce a quantity, never add a product or ask for more than before.
+    const reopenBlocked = reopenLinesBlockedReason(current.lines, input.lines);
+    if (reopenBlocked) return Promise.reject(new Error(reopenBlocked));
 
     const { subtotal, ice, total } = totalsOf(input.lines);
     const route = returnRoute();
@@ -466,6 +472,12 @@ export const returnsService = {
     const retired = current.workflow
       ? [{ ...current.workflow, status: "CANCELLED" as const, finishedAt: new Date().toISOString() }]
       : [];
+    // What this round actually decided, frozen before `clearItemDecisions` wipes
+    // `current.lines` below — otherwise the histórico for this round would show
+    // every item as pending the moment it is replaced.
+    const retiredSnapshot = current.workflow
+      ? [{ workflowId: current.workflow.id, lines: cloneLines(current.lines) }]
+      : [];
 
     const updated: Return = {
       ...current,
@@ -485,6 +497,7 @@ export const returnsService = {
       settlement: null,
       workflow,
       pastWorkflows: [...retired, ...current.pastWorkflows],
+      pastLineSnapshots: [...retiredSnapshot, ...current.pastLineSnapshots],
       approvedTotal: null,
       rejectedTotal: null,
       editCount: current.editCount + 1,

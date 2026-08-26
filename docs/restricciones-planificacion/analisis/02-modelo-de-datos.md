@@ -40,10 +40,8 @@ Compartir tabla rompería dos cosas concretas:
    restringidas como si fueran de reparto. Un cliente dentro del centro histórico tendría dos zonas y
    ninguna consulta podría decidir cuál es la suya.
 
-> **Divergencia deliberada con el mockup.** En el mockup las dos viven juntas, con un campo `tipo` en
-> `zones-store`. Fue por comodidad del editor —comparten geometría, alta, baja y pantalla— y está bien
-> para un mockup. **No es la decisión de modelo.** En el backend, el mismo editor escribe en
-> `planning_restrictions` cuando el tipo es restringida.
+> **Mockup alineado con el modelo.** `zones-store` conserva solo zonas logísticas. Las restricciones
+> tienen dominio, persistencia, rutas y editor independientes bajo `src/mockup/restricciones/`.
 
 ---
 
@@ -188,15 +186,14 @@ planificador en pantalla, persistido.
 
 ## 2.5 Dónde está aplicado
 
-**El DDL de esta sección ya está escrito en `db_script.sql`** (raíz del repo), que es el esquema al día
-—28 tablas, con las sesiones de conteo y los activos logísticos—.
+**El DDL de esta sección ya está escrito en
+[`../../../db_script.sql`](../../../db_script.sql)**, que es el esquema al día —28 tablas, con las
+sesiones de conteo y los activos logísticos—.
 
 Ubicación dentro del script: las tres tablas nuevas van **antes de `trucks`**, porque son dato de
 configuración y `planning_trucks` les hace FK. Las dos columnas de `planning_trucks` están inline en su
 `CREATE TABLE`, no como `ALTER`: el script es un `DROP SCHEMA` + recreación completa, así que un ALTER
 al final sería ruido.
 
-> ⚠️ **`diagrams/UltimaVersionUltima.sql` quedó viejo** y no hay que usarlo. Le faltan cuatro tablas
-> —`transport_order_count_sessions`, `transport_order_count_session_items`, `logistic_assets`,
-> `transport_order_assets`— y todavía tiene `truck_inventory_histories`, que ya no existe. El vigente
-> es `db_script.sql`.
+> **Autoridad del esquema:** use únicamente [`../../../db_script.sql`](../../../db_script.sql). Las
+> copias SQL auxiliares bajo carpetas de diagramas no forman parte de este contrato.

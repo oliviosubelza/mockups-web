@@ -2,12 +2,15 @@ import type {
   ApprovalPolicy,
   OnRejectBehaviour,
   WorkflowAction,
+  WorkflowApprover,
+  WorkflowAssignee,
   WorkflowInstance,
   WorkflowInstanceLevel,
   WorkflowLevel,
   WorkflowVersion,
 } from "../types";
 import { bs } from "./format";
+import { employeesForRole } from "./role-directory";
 
 /**
  * The approval engine, as pure functions.
@@ -258,6 +261,32 @@ export function startInstance(input: {
 
   const firstActive = ordered.findIndex((level, index) => !skipped(level, index));
 
+  /**
+   * Who can act on a level, resolved at the one moment it matters: right when
+   * the level is materialised onto the instance, never earlier.
+   *
+   * `EMPLOYEE` approvers already name the person. `ROLE` approvers do not —
+   * `employeesForRole` stands in for the directory a real deployment would call
+   * over the network, so a role's membership is read fresh here instead of
+   * being copied once into the template and going stale.
+   */
+  const assigneesOf = (approvers: WorkflowApprover[]): WorkflowAssignee[] =>
+    approvers.flatMap((approver): WorkflowAssignee[] => {
+      if (approver.assigneeType === "EMPLOYEE") {
+        return approver.employeeCode === null
+          ? []
+          : [{ employeeCode: approver.employeeCode, employeeName: approver.employeeName ?? `Empleado ${approver.employeeCode}`, hasActed: false }];
+      }
+      if (approver.assigneeType === "ROLE" && approver.roleCode) {
+        return employeesForRole(approver.roleCode).map((e) => ({
+          employeeCode: e.code,
+          employeeName: e.name,
+          hasActed: false,
+        }));
+      }
+      return [];
+    });
+
   const levels: WorkflowInstanceLevel[] = ordered.map((level, index) => ({
     id: `${input.id}_l${level.order}_a1`,
     order: level.order,
@@ -271,13 +300,7 @@ export function startInstance(input: {
     slaHours: level.slaHours,
     startedAt: index === firstActive ? at : null,
     finishedAt: skipped(level, index) ? at : null,
-    assignees: level.approvers
-      .filter((a) => a.employeeCode !== null)
-      .map((a) => ({
-        employeeCode: a.employeeCode as number,
-        employeeName: a.employeeName ?? `Empleado ${a.employeeCode}`,
-        hasActed: false,
-      })),
+    assignees: assigneesOf(level.approvers),
   }));
 
   return {

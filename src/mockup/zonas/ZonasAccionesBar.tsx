@@ -20,12 +20,11 @@
 //
 // SE VE COMO LA BARRA DE ARRIBA (rounded-xl, alto 44, botones chicos) y no como la píldora de la pista
 // (rounded-full, texto): son controles, no un mensaje. La forma tiene que decir "esto se clickea".
-import { CalendarClock, Crosshair, MapPin, Pencil, Power, Trash2, X } from 'lucide-react'
+import { Crosshair, MapPin, Pencil, Power, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { areaKm2, formatearArea } from '../map/geo/medidas'
 import { CIUDAD_META, ciudadDeCityId } from '../mock-data'
-import { describirVigencia } from '../restricciones/vigencia'
 import { poligonoALatLng, type Zona } from '../zones-store'
 
 export function ZonasAccionesBar({
@@ -84,31 +83,6 @@ export function ZonasAccionesBar({
             <span className="font-medium text-foreground">{formatearArea(areaKm2(anillo))}</span>
             <span aria-hidden>·</span>
             <span>{anillo.length} vért.</span>
-          </span>
-        </>
-      )}
-
-      {/* CUÁNDO RIGE, solo en las restringidas. Es el dato que cambia qué SIGNIFICA el polígono que
-          está resaltado en el mapa: dos zonas rojas idénticas, una permanente y otra que rige de 7 a 9,
-          recortan cosas distintas y se ven exactamente igual. Sin esto la única forma de saberlo es
-          entrar a editar la zona.
-
-          NO SE ESCONDE en pantallas angostas, a diferencia de la ciudad y del área. Los dos primeros son
-          contexto agradable —dónde queda, cuánto mide—; este contesta si la restricción aplica. Se paga
-          con `max-w-44` y truncado: "3 franjas" o "Lu a Vi · 07:00–19:00" entran enteros, y el caso raro
-          que no entre tiene el texto completo en el `title`.
-
-          Va con el grupo de DATOS y no con el de botones: se lee, no se toca. Cambiarla es "Editar
-          contorno", que es el botón que sigue. */}
-      {zona.tipo === 'restringida' && (
-        <>
-          <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
-          <span
-            className="flex min-w-0 max-w-44 shrink items-center gap-1 text-[11px] text-muted-foreground"
-            title={`Cuándo rige esta restricción: ${describirVigencia(zona.vigencia)}`}
-          >
-            <CalendarClock size={12} className="shrink-0" />
-            <span className="truncate">{describirVigencia(zona.vigencia)}</span>
           </span>
         </>
       )}

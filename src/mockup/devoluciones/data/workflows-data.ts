@@ -1,10 +1,26 @@
 import type {
+  Role,
   WorkflowApprover,
   WorkflowDefinition,
   WorkflowLevel,
   WorkflowTargetType,
   WorkflowVersion,
 } from "../types";
+
+/**
+ * Display label for a role approver, duplicated from `ROLE_LABELS` in
+ * `stores/session-store.ts` rather than imported from it.
+ *
+ * Same reason as `lib/role-directory.ts`: that module sits downstream of
+ * `data/seed.ts`, which imports this file — importing it back would be a cycle.
+ */
+const APPROVER_ROLE_LABELS: Record<Role, string> = {
+  administrador: "Administrador",
+  supervisor: "Supervisor",
+  gerente: "Gerente",
+  vendedor: "Vendedor",
+  vendedor_agencia: "Vendedor de agencia",
+};
 
 /**
  * The approval templates, as the backend seeds them.
@@ -58,7 +74,7 @@ function daysAgo(days: number): string {
 
 let approverSeq = 0;
 
-/** An employee approver, the only assignment kind the model can store today. */
+/** An employee approver, fixed to that one person regardless of role. */
 function employeeApprover(code: number): WorkflowApprover {
   const employee = approverByCode(code);
   approverSeq += 1;
@@ -68,6 +84,7 @@ function employeeApprover(code: number): WorkflowApprover {
     employeeCode: code,
     employeeName: employee?.name ?? `Empleado ${code}`,
     employeeArea: employee?.area ?? null,
+    roleCode: null,
     assigneeRefId: null,
   };
 }
@@ -81,6 +98,34 @@ function level(input: Omit<WorkflowLevel, "id" | "approvers"> & { approverCodes:
 }
 
 /**
+ * A role approver — who signs is resolved later, at `startInstance`, against
+ * `employeesForRole` (`lib/role-directory.ts`). `employeeName` still gets a
+ * value so a screen that prints it (nobody does today, but might) shows the
+ * role's label instead of a blank.
+ */
+function roleApprover(role: Role): WorkflowApprover {
+  approverSeq += 1;
+  return {
+    id: `wfa_${approverSeq}`,
+    assigneeType: "ROLE",
+    employeeCode: null,
+    employeeName: APPROVER_ROLE_LABELS[role],
+    employeeArea: null,
+    roleCode: role,
+    assigneeRefId: null,
+  };
+}
+
+/** A level assigned to one role instead of a fixed list of people. */
+function roleLevel(
+  input: Omit<WorkflowLevel, "id" | "approvers"> & { approverRole: Role },
+): WorkflowLevel {
+  levelSeq += 1;
+  const { approverRole, ...rest } = input;
+  return { ...rest, id: `wfl_${levelSeq}`, approvers: [roleApprover(approverRole)] };
+}
+
+/**
  * The single devolución flow: three desks, each activated by a band of amounts.
  *
  * The thresholds mirror `sale.refund_level_thresholds` as the database seeds it
@@ -89,9 +134,13 @@ function level(input: Omit<WorkflowLevel, "id" | "approvers"> & { approverCodes:
  * only one who can hand the document back to the seller; above that a refusal
  * closes it, because a return that keeps bouncing between three desks and the
  * field never gets paid.
+ *
+ * Each desk is a role, not a list of people — `SelectorRol` decides who can act
+ * on a level simply by being who they are, the same way `RETURN_APPROVER_ROLES`
+ * already decides who sees the approval screens at all.
  */
 const returnLevels = (): WorkflowLevel[] => [
-  level({
+  roleLevel({
     order: 1,
     name: "Supervisor",
     approvalPolicy: "ANY",
@@ -102,9 +151,9 @@ const returnLevels = (): WorkflowLevel[] => [
     // Zero and not one cent more: the first level has to catch every amount, or
     // a small devolución would activate no desk at all.
     activationMinAmount: 0,
-    approverCodes: [55, 57],
+    approverRole: "supervisor",
   }),
-  level({
+  roleLevel({
     order: 2,
     name: "Jefe de Ventas",
     approvalPolicy: "ANY",
@@ -113,9 +162,9 @@ const returnLevels = (): WorkflowLevel[] => [
     allowReturn: true,
     slaHours: null,
     activationMinAmount: 500,
-    approverCodes: [70, 72],
+    approverRole: "administrador",
   }),
-  level({
+  roleLevel({
     order: 3,
     name: "Gerencia",
     approvalPolicy: "ANY",
@@ -124,7 +173,7 @@ const returnLevels = (): WorkflowLevel[] => [
     allowReturn: false,
     slaHours: 48,
     activationMinAmount: 2000,
-    approverCodes: [88, 94],
+    approverRole: "gerente",
   }),
 ];
 

@@ -1,0 +1,81 @@
+@startuml
+title 46.3 - Creación atómica de restricción (ejemplo: zona restringida)
+
+autonumber
+hide footbox
+
+actor "Frontend" as Frontend
+boundary "API PROPUESTA\nPOST /planning/restrictions" as API
+control "Lógica de aplicación propuesta\nNO IMPLEMENTADA" as App
+database "PostgreSQL\n(db_script.sql)" as DB
+
+note over Frontend, DB
+Contrato propuesto.
+Este repositorio no contiene backend ni API implementada.
+restrictionType debe ser RESTRICTED_AREA en este caso.
+end note
+
+Frontend -> API: POST /planning/restrictions\n{cabecera, schedules, vehicleRules}
+API -> App: validar sintaxis, tipos y campos permitidos
+
+alt JSON mal formado o Content-Type inválido
+  App --> API: BAD_REQUEST
+  API --> Frontend: 400\n{success: false, code: 400, error}
+else Sintaxis válida
+  App -> App: validar RESTRICTED_AREA, Polygon,\nlongitudes, EMPTY_SCHEDULE y reglas vehiculares
+
+  alt Semántica no válida
+    App --> API: VALIDATION_ERROR
+    API --> Frontend: 422\n{success: false, code: 422, error}
+  else Semántica válida
+    App -> DB: BEGIN
+    App -> DB: SELECT id FROM distributors\nWHERE id = :distributorId FOR SHARE
+    DB --> App: distribuidora o vacío
+
+    alt Distribuidora no encontrada
+      App -> DB: ROLLBACK
+      App --> API: DISTRIBUTOR_NOT_FOUND
+      API --> Frontend: 404\n{success: false, code: 404, error}
+    else Distribuidora existente
+      App -> DB: INSERT INTO planning_restrictions\n(..., restriction_type = 'RESTRICTED_AREA', ...)
+      DB --> App: restrictionId
+
+      loop Por cada schedule; una fila API = una fila DB
+        App -> DB: INSERT INTO planning_restriction_schedules\n(planning_restriction_id, valid_from, valid_to,\nday_of_week, start_time, end_time, auditoría)
+      end
+
+      loop Por cada vehicleRule
+        App -> DB: INSERT INTO planning_restriction_vehicle_rules\n(planning_restriction_id, plate_last_digit,\nmin_capacity_weight_kg, truck_type, plate, auditoría)
+      end
+
+      alt Falla cualquier escritura
+        DB --> App: error de persistencia
+        App -> DB: ROLLBACK
+        App --> API: INTERNAL_ERROR
+        API --> Frontend: 500\n{success: false, code: 500, error: {type: INTERNAL_ERROR}}
+      else Todas las escrituras son exitosas
+        App -> DB: SELECT agregado creado\nfiltrando hijos deleted_at IS NULL
+        alt Falla la relectura canónica
+          DB --> App: error o agregado incompleto
+          App -> DB: ROLLBACK
+          App --> API: INTERNAL_ERROR
+          API --> Frontend: 500\n{success: false, code: 500, error: {type: INTERNAL_ERROR}}
+        else Relectura canónica exitosa
+          DB --> App: cabecera + schedules + vehicleRules
+          App -> DB: COMMIT
+          App --> API: recurso canónico
+          API --> Frontend: 201\n{success: true, code: 201, data}
+        end
+      end
+    end
+  end
+end
+
+note over App, DB
+schedules = []: no se insertan horarios; vigencia permanente.
+vehicleRules = []: no se insertan reglas; aplica a toda la flota.
+La transacción abarca las tres tablas y la relectura canónica.
+COMMIT ocurre después de releer el agregado completo.
+end note
+
+@enduml

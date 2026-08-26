@@ -12,14 +12,10 @@
 //
 // El menú controla CÓMO SE VE el mapa; QUÉ zonas se dibujan lo decide el filtro del listado de la
 // izquierda —que ya no filtra solo filas: los polígonos que quedan fuera del filtro tampoco se pintan—.
-// Poner acá un "ver solo restringidas" sería tentador (es el gesto que tiene el planner) y sería un
-// error: habría DOS definiciones de qué zonas están en pantalla, y en cuanto se contradigan —el listado
-// mostrando cinco zonas y el mapa dos— no hay forma de saber cuál manda sin abrir los dos controles y
-// compararlos. Peor: el usuario que no encuentra una zona en el mapa la buscaría en el filtro que tiene
-// más cerca, que sería el equivocado la mitad de las veces.
+// Las restricciones no aparecen entre estas opciones porque pertenecen a otro agregado y otra ruta.
 //
 // Una sola pregunta, un solo lugar donde se contesta. Si algún día hace falta llegar al filtro desde el
-// mapa, lo que hay que hacer es abrir el listado, no duplicarle los chips acá.
+// mapa, lo que hay que hacer es abrir el listado, no duplicar controles acá.
 import { Layers } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import {

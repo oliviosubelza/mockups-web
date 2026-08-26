@@ -11,7 +11,7 @@
 // …más UN dato, que entró después y no rompe la regla anterior: la FECHA del reparto. No es una tercera
 // acción, es la etiqueta de las otras dos —contra qué día se optimiza y para qué día se generan las
 // rutas—, y desde que el mapa filtra las restricciones por vigencia es también la única explicación de
-// por qué una zona restringida está o no está dibujada. Ver el bloque donde se muestra.
+// por qué una restricción temporal está o no está dibujada. Ver el bloque donde se muestra.
 import { CalendarDays, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { momentoDelPlan } from '../restricciones/momento'
@@ -24,7 +24,7 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'o
  *
  * SE ARMA A MANO Y NO CON `toLocaleDateString`, por lo mismo que `diaSemanaDe` en `vigencia.ts`:
  * `new Date('2026-08-25')` parsea como UTC medianoche, así que en UTC-4 devuelve el día ANTERIOR en
- * hora local. Este texto es la explicación de por qué una zona restringida se ve o no se ve; si dijera
+ * hora local. Este texto explica por qué una restricción temporal se ve o no se ve; si dijera
  * "lunes 24" mientras el filtro evalúa el martes, sería peor que no mostrarlo.
  *
  * EL DÍA DE LA SEMANA VA COMPLETO y primero. El número de día no significa nada solo: las
@@ -80,7 +80,7 @@ export function PlannerHud({
     // pastillas pegadas en vez de como un solo control.
     <>
       {/* LA FECHA DEL REPARTO, como texto y pegada a los dos botones que producen el plan.
-          Es la deuda que dejó el filtro de vigencia de `PlannerMapa`: desde que las zonas restringidas
+          Es la deuda que dejó el filtro temporal del mapa: desde que las restricciones
           que no rigen no se dibujan, hay un mapa que cambia según un día que no estaba escrito en
           ninguna parte. Una zona que desaparece sin explicación se lee como un bug del mapa, no como
           una restricción que no aplica. Con la fecha a la vista, las dos preguntas se contestan solas.

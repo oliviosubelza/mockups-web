@@ -1163,10 +1163,17 @@ export const ASSIGNEE_TYPE_LABELS: Record<AssigneeType, string> = {
   GROUP: "Grupo",
 };
 
-/** The four assignment kinds with no catalogue behind them yet. */
-export const UNAVAILABLE_ASSIGNEE_TYPES: AssigneeType[] = ["ROLE", "POSITION", "AREA", "GROUP"];
+/**
+ * The three assignment kinds with no catalogue behind them yet.
+ *
+ * `ROLE` used to be in this list too: devoluciones now resolves it against
+ * `employeesForRole` (`lib/role-directory.ts`), a local stand-in for the
+ * directory a real deployment would call. `POSITION`, `AREA` and `GROUP` still
+ * have nothing behind them.
+ */
+export const UNAVAILABLE_ASSIGNEE_TYPES: AssigneeType[] = ["POSITION", "AREA", "GROUP"];
 
-/** One person (or, later, one group) allowed to sign a level. */
+/** One person, or one role, allowed to sign a level. */
 export interface WorkflowApprover {
   id: string;
   assigneeType: AssigneeType;
@@ -1175,7 +1182,12 @@ export interface WorkflowApprover {
   employeeName: string | null;
   /** Area or department the approver signs for. Display only. */
   employeeArea: string | null;
-  /** Logical reference for the non-employee kinds. Always null for `EMPLOYEE`. */
+  /**
+   * Set only for `ROLE`. Who actually signs is resolved at the moment the
+   * level starts, against `employeesForRole` — this field never names a person.
+   */
+  roleCode: Role | null;
+  /** Logical reference for `POSITION`/`AREA`/`GROUP`. Always null for the rest. */
   assigneeRefId: number | null;
 }
 
@@ -1718,6 +1730,12 @@ export interface ReturnLine extends OrderLine {
   decisionAt: string | null;
 }
 
+/** What `lines` looked like right before a correction reset it, tied to the workflow it decided. */
+export interface ReturnLineSnapshot {
+  workflowId: string;
+  lines: ReturnLine[];
+}
+
 /**
  * Devolución — goods a client sends back, pending approval.
  *
@@ -1778,6 +1796,17 @@ export interface Return {
    * over a different set of products is exactly what an audit comes looking for.
    */
   pastWorkflows: WorkflowInstance[];
+  /**
+   * What each line looked like at the moment a past workflow was superseded,
+   * one entry per id in `pastWorkflows`.
+   *
+   * `WorkflowInstance` is entity-agnostic on purpose (see `lib/workflow.ts`) and
+   * cannot carry a `ReturnLine`, so the snapshot lives here instead of on the
+   * instance itself. Without it, a correction's `clearItemDecisions` would wipe
+   * the only record of what an earlier round actually decided — `lines` always
+   * reflects the *current* round, never a past one.
+   */
+  pastLineSnapshots: ReturnLineSnapshot[];
   /**
    * What was actually granted once items were resolved. `null` until the
    * item-decision level has ruled, which is what lets the summary show

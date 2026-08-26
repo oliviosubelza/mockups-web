@@ -16,8 +16,8 @@ export interface Momento {
    *
    * Que sea opcional NO es dejarlo para después: la planificación trabaja con el DÍA entero y no tiene
    * una hora que ofrecer —el camión sale a la mañana y vuelve a la tarde—. La hora aparece más adelante,
-   * cuando se evalúa una parada puntual contra su ventana de entrega. Ver `ventanaRigeEn` para qué pasa
-   * cuando no está.
+   * cuando se evalúa una parada puntual contra su ventana de entrega. Ver `scheduleMatchesMoment` para
+   * qué pasa cuando no está.
    */
   hora?: string
 }

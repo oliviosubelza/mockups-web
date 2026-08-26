@@ -1,7 +1,10 @@
 # Análisis — Restricciones de planificación
 
-**Fecha: 2026-08-24.** Documento de análisis previo a implementación. Todavía no hay endpoints ni
-diagramas de secuencia.
+[Volver al índice de restricciones de planificación](../README.md)
+
+**Fecha: 2026-08-24.** Documento de análisis previo a implementación. Ya existen el
+[contrato técnico](../DocumentacionZonasRestringidas.md) y los
+[cinco diagramas de secuencia](../diagramas/); todavía no hay endpoints ni backend para estos flujos.
 
 **Para quien lo revisa:** el objetivo de esta carpeta es que el plan se entienda de una lectura. Si algo
 no se entiende, es un hueco del plan, no del lector. El archivo `06-preguntas-abiertas.md` lista lo que
@@ -33,7 +36,8 @@ Ni OSRM ni Google Route Optimization saben esquivar un polígono arbitrario, as�
 | [`05-estado-del-mockup.md`](05-estado-del-mockup.md) | Qué ya está construido y qué falta |
 | [`06-preguntas-abiertas.md`](06-preguntas-abiertas.md) | Lo que sabemos que no está resuelto |
 
-## Secciones de documentación reservadas
+## Secciones contractuales 46 y 47
 
-**46** (CRUD de restricciones) y **47** (qué restricciones rigen para un plan). El máximo ocupado hoy
-en el proyecto es 45. El hueco 32-40 se deja libre a propósito, siguiendo la convención existente.
+Las secciones **46** (CRUD de restricciones) y **47** (restricciones candidatas para un plan) ya están
+desarrolladas en el [contrato técnico](../DocumentacionZonasRestringidas.md), por lo que dejaron de
+estar reservadas. La sección 47 permanece identificada como futura y no implementada.

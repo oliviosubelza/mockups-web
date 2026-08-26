@@ -1,4 +1,4 @@
-import type { AnswerValue, Block, Client, ClientTask, CompletedClientTask, CompletedGeneralTask, DayCode, ExitReasonCategory, Field, FrequencyType, GeneralTask, GeneralTaskResponseType, MacroRouteRef, Market, Order, OrderBonification, OrderLine, OrderOrigin, OrderStatus, Polygon, Return, ReturnItemSource, ReturnLine, ReturnLot, WorkflowInstance, Route, RouteFrequency, RouteMacro, Seller, SellerRouteAssignment, TaskPriority, Visit, VisitOrder, VisitReturn, VisitTaskDone, WeekPosition } from "../types";
+import type { AnswerValue, Block, Client, ClientTask, CompletedClientTask, CompletedGeneralTask, DayCode, ExitReasonCategory, Field, FrequencyType, GeneralTask, GeneralTaskResponseType, MacroRouteRef, Market, Order, OrderBonification, OrderLine, OrderOrigin, OrderStatus, Polygon, Return, ReturnItemSource, ReturnLine, ReturnLineSnapshot, ReturnLot, WorkflowInstance, Route, RouteFrequency, RouteMacro, Seller, SellerRouteAssignment, TaskPriority, Visit, VisitOrder, VisitReturn, VisitTaskDone, WeekPosition } from "../types";
 import {
   ALL_EXIT_REASON_CATEGORIES,
   ALL_RETURN_REASONS,
@@ -2090,7 +2090,13 @@ function buildReturns(): Return[] {
 
     const base: Omit<
       Return,
-      "status" | "settlement" | "workflow" | "pastWorkflows" | "approvedTotal" | "rejectedTotal"
+      | "status"
+      | "settlement"
+      | "workflow"
+      | "pastWorkflows"
+      | "pastLineSnapshots"
+      | "approvedTotal"
+      | "rejectedTotal"
     > = {
       id,
       createdAt: createdAt.toISOString(),
@@ -2118,6 +2124,7 @@ function buildReturns(): Return[] {
         settlement: null,
         workflow: null,
         pastWorkflows: [],
+        pastLineSnapshots: [],
         approvedTotal: null,
         rejectedTotal: null,
       };
@@ -2280,6 +2287,7 @@ function buildReturns(): Return[] {
      * move.
      */
     const pastWorkflows: WorkflowInstance[] = [];
+    const pastLineSnapshots: ReturnLineSnapshot[] = [];
     let currentLines = decidedLines;
     let currentTotal = total;
     let editCount = 0;
@@ -2291,6 +2299,9 @@ function buildReturns(): Return[] {
     ) {
       const resubmittedAt = decidedAt(elapsed + between(20, 40));
       pastWorkflows.push({ ...instance, status: "CANCELLED", finishedAt: resubmittedAt });
+      // What the first round actually decided, frozen before it gets wiped below —
+      // otherwise the histórico for round 1 would show every item as pending.
+      pastLineSnapshots.push({ workflowId: pastWorkflows[0].id, lines: decidedLines });
 
       currentLines = clearItemDecisions(decidedLines.slice(0, -2));
       currentTotal = subtotalOf(currentLines);
@@ -2346,6 +2357,7 @@ function buildReturns(): Return[] {
       settlement: settled ? (rand() < 0.7 ? "CAMBIO_STOCK" : "NOTA_CREDITO") : null,
       workflow: instance,
       pastWorkflows,
+      pastLineSnapshots,
       approvedTotal: settled ? amounts.approved : null,
       rejectedTotal: settled ? amounts.rejected : null,
     } satisfies Return;

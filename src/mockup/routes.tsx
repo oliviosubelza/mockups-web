@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, Stamp } from 'lucide-react'
+import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Stamp } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -26,6 +26,9 @@ import { PlanningView } from './views/PlanningView'
 import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
 import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
+import { RestrictionsCatalogView } from './restricciones/RestrictionsCatalogView'
+import { RestrictionDetailView } from './restricciones/RestrictionDetailView'
+import { RestrictionEditorView } from './restricciones/RestrictionEditorView'
 import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
@@ -469,6 +472,40 @@ export const routes: MockRoute[] = [
     component: ZonasWorkspaceView,
     order: 2,
     fullBleed: true,
+    showInSidebar: false,
+  },
+  {
+    // Dato maestro independiente de las zonas logísticas. Sus horarios y reglas vehiculares forman
+    // un solo agregado y nunca se mezclan con la partición territorial de reparto.
+    id: 'restricciones',
+    path: '/restricciones',
+    label: 'Restricciones',
+    icon: ShieldAlert,
+    component: RestrictionsCatalogView,
+    order: 3,
+  },
+  {
+    id: 'restriccion-nueva',
+    path: '/restricciones/nueva',
+    label: 'Nueva restricción',
+    component: RestrictionEditorView,
+    order: 3,
+    showInSidebar: false,
+  },
+  {
+    id: 'restriccion-detalle',
+    path: '/restricciones/:restrictionId',
+    label: 'Detalle de restricción',
+    component: RestrictionDetailView,
+    order: 3,
+    showInSidebar: false,
+  },
+  {
+    id: 'restriccion-editar',
+    path: '/restricciones/:restrictionId/editar',
+    label: 'Editar restricción',
+    component: RestrictionEditorView,
+    order: 3,
     showInSidebar: false,
   },
   {
