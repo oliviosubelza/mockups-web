@@ -448,6 +448,7 @@ export interface Camion {
   /** is_included_in_routing — si el camión entra o no en la corrida. */
   enRuteo: boolean
   almacen: string
+  distribuidoraId?: number
   /** Color con el que se pinta este camión (y sus paradas) en el mapa. */
   color: string
 }
@@ -565,10 +566,27 @@ export const CAMIONES: Camion[] = (() => {
       turnoFin: turno?.fin ?? '—',
       enRuteo,
       almacen: rand.pick(ALMACENES),
+      distribuidoraId: DISTRIBUIDORAS[i % DISTRIBUIDORAS.length]?.id ?? 501,
       color: enRuteo ? colorDeCamion(i) : COLOR_CAMION_INACTIVO,
     } satisfies Camion
   })
 })()
+
+/** Resuelve la distribuidora asignada a un camión de la flota */
+export const distribuidoraIdDeCamion = (c: Camion): number => {
+  if (c.distribuidoraId) return c.distribuidoraId
+  const idx = parseInt(c.id.replace(/\D/g, ''), 10) || 1
+  return DISTRIBUIDORAS[(idx - 1) % DISTRIBUIDORAS.length]?.id ?? 501
+}
+
+export const distribuidoraNombreDeCamion = (c: Camion): string => {
+  const id = distribuidoraIdDeCamion(c)
+  const dist = DISTRIBUIDORAS.find((d) => d.id === id)
+  return dist ? dist.nombre : `Distribuidora #${id}`
+}
+
+export const camionesDeDistribuidora = (distribuidoraId: number): Camion[] =>
+  CAMIONES.filter((c) => distribuidoraIdDeCamion(c) === distribuidoraId)
 
 // ── Pedidos ──────────────────────────────────────────────────────────────────────────────────
 
@@ -1007,6 +1025,23 @@ export const PEDIDOS: Pedido[] = (() => {
 export const ciudadDe = (p: Pedido): CiudadId => p.ciudad
 export const mercadoDe = (p: Pedido): MercadoId => p.mercado
 export const zonaDe = (p: Pedido): ZonaId => p.zona
+
+/** Resuelve la distribuidora asignada al pedido según su ciudad y sector geográfico */
+export const distribuidoraIdDe = (p: Pedido): number => {
+  const cityId = cityIdDe(p.ciudad)
+  const dists = DISTRIBUIDORAS.filter((d) => d.cityId === cityId)
+  if (dists.length === 0) return 501
+  if (dists.length === 1) return dists[0].id
+  // Reparto norte/este a la primera distribuidora, sur/centro a la segunda
+  if (p.zona === 'norte' || p.zona === 'este') return dists[0].id
+  return dists[1].id
+}
+
+export const distribuidoraNombreDe = (p: Pedido): string => {
+  const id = distribuidoraIdDe(p)
+  const dist = DISTRIBUIDORAS.find((d) => d.id === id)
+  return dist ? dist.nombre : `Distribuidora #${id}`
+}
 
 /** Vendedores distintos presentes en PEDIDOS (fuente única, así el filtro no se desincroniza). */
 export const VENDEDORES = Array.from(new Set(PEDIDOS.map((p) => p.vendedor))).sort()

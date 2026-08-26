@@ -8,12 +8,15 @@ import { create } from 'zustand'
 import { kgToTons } from './unit-conversion'
 import {
   CAMIONES,
+  CANAL_IDS,
   CANAL_META,
   DEVOLUCIONES,
   PEDIDOS,
   TRANSFERENCIAS,
   aMinutos,
   ciudadDe,
+  distribuidoraIdDe,
+  distribuidoraIdDeCamion,
   finVentana,
   mercadoDe,
   pedidoEsSeleccionable,
@@ -76,10 +79,12 @@ export type OrderOverrides = Record<string, boolean>
 
 interface DispatchPlanState {
   selectedTruckIds: string[]
+  activeDistribuidoraId: number | null
   activeCanales: CanalId[]
-  // Filtros de NARROWING (Ciudad/Mercado/Zona/Vendedor): a diferencia del canal (obligatorio), si un
+  // Filtros de NARROWING (Ciudad/Distribuidora/Mercado/Zona/Vendedor): a diferencia del canal (obligatorio), si un
   // array queda vacío no filtra — pasan todos los pedidos en esa dimensión. Ciudad es el más amplio.
   activeCiudades: CiudadId[]
+  activeDistribuidoras: string[]
   activeMercados: MercadoId[]
   activeZonas: ZonaId[]
   activeVendedores: string[]
@@ -95,6 +100,7 @@ interface DispatchPlanState {
   selectedTransferIds: string[]
   /** Devoluciones de los DOS movimientos (entrega y recojo): son subconjuntos disjuntos de DEVOLUCIONES. */
   selectedDevolucionIds: string[]
+  setActiveDistribuidoraId: (id: number | null) => void
   toggleTruck: (id: string) => void
   setSelectedTrucks: (ids: string[]) => void
   /**
@@ -105,6 +111,7 @@ interface DispatchPlanState {
   applySelection: (sel: {
     canales: CanalId[]
     ciudades: CiudadId[]
+    distribuidoras?: string[]
     mercados: MercadoId[]
     zonas: ZonaId[]
     vendedores: string[]
@@ -132,8 +139,10 @@ interface DispatchPlanState {
 
 const INITIAL_STATE = {
   selectedTruckIds: [] as string[],
+  activeDistribuidoraId: 501 as number | null,
   activeCanales: [] as CanalId[],
   activeCiudades: [] as CiudadId[],
+  activeDistribuidoras: [] as string[],
   activeMercados: [] as MercadoId[],
   activeZonas: [] as ZonaId[],
   activeVendedores: [] as string[],
@@ -154,6 +163,12 @@ function arrayEquals<T>(a: T[], b: T[]): boolean {
 export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
   ...INITIAL_STATE,
 
+  setActiveDistribuidoraId: (id) =>
+    set((state) => {
+      if (state.activeDistribuidoraId === id) return state
+      return { activeDistribuidoraId: id }
+    }),
+
   toggleTruck: (id) =>
     set((state) => ({
       selectedTruckIds: state.selectedTruckIds.includes(id)
@@ -169,9 +184,11 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
 
   applySelection: (sel) =>
     set((state) => {
+      const dists = sel.distribuidoras ?? state.activeDistribuidoras
       if (
         arrayEquals(state.activeCanales, sel.canales) &&
         arrayEquals(state.activeCiudades, sel.ciudades) &&
+        arrayEquals(state.activeDistribuidoras, dists) &&
         arrayEquals(state.activeMercados, sel.mercados) &&
         arrayEquals(state.activeZonas, sel.zonas) &&
         arrayEquals(state.activeVendedores, sel.vendedores)
@@ -181,6 +198,7 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
       return {
         activeCanales: sel.canales,
         activeCiudades: sel.ciudades,
+        activeDistribuidoras: dists,
         activeMercados: sel.mercados,
         activeZonas: sel.zonas,
         activeVendedores: sel.vendedores,
@@ -251,8 +269,19 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
 // Reciben el estado del store y derivan contra CAMIONES/PEDIDOS al momento de leer — nada de lo
 // que devuelven se guarda en el store, así nunca puede desincronizarse del dataset.
 
+export const selectAvailableTrucks = (s: DispatchPlanState): Camion[] =>
+  CAMIONES.filter(
+    (c) =>
+      c.estado === 'disponible' &&
+      (s.activeDistribuidoraId === null || distribuidoraIdDeCamion(c) === s.activeDistribuidoraId),
+  )
+
 export const selectSelectedTrucks = (s: DispatchPlanState): Camion[] =>
-  CAMIONES.filter((c) => s.selectedTruckIds.includes(c.id))
+  CAMIONES.filter(
+    (c) =>
+      s.selectedTruckIds.includes(c.id) &&
+      (s.activeDistribuidoraId === null || distribuidoraIdDeCamion(c) === s.activeDistribuidoraId),
+  )
 
 export interface CapacityTotals {
   pesoTon: number
@@ -269,11 +298,13 @@ export const selectAvailableCapacity = (s: DispatchPlanState): CapacityTotals =>
 }
 
 /**
- * Filtros de narrowing (Mercado/Zona/Vendedor): un array vacío NO filtra (pasa todo); si tiene
+ * Filtros de narrowing (Distribuidora/Ciudad/Mercado/Zona/Vendedor): un array vacío NO filtra (pasa todo); si tiene
  * valores, el pedido debe coincidir con alguno. El canal NO va acá porque es obligatorio.
  */
 export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean =>
+  (s.activeDistribuidoraId === null || distribuidoraIdDe(p) === s.activeDistribuidoraId) &&
   (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
+  (s.activeDistribuidoras.length === 0 || s.activeDistribuidoras.includes(String(distribuidoraIdDe(p)))) &&
   (s.activeMercados.length === 0 || s.activeMercados.includes(mercadoDe(p))) &&
   (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
   (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))

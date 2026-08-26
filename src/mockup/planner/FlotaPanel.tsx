@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { useDispatchPlanStore } from '../dispatch-plan-store'
+import { useShallow } from 'zustand/react/shallow'
+import { selectAvailableTrucks, useDispatchPlanStore } from '../dispatch-plan-store'
 import { CAMIONES, CLASES_CAMION, PRODUCT_TYPES, type Camion } from '../mock-data'
 import { FiltroPopover } from '../FiltroPopover'
 import { Paginador, usePagina } from './Paginador'
@@ -22,16 +23,8 @@ const fmt = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 /** Mismo criterio que los otros paneles: se pagina antes de que la lista obligue a un scroll largo. */
 const POR_PAGINA = 12
 
-const DISPONIBLES = CAMIONES.filter((c) => c.estado === 'disponible')
-const EN_MANTENIMIENTO = CAMIONES.filter((c) => c.estado === 'mantenimiento').length
-
 /**
  * Fila de camión en UNA sola línea (h-7).
- *
- * Antes eran dos líneas por lado —placa sobre tipo·clase, toneladas sobre m³— y cada camión medía 44
- * px: en un panel de 300 px de ancho entraban ocho de treinta, y la lista se leía como un formulario.
- * Nada de esos cuatro datos necesita una línea propia: la placa identifica, el resto es una fila de
- * atributos cortos que se lee de corrido.
  */
 function FilaCamion({
   camion,
@@ -97,6 +90,7 @@ export function FlotaPanel() {
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
   const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
   const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
+  const disponibles = useDispatchPlanStore(useShallow(selectAvailableTrucks))
   const [busqueda, setBusqueda] = useState('')
   /**
    * Filtros de la LISTA, no del plan: viven en `useState` y no en el store a propósito. Acotar la
@@ -112,7 +106,7 @@ export function FlotaPanel() {
 
   const visibles = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()
-    return DISPONIBLES.filter((c) => {
+    return disponibles.filter((c) => {
       if (tipos.length > 0 && !tipos.includes(c.tipo)) return false
       if (clases.length > 0 && !clases.includes(c.clase)) return false
       if (!texto) return true
@@ -122,15 +116,15 @@ export function FlotaPanel() {
         c.clase.toLowerCase().includes(texto)
       )
     })
-  }, [busqueda, clases, tipos])
+  }, [busqueda, clases, disponibles, tipos])
 
   const capacidad = useMemo(() => {
-    const elegidosList = DISPONIBLES.filter((c) => elegidos.has(c.id))
+    const elegidosList = disponibles.filter((c) => elegidos.has(c.id))
     return {
       pesoTon: elegidosList.reduce((acc, c) => acc + c.capacidadPeso, 0),
       volumenM3: elegidosList.reduce((acc, c) => acc + c.capacidadVolumen, 0),
     }
-  }, [elegidos])
+  }, [disponibles, elegidos])
 
   const pagina = usePagina(visibles, POR_PAGINA, `${busqueda}|${tipos.join()}|${clases.join()}`)
 
@@ -154,7 +148,7 @@ export function FlotaPanel() {
           <Badge variant="outline" className="gap-1 border-primary bg-primary/10 py-0.5 font-normal">
             <Truck size={11} className="text-primary" />
             Disponibles
-            <span className="font-semibold tabular-nums">{DISPONIBLES.length}</span>
+            <span className="font-semibold tabular-nums">{disponibles.length}</span>
           </Badge>
           <Badge
             variant="outline"
@@ -163,7 +157,7 @@ export function FlotaPanel() {
           >
             <Wrench size={11} />
             Mantenimiento
-            <span className="font-semibold tabular-nums">{EN_MANTENIMIENTO}</span>
+            <span className="font-semibold tabular-nums">3</span>
           </Badge>
         </div>
 
@@ -281,7 +275,7 @@ export function FlotaPanel() {
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[11px] text-muted-foreground">
             <span className="font-semibold tabular-nums text-foreground">{selectedTruckIds.length}</span>{' '}
-            de {DISPONIBLES.length} elegidos
+            de {disponibles.length} elegidos
           </span>
           <span className="text-[11px] tabular-nums text-muted-foreground">
             {fmt.format(capacidad.pesoTon)} t · {fmt.format(capacidad.volumenM3)} m³

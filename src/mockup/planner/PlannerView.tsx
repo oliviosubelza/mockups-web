@@ -23,7 +23,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { toast } from 'sonner'
 import {
+  Building2,
+  Check,
   ChevronLeft,
+  ChevronsUpDown,
   ClipboardList,
   Loader2,
   MapPinned,
@@ -32,10 +35,24 @@ import {
   Route,
   Trash2,
   Truck,
+  Warehouse,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import {
   Select,
   SelectContent,
@@ -46,6 +63,7 @@ import {
 import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/routing/open-route'
 import {
+  selectAvailableTrucks,
   selectIncludedOrders,
   selectSelectedTrucks,
   useDispatchPlanStore,
@@ -55,6 +73,11 @@ import {
   AUXILIARES,
   CAMIONES,
   CHOFERES,
+  CIUDAD_META,
+  DISTRIBUIDORAS,
+  PEDIDOS,
+  distribuidoraIdDe,
+  distribuidoraIdDeCamion,
   tripulacionDeCamion,
   type PlanCamion,
 } from '../mock-data'
@@ -137,9 +160,7 @@ const HERRAMIENTAS: { id: PanelId; label: string; icon: typeof Truck }[] = [
   { id: 'rutas', label: 'Rutas', icon: Route },
 ]
 
-/** Camiones elegibles. Constante de módulo: `CAMIONES` es un dataset fijo, no cambia en runtime. */
-const DISPONIBLES = CAMIONES.filter((c) => c.estado === 'disponible')
-const ELEGIBLES = DISPONIBLES.length
+
 
 const TITULOS: Record<PanelId, string> = {
   flota: 'Flota del plan',
@@ -152,6 +173,9 @@ const TITULOS: Record<PanelId, string> = {
 
 export function PlannerView() {
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
+  const activeDistribuidoraId = useDispatchPlanStore((s) => s.activeDistribuidoraId)
+  const setActiveDistribuidoraId = useDispatchPlanStore((s) => s.setActiveDistribuidoraId)
+  const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
   const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
   const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
   // Suscripción, no `getState()`: el mensaje del estado vacío cambia con el filtro, así que tiene que
@@ -160,7 +184,12 @@ export function PlannerView() {
   // Estos selectores derivan arrays NUEVOS en cada llamada; sin igualdad shallow, Zustand v5 los ve
   // como snapshot cambiante y entra en bucle de render.
   const camiones = useDispatchPlanStore(useShallow(selectSelectedTrucks))
+  const disponibles = useDispatchPlanStore(useShallow(selectAvailableTrucks))
+  const elegibles = disponibles.length
   const pedidos = useDispatchPlanStore(useShallow(selectIncludedOrders))
+
+  const [distribuidoraPopoverOpen, setDistribuidoraPopoverOpen] = useState(false)
+  const activeDist = DISTRIBUIDORAS.find((d) => d.id === activeDistribuidoraId)
 
   const panel = usePlannerStore((s) => s.panel)
   const dockAbierto = usePlannerStore((s) => s.dockAbierto)
@@ -318,8 +347,8 @@ export function PlannerView() {
 
   /** Camiones que todavía no son una ruta: los únicos con los que se puede crear una nueva. */
   const camionesLibres = useMemo(
-    () => DISPONIBLES.filter((c) => !selectedTruckIds.includes(c.id)),
-    [selectedTruckIds],
+    () => disponibles.filter((c) => !selectedTruckIds.includes(c.id)),
+    [disponibles, selectedTruckIds],
   )
 
   /**
@@ -631,7 +660,7 @@ export function PlannerView() {
       >
         <PlannerMetricas
           camionesElegidos={selectedTruckIds.length}
-          camionesElegibles={ELEGIBLES}
+          camionesElegibles={elegibles}
           paradas={paradas.length}
           pedidos={pedidos.length}
           volumenDisponible={disponible.volumenM3}
@@ -710,7 +739,7 @@ export function PlannerView() {
         className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center transition-[padding] duration-300 ease-out"
         style={{ paddingLeft: margenIzq, paddingRight: margenDer }}
       >
-        <div className="pointer-events-auto flex h-11 shrink-0 items-center gap-1 rounded-xl border border-border bg-card/95 px-2 shadow-xl backdrop-blur-sm">
+        <div className="pointer-events-auto flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card/95 px-2.5 shadow-xl backdrop-blur-sm">
           <Button
             variant="ghost"
             size="sm"
@@ -721,6 +750,94 @@ export function PlannerView() {
             <ChevronLeft size={14} />
             <span className="hidden sm:inline">Volver</span>
           </Button>
+
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
+
+          {/* Selector de Distribuidora de Nivel Superior con Buscador */}
+          <Popover open={distribuidoraPopoverOpen} onOpenChange={setDistribuidoraPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                role="combobox"
+                aria-expanded={distribuidoraPopoverOpen}
+                className="h-7 max-w-[270px] justify-between gap-1.5 border-primary/40 bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 hover:text-primary transition-colors shadow-none"
+                title={activeDist ? `${activeDist.nombre}` : 'Todas las distribuidoras'}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <Building2 size={13} className="shrink-0 text-primary" />
+                  <span className="truncate">{activeDist ? activeDist.nombre : 'Todas las distribuidoras'}</span>
+                </div>
+                <ChevronsUpDown size={12} className="shrink-0 opacity-60 ml-0.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-0 shadow-2xl border-border" align="start">
+              <Command>
+                <CommandInput placeholder="Buscar distribuidora o ciudad…" className="h-9 text-xs" />
+                <CommandList className="max-h-72">
+                  <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
+                    No se encontraron distribuidoras.
+                  </CommandEmpty>
+                  <CommandGroup heading="Distribuidora a Planificar">
+                    <CommandItem
+                      value="todas las distribuidoras general"
+                      onSelect={() => {
+                        setActiveDistribuidoraId(null)
+                        setDistribuidoraPopoverOpen(false)
+                        pedirEncuadre('todo')
+                        toast.info('Planificando sin filtro de distribuidora (todas las zonas)')
+                      }}
+                      className="flex items-center justify-between text-xs py-2 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Warehouse size={14} className="text-muted-foreground" />
+                        <span className="font-medium">Todas las Distribuidoras</span>
+                      </div>
+                      {activeDistribuidoraId === null && <Check size={14} className="text-primary font-bold" />}
+                    </CommandItem>
+                    {DISTRIBUIDORAS.map((dist) => {
+                      const isSelected = activeDistribuidoraId === dist.id
+                      const ciudadNombre = Object.values(CIUDAD_META).find((c) => c.cityId === dist.cityId)?.label ?? 'Santa Cruz'
+                      const trucksCount = CAMIONES.filter((c) => distribuidoraIdDeCamion(c) === dist.id && c.estado === 'disponible').length
+                      const ordersCount = PEDIDOS.filter((p) => distribuidoraIdDe(p) === dist.id).length
+
+                      return (
+                        <CommandItem
+                          key={dist.id}
+                          value={`${dist.nombre} ${ciudadNombre}`}
+                          onSelect={() => {
+                            setActiveDistribuidoraId(dist.id)
+                            setDistribuidoraPopoverOpen(false)
+                            pedirEncuadre('todo')
+                            toast.success(`Distribuidora: ${dist.nombre}`, {
+                              description: `${trucksCount} camiones en flota · ${ordersCount} pedidos en territorio`,
+                            })
+                          }}
+                          className="flex items-center justify-between text-xs py-2 cursor-pointer"
+                        >
+                          <div className="flex flex-col min-w-0 pr-2">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Building2 size={13} className={cn("shrink-0", isSelected ? "text-primary font-bold" : "text-muted-foreground")} />
+                              <span className={cn("truncate font-medium", isSelected && "text-primary font-bold")}>{dist.nombre}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 pl-4">
+                              <span>{ciudadNombre}</span>
+                              <span>•</span>
+                              <span>{trucksCount} camiones</span>
+                              <span>•</span>
+                              <span>{ordersCount} pedidos</span>
+                            </div>
+                          </div>
+                          {isSelected && <Check size={14} className="text-primary font-bold shrink-0" />}
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
           <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
           {HERRAMIENTAS.map(({ id, label, icon: Icon }) => {

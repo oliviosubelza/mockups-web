@@ -48,6 +48,8 @@ import {
   CANALES,
   CHOFERES,
   DEPOSITO,
+  DISTRIBUIDORAS,
+  distribuidoraIdDe,
   PARADAS,
   PRODUCT_TYPES,
   RUTAS,
@@ -301,6 +303,7 @@ export function PlanningView({
   const panelTransition = !dragging && 'transition-[flex-basis] duration-300 ease-out'
 
   // Filtros del mapa (Set vacío = sin filtrar).
+  const [distribuidoras, setDistribuidoras] = useState<Set<string>>(new Set())
   const [canales, setCanales] = useState<Set<CanalId>>(new Set())
   const [tipos, setTipos] = useState<Set<ProductType>>(new Set())
   const [rutas, setRutas] = useState<Set<string>>(new Set())
@@ -466,6 +469,11 @@ export function PlanningView({
   const filtradas = useMemo(
     () =>
       paradas.filter((p) => {
+        if (
+          distribuidoras.size > 0 &&
+          !p.pedidos.some((ped) => distribuidoras.has(String(distribuidoraIdDe(ped))))
+        )
+          return false
         if (canales.size > 0 && !canales.has(p.canal)) return false
         if (tipos.size > 0 && !p.pedidos.some((ped) => tipos.has(ped.productType))) return false
         if (rutas.size > 0) {
@@ -474,11 +482,12 @@ export function PlanningView({
         }
         return true
       }),
-    [canales, paradas, rutas, tipos],
+    [canales, distribuidoras, paradas, rutas, tipos],
   )
 
-  const hayFiltros = canales.size > 0 || tipos.size > 0 || rutas.size > 0
+  const hayFiltros = distribuidoras.size > 0 || canales.size > 0 || tipos.size > 0 || rutas.size > 0
   const limpiar = () => {
+    setDistribuidoras(new Set())
     setCanales(new Set())
     setTipos(new Set())
     setRutas(new Set())
@@ -501,6 +510,13 @@ export function PlanningView({
   const rutasVisibles = rutasPlan.filter((r) =>
     filtradas.some((p) => (p.rutaId ? p.rutaId === r.id : p.camionId === r.camionId)),
   )
+
+  const distribuidoraOptions = useMemo(() => {
+    return DISTRIBUIDORAS.map((d) => ({
+      value: String(d.id),
+      label: d.nombre,
+    }))
+  }, [])
 
   const canalOptions = useMemo(() => {
     const list = activeCanales.length > 0
@@ -776,6 +792,7 @@ export function PlanningView({
             horizontal deja libre el MapToolbar (top-left) y el control de capas (top-right). */}
         <div className="pointer-events-none absolute inset-x-0 top-3 z-[1100] flex justify-center px-14">
           <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-lg border border-border bg-background/95 px-2 py-1.5 shadow-md backdrop-blur">
+            <FilterMenu label="Distribuidora" options={distribuidoraOptions} selected={distribuidoras} onToggle={toggleInSet(setDistribuidoras)} />
             <FilterMenu label="Canal" options={canalOptions} selected={canales} onToggle={toggleInSet(setCanales)} />
             <FilterMenu label="Tipo" options={tipoOptions} selected={tipos} onToggle={toggleInSet(setTipos)} />
             {/* El filtro por Ruta recién tiene sentido una vez optimizado (antes no hay rutas). En
