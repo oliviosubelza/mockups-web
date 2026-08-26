@@ -1,17 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 // `useRouteParams` y no `useParams`: el shell de este mockup renderiza la pantalla a mano, fuera de
 // un <Route element>, así que `useParams()` devolvería {} y la página se quedaría sin su id.
 import { useRouteParams } from "@/core/routing/active-route";
-import { ArrowLeft, Check, PackageX, Pencil, Store, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  PackageX,
+  Pencil,
+  X,
+} from "lucide-react";
 import type { ReturnLine } from "../../../types";
 import { RETURN_LOT_LABELS, RETURN_REASON_LABELS, RETURN_SETTLEMENT_LABELS } from "../../../types";
-import { pendingLevelOf, primarySourceOf } from "../../../lib/return-workflow";
-import { lineAmount } from "../../../lib/order-math";
-import { useReturn, useRejectReturn } from "../../../hooks/use-returns";
+import type { ItemDecisionInput } from "../../../lib/return-workflow";
+import {
+  canDecide,
+  decisionBlockedReason,
+  itemDecisionBlockedReason,
+  pendingLevelOf,
+  primarySourceOf,
+} from "../../../lib/return-workflow";
+import { lineAmount, lineMinUnits, round2 } from "../../../lib/order-math";
+import { useApproveReturn, useReturn, useRejectReturn } from "../../../hooks/use-returns";
 import { useOrderClientDetails } from "../../../hooks/use-orders";
 import { canApproveReturns, seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
-import { decisionBlockedReason, editBlockedReason } from "../../../services/returns-service";
+import { editBlockedReason } from "../../../services/returns-service";
 import { PageHeader } from "../../../components/common/page-header";
 import { EmptyState } from "../../../components/common/empty-state";
 import { Button } from "@/components/ui/button";
@@ -19,40 +34,129 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DataTable, defineColumns } from "../../../components/data-table";
-import { ReturnDecisionDialog } from "../components/return-decision-dialog";
-import { amount, bs, formatDateTime, formatDay, formatTime } from "../../../lib/format";
+import { amount, bs, formatDay } from "../../../lib/format";
 import { PhotoStack } from "../../../components/common/photo-viewer";
 import { ReturnStatusBadge } from "../components/return-status-badge";
 import { ReturnFlow } from "../components/return-flow";
-import { ReturnAmounts } from "../components/return-amounts";
+import { ItemDecisionTable, type ItemDraft } from "../components/item-decision-table";
+import { DecisionImpactDialog } from "../components/decision-impact-dialog";
 import { ReturnTimeline } from "../components/return-timeline";
 
-/** Label over value — the read-only twin of the form's field. */
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+/**
+ * The returned goods, read-only — for whoever isn't the one deciding right now.
+ *
+ * Same row shape as `ItemDecisionTable`'s read side, minus the controls: cod,
+ * producto, cantidad, motivo, lote, importe. Vencimiento y evidencia viven
+ * detrás del ícono de foto y del tooltip del lote — el dato sigue disponible,
+ * no ocupa una columna fija.
+ */
+function ReturnLinesTable({ lines }: { lines: ReturnLine[] }) {
+  const columns = useMemo(
+    () =>
+      defineColumns<ReturnLine>([
+        {
+          id: "productName",
+          header: "Producto",
+          accessorKey: "productName",
+          size: 220,
+          cell: (line) => (
+            <div>
+              <div className="font-medium leading-tight">{line.productName}</div>
+              <div className="text-[10px] text-muted-foreground">{line.code}</div>
+            </div>
+          ),
+        },
+        {
+          id: "qtyUnit",
+          header: "Cantidad",
+          accessorKey: "qtyUnit",
+          size: 90,
+          cell: (line) => (
+            <span className="flex flex-col leading-tight">
+              <span className="font-medium tabular-nums">{line.qtyUnit}</span>
+              <span className="truncate text-[10px] lowercase text-muted-foreground">{line.unitLabel}</span>
+            </span>
+          ),
+        },
+        {
+          id: "reason",
+          header: "Motivo",
+          accessorKey: "reason",
+          size: 170,
+          cell: (line) => (
+            <span className="inline-flex max-w-full items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-sky-700 dark:text-sky-300">
+              <span className="truncate">{RETURN_REASON_LABELS[line.reason]}</span>
+            </span>
+          ),
+        },
+        {
+          id: "batch",
+          header: "Lote",
+          size: 130,
+          enableSorting: false,
+          cell: (line) => {
+            const source = primarySourceOf(line);
+            if (!source?.batchNumber?.trim()) return <span className="text-muted-foreground">—</span>;
+            return (
+              <span
+                className="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
+                title={source.dueDate ? `Vence ${formatDay(source.dueDate)}` : undefined}
+              >
+                {source.batch && (
+                  <span
+                    title={RETURN_LOT_LABELS[source.batch]}
+                    className="rounded bg-muted px-1 py-px text-[10px] font-medium text-muted-foreground"
+                  >
+                    {source.batch}
+                  </span>
+                )}
+                <span className="truncate font-mono tabular-nums">{source.batchNumber}</span>
+              </span>
+            );
+          },
+        },
+        {
+          id: "photos",
+          header: "",
+          size: 44,
+          enableSorting: false,
+          meta: { align: "center" },
+          cell: (line) => <PhotoStack photos={line.photos} />,
+        },
+        {
+          id: "importe",
+          header: "Importe",
+          size: 90,
+          meta: { align: "right" },
+          cell: (line) => <span className="font-semibold">{amount(lineAmount(line))}</span>,
+        },
+      ]),
+    [],
+  );
+
+  if (lines.length === 0) {
+    return <p className="p-6 text-center text-sm text-muted-foreground">Sin productos cargados.</p>;
+  }
+
   return (
-    <div className="min-w-0 space-y-1.5">
-      <p className="flex h-5 items-center text-sm font-medium">{label}</p>
-      <div className="truncate text-sm text-muted-foreground">{value || "—"}</div>
-    </div>
+    <DataTable
+      tableId="return-view-lines"
+      columns={columns}
+      data={lines}
+      getRowId={(line) => line.productId}
+      hideToolbar
+      bodyMinHeight={0}
+    />
   );
 }
 
-/** The billing box that closes the client card, mirroring the form's. */
-function BillingFact({ label, value }: { label: string; value: string | null }) {
+/** One `label — value` chip, for the compact facts strip. */
+function Chip({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="truncate text-xs font-medium">{value ?? "—"}</p>
-    </div>
-  );
-}
-
-function SectionTitle({ icon: Icon, children }: { icon: typeof Store; children: React.ReactNode }) {
-  return (
-    <h2 className="flex items-center gap-2 text-sm font-semibold">
-      <Icon className="h-4 w-4 text-muted-foreground" />
-      {children}
-    </h2>
+    <span className="flex items-baseline gap-1.5 whitespace-nowrap text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </span>
   );
 }
 
@@ -76,190 +180,32 @@ function HeaderAction({ reason, children }: { reason: string | null; children: R
 }
 
 /**
- * The returned goods, read-only, in the same shape as the editor the seller
- * filled in.
- *
- * One row per product, and the row is the whole claim. The observation and the
- * evidence used to live in a `renderSubRow` under every line, which doubled the
- * height of the list — on a return of eight products the approver was scrolling
- * before he had seen half of it, and a detail that has to be scrolled to be read
- * is a detail whose total nobody checks. They are columns now.
- *
- * What is *not* here is as deliberate as what is. No unit price: the tariff is
- * the sale's and the line's amount is what anyone reads. No case quantity:
- * returns are counted in minimum units, which is what the eligibility rule
- * speaks in. No ICE: a return gives back what was charged, and the tax is
- * settled on the note, not argued line by line by the person approving it.
+ * Start every product approved in full — the common case is "this claim is
+ * fine", so the screen exists for cutting what's wrong, not retyping what's
+ * right.
  */
-function ReturnLinesTable({ lines }: { lines: ReturnLine[] }) {
-  const columns = useMemo(
-    () =>
-      defineColumns<ReturnLine>([
-        {
-          id: "code",
-          header: "Cod",
-          accessorKey: "code",
-          size: 58,
-          cell: (line) => (
-            <span className="font-mono tabular-nums text-muted-foreground">{line.code}</span>
-          ),
-        },
-        {
-          id: "productName",
-          header: "Producto",
-          accessorKey: "productName",
-          size: 200,
-          cell: (line) => <span className="font-medium leading-tight">{line.productName}</span>,
-        },
-        {
-          id: "company",
-          header: "Empresa",
-          accessorKey: "company",
-          size: 108,
-          cell: (line) => <span className="text-muted-foreground">{line.company}</span>,
-        },
-        {
-          // Stacked: the unit qualifies the number rather than sitting beside it, and the digits
-          // keep their own line where they align with the rows above.
-          id: "qtyUnit",
-          header: "Cantidad",
-          accessorKey: "qtyUnit",
-          size: 78,
-          cell: (line) => (
-            <span className="flex flex-col leading-tight">
-              <span className="font-medium tabular-nums">{line.qtyUnit}</span>
-              <span className="truncate text-[10px] lowercase text-muted-foreground">
-                {line.unitLabel}
-              </span>
-            </span>
-          ),
-        },
-        {
-          id: "reason",
-          header: "Motivo",
-          accessorKey: "reason",
-          size: 140,
-          // The classification the business counts these by — the same tint the form gives it, so
-          // the two screens read as one document.
-          cell: (line) => (
-            <span className="inline-flex max-w-full items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-sky-700 dark:text-sky-300">
-              <span className="truncate">{RETURN_REASON_LABELS[line.reason]}</span>
-            </span>
-          ),
-        },
-        {
-          // Origin and number in one cell: apart they were two columns saying one thing, and
-          // "SC" alone answers nothing anybody asks of this table.
-          id: "batch",
-          header: "Lote",
-          size: 128,
-          enableSorting: false,
-          cell: (line) => {
-            const source = primarySourceOf(line);
-            // Same rule as the editor's own cell: the printed number is what makes a
-            // lot a lot. `batch` is the plant and always has a value, so a line whose
-            // reason carries no lot showed "SC · —" — a lot from Santa Cruz with a
-            // number somebody forgot, which is not what happened.
-            if (!source?.batchNumber?.trim()) {
-              return <span className="text-muted-foreground">—</span>;
-            }
-            return (
-              <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-                {source?.batch && (
-                  <span
-                    title={RETURN_LOT_LABELS[source.batch]}
-                    className="rounded bg-muted px-1 py-px text-[10px] font-medium text-muted-foreground"
-                  >
-                    {source.batch}
-                  </span>
-                )}
-                <span className="truncate font-mono tabular-nums">{source?.batchNumber || "—"}</span>
-                {line.sources.length > 1 && (
-                  <span className="text-[10px] text-muted-foreground">
-                    +{line.sources.length - 1}
-                  </span>
-                )}
-              </span>
-            );
-          },
-        },
-        {
-          id: "dueDate",
-          header: "Vencimiento",
-          size: 104,
-          enableSorting: false,
-          cell: (line) => (
-            <span className="whitespace-nowrap tabular-nums text-muted-foreground">
-              {primarySourceOf(line)?.dueDate ? formatDay(primarySourceOf(line)!.dueDate!) : "—"}
-            </span>
-          ),
-        },
-        {
-          // The defect in the seller's own words — the sentence the approver is here to read.
-          id: "notes",
-          header: "Observación",
-          accessorKey: "notes",
-          size: 190,
-          cell: (line) => (
-            <span className="block truncate text-muted-foreground" title={line.notes}>
-              {line.notes || "—"}
-            </span>
-          ),
-        },
-        {
-          id: "photos",
-          header: "Evidencia",
-          size: 96,
-          enableSorting: false,
-          // The stack opens the same carousel the seller loaded them with, and it matters most
-          // here: the number that decides the return is a batch code stamped on a bottle,
-          // photographed at arm's length. Judging it means zooming in.
-          cell: (line) => <PhotoStack photos={line.photos} />,
-        },
-        {
-          id: "importe",
-          header: "Importe",
-          size: 84,
-          meta: { align: "right" },
-          cell: (line) => <span className="font-semibold">{amount(lineAmount(line))}</span>,
-        },
-      ]),
-    [],
-  );
-
-  if (lines.length === 0) {
-    return (
-      <p className="p-6 text-center text-sm text-muted-foreground">
-        Esta devolución no tiene productos cargados.
-      </p>
-    );
-  }
-
-  return (
-    <DataTable
-      tableId="return-view-lines"
-      columns={columns}
-      data={lines}
-      getRowId={(line) => line.productId}
-      hideToolbar
-      bodyMinHeight={0}
-    />
+function initialDrafts(lines: ReturnLine[]): Map<string, ItemDraft> {
+  return new Map(
+    lines.map((line) => [
+      line.productId,
+      {
+        status: line.itemStatus === "REJECTED" ? ("REJECTED" as const) : ("APPROVED" as const),
+        approvedMinUnits: line.approvedMinUnits ?? lineMinUnits(line),
+        rejectReason: line.rejectReason ?? "",
+      },
+    ]),
   );
 }
 
 /**
- * One return, read — and decided.
+ * One devolución: read, and — if it's your turn — decided.
  *
- * Deliberately the same shape as the form that produced it: two cards across
- * the top, the client on one third and the return on two, the detail below
- * taking the rest and closing on a band of totals. A user who just filled that
- * form finds every value where they left it.
- *
- * What it adds is the part a form has no reason to show: the approval flow, and
- * the two buttons that move it. Those buttons are only ever enabled for the
- * role sitting at the desk the return is on — and the reason they are not is on
- * the button itself, taken from the same service function that would refuse the
- * call.
+ * A single screen instead of two. The old split (a read-only detail, and a
+ * separate `/aprobar` route for the same document) meant every decision was a
+ * navigation away from the thing being decided. Whether `canDecide` is true is
+ * the only fork this page has: the item grid is either the editable one an
+ * approver acts on, or the plain read-only one everyone else sees — same data,
+ * same table shape, one fewer screen to maintain.
  */
 export function ReturnViewPage() {
   const { id } = useRouteParams();
@@ -268,18 +214,56 @@ export function ReturnViewPage() {
   const { data: ret, isLoading } = useReturn(Number.isFinite(returnId) ? returnId : undefined);
   const { data: details } = useOrderClientDetails(ret?.clientId);
   const user = useCurrentUser();
+  const approve = useApproveReturn();
   const reject = useRejectReturn();
-  const [decision, setDecision] = useState<"rechazado" | null>(null);
+
+  const [drafts, setDrafts] = useState<Map<string, ItemDraft>>(new Map());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState<"aprobado" | "rechazado" | null>(null);
+  const [showMore, setShowMore] = useState(false);
+
+  const canDecideHere = canApproveReturns(user.role) && !!user.employeeCode;
+  const deciding = !!ret && canDecideHere && canDecide(ret, user.employeeCode as number);
+
+  // Reload the working answers whenever the return itself changes, or the
+  // moment it becomes decidable. Keyed by id so a background refetch never
+  // discards a decision in progress.
+  useEffect(() => {
+    if (ret && deciding) setDrafts(initialDrafts(ret.lines));
+  }, [ret?.id, deciding]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totals = useMemo(() => {
+    if (!ret) return { claimed: 0, approved: 0, counts: { total: 0, approved: 0, partial: 0, rejected: 0 } };
+    let claimed = 0;
+    let approved = 0;
+    let approvedCount = 0;
+    let partial = 0;
+    let rejected = 0;
+    for (const line of ret.lines) {
+      const lineClaimed = lineMinUnits(line);
+      claimed += lineClaimed * line.priceUnit;
+      const draft = drafts.get(line.productId);
+      if (!draft || draft.status === "REJECTED") {
+        rejected += 1;
+        continue;
+      }
+      approved += draft.approvedMinUnits * line.priceUnit;
+      approvedCount += 1;
+      if (draft.approvedMinUnits < lineClaimed) partial += 1;
+    }
+    return {
+      claimed: round2(claimed),
+      approved: round2(approved),
+      counts: { total: ret.lines.length, approved: approvedCount, partial, rejected },
+    };
+  }, [ret, drafts]);
 
   if (isLoading) {
     return (
       <>
-        <PageHeader title="Devolución" description="Cargando el detalle…" />
+        <PageHeader title="Devolución" description="Cargando…" />
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <Skeleton className="h-52 w-full rounded-xl" />
-            <Skeleton className="col-span-2 h-52 w-full rounded-xl" />
-          </div>
           <Skeleton className="h-24 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
@@ -311,56 +295,76 @@ export function ReturnViewPage() {
 
   const editBlocked = editBlockedReason(ret);
 
-  // Shown or not shown, never shown-and-dead: a role that signs nothing gets no
-  // approval buttons on the header at all.
-  const canDecideHere = canApproveReturns(user.role) && !!user.employeeCode;
-  const decisionBlocked = user.employeeCode
-    ? decisionBlockedReason(ret, user.employeeCode)
-    : "Tu usuario no firma aprobaciones.";
+  /** Why the decision cannot be confirmed yet, or `null`. */
+  const confirmBlocked = (): string | null => {
+    for (const line of ret.lines) {
+      const draft = drafts.get(line.productId);
+      if (!draft) return "Falta decidir un producto.";
+      const decision: ItemDecisionInput =
+        draft.status === "REJECTED"
+          ? { productId: line.productId, status: "REJECTED", rejectReason: draft.rejectReason }
+          : { productId: line.productId, status: "APPROVED", approvedMinUnits: draft.approvedMinUnits };
+      const invalid = itemDecisionBlockedReason(line, decision);
+      if (invalid) return invalid;
+    }
+    return null;
+  };
+  const blockedConfirm = deciding ? confirmBlocked() : null;
+
+  const patchDraft = (productId: string, patch: Partial<ItemDraft>) =>
+    setDrafts((current) => {
+      const next = new Map(current);
+      const held = next.get(productId);
+      if (held) next.set(productId, { ...held, ...patch });
+      return next;
+    });
+
+  const applyToSelected = (status: "APPROVED" | "REJECTED") => {
+    setDrafts((current) => {
+      const next = new Map(current);
+      for (const productId of selected) {
+        const line = ret.lines.find((l) => l.productId === productId);
+        const held = next.get(productId);
+        if (!line || !held) continue;
+        next.set(productId, {
+          ...held,
+          status,
+          approvedMinUnits: status === "APPROVED" ? lineMinUnits(line) : 0,
+        });
+      }
+      return next;
+    });
+    setSelected(new Set());
+  };
+
+  const submitDecision = (comment: string) => {
+    if (!user.employeeCode) return;
+    const actor = { employeeCode: user.employeeCode, employeeName: user.name };
+    const done = { onSuccess: () => setConfirming(null) };
+
+    if (confirming === "rechazado") {
+      reject.mutate({ id: ret.id, actor, reason: comment }, done);
+      return;
+    }
+    const itemDecisions: ItemDecisionInput[] = ret.lines.map((line) => {
+      const draft = drafts.get(line.productId)!;
+      return draft.status === "REJECTED"
+        ? { productId: line.productId, status: "REJECTED" as const, rejectReason: draft.rejectReason }
+        : { productId: line.productId, status: "APPROVED" as const, approvedMinUnits: draft.approvedMinUnits };
+    });
+    approve.mutate({ id: ret.id, actor, comment, itemDecisions }, done);
+  };
+
   const level = pendingLevelOf(ret);
 
   return (
     <>
       <PageHeader
         title={`Devolución ${ret.id}`}
-        description={`Registrada el ${formatDateTime(ret.createdAt)} a las ${formatTime(ret.createdAt)} por ${ret.sellerName}.`}
+        description={`${ret.clientName} · ${ret.sellerName}`}
       >
         <ReturnStatusBadge status={ret.status} />
 
-        {canDecideHere && (
-          <>
-            <HeaderAction reason={decisionBlocked}>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!!decisionBlocked}
-                className="text-emerald-700 hover:text-emerald-700 dark:text-emerald-400"
-                // Every level decides quantities now, so an approval always carries
-                // them: there is nothing to confirm from a dialog here, and sending
-                // the approver straight to the grid beats a call the service would
-                // refuse for having items still pending.
-                onClick={() => navigate(`/devoluciones/${ret.id}/aprobar`)}
-              >
-                <Check className="h-4 w-4" /> Revisar y decidir
-              </Button>
-            </HeaderAction>
-            <HeaderAction reason={decisionBlocked}>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!!decisionBlocked}
-                className="text-destructive hover:text-destructive"
-                onClick={() => setDecision("rechazado")}
-              >
-                <X className="h-4 w-4" /> Rechazar
-              </Button>
-            </HeaderAction>
-          </>
-        )}
-
-        {/* A blocked action is a disabled button, not a disabled link: `disabled`
-            means nothing on an anchor, and a link that still navigates is worse
-            than no button at all. */}
         <HeaderAction reason={editBlocked}>
           {editBlocked ? (
             <Button type="button" variant="outline" disabled>
@@ -381,134 +385,187 @@ export function ReturnViewPage() {
       </PageHeader>
 
       <div className="space-y-3">
-        {/* ---- La misma fila de tarjetas que el formulario ---- */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="flex min-w-0 flex-col">
-            <CardContent className="flex flex-1 flex-col gap-2 p-3">
-              <SectionTitle icon={Store}>Cliente</SectionTitle>
-              <Fact label="Cliente" value={ret.clientName} />
-              <Fact label="Titular" value={ret.clientOwnerName} />
-              <Fact label="Vendedor" value={`${ret.sellerName} · código ${ret.sellerCode}`} />
+        {/* ---- Franja compacta: lo que hace falta para decidir, nada más ---- */}
+        <Card>
+          <CardContent className="space-y-2 p-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+              <Chip label="Cliente" value={ret.clientName} />
+              <Chip label="Vendedor" value={ret.sellerName} />
+              <Chip label="Total" value={bs(ret.total)} />
+              <Chip label="Repone" value={formatDay(ret.replacementDate)} />
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="ml-auto flex items-center gap-1 text-xs font-medium text-primary"
+              >
+                {showMore ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {showMore ? "Ocultar detalle" : "Más detalle"}
+              </button>
+            </div>
 
-              <div className="mt-auto space-y-1.5">
-                <p className="flex h-5 items-center text-sm font-medium">Datos de facturación</p>
-                <div className="grid h-16 grid-cols-3 content-center gap-x-3 rounded-lg border bg-muted/40 px-2.5">
-                  <BillingFact label="Razón social" value={details?.razonSocial ?? null} />
-                  <BillingFact label="NIT" value={details?.nit ?? null} />
-                  <BillingFact label="Titular" value={ret.clientOwnerName} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            <p className="text-sm text-muted-foreground">{ret.justification || "Sin justificación."}</p>
 
-          <Card className="col-span-2 flex min-w-0 flex-col">
-            <CardContent className="flex flex-1 flex-col gap-2 p-3">
-              <SectionTitle icon={PackageX}>Devolución</SectionTitle>
-
-              <div className="grid grid-cols-3 gap-2">
-                <Fact label="Distribuidora" value={ret.distributorName} />
-                <Fact label="Fecha probable de reposición" value={formatDay(ret.replacementDate)} />
-                {/* Blank until the last desk signs: how the claim is liquidated
-                    is a decision, and showing a guess for it would be worse than
-                    showing nothing. */}
-                <Fact
+            {showMore && (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t pt-2 text-xs sm:grid-cols-4">
+                <Chip label="Distribuidora" value={ret.distributorName} />
+                <Chip
                   label="Tipo de devolución"
                   value={ret.settlement ? RETURN_SETTLEMENT_LABELS[ret.settlement] : "Sin definir"}
                 />
-                <Fact label="Productos" value={`${ret.lines.length}`} />
-                <Fact label="Total a devolver" value={bs(ret.total)} />
-                <Fact
-                  label="Correcciones"
-                  value={ret.editCount === 0 ? "Sin correcciones" : "1 de 1 usada"}
-                />
+                <Chip label="Correcciones" value={ret.editCount === 0 ? "Ninguna" : "1 de 1 usada"} />
+                <Chip label="Razón social" value={details?.razonSocial ?? "—"} />
+                <Chip label="NIT" value={details?.nit ?? "—"} />
+                <Chip label="Titular" value={ret.clientOwnerName} />
               </div>
+            )}
+          </CardContent>
+        </Card>
 
-              <div className="mt-auto space-y-1.5">
-                <p className="flex h-5 items-center text-sm font-medium">Justificación</p>
-                <p className="h-16 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                  {ret.justification || "Sin justificación."}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ---- El flujo, antes del detalle ----
-             Above the products on purpose: whoever opens this page opens it to
-             answer "¿en qué quedó?", and making them scroll past twenty lines
-             to find out is answering the wrong question first. */}
         <Card>
           <CardContent className="p-3">
             <ReturnFlow ret={ret} />
           </CardContent>
         </Card>
 
-        {/* ---- El detalle ---- */}
-        {/* `gap-0 py-0`: header bar, lines table and totals band are all
-            full-bleed, so the primitive's `py-4`/`gap-4` opened a strip above
-            the header and a seam between every band. */}
+        {/* ---- Ítems: editable si te toca decidir, de solo lectura si no ---- */}
         <Card className="flex flex-col gap-0 overflow-hidden py-0">
-          <div className="flex shrink-0 items-center gap-3 border-b p-2.5">
+          <div className="flex flex-wrap items-center gap-2 border-b p-2.5">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <PackageX className="h-4 w-4 text-muted-foreground" />
-              Detalle de la devolución
-            </h2>
-            <span className="text-xs tabular-nums text-muted-foreground">
               {ret.lines.length} {ret.lines.length === 1 ? "producto" : "productos"}
-            </span>
+            </h2>
+            {deciding && (
+              <span className="text-xs text-muted-foreground">
+                Podés recortar cantidades y rechazar productos.
+              </span>
+            )}
+            {!deciding && ret.workflow && canDecideHere && (
+              <span className="text-xs text-muted-foreground">
+                {decisionBlockedReason(ret, user.employeeCode as number)}
+              </span>
+            )}
+            {deciding && (
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={selected.size === 0}
+                  onClick={() => applyToSelected("APPROVED")}
+                >
+                  <Check className="h-3.5 w-3.5" /> Aprobar selección
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10"
+                  disabled={selected.size === 0}
+                  onClick={() => applyToSelected("REJECTED")}
+                >
+                  <X className="h-3.5 w-3.5" /> Rechazar selección
+                </Button>
+              </div>
+            )}
           </div>
 
-          <ReturnLinesTable lines={ret.lines} />
+          {deciding ? (
+            <ItemDecisionTable
+              lines={ret.lines}
+              drafts={drafts}
+              selected={selected}
+              expanded={expanded}
+              onDraftChange={patchDraft}
+              onToggleSelect={(productId) =>
+                setSelected((current) => {
+                  const next = new Set(current);
+                  if (next.has(productId)) next.delete(productId);
+                  else next.add(productId);
+                  return next;
+                })
+              }
+              onToggleSelectAll={() =>
+                setSelected((current) =>
+                  current.size === ret.lines.length ? new Set() : new Set(ret.lines.map((l) => l.productId)),
+                )
+              }
+              onToggleExpand={(productId) =>
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  if (next.has(productId)) next.delete(productId);
+                  else next.add(productId);
+                  return next;
+                })
+              }
+            />
+          ) : (
+            <ReturnLinesTable lines={ret.lines} />
+          )}
 
-          {/* One band, one line. The subtotal and the ICE used to sit above this
-              on a row of their own: the ICE because a return gives back what was
-              charged and the tax is settled on the note rather than argued here,
-              and the subtotal because without the ICE beside it it was just the
-              claim again — which the card above already calls "Total a
-              devolver". What the foot of the detail owes the reader is what was
-              granted, and that is what is left. */}
-          <div className="border-t bg-muted/30 px-2.5 py-2.5">
-            <ReturnAmounts ret={ret} />
-          </div>
+          {deciding ? (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t bg-muted/30 px-3 py-2.5">
+              <span className="text-xs">
+                <span className="text-muted-foreground">Solicitado </span>
+                <span className="font-medium tabular-nums">{bs(totals.claimed)}</span>
+              </span>
+              <span className="text-xs">
+                <span className="text-muted-foreground">Aprobado </span>
+                <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {bs(totals.approved)}
+                </span>
+              </span>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setConfirming("rechazado")}>
+                  <X className="h-4 w-4" /> Rechazar
+                </Button>
+                <Button
+                  disabled={!!blockedConfirm}
+                  title={blockedConfirm ?? undefined}
+                  onClick={() => setConfirming("aprobado")}
+                >
+                  <Check className="h-4 w-4" /> Aprobar
+                </Button>
+              </div>
+              {blockedConfirm && (
+                <p className="w-full text-xs text-destructive">{blockedConfirm}</p>
+              )}
+            </div>
+          ) : (
+            <div className="border-t bg-muted/30 px-2.5 py-2.5 text-xs text-muted-foreground">
+              {level ? (
+                <>
+                  Esperando la firma de <span className="font-medium text-foreground">{level.name}</span>.
+                </>
+              ) : (
+                <>Devolución cerrada.</>
+              )}
+            </div>
+          )}
         </Card>
 
-        {/* ---- El histórico, al final ----
-             Last on purpose: it answers "cómo llegamos acá", which is the
-             question people ask after the ones above, not before. */}
+        {/* ---- Histórico: colapsado por defecto ---- */}
         {ret.workflow && (
-          <Card>
-            <CardContent className="p-3">
+          <details className="group rounded-xl border">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-medium">
+              Histórico
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t p-3">
               <ReturnTimeline ret={ret} />
-            </CardContent>
-          </Card>
+            </div>
+          </details>
         )}
       </div>
 
-      {/*
-          Only mounted while a rejection is being written: the level and the
-          approver identity are guaranteed non-null then, by the same rule that
-          enables the button. Refusing the whole claim needs no per-item work,
-          which is why this one path stays here instead of on the grid.
-      */}
-      {decision && level && user.employeeCode && (
-        <ReturnDecisionDialog
+      {confirming && (
+        <DecisionImpactDialog
           open
-          onOpenChange={(open) => !open && setDecision(null)}
-          decision={decision}
-          levelName={level.name}
-          nextLevelName={null}
-          // Only the supervisor hands a devolución back, and only while the one
-          // correction the seller is allowed is still unspent. Above that level
-          // a refusal closes the document.
-          rejectSendsBack={level.order === 1 && ret.editCount < 1}
-          loading={reject.isPending}
-          onConfirm={(comment) => {
-            const actor = { employeeCode: user.employeeCode as number, employeeName: user.name };
-            reject.mutate(
-              { id: ret.id, actor, reason: comment },
-              { onSuccess: () => setDecision(null) },
-            );
-          }}
+          onOpenChange={(open) => !open && setConfirming(null)}
+          ret={ret}
+          decision={confirming}
+          claimed={totals.claimed}
+          approved={totals.approved}
+          counts={totals.counts}
+          loading={approve.isPending || reject.isPending}
+          onConfirm={submitDecision}
         />
       )}
     </>

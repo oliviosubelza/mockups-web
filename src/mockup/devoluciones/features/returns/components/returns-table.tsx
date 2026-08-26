@@ -1,9 +1,19 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router";
+import { AlertTriangle, Coins } from "lucide-react";
 import type { Return } from "../../../types";
-import { RETURN_SETTLEMENT_LABELS } from "../../../types";
+import { pendingLevelOf } from "../../../lib/return-workflow";
+import {
+  amountBandLabel,
+  ceilingOf,
+  isOverdue,
+  progressLevelsOf,
+  signaturesMissing,
+} from "../../../lib/workflow";
+import { WorkflowProgress } from "../../../components/common/workflow-progress";
+import { SlaNote } from "../../../components/common/workflow-progress";
 import { DataTable, defineColumns, type TableSearchProps } from "../../../components/data-table";
-import { amount, formatDateTime } from "../../../lib/format";
-import { ReturnActions } from "./return-actions";
+import { amount } from "../../../lib/format";
 import { ReturnStatusBadge } from "./return-status-badge";
 
 interface ReturnsTableProps extends TableSearchProps {
@@ -12,29 +22,13 @@ interface ReturnsTableProps extends TableSearchProps {
 }
 
 /**
- * Devoluciones, as one list.
+ * Devoluciones, as one list, for whoever is looking.
  *
- * One list and not two readings: a return is never split by legal entity the
- * way an order is — it is a single claim against a single client, and whichever
- * companies its products belong to is a detail of the lines, not a second
- * document to issue.
- *
- * The columns are the ones the old system's list had, because that is the list
- * this replaces and its readers know it by its shape. Two of them are worth
- * naming:
- *
- * - **Cliente y Propietario are two columns, not one stacked cell.** They are
- *   different names for different people — the store and whoever answers for it
- *   — and a supervisor searching for one is not searching for the other.
- * - **Estado is the badge and nothing else.** It used to carry a second line of
- *   workflow dots under it, saying which desk the paper was sitting on. Accurate,
- *   and still nobody reads a queue that way: a list answers "¿en qué quedó?", and
- *   "¿dónde está parada?" is a question you ask of one document, on the document,
- *   where the flow is drawn full size. Here it cost every row a second line.
- *
- * ICE is deliberately absent: it is a per-line tax figure that belongs to the
- * detail, and on a queue screen the only amount that decides anything is the
- * total — it is what chose the workflow, and the whole reason a row is waiting.
+ * One column set for both readings the old two screens split apart: a vendedor
+ * checking their own claim and an approver working their queue both want the
+ * same thing from a row — cliente, monto, dónde está parada, y si urge. The row
+ * itself is the only action; there is nothing left to put behind a menu once
+ * "ver" is the only thing a menu ever had in it.
  */
 export function ReturnsTable({
   returns,
@@ -43,109 +37,84 @@ export function ReturnsTable({
   onSearchChange,
   searchPlaceholder,
 }: ReturnsTableProps) {
+  const navigate = useNavigate();
+
   const columns = useMemo(
     () =>
       defineColumns<Return>([
         {
           id: "id",
-          header: "Nro. Nota",
+          header: "Código",
           accessorKey: "id",
-          size: 110,
+          size: 90,
           cell: (ret) => <span className="font-medium tabular-nums">{ret.id}</span>,
-        },
-        {
-          id: "createdAt",
-          header: "Fecha",
-          accessorKey: "createdAt",
-          size: 120,
-          cell: (ret) => (
-            <span className="whitespace-nowrap tabular-nums">{formatDateTime(ret.createdAt)}</span>
-          ),
-        },
-        {
-          id: "distributorName",
-          header: "Distribuidora",
-          accessorKey: "distributorName",
-          size: 180,
-          cell: (ret) => (
-            <span className="whitespace-nowrap uppercase text-muted-foreground">
-              {ret.distributorName}
-            </span>
-          ),
         },
         {
           id: "clientName",
           header: "Cliente",
           accessorKey: "clientName",
-          size: 200,
-          cell: (ret) => <div className="min-w-0 truncate font-medium uppercase">{ret.clientName}</div>,
-        },
-        {
-          id: "clientOwnerName",
-          header: "Propietario",
-          accessorKey: "clientOwnerName",
-          size: 200,
+          size: 220,
           cell: (ret) => (
-            <div className="min-w-0 truncate uppercase text-muted-foreground">{ret.clientOwnerName}</div>
-          ),
-        },
-        {
-          id: "sellerName",
-          header: "Registrado por",
-          accessorKey: "sellerName",
-          size: 170,
-          cell: (ret) => <span className="uppercase text-muted-foreground">{ret.sellerName}</span>,
-        },
-        {
-          id: "settlement",
-          header: "Tipo de devolución",
-          accessorKey: "settlement",
-          size: 160,
-          // Empty until the claim is settled, and honestly so: nobody has decided yet whether this
-          // comes back as stock or as a credit note.
-          cell: (ret) => (
-            <span className="text-muted-foreground">
-              {ret.settlement ? (
-                <span className="whitespace-nowrap uppercase">
-                  {RETURN_SETTLEMENT_LABELS[ret.settlement]}
-                </span>
-              ) : (
-                "—"
-              )}
-            </span>
+            <div className="min-w-0 py-1">
+              <div className="truncate font-medium uppercase">{ret.clientName}</div>
+              <div className="truncate text-[10px] uppercase text-muted-foreground">
+                {ret.sellerName}
+              </div>
+            </div>
           ),
         },
         {
           id: "total",
-          header: "Total (Bs.)",
+          header: "Monto",
           accessorKey: "total",
-          size: 130,
+          size: 110,
           meta: { align: "right" },
-          cell: (ret) => (
-            <span className="whitespace-nowrap font-semibold">{amount(ret.total)}</span>
-          ),
+          cell: (ret) => <span className="whitespace-nowrap font-semibold">{amount(ret.total)}</span>,
         },
         {
-          id: "status",
-          header: "Estado",
-          accessorKey: "status",
-          size: 140,
-          // The badge alone. A row of workflow dots used to sit under it, saying which desk the
-          // paper was on — true, but nobody reads a queue that way: the question a list answers is
-          // "¿en qué quedó?", and "¿dónde está parada?" is asked of one document at a time, on the
-          // document. It cost every row a second line to say it.
-          cell: (ret) => <ReturnStatusBadge status={ret.status} />,
-        },
-        {
-          id: "actions",
-          header: "",
-          size: 56,
+          id: "level",
+          header: "Nivel",
+          size: 230,
           enableSorting: false,
-          enableResizing: false,
-          enableHiding: false,
-          pin: "right",
-          meta: { align: "center" },
-          cell: (ret) => <ReturnActions ret={ret} />,
+          cell: (ret) => {
+            const level = pendingLevelOf(ret);
+            if (!level) return <ReturnStatusBadge status={ret.status} />;
+            const missing = signaturesMissing(level);
+            const signed = level.assignees.filter((a) => a.hasActed);
+            const levels = ret.workflow ? progressLevelsOf(ret.workflow) : [];
+            const band = amountBandLabel(level.activationMinAmount, ceilingOf(levels, level.order));
+            const late = isOverdue(level);
+            return (
+              <div className="min-w-0 py-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="whitespace-nowrap font-medium">{level.name}</span>
+                  {band && (
+                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded bg-violet-500/15 px-1 py-px text-[9px] font-medium tabular-nums text-violet-600 dark:text-violet-400">
+                      <Coins className="h-2.5 w-2.5" /> {band}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5">
+                  {ret.workflow && <WorkflowProgress instance={ret.workflow} size="xs" />}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[10px]">
+                  {late ? (
+                    <span className="flex items-center gap-1 font-medium text-red-600">
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      <SlaNote level={level} />
+                    </span>
+                  ) : (
+                    <SlaNote level={level} />
+                  )}
+                  {signed.length > 0 && missing > 0 && (
+                    <span className="truncate text-muted-foreground">
+                      · falta{missing === 1 ? "" : "n"} {missing}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          },
         },
       ]),
     [],
@@ -162,9 +131,14 @@ export function ReturnsTable({
       searchValue={search}
       onSearchChange={onSearchChange}
       searchPlaceholder={searchPlaceholder}
-      rowClassName={(ret) =>
-        ret.status === "REJECTED" || ret.status === "ANNULLED" ? "opacity-60" : ""
-      }
+      onRowClick={(ret) => navigate(`/devoluciones/${ret.id}`)}
+      rowClassName={(ret) => {
+        const level = pendingLevelOf(ret);
+        if (level && isOverdue(level)) return "bg-red-500/[0.04] cursor-pointer";
+        return ret.status === "REJECTED" || ret.status === "ANNULLED"
+          ? "opacity-60 cursor-pointer"
+          : "cursor-pointer";
+      }}
       emptyTitle="Sin devoluciones"
       emptyMessage="No hay devoluciones que coincidan con los filtros actuales."
     />

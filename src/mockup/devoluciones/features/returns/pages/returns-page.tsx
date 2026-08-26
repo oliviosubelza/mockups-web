@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { ReturnStatus } from "../../../types";
 import { ALL_RETURN_STATUSES, RETURN_STATUS_LABELS } from "../../../types";
 import { PageHeader } from "../../../components/common/page-header";
@@ -18,30 +17,27 @@ import {
 import { dateKeyOffset } from "../../../lib/frequency";
 import { useAllSellers } from "../../../hooks/use-sellers";
 import { useReturnsPaged } from "../../../hooks/use-returns";
-import { seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
+import { canApproveReturns, seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
 import { ReturnsTable } from "../components/returns-table";
-import { ReturnsTabs } from "../components/returns-tabs";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 /** Default window: the last two weeks. A return takes days to be decided. */
 const DEFAULT_RANGE: DateRange = { from: dateKeyOffset(-13), to: dateKeyOffset(0) };
 
 /**
- * Devoluciones, as one list.
+ * Devoluciones, as one list — the only one. No tabs, no separate queue screen:
+ * who is looking decides what the same list shows.
  *
- * Deliberately without the tabs that pedidos has: an order is stored once and
- * read two ways — as agreed and as invoiced — while a return is one claim with
- * one life. What replaces that switch here is the status filter, because the
- * question this screen is really asked is not "how do I read these" but "which
- * ones are waiting for me".
- *
- * For a seller the list is their own book: the seller filter is not narrowed,
- * it is *gone*, because a filter implies a choice and there is none — the code
- * on the session is the only value the query will ever carry.
+ * A vendedor sees their own book, any status, browsed by date — unchanged from
+ * before. An approver sees their queue: only what is waiting on their own
+ * signature, with no date window at all, because a queue is not browsed by
+ * period, it is worked through. There is nothing to filter by date on a list
+ * that is already narrowed to "waiting on me".
  */
 export function ReturnsPage() {
   const user = useCurrentUser();
   const ownOnly = seesOwnDocumentsOnly(user.role);
+  const isApprover = canApproveReturns(user.role) && !!user.employeeCode;
   const [range, setRange] = useState<DateRange>(DEFAULT_RANGE);
   const [search, setSearch] = useState("");
   const [sellerCode, setSellerCode] = useState("all");
@@ -70,11 +66,13 @@ export function ReturnsPage() {
       : Number(sellerCode);
 
   const query = {
-    from: range.from,
-    to: range.to,
+    // A queue has no period — only the general list is bounded by date.
+    from: isApprover ? undefined : range.from,
+    to: isApprover ? undefined : range.to,
     search,
     sellerCode: effectiveSellerCode,
-    status,
+    status: isApprover ? "all" : status,
+    awaitingEmployeeCode: isApprover ? user.employeeCode : undefined,
     page,
     limit: pageSize,
   };
@@ -115,54 +113,52 @@ export function ReturnsPage() {
       <PageHeader
         title="Devoluciones"
         description={
-          ownOnly
-            ? "Las devoluciones que registraste, con su evidencia y el estado de su aprobación."
-            : "Mercadería que vuelve del cliente, con su evidencia y su flujo de aprobación."
+          isApprover
+            ? "Esperando tu firma."
+            : ownOnly
+              ? "Las devoluciones que registraste, con su evidencia y el estado de su aprobación."
+              : "Mercadería que vuelve del cliente, con su evidencia y su flujo de aprobación."
         }
-      >
-        <Button asChild>
-          <Link to="/devoluciones/nueva">
-            <Plus className="h-4 w-4" /> Nueva devolución
-          </Link>
-        </Button>
-      </PageHeader>
+      />
 
-      <ReturnsTabs />
-
-      {/* Every filter in one bar; the search box is in the table's own toolbar, over the list it
-          narrows. */}
-      <div className="mb-3">
-        <DateRangeFilter value={range} onChange={setRange}>
-          {!ownOnly && (
-            <Combobox
-              options={sellerOptions}
-              value={sellerCode}
-              onChange={setSellerCode}
-              placeholder="Vendedor"
-              searchPlaceholder="Buscar vendedor…"
-              className="h-8 w-full text-sm sm:w-48"
-            />
-          )}
-          <Select value={status} onValueChange={(v) => setStatus(v as ReturnStatus | "all")}>
-            <SelectTrigger className="h-8 w-full text-sm sm:w-48">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              {ALL_RETURN_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {RETURN_STATUS_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8">
-              <X className="h-4 w-4" /> Limpiar
-            </Button>
-          )}
-        </DateRangeFilter>
-      </div>
+      {/* Un aprobador trabaja una cola, no la filtra por fecha: no hay nada que
+          elegir acá salvo el cliente, y eso ya lo resuelve el buscador de la
+          tabla. Every filter in one bar; the search box is in the table's own
+          toolbar, over the list it narrows. */}
+      {!isApprover && (
+        <div className="mb-3">
+          <DateRangeFilter value={range} onChange={setRange}>
+            {!ownOnly && (
+              <Combobox
+                options={sellerOptions}
+                value={sellerCode}
+                onChange={setSellerCode}
+                placeholder="Vendedor"
+                searchPlaceholder="Buscar vendedor…"
+                className="h-8 w-full text-sm sm:w-48"
+              />
+            )}
+            <Select value={status} onValueChange={(v) => setStatus(v as ReturnStatus | "all")}>
+              <SelectTrigger className="h-8 w-full text-sm sm:w-48">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los estados</SelectItem>
+                {ALL_RETURN_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {RETURN_STATUS_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8">
+                <X className="h-4 w-4" /> Limpiar
+              </Button>
+            )}
+          </DateRangeFilter>
+        </div>
+      )}
 
       {/* Kept mounted with no rows: the search box lives in the toolbar, and a search that finds
           nothing cannot take away the box that would undo it. */}

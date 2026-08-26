@@ -17,8 +17,6 @@ import { queryClient } from './lib/query-client'
 import { ReturnsPage } from './features/returns/pages/returns-page'
 import { ReturnFormPage } from './features/returns/pages/return-form-page'
 import { ReturnViewPage } from './features/returns/pages/return-view-page'
-import { ApprovalsPage } from './features/returns/pages/approvals-page'
-import { ReturnApprovalPage } from './features/returns/pages/return-approval-page'
 
 /**
  * Todo lo que las páginas esperaban del `main.tsx` de Ventas y este mockup no les da: el proveedor de
@@ -49,8 +47,7 @@ function conContexto(Pagina: ComponentType): ComponentType {
 }
 
 export const DevolucionesListaScreen = conContexto(ReturnsPage)
-export const DevolucionesAprobacionesScreen = conContexto(ApprovalsPage)
 /** Alta y edición son la MISMA página: distingue por el `:id` del path, como en el original. */
 export const DevolucionFormScreen = conContexto(ReturnFormPage)
+/** Detalle y decisión (aprobar/rechazar) son la MISMA página: ver ítems y decidir es un solo paso. */
 export const DevolucionDetalleScreen = conContexto(ReturnViewPage)
-export const DevolucionAprobarScreen = conContexto(ReturnApprovalPage)
