@@ -1,5 +1,6 @@
 import type { OrdenTransporteHistorial } from '../historial-orders-data'
 import type { OrdenRevisionHistorial } from '../historial-revisiones-data'
+import type { CierreOrdenTransporte } from '../cierre-logistico-data'
 
 /**
  * Escapa caracteres especiales XML para garantizar archivos válidos en Microsoft Excel.
@@ -628,23 +629,26 @@ export function exportarHistorialRevisionesAExcel(
 
   // ── HOJA 2: MATRIZ DE PRODUCTOS ──
   const headersSheet2 = [
-    'Código OT', 'Producto', 'Categoría', 'Cadena Frío', 'Uds/Cj',
-    'Esperado Oficial (Uds)', 'Conteo Chofer (Uds)', 'Dif. Chofer (Uds)', 'Estado Chofer',
-    'Conteo Supervisor (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
-    'Auditoría Semáforo (Uds)', 'Estado Semáforo',
-    'Carga Final Oficial (Uds)', 'Dif. Final Oficial (Uds)', 'Estado Consolidado',
+    'Código OT', 'Producto', 'Categoría', 'Cadena Frío',
+    'Factor (Uds/Caja)',
+    'Esperado (Cajas)', 'Esperado (Uds Sueltas)', 'Esperado Total (Uds)',
+    'Chofer (Cajas)', 'Chofer (Uds Sueltas)', 'Chofer Total (Uds)', 'Dif. Chofer (Uds)', 'Estado Chofer',
+    'Sup. (Cajas)', 'Sup. (Uds Sueltas)', 'Sup. Total (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
+    'Semáforo Total (Uds)', 'Estado Semáforo',
+    'Carga Final (Cajas)', 'Carga Final (Uds Sueltas)', 'Carga Final Total (Uds)', 'Dif. Final Oficial (Uds)',
+    'Desglose Físico Final', 'Estado Consolidado',
     'Observaciones de Rampa'
   ]
 
   let rowsSheet2 = `
    <Row ss:Height="24">
     <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportTitle">
-     <Data ss:Type="String">MATRIZ COMPARATIVA DE CONTEOS Y DIFERENCIAS POR PRODUCTO</Data>
+     <Data ss:Type="String">MATRIZ COMPARATIVA DE CONTEOS - DESGLOSE EN CAJAS Y UNIDADES ENTERAS</Data>
     </Cell>
    </Row>
    <Row ss:Height="18">
     <Cell ss:MergeAcross="${headersSheet2.length - 1}" ss:StyleID="ReportSubtitle">
-     <Data ss:Type="String">Cruce multi-sesión: Esperado ERP vs Conteo Chofer vs Supervisor vs Semáforo vs Consolidado Final</Data>
+     <Data ss:Type="String">Cruce de rampa con conteo de cajas cerradas y unidades sueltas sin decimales artificiales</Data>
     </Cell>
    </Row>
    <Row ss:Height="8"/>
@@ -654,12 +658,27 @@ export function exportarHistorialRevisionesAExcel(
 
   for (const ot of ordenes) {
     for (const item of ot.items) {
+      const factor = item.equivalenceBoxUnit && item.equivalenceBoxUnit > 0 ? item.equivalenceBoxUnit : 1
+      
+      const expectedBoxes = Math.floor(item.expectedQty / factor)
+      const expectedUnits = item.expectedQty % factor
+
+      const driverBoxes = item.driverCount.countedBoxes
+      const driverUnits = item.driverCount.countedUnits
+      
+      const supBoxes = item.supervisorReview?.wasReviewed ? (item.supervisorReview.countedBoxes ?? 0) : null
+      const supUnits = item.supervisorReview?.wasReviewed ? (item.supervisorReview.countedUnits ?? 0) : null
       const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty : null
       const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty : null
       const supStatus = item.supervisorReview?.wasReviewed ? (item.supervisorReview.status === 'APPROVED' ? 'Aprobado' : item.supervisorReview.status) : 'No requerida'
 
       const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty : null
       const semStatus = item.semaphoreAudit?.wasAudited ? 'Auditado OK' : 'SKIPPED'
+
+      const loadedQty = item.officialInventory.loadedQty
+      const loadedBoxes = item.officialInventory.loadedBoxes
+      const loadedUnits = item.officialInventory.loadedUnits
+      const desgloseTexto = loadedBoxes > 0 && loadedUnits > 0 ? `${loadedBoxes} cj + ${loadedUnits} u` : loadedBoxes > 0 ? `${loadedBoxes} cj` : `${loadedUnits} u`
 
       const obs = [
         item.driverCount.observation ? `Chofer: ${item.driverCount.observation}` : '',
@@ -676,17 +695,26 @@ export function exportarHistorialRevisionesAExcel(
     ${cellString(item.category)}
     ${cellString(item.isColdChain ? 'SÍ' : 'NO', 'CellCenter')}
     ${cellNumber(item.equivalenceBoxUnit, 'CellInteger')}
+    ${cellNumber(expectedBoxes, 'CellInteger')}
+    ${cellNumber(expectedUnits, 'CellInteger')}
     ${cellNumber(item.expectedQty, 'CellInteger')}
+    ${cellNumber(driverBoxes, 'CellInteger')}
+    ${cellNumber(driverUnits, 'CellInteger')}
     ${cellNumber(item.driverCount.countedQty, 'CellInteger')}
     ${cellNumber(item.driverCount.varianceQty, 'CellInteger')}
     ${cellString(item.driverCount.status, 'CellCenter')}
+    ${cellNumber(supBoxes, 'CellInteger')}
+    ${cellNumber(supUnits, 'CellInteger')}
     ${cellNumber(supQty, 'CellInteger')}
     ${cellNumber(supVar, 'CellInteger')}
     ${cellString(supStatus, 'CellCenter')}
     ${cellNumber(semQty, 'CellInteger')}
     ${cellString(semStatus, 'CellCenter')}
-    ${cellNumber(item.officialInventory.loadedQty, 'CellInteger')}
+    ${cellNumber(loadedBoxes, 'CellInteger')}
+    ${cellNumber(loadedUnits, 'CellInteger')}
+    ${cellNumber(loadedQty, 'CellInteger')}
     ${cellNumber(item.officialInventory.varianceQty, 'CellInteger')}
+    ${cellString(desgloseTexto, 'CellBold')}
     ${cellString(item.officialInventory.status, 'CellCenter')}
     ${cellString(obs)}
    </Row>`
@@ -728,19 +756,28 @@ export function exportarHistorialRevisionesAExcel(
    <Column ss:Width="230"/>
    <Column ss:Width="110"/>
    <Column ss:Width="75"/>
-   <Column ss:Width="65"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="85"/>
-   <Column ss:Width="85"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="85"/>
-   <Column ss:Width="110"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="90"/>
    <Column ss:Width="105"/>
    <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
    <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="100"/>
    <Column ss:Width="190"/>
    ${rowsSheet2}
   </Table>
@@ -763,7 +800,7 @@ export function exportarHistorialRevisionesAExcel(
 /**
  * Exporta el acta individual de una Orden de Transporte específica a un Libro Excel con 2 pestañas:
  *  - Hoja 1: Acta y Carátula de Despacho (Datos del camión, chofer, supervisor, balance de carga y sellos)
- *  - Hoja 2: Matriz de Conciliación (Detalle producto a producto sin códigos SKU)
+ *  - Hoja 2: Matriz de Conciliación (Detalle producto a producto en cajas y unidades enteras)
  */
 export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial) {
   // ── HOJA 1: ACTA Y CARÁTULA ──
@@ -845,11 +882,14 @@ export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial
 
   // ── HOJA 2: MATRIZ DE CONCILIACIÓN ──
   const headersSheet2 = [
-    'Producto', 'Factor (Uds/Cj)', 'Esperado Inicial (Uds)', 'Esperado Cajas',
-    'Conteo Chofer (Uds)', 'Dif. Chofer (Uds)', 'Obs. Chofer',
-    'Revisión Supervisor (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
-    'Auditoría Semáforo (Uds)', 'Estado Semáforo',
-    'Carga Final Autorizada (Uds)', 'Estado Oficial'
+    'Producto',
+    'Factor (Uds/Caja)',
+    'Esperado (Cajas)', 'Esperado (Uds Sueltas)', 'Esperado Total (Uds)',
+    'Chofer (Cajas)', 'Chofer (Uds Sueltas)', 'Chofer Total (Uds)', 'Dif. Chofer (Uds)', 'Obs. Chofer',
+    'Sup. (Cajas)', 'Sup. (Uds Sueltas)', 'Sup. Total (Uds)', 'Dif. Supervisor (Uds)', 'Dictamen Supervisor',
+    'Semáforo Total (Uds)', 'Estado Semáforo',
+    'Carga Final (Cajas)', 'Carga Final (Uds Sueltas)', 'Carga Final Autorizada (Uds)', 'Dif. Final Oficial (Uds)',
+    'Desglose Físico Final', 'Estado Oficial'
   ]
 
   let rowsSheet2 = `
@@ -869,6 +909,16 @@ export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial
    </Row>`
 
   for (const item of ot.items) {
+    const factor = item.equivalenceBoxUnit && item.equivalenceBoxUnit > 0 ? item.equivalenceBoxUnit : 1
+    
+    const expectedBoxes = Math.floor(item.expectedQty / factor)
+    const expectedUnits = item.expectedQty % factor
+
+    const driverBoxes = item.driverCount.countedBoxes
+    const driverUnits = item.driverCount.countedUnits
+
+    const supBoxes = item.supervisorReview?.wasReviewed ? (item.supervisorReview.countedBoxes ?? 0) : null
+    const supUnits = item.supervisorReview?.wasReviewed ? (item.supervisorReview.countedUnits ?? 0) : null
     const supQty = item.supervisorReview?.wasReviewed ? item.supervisorReview.countedQty : null
     const supVar = item.supervisorReview?.wasReviewed ? item.supervisorReview.varianceQty : null
     const supObs = item.supervisorReview?.observation || (item.supervisorReview?.wasReviewed ? 'Aprobado' : 'No requerida')
@@ -876,21 +926,35 @@ export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial
     const semQty = item.semaphoreAudit?.wasAudited ? item.semaphoreAudit.countedQty : null
     const semStatus = item.semaphoreAudit?.wasAudited ? 'Auditado OK' : 'SKIPPED'
 
+    const loadedQty = item.officialInventory.loadedQty
+    const loadedBoxes = item.officialInventory.loadedBoxes
+    const loadedUnits = item.officialInventory.loadedUnits
+    const desgloseTexto = loadedBoxes > 0 && loadedUnits > 0 ? `${loadedBoxes} cj + ${loadedUnits} u` : loadedBoxes > 0 ? `${loadedBoxes} cj` : `${loadedUnits} u`
+
     rowsSheet2 += `
    <Row ss:Height="19">
     ${cellString(item.description, 'CellBold')}
     ${cellNumber(item.equivalenceBoxUnit, 'CellInteger')}
+    ${cellNumber(expectedBoxes, 'CellInteger')}
+    ${cellNumber(expectedUnits, 'CellInteger')}
     ${cellNumber(item.expectedQty, 'CellInteger')}
-    ${cellNumber(item.expectedBoxes, 'CellInteger')}
+    ${cellNumber(driverBoxes, 'CellInteger')}
+    ${cellNumber(driverUnits, 'CellInteger')}
     ${cellNumber(item.driverCount.countedQty, 'CellInteger')}
     ${cellNumber(item.driverCount.varianceQty, 'CellInteger')}
     ${cellString(item.driverCount.observation || 'Conforme')}
+    ${cellNumber(supBoxes, 'CellInteger')}
+    ${cellNumber(supUnits, 'CellInteger')}
     ${cellNumber(supQty, 'CellInteger')}
     ${cellNumber(supVar, 'CellInteger')}
     ${cellString(supObs, 'CellCenter')}
     ${cellNumber(semQty, 'CellInteger')}
     ${cellString(semStatus, 'CellCenter')}
-    ${cellNumber(item.officialInventory.loadedQty, 'CellInteger')}
+    ${cellNumber(loadedBoxes, 'CellInteger')}
+    ${cellNumber(loadedUnits, 'CellInteger')}
+    ${cellNumber(loadedQty, 'CellInteger')}
+    ${cellNumber(item.officialInventory.varianceQty, 'CellInteger')}
+    ${cellString(desgloseTexto, 'CellBold')}
     ${cellString(item.officialInventory.status, 'CellCenter')}
    </Row>`
   }
@@ -912,19 +976,28 @@ export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial
  <Worksheet ss:Name="2. Matriz de Productos">
   <Table ss:DefaultRowHeight="18">
    <Column ss:Width="240"/>
-   <Column ss:Width="75"/>
+   <Column ss:Width="105"/>
    <Column ss:Width="95"/>
-   <Column ss:Width="85"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="85"/>
-   <Column ss:Width="140"/>
-   <Column ss:Width="95"/>
-   <Column ss:Width="85"/>
+   <Column ss:Width="105"/>
    <Column ss:Width="110"/>
    <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
    <Column ss:Width="90"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
    <Column ss:Width="115"/>
    <Column ss:Width="95"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="100"/>
    ${rowsSheet2}
   </Table>
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
@@ -937,4 +1010,607 @@ export function exportarOrdenRevisionIndividualAExcel(ot: OrdenRevisionHistorial
 
   const workbookXml = getWorkbookTemplate(worksheets)
   downloadWorkbookXml(workbookXml, `Acta_Liquidacion_${ot.orderCode}_${ot.dateIso}.xls`)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. EXPORTACIÓN DE CIERRE LOGÍSTICO (ALMACÉN Y COBRANZAS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Exporta el Cierre Logístico de Almacén (image.png) en formato Excel oficial.
+ */
+export function exportarCierreAlmacenIndividualAExcel(cierre: CierreOrdenTransporte) {
+  const alm = cierre.almacen
+
+  const headers = [
+    'Código', 'Producto', 'U.M.', 'Cantidad Despacho', 'Cantidad Facturado',
+    'Cantidad Bonificación', 'Facturado Total', 'Cantidad Devuelto',
+    'Cantidad Faltante', 'Cantidad Sobrante', 'Valor Despacho (Bs)',
+    'Valor Facturado (Bs)', 'Valor Bonificación (Bs)', 'Valor Devuelto (Bs)'
+  ]
+
+  let rows = `
+   <Row ss:Height="26">
+    <Cell ss:MergeAcross="${headers.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">CIERRE LOGÍSTICO DE ALMACÉN - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headers.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Liquidación Física de Retorno de Carga • N° Despacho: ${xmlEscape(alm.numeroDespacho)} • Fecha: ${xmlEscape(alm.fechaFormatted)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="10"/>
+
+   <Row ss:Height="20">
+    ${cellHeader('DATO OPERATIVO', 'HeaderNavy')}
+    <Cell ss:MergeAcross="3" ss:StyleID="HeaderNavy"><Data ss:Type="String">VALOR</Data></Cell>
+    ${cellHeader('DATO OPERATIVO', 'HeaderNavy')}
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="HeaderNavy"><Data ss:Type="String">VALOR</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Fecha', 'CellBold')}
+    <Cell ss:MergeAcross="3" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(alm.fechaFormatted)}</Data></Cell>
+    ${cellString('Placa / Camión', 'CellBold')}
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="CellBold"><Data ss:Type="String">${xmlEscape(alm.placaCamion)}</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Chofer', 'CellBold')}
+    <Cell ss:MergeAcross="3" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(alm.choferNombre)} - ${xmlEscape(alm.choferEmpresa)}</Data></Cell>
+    ${cellString('N° Despacho (OT)', 'CellBold')}
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="CellBold"><Data ss:Type="String">${xmlEscape(alm.numeroDespacho)}</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Usuario', 'CellBold')}
+    <Cell ss:MergeAcross="3" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(alm.usuarioLiquidador)}</Data></Cell>
+    ${cellString('Distribuidora', 'CellBold')}
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cierre.distributorName)}</Data></Cell>
+   </Row>
+   <Row ss:Height="12"/>
+
+   <Row ss:Height="24">
+    ${headers.map((h) => cellHeader(h, 'HeaderNavy')).join('\n    ')}
+   </Row>`
+
+  for (const it of alm.items) {
+    rows += `
+   <Row ss:Height="19">
+    ${cellString(it.codigo, 'CellBold')}
+    ${cellString(it.producto)}
+    ${cellString(it.um, 'CellCenter')}
+    ${cellNumber(it.cantidadDespacho, 'CellInteger')}
+    ${cellNumber(it.cantidadFacturado, 'CellInteger')}
+    ${cellNumber(it.cantidadBonificacion, 'CellInteger')}
+    ${cellNumber(it.facturadoTotal, 'CellBold')}
+    ${cellNumber(it.cantidadDevuelto, 'CellInteger')}
+    ${cellNumber(it.cantidadFaltante, 'CellInteger')}
+    ${cellNumber(it.cantidadSobrante, 'CellInteger')}
+    ${cellCurrency(it.valorDespacho)}
+    ${cellCurrency(it.valorFacturado)}
+    ${cellCurrency(it.valorBonificacion)}
+    ${cellCurrency(it.valorDevuelto)}
+   </Row>`
+  }
+
+  // Fila de Totales
+  rows += `
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderNavy"><Data ss:Type="String">TOTALES GENERALES</Data></Cell>
+    ${cellNumber(alm.totales.totalCantidadDespacho, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadFacturado, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadBonificacion, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalFacturadoTotal, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadDevuelto, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadFaltante, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadSobrante, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorDespacho, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorFacturado, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorBonificacion, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorDevuelto, 'HeaderNavy')}
+   </Row>
+   <Row ss:Height="20"/>
+
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="5" ss:StyleID="HeaderGreen"><Data ss:Type="String">CONFORMIDAD CHOFER</Data></Cell>
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="HeaderGreen"><Data ss:Type="String">CONFORMIDAD ALMACÉN</Data></Cell>
+   </Row>
+   <Row ss:Height="30">
+    <Cell ss:MergeAcross="5" ss:StyleID="CellText"><Data ss:Type="String">Firma: ${xmlEscape(alm.firmas.chofer.nombre)} (CI: ${xmlEscape(alm.firmas.chofer.ci)})</Data></Cell>
+    <Cell ss:MergeAcross="${headers.length - 7}" ss:StyleID="CellText"><Data ss:Type="String">Firma: ${xmlEscape(alm.firmas.almacen.nombre)} (${xmlEscape(alm.firmas.almacen.cargo)})</Data></Cell>
+   </Row>`
+
+  const worksheets = `
+ <Worksheet ss:Name="Cierre Almacén">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="80"/>
+   <Column ss:Width="240"/>
+   <Column ss:Width="50"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="110"/>
+   ${rows}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>8</SplitHorizontal>
+   <TopRowBottomPane>8</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, `Cierre_Almacen_${cierre.orderCode}_${cierre.dateIso}.xls`)
+}
+
+/**
+ * Exporta el Cierre Logístico de Cobranzas (cierre_logistico_cobranza1.png y 2.png) en formato Excel oficial.
+ */
+export function exportarCierreCobranzasIndividualAExcel(cierre: CierreOrdenTransporte) {
+  const cob = cierre.cobranza
+
+  const rows = `
+   <Row ss:Height="26">
+    <Cell ss:MergeAcross="6" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">CIERRE LOGÍSTICO DE COBRANZAS - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="6" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">Liquidación Financiera y Arqueo de Ruta • N° Despacho: ${xmlEscape(cob.numeroDespacho)} • Fecha: ${xmlEscape(cob.fechaFormatted)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="10"/>
+
+   <Row ss:Height="20">
+    ${cellHeader('DATO OPERATIVO', 'HeaderNavy')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderNavy"><Data ss:Type="String">VALOR</Data></Cell>
+    ${cellHeader('DATO OPERATIVO', 'HeaderNavy')}
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">VALOR</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Fecha', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.fechaFormatted)}</Data></Cell>
+    ${cellString('Placa / Camión', 'CellBold')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellBold"><Data ss:Type="String">${xmlEscape(cob.placaCamion)}</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Chofer', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.choferNombre)} - ${xmlEscape(cob.choferEmpresa)}</Data></Cell>
+    ${cellString('N° Despacho (OT)', 'CellBold')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellBold"><Data ss:Type="String">${xmlEscape(cob.numeroDespacho)}</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Usuario', 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.usuarioLiquidador)}</Data></Cell>
+    ${cellString('Distribuidora', 'CellBold')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cierre.distributorName)}</Data></Cell>
+   </Row>
+   <Row ss:Height="12"/>
+
+   <!-- TABLAS PRINCIPALES DE RESUMEN (3 BLOQUES COMO EN LA IMAGEN) -->
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">RESUMEN FACTURACIÓN</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderGreen"><Data ss:Type="String">RECAUDACIÓN Y MEDIOS DE PAGO</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderAmber"><Data ss:Type="String">ESTADÍSTICAS PEDIDOS</Data></Cell>
+   </Row>
+
+   <Row ss:Height="19">
+    ${cellString('IMPORTE FACTURADO', 'CellBold')}
+    ${cellCurrency(cob.resumenFinanciero.importeFacturado, 'CellBold')}
+    ${cellString('Efectivo', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.efectivo)}
+    ${cellString('', 'CellText')}
+    ${cellString('Despacho', 'CellBold')}
+    ${cellNumber(cob.pedidos.despacho, 'CellInteger')}
+   </Row>
+
+   <Row ss:Height="19">
+    ${cellString('Importe Bonificado', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeBonificado)}
+    ${cellString('Transferencia', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.transferencia)}
+    ${cellString('', 'CellText')}
+    ${cellString('Facturado', 'CellBold')}
+    ${cellNumber(cob.pedidos.facturado, 'CellInteger')}
+   </Row>
+
+   <Row ss:Height="19">
+    ${cellString('Importe Entregado', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeEntregado)}
+    ${cellString('Qr', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.qr)}
+    ${cellString('', 'CellText')}
+    ${cellString('Devuelto', 'CellBold')}
+    ${cellNumber(cob.pedidos.devuelto, 'CellInteger')}
+   </Row>
+
+   <Row ss:Height="19">
+    ${cellString('Importe Devuelto', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeDevuelto)}
+    ${cellString('Cheque', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.cheque)}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+
+   <Row ss:Height="19">
+    ${cellString('Valor Despacho', 'CellBold')}
+    ${cellCurrency(cob.resumenFinanciero.valorDespacho, 'CellBold')}
+    ${cellString('Cobranza Chofer', 'CellBold')}
+    ${cellCurrency(cob.resumenCobranzas.cobranzaChofer, 'CellBold')}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+
+   <Row ss:Height="19">
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+    ${cellString('Crédito', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.credito)}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+
+   <Row ss:Height="19">
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+    ${cellString('Cobranza Cobrador', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.cobranzaCobrador)}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+    ${cellString('TOTAL A RENDIR', 'HeaderNavy')}
+    ${cellCurrency(cob.resumenCobranzas.totalARendir, 'HeaderNavy')}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="15"/>
+
+   <!-- DESGLOSE 1: CRÉDITOS -->
+   <Row ss:Height="20">
+    <Cell ss:MergeAcross="6" ss:StyleID="HeaderNavy"><Data ss:Type="String">1. DETALLE DE VENTAS A CRÉDITO</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellHeader('Cliente (Código)', 'HeaderNavy')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderNavy"><Data ss:Type="String">Nombre del Cliente / Factura</Data></Cell>
+    ${cellHeader('Monto (Bs)', 'HeaderNavy')}
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">Estado de Cobro</Data></Cell>
+   </Row>` +
+   cob.creditos.map(c => `
+   <Row ss:Height="18">
+    ${cellString(c.clienteCodigo, 'CellBold')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(c.clienteNombre)} (${xmlEscape(c.factura)})</Data></Cell>
+    ${cellCurrency(c.monto)}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(c.estado)}</Data></Cell>
+   </Row>`).join('') + `
+
+   <Row ss:Height="12"/>
+
+   <!-- DESGLOSE 2: ARQUEO DE EFECTIVO (BS) -->
+   <Row ss:Height="20">
+    <Cell ss:MergeAcross="6" ss:StyleID="HeaderGreen"><Data ss:Type="String">2. ARQUEO FÍSICO DE EFECTIVO EN BOLIVIANOS (Bs ${cob.resumenCobranzas.efectivo.toFixed(2)})</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellHeader('Corte Bs', 'HeaderGreen')}
+    ${cellHeader('Tipo', 'HeaderGreen')}
+    ${cellHeader('Cantidad', 'HeaderGreen')}
+    ${cellHeader('Monto (Bs)', 'HeaderGreen')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderGreen"><Data ss:Type="String">Estado</Data></Cell>
+   </Row>` +
+   cob.cortesBs.map(k => `
+   <Row ss:Height="18">
+    ${cellString(k.denominacion, 'CellBold')}
+    ${cellString(k.tipo, 'CellCenter')}
+    ${cellNumber(k.cantidad, 'CellInteger')}
+    ${cellCurrency(k.monto)}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">Contado/Facturado/Cobrado - Efectivo</Data></Cell>
+   </Row>`).join('') + `
+
+   <Row ss:Height="12"/>
+
+   <!-- DESGLOSE 3: TRANSFERENCIAS -->
+   <Row ss:Height="20">
+    <Cell ss:MergeAcross="6" ss:StyleID="HeaderNavy"><Data ss:Type="String">3. DETALLE DE TRANSFERENCIAS BANCARIAS (Bs ${cob.resumenCobranzas.transferencia.toFixed(2)})</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellHeader('Transacción', 'HeaderNavy')}
+    ${cellHeader('Banco', 'HeaderNavy')}
+    ${cellHeader('Cliente', 'HeaderNavy')}
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">Razón Social</Data></Cell>
+    ${cellHeader('Monto (Bs)', 'HeaderNavy')}
+    ${cellHeader('Estado', 'HeaderNavy')}
+   </Row>` +
+   cob.transferencias.map(t => `
+   <Row ss:Height="18">
+    ${cellString(t.transaccion, 'CellBold')}
+    ${cellString(t.banco, 'CellCenter')}
+    ${cellString(t.clienteCodigo, 'CellCenter')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(t.clienteNombre)}</Data></Cell>
+    ${cellCurrency(t.monto)}
+    ${cellString(t.estado)}
+   </Row>`).join('') + `
+
+   <Row ss:Height="12"/>
+
+   <!-- DESGLOSE 4: PAGOS QR -->
+   <Row ss:Height="20">
+    <Cell ss:MergeAcross="6" ss:StyleID="HeaderNavy"><Data ss:Type="String">4. DETALLE DE COBROS CON QR INTERBANCARIO (Bs ${cob.resumenCobranzas.qr.toFixed(2)})</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellHeader('Transacción', 'HeaderNavy')}
+    ${cellHeader('Banco', 'HeaderNavy')}
+    ${cellHeader('Cliente', 'HeaderNavy')}
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">Razón Social</Data></Cell>
+    ${cellHeader('Monto (Bs)', 'HeaderNavy')}
+    ${cellHeader('Estado', 'HeaderNavy')}
+   </Row>` +
+   cob.pagosQr.map(q => `
+   <Row ss:Height="18">
+    ${cellString(q.transaccion, 'CellBold')}
+    ${cellString(q.banco, 'CellCenter')}
+    ${cellString(q.clienteCodigo, 'CellCenter')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(q.clienteNombre)}</Data></Cell>
+    ${cellCurrency(q.monto)}
+    ${cellString(q.estado)}
+   </Row>`).join('') + `
+
+   <Row ss:Height="12"/>
+
+   <!-- DESGLOSE 5: DEVOLUCIONES NO COBRADAS -->
+   <Row ss:Height="20">
+    <Cell ss:MergeAcross="6" ss:StyleID="HeaderAmber"><Data ss:Type="String">5. DEVOLUCIONES Y RECHAZOS (NO COBRADO)</Data></Cell>
+   </Row>
+   <Row ss:Height="20">
+    ${cellHeader('Cliente (Código)', 'HeaderAmber')}
+    ${cellHeader('Factura', 'HeaderAmber')}
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderAmber"><Data ss:Type="String">Nombre del Cliente / Motivo</Data></Cell>
+    ${cellHeader('Monto (Bs)', 'HeaderAmber')}
+    ${cellHeader('Estado', 'HeaderAmber')}
+   </Row>` +
+   cob.devolucionesNoCobradas.map(d => `
+   <Row ss:Height="18">
+    ${cellString(d.clienteCodigo, 'CellBold')}
+    ${cellString(d.factura, 'CellCenter')}
+    <Cell ss:MergeAcross="2" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(d.clienteNombre)} ${d.motivo ? `- ${xmlEscape(d.motivo)}` : ''}</Data></Cell>
+    ${cellCurrency(d.monto)}
+    ${cellString(d.estado)}
+   </Row>`).join('') + `
+
+   <Row ss:Height="20"/>
+
+   <!-- FIRMAS DE LOS 4 ROLES -->
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">CHOFER</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">SUPERVISOR</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">CAJERO</Data></Cell>
+    ${cellHeader('ADMINISTRADOR', 'HeaderNavy')}
+   </Row>
+   <Row ss:Height="30">
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.firmas.chofer.nombre)}</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.firmas.supervisor.nombre)}</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String">${xmlEscape(cob.firmas.cajero.nombre)}</Data></Cell>
+    ${cellString(cob.firmas.administrador.nombre, 'CellText')}
+   </Row>`
+
+  const worksheets = `
+ <Worksheet ss:Name="Cierre Cobranzas">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="160"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="200"/>
+   ${rows}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>8</SplitHorizontal>
+   <TopRowBottomPane>8</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, `Cierre_Cobranzas_${cierre.orderCode}_${cierre.dateIso}.xls`)
+}
+
+/**
+ * Exporta el Cierre Logístico Completo (Almacén + Cobranzas) en un único libro con 2 hojas.
+ */
+export function exportarCierreLogisticoCompletoAExcel(cierre: CierreOrdenTransporte) {
+  const alm = cierre.almacen
+  const cob = cierre.cobranza
+
+  // Hoja 1: Almacén
+  const headersAlm = [
+    'Código', 'Producto', 'U.M.', 'Cantidad Despacho', 'Cantidad Facturado',
+    'Cantidad Bonificación', 'Facturado Total', 'Cantidad Devuelto',
+    'Cantidad Faltante', 'Cantidad Sobrante', 'Valor Despacho (Bs)',
+    'Valor Facturado (Bs)', 'Valor Bonificación (Bs)', 'Valor Devuelto (Bs)'
+  ]
+
+  let rowsAlm = `
+   <Row ss:Height="26">
+    <Cell ss:MergeAcross="${headersAlm.length - 1}" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">CIERRE LOGÍSTICO DE ALMACÉN - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${headersAlm.length - 1}" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">N° Despacho: ${xmlEscape(alm.numeroDespacho)} • Chofer: ${xmlEscape(alm.choferNombre)} • Placa: ${xmlEscape(alm.placaCamion)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+   <Row ss:Height="24">
+    ${headersAlm.map((h) => cellHeader(h, 'HeaderNavy')).join('\n    ')}
+   </Row>`
+
+  for (const it of alm.items) {
+    rowsAlm += `
+   <Row ss:Height="19">
+    ${cellString(it.codigo, 'CellBold')}
+    ${cellString(it.producto)}
+    ${cellString(it.um, 'CellCenter')}
+    ${cellNumber(it.cantidadDespacho, 'CellInteger')}
+    ${cellNumber(it.cantidadFacturado, 'CellInteger')}
+    ${cellNumber(it.cantidadBonificacion, 'CellInteger')}
+    ${cellNumber(it.facturadoTotal, 'CellBold')}
+    ${cellNumber(it.cantidadDevuelto, 'CellInteger')}
+    ${cellNumber(it.cantidadFaltante, 'CellInteger')}
+    ${cellNumber(it.cantidadSobrante, 'CellInteger')}
+    ${cellCurrency(it.valorDespacho)}
+    ${cellCurrency(it.valorFacturado)}
+    ${cellCurrency(it.valorBonificacion)}
+    ${cellCurrency(it.valorDevuelto)}
+   </Row>`
+  }
+
+  rowsAlm += `
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderNavy"><Data ss:Type="String">TOTALES</Data></Cell>
+    ${cellNumber(alm.totales.totalCantidadDespacho, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadFacturado, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadBonificacion, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalFacturadoTotal, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadDevuelto, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadFaltante, 'HeaderNavy')}
+    ${cellNumber(alm.totales.totalCantidadSobrante, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorDespacho, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorFacturado, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorBonificacion, 'HeaderNavy')}
+    ${cellCurrency(alm.totales.totalValorDevuelto, 'HeaderNavy')}
+   </Row>`
+
+  // Hoja 2: Cobranzas
+  let rowsCob = `
+   <Row ss:Height="26">
+    <Cell ss:MergeAcross="6" ss:StyleID="ReportTitle">
+     <Data ss:Type="String">CIERRE LOGÍSTICO DE COBRANZAS - GRUPO VENADO</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="6" ss:StyleID="ReportSubtitle">
+     <Data ss:Type="String">N° Despacho: ${xmlEscape(cob.numeroDespacho)} • Chofer: ${xmlEscape(cob.choferNombre)} • Total a Rendir: Bs ${cob.resumenCobranzas.totalARendir.toFixed(2)}</Data>
+    </Cell>
+   </Row>
+   <Row ss:Height="8"/>
+
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderNavy"><Data ss:Type="String">FACTURACIÓN</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="HeaderGreen"><Data ss:Type="String">RECAUDACIÓN</Data></Cell>
+    <Cell ss:MergeAcross="1" ss:StyleID="HeaderAmber"><Data ss:Type="String">PEDIDOS</Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('IMPORTE FACTURADO', 'CellBold')}
+    ${cellCurrency(cob.resumenFinanciero.importeFacturado, 'CellBold')}
+    ${cellString('Efectivo', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.efectivo)}
+    ${cellString('', 'CellText')}
+    ${cellString('Despacho', 'CellBold')}
+    ${cellNumber(cob.pedidos.despacho, 'CellInteger')}
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Importe Bonificado', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeBonificado)}
+    ${cellString('Transferencia', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.transferencia)}
+    ${cellString('', 'CellText')}
+    ${cellString('Facturado', 'CellBold')}
+    ${cellNumber(cob.pedidos.facturado, 'CellInteger')}
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Importe Entregado', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeEntregado)}
+    ${cellString('Qr', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.qr)}
+    ${cellString('', 'CellText')}
+    ${cellString('Devuelto', 'CellBold')}
+    ${cellNumber(cob.pedidos.devuelto, 'CellInteger')}
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Importe Devuelto', 'CellText')}
+    ${cellCurrency(cob.resumenFinanciero.importeDevuelto)}
+    ${cellString('Cheque', 'CellText')}
+    ${cellCurrency(cob.resumenCobranzas.cheque)}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="19">
+    ${cellString('Valor Despacho', 'CellBold')}
+    ${cellCurrency(cob.resumenFinanciero.valorDespacho, 'CellBold')}
+    ${cellString('Cobranza Chofer', 'CellBold')}
+    ${cellCurrency(cob.resumenCobranzas.cobranzaChofer, 'CellBold')}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="22">
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+    ${cellString('TOTAL A RENDIR', 'HeaderNavy')}
+    ${cellCurrency(cob.resumenCobranzas.totalARendir, 'HeaderNavy')}
+    ${cellString('', 'CellText')}
+    <Cell ss:MergeAcross="1" ss:StyleID="CellText"><Data ss:Type="String"></Data></Cell>
+   </Row>`
+
+  const worksheets = `
+ <Worksheet ss:Name="1. Cierre Almacén">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="80"/>
+   <Column ss:Width="240"/>
+   <Column ss:Width="50"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="110"/>
+   ${rowsAlm}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>
+
+ <Worksheet ss:Name="2. Cierre Cobranzas">
+  <Table ss:DefaultRowHeight="18">
+   <Column ss:Width="160"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="200"/>
+   ${rowsCob}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+  </WorksheetOptions>
+ </Worksheet>`
+
+  const workbookXml = getWorkbookTemplate(worksheets)
+  downloadWorkbookXml(workbookXml, `Cierre_Logistico_Consolidado_${cierre.orderCode}_${cierre.dateIso}.xls`)
 }

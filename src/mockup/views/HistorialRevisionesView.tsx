@@ -1710,7 +1710,11 @@ export function HistorialRevisionesView() {
                                 <td className="border-l border-slate-100 p-2.5 text-right font-mono font-medium text-slate-700 dark:border-slate-800 dark:text-slate-300">
                                   {item.expectedQty} {item.unitName}
                                   <span className="block text-[10px] text-slate-400">
-                                    ({item.expectedBoxes} cj)
+                                    {item.expectedBoxes >= 1 && item.expectedUnits > 0
+                                      ? `(${Math.floor(item.expectedBoxes)} cj + ${item.expectedUnits} u)`
+                                      : item.expectedBoxes >= 1 && item.expectedUnits === 0
+                                      ? `(${Math.floor(item.expectedBoxes)} cj)`
+                                      : `(${item.expectedUnits} u)`}
                                   </span>
                                 </td>
 
@@ -1721,7 +1725,11 @@ export function HistorialRevisionesView() {
                                   </div>
                                   <div className="flex items-center justify-end gap-1 text-[10px]">
                                     <span className="text-slate-400">
-                                      ({item.driverCount.countedBoxes} cj + {item.driverCount.countedUnits} u)
+                                      {item.driverCount.countedBoxes > 0 && item.driverCount.countedUnits > 0
+                                        ? `(${item.driverCount.countedBoxes} cj + ${item.driverCount.countedUnits} u)`
+                                        : item.driverCount.countedBoxes > 0
+                                        ? `(${item.driverCount.countedBoxes} cj)`
+                                        : `(${item.driverCount.countedUnits} u)`}
                                     </span>
                                     {driverVariance !== 0 ? (
                                       <span className="font-bold text-rose-600">
@@ -1747,7 +1755,11 @@ export function HistorialRevisionesView() {
                                       </div>
                                       <div className="flex items-center justify-end gap-1 text-[10px]">
                                         <span className="text-slate-400">
-                                          ({item.supervisorReview.countedBoxes} cj + {item.supervisorReview.countedUnits} u)
+                                          {(item.supervisorReview.countedBoxes ?? 0) > 0 && (item.supervisorReview.countedUnits ?? 0) > 0
+                                            ? `(${item.supervisorReview.countedBoxes} cj + ${item.supervisorReview.countedUnits} u)`
+                                            : (item.supervisorReview.countedBoxes ?? 0) > 0
+                                            ? `(${item.supervisorReview.countedBoxes} cj)`
+                                            : `(${item.supervisorReview.countedUnits ?? 0} u)`}
                                         </span>
                                         {supVariance !== 0 ? (
                                           <span className="font-bold text-rose-600">
@@ -1777,7 +1789,11 @@ export function HistorialRevisionesView() {
                                       </div>
                                       <div className="flex items-center justify-end gap-1 text-[10px]">
                                         <span className="text-slate-400">
-                                          ({item.semaphoreAudit.countedBoxes} cj + {item.semaphoreAudit.countedUnits} u)
+                                          {(item.semaphoreAudit.countedBoxes ?? 0) > 0 && (item.semaphoreAudit.countedUnits ?? 0) > 0
+                                            ? `(${item.semaphoreAudit.countedBoxes} cj + ${item.semaphoreAudit.countedUnits} u)`
+                                            : (item.semaphoreAudit.countedBoxes ?? 0) > 0
+                                            ? `(${item.semaphoreAudit.countedBoxes} cj)`
+                                            : `(${item.semaphoreAudit.countedUnits ?? 0} u)`}
                                         </span>
                                         {semVariance !== 0 ? (
                                           <span className="font-bold text-purple-600">
@@ -1801,6 +1817,12 @@ export function HistorialRevisionesView() {
                                     {item.officialInventory.loadedQty} {item.unitName}
                                   </div>
                                   <div className="text-[10px] text-slate-500">
+                                    {item.officialInventory.loadedBoxes > 0 && item.officialInventory.loadedUnits > 0
+                                      ? `(${item.officialInventory.loadedBoxes} cj + ${item.officialInventory.loadedUnits} u)`
+                                      : item.officialInventory.loadedBoxes > 0
+                                      ? `(${item.officialInventory.loadedBoxes} cj)`
+                                      : `(${item.officialInventory.loadedUnits} u)`}
+                                    {' · '}
                                     {officialVariance !== 0 ? (
                                       <span className="font-semibold text-rose-600">
                                         Dif: {officialVariance > 0 ? `+${officialVariance}` : officialVariance}

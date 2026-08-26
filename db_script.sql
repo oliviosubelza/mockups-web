@@ -497,9 +497,12 @@
         transport_order_id BIGINT NOT NULL,                          -- FK a transport_orders. OT contenedora de la carga (Ej: 10045)
         product_id BIGINT NOT NULL,                                  -- ID del producto/SKU en catálogo (Ej: 501 = Cerveza 1L)
 
-        expected_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Cantidad oficial esperada según los pedidos de la OT (Ej: 100.00)
-        loaded_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,            -- Cantidad física final validada en el camión (Ej: 95.00)
-        variance_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Diferencia acumulada final: loaded_qty - expected_qty (Ej: -5.00)
+        equivalence_box_unit DECIMAL(12, 2) NOT NULL DEFAULT 1.00,  -- Factor de empaque (unidades por caja)
+        expected_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Cantidad oficial esperada en unidades mínimas (Ej: 120.00 uds)
+        expected_boxes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,        -- Cantidad esperada en cajas completas (Ej: 10.00 cjas)
+        loaded_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,            -- Cantidad física final en unidades mínimas (Ej: 120.00 uds)
+        loaded_boxes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Cantidad física final en cajas completas (Ej: 10.00 cjas)
+        variance_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Diferencia acumulada final en unidades: loaded_qty - expected_qty (Ej: 0.00)
         damaged_qty DECIMAL(12, 2) DEFAULT 0.00,                     -- Cantidad de merma física descartada en rampa
         returned_warehouse_qty DECIMAL(12, 2) DEFAULT 0.00,          -- Cantidad devuelta a bodega por sobrepasar capacidad de carga
 
@@ -794,4 +797,106 @@
         deleted_at TIMESTAMP NULL,
 
         CONSTRAINT fk_history_delivery_order FOREIGN KEY (delivery_order_id) REFERENCES delivery_orders(id)
+    );
+
+
+    -- =========================================================================
+    -- 18. TABLA: CIERRE LOGÍSTICO DE ALMACÉN (LIQUIDACIÓN FÍSICA DE CARGA)
+    -- =========================================================================
+    -- Registra el cierre físico de inventario al retorno del camión a la rampa de almacén.
+    -- Relación 1 a 1 estricta con la Orden de Transporte (transport_orders).
+    CREATE TABLE transport_order_warehouse_closings (
+        id BIGSERIAL PRIMARY KEY,                                    -- ID único del registro de cierre de almacén (Ej: 1)
+        transport_order_id BIGINT NOT NULL UNIQUE,                  -- FK a transport_orders. Relación 1 a 1 con la OT contenedora (Ej: 10045)
+        closing_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,            -- Fecha y hora en que se cerró la liquidación en almacén (Ej: '2026-02-12 18:30:00')
+        status VARCHAR(50) DEFAULT 'CLOSED',                         -- Estado del cierre ('DRAFT', 'CLOSED', 'OBSERVED', 'AUDITED')
+
+        -- Resumen de Cantidades Físicas
+        total_dispatch_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,    -- Total de unidades físicas despachadas inicialmente en el camión (Ej: 197.00)
+        total_invoiced_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,    -- Total de unidades efectivamente facturadas y entregadas a clientes (Ej: 177.00)
+        total_bonus_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,       -- Total de unidades entregadas como bonificación/promoción comercial (Ej: 12.00)
+        total_delivered_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,   -- Total entregado a clientes: facturado + bonificado (Ej: 189.00)
+        total_returned_qty DECIMAL(12, 2) NOT NULL DEFAULT 0.00,    -- Total de unidades físicas que retornan al almacén por rechazo (Ej: 8.00)
+        total_shortage_qty DECIMAL(12, 2) DEFAULT 0.00,             -- Cantidad faltante sin justificar en rampa de retorno (Ej: 0.00)
+        total_surplus_qty DECIMAL(12, 2) DEFAULT 0.00,              -- Cantidad sobrante física reportada en rampa de retorno (Ej: 0.00)
+
+        -- Resumen de Valores Monetarios (Valorización en Bolivianos)
+        total_dispatch_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Valor monetario total de la carga despachada (Ej: 1252.70 Bs)
+        total_invoiced_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Valor monetario total de los productos facturados (Ej: 1118.70 Bs)
+        total_bonus_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,    -- Valor monetario de los productos bonificados (Ej: 92.80 Bs)
+        total_returned_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Valor monetario de los productos devueltos no entregados (Ej: 41.20 Bs)
+
+        -- Actores y Firmas de Conformidad
+        driver_employee_id BIGINT NULL,                             -- FK al chofer que firma la entrega física del camión
+        driver_signature_svg TEXT NULL,                              -- Firma digital en vector SVG del chofer responsable
+        warehouse_responsible_id BIGINT NULL,                       -- FK al bodeguero/almacenero que recibe la carga
+        warehouse_responsible_name VARCHAR(255) NULL,                -- Nombre del encargado de almacén (Ej: 'EDUARDO.STARTARI09')
+        warehouse_signature_svg TEXT NULL,                           -- Firma digital en vector SVG del encargado de almacén
+        notes TEXT NULL,                                             -- Observaciones generales de la recepción de carga en rampa
+
+        -- Auditoría y control
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,
+
+        CONSTRAINT fk_wh_closing_transport_order FOREIGN KEY (transport_order_id) REFERENCES transport_orders(id)
+    );
+
+
+    -- =========================================================================
+    -- 19. TABLA: CIERRE LOGÍSTICO DE COBRANZAS (LIQUIDACIÓN FINANCIERA DE CAJA)
+    -- =========================================================================
+    -- Registra el arqueo financiero y la conciliación de medios de pago al cierre de ruta.
+    -- Relación 1 a 1 estricta con la Orden de Transporte (transport_orders).
+    CREATE TABLE transport_order_collection_closings (
+        id BIGSERIAL PRIMARY KEY,                                    -- ID único de la liquidación de cobranzas (Ej: 1)
+        transport_order_id BIGINT NOT NULL UNIQUE,                  -- FK a transport_orders. Relación 1 a 1 con la OT contenedora (Ej: 10045)
+        closing_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,            -- Fecha y hora del cierre financiero (Ej: '2026-02-12 19:15:00')
+        status VARCHAR(50) DEFAULT 'LIQUIDATED',                     -- Estado ('PENDING_CASHIER', 'LIQUIDATED', 'AUDITED', 'OBSERVED')
+
+        -- Resumen de Ventas y Facturación
+        total_invoiced_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Importe total facturado a los clientes de la ruta (Ej: 1118.74 Bs)
+        total_bonus_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,    -- Importe total de bonificaciones comerciales (Ej: 92.81 Bs)
+        total_delivered_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,-- Importe entregado total: facturado + bonificado (Ej: 1211.55 Bs)
+        total_returned_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Importe total de mercadería devuelta no cobrada (Ej: 41.15 Bs)
+        total_dispatch_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Valor monetario total inicial despachado (Ej: 1252.70 Bs)
+
+        -- Desglose por Medio de Pago Recaudado en Mano por Chofer
+        cash_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,           -- Efectivo recaudado en moneda local BOB (Ej: 400.00 Bs)
+        transfer_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,       -- Monto total en transferencias bancarias BCP/Ganadero (Ej: 300.00 Bs)
+        qr_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,             -- Monto total recaudado mediante pagos QR BISA/otros (Ej: 252.70 Bs)
+        check_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,          -- Monto total en cheques recibidos (Ej: 0.00 Bs)
+        driver_collected_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Total recaudación en mano del chofer: Efectivo + Transf + QR + Cheque (Ej: 952.70 Bs)
+
+        -- Desglose de Ventas No Cobradas en Mano
+        credit_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,         -- Ventas a crédito autorizadas en ruta (Ej: 166.04 Bs)
+        collector_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,      -- Ventas entregadas para cobro posterior por cobrador externo (Ej: 0.00 Bs)
+        total_to_render DECIMAL(12, 2) NOT NULL DEFAULT 0.00,       -- TOTAL A RENDIR OFICIAL: Cobranza Chofer + Crédito + Cobrador (Ej: 1118.74 Bs)
+
+        -- Estadísticas de Pedidos
+        total_orders_dispatched INTEGER DEFAULT 0,                   -- Total de pedidos despachados (Ej: 30)
+        total_orders_invoiced INTEGER DEFAULT 0,                     -- Total de pedidos facturados y cobrados/a crédito (Ej: 28)
+        total_orders_returned INTEGER DEFAULT 0,                     -- Total de pedidos rechazados/devueltos (Ej: 2)
+
+        -- Arqueo de Billetes y Monedas (Desglose Físico)
+        cash_bob_breakdown JSONB NULL,                               -- Detalle de monedas (0.1, 0.2, 0.5, 1, 2, 5) y billetes (10, 20, 50, 100, 200) en Bs
+        cash_usd_breakdown JSONB NULL,                               -- Detalle de billetes en dólares ($10, $20, $50, $100)
+        deposit_vouchers JSONB NULL,                                 -- Lista de boletas de depósito en ruta [{"bank": "BISA", "voucher": "1234", "amount": 500.0}]
+
+        -- Firmas de los 4 Roles Requeridos en la Liquidación
+        driver_signature_svg TEXT NULL,                              -- 1. Firma del Chofer Responsable
+        supervisor_signature_svg TEXT NULL,                          -- 2. Firma del Supervisor de Distribución
+        cashier_signature_svg TEXT NULL,                             -- 3. Firma del Cajero / Liquidador Central
+        admin_signature_svg TEXT NULL,                               -- 4. Firma del Administrador / Jefe de Finanzas
+
+        -- Auditoría y control
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,
+
+        CONSTRAINT fk_coll_closing_transport_order FOREIGN KEY (transport_order_id) REFERENCES transport_orders(id)
     );
