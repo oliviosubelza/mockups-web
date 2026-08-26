@@ -42,6 +42,12 @@
 // El indicador ámbar dice DÓNDE está el borde vecino y CUÁNTO quedó de separación, con el número puesto
 // al lado. Sin el número el imantado sería un acto de fe: a los zooms a los que se dibuja, un metro de
 // separación y cero metros se ven exactamente igual.
+//
+// ANILLO O TRAZO ABIERTO (`cerrado`): la misma herramienta dibuja las dos cosas. Con `cerrado={false}` el
+// mínimo baja a 2 puntos, desaparece el lado que une el final con el principio y el primer vértice deja de
+// ser el botón de cerrar. Es lo que necesitan las vías cerradas al tránsito de `restricciones`, y va como
+// bandera porque todo el resto —pan con ESPACIO, imantado, arrastre, inserción por punto medio, historial—
+// es idéntico: en dos componentes separados, cada arreglo habría que hacerlo dos veces.
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { useMap } from 'react-leaflet'
@@ -76,6 +82,14 @@ const estiloRelleno = (color: string): L.PolylineOptions => ({
   fillColor: color,
   fillOpacity: 0.18,
 })
+/** Trazo ABIERTO ya terminado (`cerrado={false}`): no hay relleno que lo distinga del trazo en curso,
+ *  así que lo que dice "esto ya es una geometría" es el grosor y que deja de ser punteado. */
+const estiloLinea = (color: string): L.PolylineOptions => ({
+  color,
+  weight: 5,
+  opacity: 0.95,
+  lineCap: 'round',
+})
 
 /** Tirador de punto medio: hueco y tenue, para que NO compita con los vértices de verdad. Lo que está
  *  ahí todavía no es un vértice; es la oferta de crear uno. */
@@ -103,13 +117,14 @@ export function PolygonDrawLayer({
   /** true mientras se están agregando vértices con click. false = solo edición (arrastrar/borrar). */
   activo,
   onPuntosChange,
-  /** Cierre del polígono: click en el primer vértice, doble click o Enter (con 3+ vértices). */
+  /** Geometría terminada: click en el primer vértice (solo si `cerrado`), doble click o Enter. */
   onFinalizar,
   color = AZUL,
   anillosSnap = [],
   snapActivo = true,
   snapRadioPx = RADIO_SNAP_PX,
   holguraMetros = 0,
+  cerrado = true,
 }: {
   puntos: LatLngTuple[]
   activo: boolean
@@ -128,6 +143,19 @@ export function PolygonDrawLayer({
   snapRadioPx?: number
   /** Separación a dejar contra el borde imantado, en metros. 0 = imantar encima del borde. */
   holguraMetros?: number
+  /**
+   * ¿La geometría es un ANILLO o un trazo abierto?
+   *
+   * `true` (por defecto) es el polígono de siempre: mínimo 3 vértices, el último se une con el primero,
+   * click en el primer vértice cierra y aparecen tiradores en todas las aristas.
+   *
+   * `false` es una polilínea —una vía cerrada al tránsito, por ejemplo—: mínimo 2 puntos, NO hay lado de
+   * cierre, el primer vértice no tiene el papel de "cerrar acá" y el último tramo no lleva tirador de
+   * punto medio porque ese tramo no existe. Se agregó como bandera y no como componente aparte porque
+   * todo lo demás —el pan con ESPACIO, el imantado, el arrastre de vértices, la inserción por punto
+   * medio, el historial— es idéntico, y duplicarlo dejaría dos herramientas que se arreglan de a una.
+   */
+  cerrado?: boolean
 }) {
   const map = useMap()
 
@@ -149,6 +177,12 @@ export function PolygonDrawLayer({
   snapRadioRef.current = snapRadioPx
   const holguraRef = useRef(holguraMetros)
   holguraRef.current = holguraMetros
+  /** Vértices mínimos para que la geometría exista: 3 para un anillo, 2 para un trazo abierto. */
+  const minimo = cerrado ? 3 : 2
+  const cerradoRef = useRef(cerrado)
+  cerradoRef.current = cerrado
+  const minimoRef = useRef(minimo)
+  minimoRef.current = minimo
 
   const capaRef = useRef<L.LayerGroup | null>(null)
   const guiaRef = useRef<L.Polyline | null>(null)
@@ -283,15 +317,22 @@ export function PolygonDrawLayer({
     if (puntos.length >= 2) {
       formaRef.current = activo
         ? L.polyline(puntos, ESTILO_TRAZO).addTo(capa)
-        : L.polygon(puntos, estiloRelleno(color)).addTo(capa)
+        : cerrado
+          ? L.polygon(puntos, estiloRelleno(color)).addTo(capa)
+          : L.polyline(puntos, estiloLinea(color)).addTo(capa)
     }
-    if (activo && puntos.length >= 3) {
+    // El tramo punteado que une el último punto con el primero solo existe si la geometría es un anillo:
+    // en una vía cerrada al tránsito ese lado no se va a guardar, y dibujarlo haría creer que sí.
+    if (cerrado && activo && puntos.length >= 3) {
       cierreRef.current = L.polyline([puntos[puntos.length - 1], puntos[0]], ESTILO_GUIA).addTo(capa)
     }
 
     marcadoresRef.current = []
     puntos.forEach((p, i) => {
-      const marker = L.marker(p, { icon: iconoVertice(i === 0), draggable: true, autoPan: true }).addTo(capa)
+      // El primer vértice se destaca SOLO cuando cierra el anillo: en un trazo abierto no tiene ningún
+      // papel especial, y pintarlo distinto invitaría a clickearlo esperando que pase algo.
+      const primero = cerrado && i === 0
+      const marker = L.marker(p, { icon: iconoVertice(primero), draggable: true, autoPan: true }).addTo(capa)
       marcadoresRef.current.push(marker)
       // Se remontan en cada cambio de `puntos`, así que hay que reponerles el estado del modo pan.
       if (panRef.current) marker.dragging?.disable()
@@ -330,7 +371,7 @@ export function PolygonDrawLayer({
       marker.on('click', (e) => {
         L.DomEvent.stop(e)
         if (panRef.current) return
-        if (i === 0 && activoRef.current && puntosRef.current.length >= 3) {
+        if (cerradoRef.current && i === 0 && activoRef.current && puntosRef.current.length >= 3) {
           onFinalizarRef.current(puntosRef.current)
         }
       })
@@ -338,11 +379,11 @@ export function PolygonDrawLayer({
       marker.on('contextmenu', (e) => {
         L.DomEvent.stop(e)
         if (panRef.current) return
-        if (puntosRef.current.length <= 3) return
+        if (puntosRef.current.length <= minimoRef.current) return
         onPuntosChangeRef.current(puntosRef.current.filter((_, idx) => idx !== i), false)
       })
 
-      marker.bindTooltip(i === 0 ? 'Click para cerrar el polígono' : 'Arrastrar para mover · click derecho para borrar', {
+      marker.bindTooltip(primero ? 'Click para cerrar el polígono' : 'Arrastrar para mover · click derecho para borrar', {
         direction: 'top',
         offset: [0, -8],
       })
@@ -350,8 +391,11 @@ export function PolygonDrawLayer({
 
     // Tiradores de punto medio: solo con el polígono ya cerrado. Mientras se traza, el contorno todavía
     // se está definiendo y llenarlo de puntos intermedios taparía los vértices que estás poniendo.
-    if (!activo && puntos.length >= 3) {
-      for (let i = 0; i < puntos.length; i++) {
+    if (!activo && puntos.length >= minimo) {
+      // Abierto: se recorre un tramo MENOS. El último lado (del final al principio) no se va a guardar,
+      // así que ofrecer un vértice ahí crearía un quiebre en una arista que no existe.
+      const tramos = cerrado ? puntos.length : puntos.length - 1
+      for (let i = 0; i < tramos; i++) {
         const a = puntos[i]
         const b = puntos[(i + 1) % puntos.length]
         // Aristas cortas EN PANTALLA no llevan tirador: en un contorno denso, o alejando el mapa, los
@@ -372,7 +416,7 @@ export function PolygonDrawLayer({
         tirador.bindTooltip('Click para insertar un vértice acá', { direction: 'top', offset: [0, -8] })
       }
     }
-  }, [puntos, activo, color, map])
+  }, [puntos, activo, color, map, cerrado, minimo])
 
   // Modo pan (ESPACIO) y ocultamiento de la guía mientras el mapa se arrastra. Va en su PROPIO efecto
   // y no dentro del de `activo` porque también hace falta al ajustar vértices: ahí el click no agrega
@@ -473,7 +517,7 @@ export function PolygonDrawLayer({
         pts = pts.slice(0, -1)
       }
       if (panRef.current) return
-      if (pts.length >= 3) onFinalizarRef.current(pts)
+      if (pts.length >= minimoRef.current) onFinalizarRef.current(pts)
       else if (pts.length !== puntosRef.current.length) onPuntosChangeRef.current(pts, false)
     }
 
@@ -481,7 +525,9 @@ export function PolygonDrawLayer({
       const target = e.target as HTMLElement | null
       // No compite con escribir el nombre de la zona o abrir el select de ciudad.
       if (target && /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return
-      if (e.key === 'Enter' && puntosRef.current.length >= 3) onFinalizarRef.current(puntosRef.current)
+      if (e.key === 'Enter' && puntosRef.current.length >= minimoRef.current) {
+        onFinalizarRef.current(puntosRef.current)
+      }
       else if (e.key === 'Escape') onPuntosChangeRef.current([], false)
       else if ((e.key === 'Backspace' || e.key === 'Delete') && puntosRef.current.length > 0) {
         onPuntosChangeRef.current(puntosRef.current.slice(0, -1), false)

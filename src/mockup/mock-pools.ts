@@ -249,9 +249,20 @@ export const MOTIVOS_DEVOLUCION_POOL = [
 ] as const
 
 /** Localidades que nombran a las distribuidoras (distributorId). */
+/**
+ * Nombres COMERCIALES de las distribuidoras, inventados.
+ *
+ * Antes eran nombres de ciudades y pueblos ('Santa Cruz', 'Warnes', 'Montero'…) y eso rompía la pantalla
+ * de zonas de distribución: la ciudad de una distribuidora se asigna aparte, así que en Montero aparecía
+ * «Distribuidora Warnes» y se leía como un filtro roto —como si estuviera mostrando las de la ciudad
+ * vecina— cuando el filtro estaba bien. Un nombre que parece un lugar y no lo es no es un detalle
+ * cosmético: hace desconfiar del dato correcto.
+ *
+ * Ninguno coincide con una ciudad, un río ni una provincia de Santa Cruz, a propósito.
+ */
 export const NOMBRES_DISTRIBUIDORA = [
-  'Santa Cruz', 'Warnes', 'Montero', 'Cotoca', 'La Guardia', 'El Torno', 'Portachuelo',
-  'Okinawa', 'Pailón', 'Mineros',
+  'Discruz', 'Bramar', 'Vitalis', 'Nexpro', 'Kanela', 'Surcorp', 'Andiven', 'Delmar', 'Prisma',
+  'Rovena',
 ] as const
 
 /** Letras de placa: la placa se arma como NNNN-LLL (formato boliviano). */

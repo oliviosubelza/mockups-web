@@ -28,6 +28,7 @@ export function ZonasLayer({
   enConflicto,
   interactivo = true,
   aspectoEditor = false,
+  mostrarNombres,
 }: {
   zonas: Zona[]
   papel: PapelZonas
@@ -36,6 +37,15 @@ export function ZonasLayer({
   enConflicto?: Map<number, TipoConflicto>
   interactivo?: boolean
   aspectoEditor?: boolean
+  /**
+   * Fuerza las etiquetas encendidas o apagadas, ignorando el menú de aspecto.
+   *
+   * Existe para el mapa de RESTRICCIONES, que dibuja las zonas de fondo como contexto: ahí las
+   * etiquetas de zona competirían con los nombres de las restricciones, que son el contenido. Sin
+   * override habría que apagarlas desde el menú de otra pantalla —o dejar el mapa escrito antes que
+   * dibujado—, y ninguna de las dos es una opción que el usuario debería tener que descubrir.
+   */
+  mostrarNombres?: boolean
 }) {
   const [hoverId, setHoverId] = useState<number | null>(null)
   const verNombresElegido = useZonasMapaStore((state) => state.verNombres)
@@ -44,7 +54,7 @@ export function ZonasLayer({
   const resaltarElegido = useZonasMapaStore((state) => state.resaltarSeleccionada)
   const rellenoSolidoElegido = useZonasMapaStore((state) => state.rellenoSolido)
 
-  const verNombres = !aspectoEditor || verNombresElegido
+  const verNombres = mostrarNombres ?? (!aspectoEditor || verNombresElegido)
   const verMedidas = aspectoEditor && verMedidasElegido && verNombresElegido
   const verVertices = aspectoEditor && verVerticesElegido
   const contexto = papel === 'contexto'

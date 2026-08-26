@@ -594,7 +594,12 @@ export function ZonasWorkspaceView() {
 
               <Select value={ciudad} onValueChange={(v) => setCiudad(v as CiudadId)}>
                 <SelectTrigger className="h-7 w-32 shrink-0 text-xs">
-                  <SelectValue />
+                  {/* Base UI muestra el VALOR CRUDO si no se le da un render explícito, así que acá decía
+                      «santacruz» en vez de «Santa Cruz». Es la misma trampa que ya documentaron
+                      `MockupShell` y `ParadaDetalle`. */}
+                  <SelectValue>
+                    {(valor) => CIUDAD_META[valor as CiudadId]?.label ?? String(valor)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {CIUDAD_IDS.map((id) => (

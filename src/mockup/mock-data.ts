@@ -28,6 +28,7 @@ import {
 import type { StepItem } from '@/components/ui/steps'
 import type { AccesorioRuta } from './accesorios'
 import { ordenarPorCercania } from './map/geo/hilbert'
+import type { LatLngTuple } from './map/geo/polyline'
 import { createRand, uniqueNames } from './mock-random'
 import {
   APELLIDOS,
@@ -185,11 +186,6 @@ export const DEPOSITO = { nombre: 'Planta Santa Cruz', lat: -17.7712, lng: -63.1
 export type ProductType = 'Frío' | 'Seco'
 export type PaymentType = 'Contado' | 'Crédito' | 'Pronto Pago'
 
-/** Distribuidoras (distributorId): scope OBLIGATORIO del listado — de qué distribuidora son los pedidos. */
-export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(0, VOLUMEN.distribuidoras).map(
-  (nombre, i) => ({ id: 501 + i, nombre: `Distribuidora ${nombre}` }),
-)
-
 export const PRODUCT_TYPES: ProductType[] = ['Frío', 'Seco']
 export const PAYMENT_TYPES: PaymentType[] = ['Contado', 'Crédito', 'Pronto Pago']
 /** Sociedades/empresas (company) — códigos de sociedad SAP. */
@@ -237,6 +233,115 @@ export const cityIdDe = (ciudad: CiudadId): number => CIUDAD_META[ciudad].cityId
 /** Vuelta: `cityId` numérico → la ciudad del mockup (`undefined` si no es una de las nuestras). */
 export const ciudadDeCityId = (cityId: number): CiudadId | undefined =>
   CIUDAD_IDS.find((c) => CIUDAD_META[c].cityId === cityId)
+
+/**
+ * Centro aproximado de cada ciudad.
+ *
+ * VIVE ACÁ Y NO EN `zones-store`, donde estaba: es dato del maestro de ciudades, igual que `CIUDAD_META`,
+ * y lo necesitan tres pantallas más las coordenadas de las distribuidoras de abajo. Desde `zones-store` no
+ * se podía usar sin ciclo de imports. Ese módulo lo re-exporta, así que nada de lo que ya lo importaba de
+ * ahí se rompe.
+ *
+ * Es a DÓNDE MIRA un editor de mapa al abrirse, y con la lista vacía es lo único que hay: sin nada
+ * guardado no hay qué encuadrar, así que este punto es la diferencia entre abrir sobre Santa Cruz y abrir
+ * sobre el Atlántico en zoom de continente.
+ */
+export const CIUDAD_CENTRO: Record<CiudadId, LatLngTuple> = {
+  santacruz: [-17.783, -63.182],
+  montero: [-17.339, -63.25],
+  warnes: [-17.517, -63.167],
+  laguardia: [-17.917, -63.233],
+  cotoca: [-17.817, -63.033],
+}
+
+/**
+ * Dónde se planta el depósito de cada distribuidora, como desplazamiento en grados respecto del centro de
+ * SU ciudad, por posición dentro de esa ciudad.
+ *
+ * ESTAS COORDENADAS NO SON DECORATIVAS: son la única referencia que tiene alguien para dibujar la zona de
+ * distribución. Sin el depósito en el mapa, "recortá el territorio de esta distribuidora" es una consigna
+ * sobre un mapa vacío — no hay forma de saber de qué lado de la ciudad empezar. Reflejan
+ * `distributors.latitude / longitude`, que en el esquema son `NOT NULL`.
+ *
+ * SE SEPARAN A PROPÓSITO, y bastante: 0,03° son ~3,3 km. Con las dos distribuidoras de una ciudad
+ * apiladas en el centro los dos íconos se taparían entre sí y no habría cómo saber cuál es cuál al
+ * dibujar. Es un desplazamiento fijo por posición y no un sorteo: dos recargas tienen que dejar los
+ * depósitos en el mismo lugar, o el polígono que dibujaste ayer rodea el vacío hoy.
+ *
+ * Alcanza con dos entradas para la regla de hoy (máximo 2 por ciudad); las otras tres quedan por si el
+ * tope sube, y como son opuestas entre sí siguen separando bien.
+ */
+const OFFSET_DEPOSITO: LatLngTuple[] = [
+  [0.031, -0.039],
+  [-0.029, 0.042],
+  [0.035, 0.034],
+  [-0.037, -0.031],
+  [0.005, 0.053],
+]
+
+/**
+ * TOPE de distribuidoras por ciudad.
+ *
+ * Es la regla del negocio: una ciudad tiene UNA o DOS distribuidoras, nunca más. Y es exactamente el
+ * rango donde la zona de distribución tiene sentido — con una no hay nada que partir (todo lo de la
+ * ciudad es suyo por descarte) y con dos hay que decidir el corte. Se declara como constante y no se deja
+ * implícita en una lista escrita a mano porque es una invariante: el reparto de abajo se calcula, así que
+ * no se puede violar por un dedazo al agregar una ciudad o una distribuidora.
+ */
+const MAX_DISTRIBUIDORAS_POR_CIUDAD = 2
+
+/**
+ * En qué ciudad cae cada distribuidora, por posición en la lista.
+ *
+ * SE CALCULA, no se escribe: se recorren las ciudades en orden y se les va dando una distribuidora hasta
+ * llenar la primera vuelta, y recién entonces empieza la segunda. Eso garantiza el mínimo de 1 antes de
+ * que ninguna llegue a 2, que es lo que pide la regla.
+ *
+ * EL TOPE MANDA SOBRE `VOLUMEN.distribuidoras`: si el volumen pidiera más de
+ * `ciudades × MAX_DISTRIBUIDORAS_POR_CIUDAD`, las de más no tendrían dónde ir y la única salida honesta
+ * es no crearlas. Con las 5 ciudades de hoy el techo son 10, que es justo el volumen actual — así que
+ * quedan 2 por ciudad y ninguna se descarta. Bajar el volumen a 9 deja una ciudad con 1, que es el otro
+ * caso que la pantalla sabe mostrar («una sola distribuidora: no hace falta dibujar nada»).
+ */
+const CIUDAD_POR_POSICION: CiudadId[] = Array.from(
+  { length: MAX_DISTRIBUIDORAS_POR_CIUDAD },
+  () => CIUDAD_IDS,
+).flat()
+
+/**
+ * Distribuidoras (distributorId): scope OBLIGATORIO del listado — de qué distribuidora son los pedidos.
+ *
+ * `cityId` refleja la columna `distributors.city_id` (agregada junto con `distribution_zones`): es lo que
+ * contesta "elegí una ciudad y decime qué distribuidoras hay ahí". Vive acá abajo y no arriba con los
+ * otros catálogos porque necesita `cityIdDe`, que se define recién en este bloque.
+ */
+export const DISTRIBUIDORAS = NOMBRES_DISTRIBUIDORA.slice(
+  0,
+  // El tope por ciudad gana: pedir más distribuidoras que casilleros crearía algunas sin ciudad.
+  Math.min(VOLUMEN.distribuidoras, CIUDAD_POR_POSICION.length),
+).map(
+  (nombre, i) => {
+    const ciudad = CIUDAD_POR_POSICION[i]
+    // Posición DENTRO de su ciudad, no en la lista global: es lo que decide cuál de los offsets le toca.
+    // Con el índice global, las dos de una misma ciudad (posiciones i e i+5) caerían en offsets 0 y 5 —
+    // que con solo cinco entradas es 0 y 0, o sea el mismo punto para las dos.
+    const enSuCiudad = CIUDAD_POR_POSICION.slice(0, i).filter((c) => c === ciudad).length
+    const [dLat, dLng] = OFFSET_DEPOSITO[enSuCiudad % OFFSET_DEPOSITO.length]
+    const [lat, lng] = CIUDAD_CENTRO[ciudad]
+    return {
+      id: 501 + i,
+      nombre: `Distribuidora ${nombre}`,
+      cityId: cityIdDe(ciudad),
+      /** Depósito de la distribuidora — espejo de `distributors.latitude / longitude`. */
+      lat: Number((lat + dLat).toFixed(6)),
+      lng: Number((lng + dLng).toFixed(6)),
+    }
+  },
+)
+
+/** Las distribuidoras de una ciudad. Es el filtro superior de la pantalla de zonas de distribución. */
+export const distribuidorasDeCiudad = (ciudad: CiudadId) =>
+  DISTRIBUIDORAS.filter((d) => d.cityId === cityIdDe(ciudad))
 
 /**
  * Mercado DERIVADO de la ciudad, no sorteado: "Ruta al Norte" tiene que contener a Montero y Warnes,

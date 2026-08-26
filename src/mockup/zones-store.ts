@@ -7,7 +7,6 @@
 // Leaflet trabaja en `[lat, lng]`, así que la conversión vive en dos funciones chicas (`aLatLng` /
 // `aGeoJson`) y el resto de la pantalla no vuelve a tocar el orden de las coordenadas.
 import { create } from 'zustand'
-import type { CiudadId } from './mock-data'
 import type { LatLngTuple } from './map/geo/polyline'
 
 // Key nueva y semántica: no se migra `mockups-web:zonas:v5` porque ese esquema admitía filas
@@ -61,17 +60,11 @@ function nowIso(): string {
 }
 
 /**
- * Centro aproximado de cada ciudad. Es a DÓNDE MIRA el editor al abrirse, y con la lista vacía pasó a ser
- * lo único que hay: sin zonas guardadas no hay nada que encuadrar, así que este punto es la diferencia
- * entre abrir sobre Santa Cruz y abrir sobre el Atlántico en zoom de continente.
+ * Re-export: `CIUDAD_CENTRO` se MUDÓ a `mock-data`, con el resto del maestro de ciudades, porque también
+ * lo necesitan las coordenadas de los depósitos de las distribuidoras y desde acá no se podía usar sin
+ * ciclo de imports. Se sigue exportando desde este módulo para no romper lo que ya lo importaba de aquí.
  */
-export const CIUDAD_CENTRO: Record<CiudadId, LatLngTuple> = {
-  santacruz: [-17.783, -63.182],
-  montero: [-17.339, -63.25],
-  warnes: [-17.517, -63.167],
-  laguardia: [-17.917, -63.233],
-  cotoca: [-17.817, -63.033],
-}
+export { CIUDAD_CENTRO } from './mock-data'
 
 /**
  * Lo que haya guardado, o la lista VACÍA. Ya no hay zonas de ejemplo: la pantalla abre en blanco y las
