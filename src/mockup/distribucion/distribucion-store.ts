@@ -24,11 +24,17 @@
 // REEMPLAZA en vez de insertar otra. No hay un `addZona` separado del `updateZona` a propósito — tener
 // los dos era la forma de que alguien llamara al primero dos veces.
 import { create } from 'zustand'
-import type { LatLngTuple } from '../map/geo/polyline'
 import { DISTRIBUIDORAS } from '../mock-data'
-import { latLngAPoligono, poligonoALatLng, type Zona, type ZonaPoligonoGeoJson } from '../zones-store'
+import {
+  latLngAPoligono,
+  poligonoALatLng,
+  type Zona,
+  type ZonaPoligonoGeoJson,
+} from '../zones-store'
+import type { LatLngTuple } from '../map/geo/polyline'
+import { useDistribuidorasStore } from './distribuidoras-store'
 
-const STORAGE_KEY = 'mockup-zonas-distribucion-v1'
+const STORAGE_KEY = 'mockup-zonas-distribucion-v2'
 const LOCAL_USER = 'mockup'
 
 /** Espejo de la fila `distribution_zones`. Sin `name` ni `city_id`: ver el encabezado. */
@@ -54,24 +60,64 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-/**
- * Lo que haya guardado, o la lista VACÍA. Sin seed, mismo criterio que `zones-store`: la pantalla abre en
- * blanco y la primera acción ya es dibujar.
- *
- * OJO CON EL ARRAY VACÍO, y es la misma trampa que allá: `raw === null` es "nunca escribió nada" y un
- * `[]` parseado es "escribió que no hay ninguna". Hoy las dos devuelven lo mismo; si algún día vuelve un
- * seed tiene que colgar SOLO de `raw === null` y nunca del largo del array, porque si no recargar te
- * devuelve las zonas que acabás de borrar.
- */
+/** Semilla inicial de zonas de distribución para que la pantalla abra con polígonos listos para interactuar. */
+function semillaZonas(): ZonaDistribucion[] {
+  const creado = nowIso()
+  const p1 = latLngAPoligono([
+    [-17.725, -63.225],
+    [-17.725, -63.135],
+    [-17.778, -63.135],
+    [-17.778, -63.225],
+  ])
+  const p2 = latLngAPoligono([
+    [-17.785, -63.225],
+    [-17.785, -63.135],
+    [-17.835, -63.135],
+    [-17.835, -63.225],
+  ])
+
+  const iniciales: ZonaDistribucion[] = []
+  if (p1) {
+    iniciales.push({
+      id: 1,
+      distributorId: 501,
+      polygonGeoJson: p1,
+      createdBy: LOCAL_USER,
+      updatedBy: LOCAL_USER,
+      createdAt: creado,
+      updatedAt: creado,
+      deletedAt: null,
+      isActive: true,
+    })
+  }
+  if (p2) {
+    iniciales.push({
+      id: 2,
+      distributorId: 502,
+      polygonGeoJson: p2,
+      createdBy: LOCAL_USER,
+      updatedBy: LOCAL_USER,
+      createdAt: creado,
+      updatedAt: creado,
+      deletedAt: null,
+      isActive: true,
+    })
+  }
+  return iniciales
+}
+
 function readStored(): ZonaDistribucion[] {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(STORAGE_KEY)
-    if (raw === null) return []
+    if (!raw) {
+      const inicial = semillaZonas()
+      writeStored(inicial)
+      return inicial
+    }
     const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as ZonaDistribucion[]
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as ZonaDistribucion[]) : semillaZonas()
   } catch {
-    return []
+    return semillaZonas()
   }
 }
 
@@ -91,6 +137,7 @@ interface DistribucionState {
   setZonaActiva: (id: number, isActive: boolean) => void
   /** Borrado LÓGICO: la distribuidora queda sin zona y se le puede dibujar otra. */
   removeZona: (id: number) => void
+  resetZonas: () => void
 }
 
 export const useDistribucionStore = create<DistribucionState>((set, get) => ({
@@ -152,6 +199,12 @@ export const useDistribucionStore = create<DistribucionState>((set, get) => ({
     writeStored(siguientes)
     set({ zonas: siguientes })
   },
+
+  resetZonas: () => {
+    const inicial = semillaZonas()
+    writeStored(inicial)
+    set({ zonas: inicial })
+  },
 }))
 
 /** La zona viva de una distribuidora, o `undefined`. Es la consulta que hace toda la pantalla. */
@@ -171,15 +224,17 @@ export const zonaDeDistribuidora = (
  * distribuidora: es lo que la capa usa como clave de React y de selección.
  */
 export function zonasComoZonaLogistica(zonas: ZonaDistribucion[]): Zona[] {
+  const maestras = useDistribuidorasStore.getState().distribuidoras
   return zonas
     .filter((z) => z.deletedAt === null)
     .map((z) => {
-      const dueña = DISTRIBUIDORAS.find((d) => d.id === z.distributorId)
+      const dueñaMaestra = maestras.find((d) => d.id === z.distributorId)
+      const dueñaConstante = DISTRIBUIDORAS.find((d) => d.id === z.distributorId)
       return {
         id: z.id,
-        name: dueña?.nombre ?? `Distribuidora ${z.distributorId}`,
+        name: dueñaMaestra?.name ?? dueñaConstante?.nombre ?? `Distribuidora ${z.distributorId}`,
         polygonGeoJson: z.polygonGeoJson,
-        cityId: dueña?.cityId ?? 0,
+        cityId: dueñaMaestra?.cityId ?? dueñaConstante?.cityId ?? 0,
         createdBy: z.createdBy,
         updatedBy: z.updatedBy,
         createdAt: z.createdAt,

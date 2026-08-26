@@ -13,6 +13,7 @@
 // Denso a propósito: es un panel de consulta rápida sobre el mapa, no una ficha para leer de corrido.
 import {
   Boxes,
+  Building2,
   Clock,
   Hash,
   MapPin,
@@ -36,7 +37,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { GaleriaPunto } from './GaleriaPunto'
-import { CANAL_META, RUTAS, camionPorId, rutaPorCamionId, type Parada } from './mock-data'
+import { CANAL_META, RUTAS, camionPorId, rutaPorCamionId, distribuidoraNombreDe, type Parada } from './mock-data'
 import { CanalGlyph } from './canal-glyph'
 import { fotosDePunto, ilustracionDePunto } from './mock-fotos'
 
@@ -143,6 +144,9 @@ export function PuntoEntregaDialog({
           <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
             <Dato icon={MapPin} label="Dirección" className="col-span-2">
               {parada.puntoEntrega}
+            </Dato>
+            <Dato icon={Building2} label="Distribuidora" className="col-span-2">
+              {parada.pedidos[0] ? distribuidoraNombreDe(parada.pedidos[0]) : 'DISCRUZ'}
             </Dato>
             <Dato icon={Clock} label="Ventana">
               {parada.ventana}

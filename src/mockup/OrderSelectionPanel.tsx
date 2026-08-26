@@ -6,7 +6,7 @@
 // Este mockup asume `channel_id` en candidate_order y una tabla dispatch_plan_channel para
 // persistir la selección; sin eso, este paso no es reproducible ni auditable.
 import { useEffect, useState, type ReactNode } from 'react'
-import { Building2, Globe, MapPin, Store, User, X, type LucideIcon } from 'lucide-react'
+import { Building2, Globe, MapPin, Store, User, Warehouse, X, type LucideIcon } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import {
   CANAL_RESUMEN,
   CIUDAD_IDS,
   CIUDAD_META,
+  DISTRIBUIDORAS,
   EMPRESAS,
   MERCADO_IDS,
   MERCADO_META,
@@ -35,6 +36,8 @@ import {
   ZONA_IDS,
   ZONA_META,
   ciudadDe,
+  cityIdDe,
+  distribuidoraIdDe,
   mercadoDe,
   zonaDe,
   type CanalId,
@@ -384,6 +387,7 @@ function moveInArray<T>(arr: T[], activeId: T, overId: T): T[] {
 export function OrderSelectionPanel({ state }: { state: BoardState }) {
   const activeCanales = useDispatchPlanStore((s) => s.activeCanales)
   const activeCiudades = useDispatchPlanStore((s) => s.activeCiudades)
+  const activeDistribuidoras = useDispatchPlanStore((s) => s.activeDistribuidoras)
   const activeMercados = useDispatchPlanStore((s) => s.activeMercados)
   const activeZonas = useDispatchPlanStore((s) => s.activeZonas)
   const activeVendedores = useDispatchPlanStore((s) => s.activeVendedores)
@@ -395,6 +399,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
   // store. Un DEBOUNCE (abajo) commitea el draft al store recién ~450ms después del último toggle,
   // así en la app real habría UN solo fetch tras terminar de armar los filtros, no uno por toggle.
   const [draftCiudades, setDraftCiudades] = useState<CiudadId[]>(activeCiudades)
+  const [draftDistribuidoras, setDraftDistribuidoras] = useState<string[]>(activeDistribuidoras)
   const [draftCanales, setDraftCanales] = useState<CanalId[]>(activeCanales)
   const [draftMercados, setDraftMercados] = useState<MercadoId[]>(activeMercados)
   const [draftZonas, setDraftZonas] = useState<ZonaId[]>(activeZonas)
@@ -402,15 +407,16 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
 
   useEffect(() => {
     setDraftCiudades(activeCiudades)
+    setDraftDistribuidoras(activeDistribuidoras)
     setDraftCanales(activeCanales)
     setDraftMercados(activeMercados)
     setDraftZonas(activeZonas)
     setDraftVendedores(activeVendedores)
-  }, [activeCiudades, activeCanales, activeMercados, activeZonas, activeVendedores])
+  }, [activeCiudades, activeDistribuidoras, activeCanales, activeMercados, activeZonas, activeVendedores])
 
   // Toggle genérico de un valor dentro de un array de draft con actualización inmediata del store.
   const toggleEn = <T extends string>(
-    key: 'canales' | 'ciudades' | 'mercados' | 'zonas' | 'vendedores',
+    key: 'canales' | 'ciudades' | 'distribuidoras' | 'mercados' | 'zonas' | 'vendedores',
     setDraft: React.Dispatch<React.SetStateAction<T[]>>,
     value: T
   ) => {
@@ -419,6 +425,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
       const sel = {
         canales: key === 'canales' ? (next as CanalId[]) : draftCanales,
         ciudades: key === 'ciudades' ? (next as CiudadId[]) : draftCiudades,
+        distribuidoras: key === 'distribuidoras' ? (next as string[]) : draftDistribuidoras,
         mercados: key === 'mercados' ? (next as MercadoId[]) : draftMercados,
         zonas: key === 'zonas' ? (next as ZonaId[]) : draftZonas,
         vendedores: key === 'vendedores' ? (next as string[]) : draftVendedores,
@@ -449,9 +456,10 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
     (!filters.fechaDesde || p.fechaEntrega >= filters.fechaDesde.slice(0, 10)) &&
     (!filters.fechaHasta || p.fechaEntrega <= filters.fechaHasta.slice(0, 10))
 
-  // Filtros de NARROWING (Ciudad/Mercado/Zona/Vendedor): array vacío no filtra; con valores, coincide.
+  // Filtros de NARROWING (Ciudad/Distribuidora/Mercado/Zona/Vendedor): array vacío no filtra; con valores, coincide.
   const coincideNarrowing = (p: Pedido) =>
     (activeCiudades.length === 0 || activeCiudades.includes(ciudadDe(p))) &&
+    (activeDistribuidoras.length === 0 || activeDistribuidoras.includes(String(distribuidoraIdDe(p)))) &&
     (activeMercados.length === 0 || activeMercados.includes(mercadoDe(p))) &&
     (activeZonas.length === 0 || activeZonas.includes(zonaDe(p))) &&
     (activeVendedores.length === 0 || activeVendedores.includes(p.vendedor))
@@ -532,7 +540,7 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           Lo seleccionado se ve y se togglea DENTRO de cada popover; un debounce aplica todo al store
           (no hay botón "Buscar"). El detalle agregado vive en "Ver detalles". Ya NO se muestran los
           chips horizontalmente (ver bloque comentado abajo). */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
         <FiltroPopover
           label="Ciudad"
           icon={Building2}
@@ -541,6 +549,17 @@ export function OrderSelectionPanel({ state }: { state: BoardState }) {
           searchPlaceholder="Buscar ciudad…"
           emptyText="Sin ciudades"
           options={CIUDAD_IDS.map((c) => ({ value: c, label: CIUDAD_META[c].label }))}
+        />
+        <FiltroPopover
+          label="Distribuidora"
+          icon={Warehouse}
+          active={draftDistribuidoras}
+          onToggle={(v) => toggleEn('distribuidoras', setDraftDistribuidoras, v)}
+          searchPlaceholder="Buscar distribuidora…"
+          emptyText="Sin distribuidoras"
+          options={DISTRIBUIDORAS.filter(
+            (d) => draftCiudades.length === 0 || draftCiudades.map(cityIdDe).includes(d.cityId),
+          ).map((d) => ({ value: String(d.id), label: d.nombre }))}
         />
         <FiltroPopover
           label="Canal"
