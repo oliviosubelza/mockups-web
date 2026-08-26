@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Route, Stamp } from 'lucide-react'
+import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, Stamp } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -31,6 +31,7 @@ import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTranspor
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { HistorialRevisionesView } from './views/HistorialRevisionesView'
 import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
+import { CierreLogisticoView } from './views/CierreLogisticoView'
 import {
   DevolucionAprobarScreen,
   DevolucionDetalleScreen,
@@ -118,6 +119,10 @@ function HistorialOrdenesScreen() {
 
 function HistorialRevisionesScreen() {
   return <MonitoreoEHistorialOTView initialTab="AUDIT" />
+}
+
+function CierreLogisticoScreen() {
+  return <CierreLogisticoView />
 }
 
 function PlanificacionesScreen() {
@@ -350,6 +355,14 @@ export const routes: MockRoute[] = [
     icon: Radar,
     component: MonitoreoEHistorialScreen,
     order: 0,
+  },
+  {
+    id: 'cierre-logistico',
+    path: '/cierre-logistico',
+    label: 'Cierre y Liquidación OT',
+    icon: Receipt,
+    component: CierreLogisticoScreen,
+    order: 0.5,
   },
   {
     id: 'monitoreo',

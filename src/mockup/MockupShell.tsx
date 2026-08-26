@@ -43,7 +43,7 @@ function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellPro
   const toggleSidebar = useSidebarWidthStore((s) => s.toggle)
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 relative z-10">
+    <header className="print:hidden flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 relative z-10">
       <Button
         variant="ghost"
         size="icon"

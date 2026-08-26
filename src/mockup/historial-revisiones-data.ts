@@ -235,8 +235,26 @@ function buildVenadoOrder(
   let isSemaphore = scenario === 'SEMAPHORE_OK' || scenario === 'DISCREPANCY_SEMAPHORE'
 
   const items: ItemSesionConteo[] = skusForOrder.map((sku, skuIdx) => {
-    const boxes = 10 + (skuIdx % 5) * 2 // 10, 12, 14, 16, 18 cajas
-    const expectedQty = boxes * sku.equivalenceBoxUnit
+    // ── 3 ESCENARIOS DE EMPAQUE (Cajas completas, Solo unidades sueltas, Cajas + Unidades) ──
+    let baseBoxes = 0
+    let baseUnits = 0
+
+    if (skuIdx % 3 === 0) {
+      // Caso 1: SOLO CAJAS COMPLETAS (Empaque cerrado sin unidades sueltas)
+      baseBoxes = 8 + (skuIdx % 4) * 2 // 8, 10, 12, 14 cajas
+      baseUnits = 0
+    } else if (skuIdx % 3 === 1) {
+      // Caso 2: CAJAS + UNIDADES SUELTAS (Carga Mixta)
+      baseBoxes = 6 + (skuIdx % 3) * 2 // 6, 8, 10 cajas
+      baseUnits = Math.min(Math.floor(sku.equivalenceBoxUnit / 2), 4 + (skuIdx % 5)) // ej. 5 unidades sueltas
+    } else {
+      // Caso 3: SOLO UNIDADES SUELTAS (Menudeo / Fraccionado sin cajas enteras)
+      baseBoxes = 0
+      baseUnits = Math.min(sku.equivalenceBoxUnit - 1, 6 + (skuIdx % 5)) // ej. 8 unidades
+    }
+
+    const expectedQty = (baseBoxes * sku.equivalenceBoxUnit) + baseUnits
+    const expectedBoxes = Number((expectedQty / sku.equivalenceBoxUnit).toFixed(2))
 
     // Introducir discrepancia controlada en el primer producto si el escenario lo requiere
     const itemHasDisc = (scenario === 'DISCREPANCY_PARTIAL' || scenario === 'DISCREPANCY_SEMAPHORE') && skuIdx === 0
@@ -247,7 +265,7 @@ function buildVenadoOrder(
       totalNetVariance += variance
     }
 
-    const countedQty = expectedQty + variance
+    const countedQty = Math.max(0, expectedQty + variance)
     const countedBoxes = Math.floor(countedQty / sku.equivalenceBoxUnit)
     const countedUnits = countedQty % sku.equivalenceBoxUnit
 
@@ -260,8 +278,8 @@ function buildVenadoOrder(
       equivalenceBoxUnit: sku.equivalenceBoxUnit,
       unitName: sku.unitName,
       expectedQty,
-      expectedBoxes: boxes,
-      expectedUnits: 0,
+      expectedBoxes,
+      expectedUnits: baseUnits,
       driverCount: {
         countedBoxes,
         countedUnits,

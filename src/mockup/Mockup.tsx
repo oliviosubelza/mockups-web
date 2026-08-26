@@ -225,7 +225,7 @@ function ViewModeToggle({ mode, onToggle }: { mode: ViewMode; onToggle: () => vo
       onPointerUp={onPointerUp}
       title="Arrastrame para moverme · click para alternar el modo de vista"
       style={pos ? { left: pos.x, top: pos.y } : { right: 16, bottom: 16 }}
-      className="fixed z-[99999] flex touch-none cursor-grab select-none items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-lg transition-colors hover:bg-neutral-100 active:cursor-grabbing"
+      className="print:hidden fixed z-[99999] flex touch-none cursor-grab select-none items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-lg transition-colors hover:bg-neutral-100 active:cursor-grabbing"
     >
       {goingToWeb ? <Monitor size={15} /> : <LayoutGrid size={15} />}
       {goingToWeb ? 'Modo web' : 'Modo mockup'}
