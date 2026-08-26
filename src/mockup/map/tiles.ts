@@ -12,15 +12,21 @@
 /** Las capas base disponibles. El orden es el que se muestra en los menús: de más a menos detalle. */
 export type CapaBase = 'calles' | 'suave' | 'satelite'
 
+const CALLES_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY?.trim()
+
 export const TILES: Record<CapaBase, string> = {
-  calles: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  suave: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+  calles: CALLES_TILES,
+  suave: CARTO_API_KEY
+    ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
+    : CALLES_TILES,
   satelite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
 }
 
 /**
  * Subdominios de cada proveedor. CARTO sirve desde a–d y OSM desde a–c; sin esto, Leaflet pide teselas
- * a un host que no existe y la capa aparece con huecos.
+ * a un host que no existe y la capa aparece con huecos. Cuando no hay clave de CARTO, `suave` también
+ * apunta a OSM como resguardo para estados antiguos que todavía tengan esa capa seleccionada.
  *
  * Esri no usa `{s}` en su URL, así que su valor no se lee nunca — está para que el registro sea total y
  * nadie tenga que preguntarse si falta una entrada.
@@ -38,24 +44,22 @@ export const SUBDOMINIOS: Record<CapaBase, string> = {
  */
 export const CAPAS_BASE: { valor: CapaBase; label: string }[] = [
   { valor: 'calles', label: 'Calles' },
-  { valor: 'suave', label: 'Calles en gris' },
+  ...(CARTO_API_KEY ? [{ valor: 'suave' as const, label: 'Calles en gris' }] : []),
   { valor: 'satelite', label: 'Satélite' },
 ]
 
 /**
  * La capa con la que arranca CUALQUIER mapa del sistema.
  *
- * Es `suave` (CARTO Positron) y no `calles`, y el motivo es que en estos mapas EL COLOR ES DATO: el
- * color de la ruta asignada, el del canal del cliente, el verde/ámbar/rojo del estado de una entrega.
- * El OSM de calles pinta las avenidas de amarillo y naranja —dos de los colores que reparte el
- * generador de rutas— así que el fondo compite justamente con la capa de información. Sobre gris, el
- * color vuelve a significar una sola cosa.
+ * Es `suave` (CARTO Positron) cuando `VITE_CARTO_API_KEY` está configurada. CARTO exige una clave para
+ * sus teselas raster; sin ella devuelve un mapa con la marca "API KEY REQUIRED". En ese caso se usa
+ * `calles` y la opción gris no se muestra en los menús.
  *
- * `calles` no se fue: sigue en el menú y es la que hay que elegir cuando la pregunta es del mapa y no
- * de los datos ("¿por qué calle entra?", "¿esto es una avenida o un pasillo?").
+ * La capa gris sigue siendo la preferida porque en estos mapas EL COLOR ES DATO: el color de la ruta
+ * asignada, el del canal del cliente, el verde/ámbar/rojo del estado de una entrega. El OSM de calles
+ * pinta avenidas de amarillo y naranja, así que compite con la información superpuesta.
  *
- * ATRIBUCIÓN: CARTO no pide clave pero sí crédito («© OpenStreetMap contributors © CARTO»). Las
- * pantallas del mockup montan con `attributionControl={false}` — hay que reponerlo antes de producción,
- * y ahora que es la capa por defecto ya no es un caso de borde.
+ * ATRIBUCIÓN: todos los proveedores exigen crédito. Las pantallas del mockup montan con
+ * `attributionControl={false}`; hay que reponerlo antes de producción.
  */
-export const CAPA_POR_DEFECTO: CapaBase = 'suave'
+export const CAPA_POR_DEFECTO: CapaBase = CARTO_API_KEY ? 'suave' : 'calles'

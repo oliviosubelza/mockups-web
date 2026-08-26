@@ -34,6 +34,22 @@ export interface FiltroOption {
   hint?: ReactNode
 }
 
+/**
+ * MULTI o ÚNICO.
+ *
+ * `multi` (el default, y lo que hacía este componente desde siempre) es un filtro que NARROW: se acumulan
+ * valores y el trigger muestra cuántos hay puestos.
+ *
+ * `unico` es un SELECTOR: hay exactamente un valor elegido, el trigger muestra su etiqueta en vez de un
+ * contador, y elegir cierra el popover porque la decisión ya está tomada. Se agregó para el selector de
+ * ciudad de las zonas de distribución, que necesitaba buscador y no lo tenía —era un `Select` común—.
+ *
+ * ES UNA BANDERA Y NO UN COMPONENTE NUEVO porque todo lo demás es idéntico: el mismo trigger, el mismo
+ * buscador, la misma lista, el mismo popover. Dos componentes gemelos significan que el día que se
+ * arregle el ancho del popover hay que acordarse de los dos.
+ */
+export type ModoFiltro = 'multi' | 'unico'
+
 export function FiltroPopover({
   label,
   icon: Icon,
@@ -42,16 +58,24 @@ export function FiltroPopover({
   onToggle,
   searchPlaceholder,
   emptyText,
+  modo = 'multi',
+  ancho = 'w-56',
 }: {
   label: string
   icon: LucideIcon
   options: FiltroOption[]
+  /** En `unico`, a lo sumo un valor. */
   active: string[]
   onToggle: (value: string) => void
   searchPlaceholder: string
   emptyText: string
+  modo?: ModoFiltro
+  /** Ancho del popover. Se puede ensanchar cuando las etiquetas son largas y `w-56` las corta. */
+  ancho?: string
 }) {
   const [open, setOpen] = useState(false)
+  const unico = modo === 'unico'
+  const elegida = unico ? options.find((o) => active.includes(o.value)) : undefined
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,18 +83,29 @@ export function FiltroPopover({
         className={cn(
           buttonVariants({ variant: 'outline', size: 'sm' }),
           'h-7 shrink-0 gap-1.5 px-2 text-xs',
-          active.length > 0 && 'border-primary/50 bg-primary/5',
+          active.length > 0 && !unico && 'border-primary/50 bg-primary/5',
         )}
+        title={unico ? label : undefined}
       >
         <Icon size={13} />
-        {label}
-        {active.length > 0 && (
-          <span className="flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
-            {active.length}
-          </span>
+        {/* EN `unico` EL TRIGGER MUESTRA EL VALOR, no la dimensión: «Santa Cruz de la Sierra» y no
+            «Ciudad 1». Un selector cuyo botón no dice qué está elegido obliga a abrirlo para saberlo, y
+            acá el valor manda sobre TODO lo que se ve en la pantalla. La etiqueta de la dimensión queda
+            en el `title`, que es donde hace falta solo la primera vez. */}
+        {unico ? (
+          <span className="min-w-0 max-w-44 truncate">{elegida?.label ?? label}</span>
+        ) : (
+          <>
+            {label}
+            {active.length > 0 && (
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
+                {active.length}
+              </span>
+            )}
+          </>
         )}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-0">
+      <PopoverContent align="start" className={cn('p-0', ancho)}>
         <Command>
           <CommandInput placeholder={searchPlaceholder} className="h-8 text-xs" />
           <CommandList>
@@ -83,7 +118,13 @@ export function FiltroPopover({
                   key={opt.value}
                   value={opt.label}
                   data-checked={active.includes(opt.value)}
-                  onSelect={() => onToggle(opt.value)}
+                  onSelect={() => {
+                    onToggle(opt.value)
+                    // Elegir CIERRA en modo único: la decisión ya está tomada y dejarlo abierto obliga a
+                    // un click de más (o a un click afuera) antes de poder ver el mapa que acabás de
+                    // cambiar. En multi se queda abierto a propósito: se están acumulando valores.
+                    if (unico) setOpen(false)
+                  }}
                   className="gap-2 text-xs"
                 >
                   {opt.glyph}

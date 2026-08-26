@@ -73,11 +73,15 @@ export function areaKm2(anillo: LatLngTuple[]): number {
  *
  * Con exactamente dos vértices no hay anillo que cerrar y el segmento se cuenta UNA vez: cerrarlo lo
  * contaría dos y el primer tramo dibujado aparecería midiendo el doble de lo que mide.
+ *
+ * `cerrar: false` mide el trazo ABIERTO con cualquier cantidad de puntos. Lo pide la vía cerrada al
+ * tránsito de `restricciones`: ahí la geometría que se guarda es una polilínea, y sumarle el tramo que
+ * une el final con el principio daría un largo que no existe en el terreno.
  */
-export function perimetroM(anillo: LatLngTuple[]): number {
+export function perimetroM(anillo: LatLngTuple[], cerrar = true): number {
   if (anillo.length < 2) return 0
   const p = proyectar(anillo)
-  const cerrado = p.length >= 3
+  const cerrado = cerrar && p.length >= 3
   const hasta = cerrado ? p.length : p.length - 1
   let total = 0
   for (let i = 0; i < hasta; i++) {

@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Stamp } from 'lucide-react'
+import { Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Stamp } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -26,9 +26,10 @@ import { PlanningView } from './views/PlanningView'
 import { PlannerView } from './planner/PlannerView'
 import { PlannerPlansView } from './planner/PlannerPlansView'
 import { ZonasWorkspaceView } from './zonas/ZonasWorkspaceView'
+import { DistribucionWorkspaceView } from './distribucion/DistribucionWorkspaceView'
 import { RestrictionsCatalogView } from './restricciones/RestrictionsCatalogView'
 import { RestrictionDetailView } from './restricciones/RestrictionDetailView'
-import { RestrictionEditorView } from './restricciones/RestrictionEditorView'
+import { RestriccionesWorkspaceView } from './restricciones/RestriccionesWorkspaceView'
 import { ActivosLogisticosView } from './views/ActivosLogisticosView'
 import { HistorialOrdenesTransporteView } from './views/HistorialOrdenesTransporteView'
 import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
@@ -475,6 +476,23 @@ export const routes: MockRoute[] = [
     showInSidebar: false,
   },
   {
+    // Dato maestro: la partición de la ciudad entre DISTRIBUIDORAS (`distribution_zones`).
+    //
+    // Ítem aparte de «Zonas» y no una pestaña dentro, porque son dos cortes independientes del mismo
+    // territorio y contestan preguntas distintas: la zona logística dice con qué otras paradas viaja el
+    // pedido; la de distribución, quién lo despacha. Un pedido cae en una de cada tipo, y no tienen por
+    // qué coincidir. Mezclarlas en una sola pantalla haría creer que un polígono sirve para las dos cosas.
+    //
+    // Va INMEDIATAMENTE después de Zonas: comparten editor, y quien entiende una entiende la otra.
+    id: 'zonas-distribucion',
+    path: '/zonas-distribucion',
+    label: 'Zonas de distribución',
+    icon: Building2,
+    component: DistribucionWorkspaceView,
+    order: 3,
+    fullBleed: true,
+  },
+  {
     // Dato maestro independiente de las zonas logísticas. Sus horarios y reglas vehiculares forman
     // un solo agregado y nunca se mezclan con la partición territorial de reparto.
     id: 'restricciones',
@@ -485,11 +503,16 @@ export const routes: MockRoute[] = [
     order: 3,
   },
   {
+    // Alta y edición van al MISMO workspace de mapa a sangre, igual que en zonas: `/nueva` entra
+    // dibujando y `/:id/editar` entra con la geometría cargada. El catálogo (`/restricciones`) se queda
+    // con su tabla, que da columnas que un mapa no puede dar —auditoría, vigencia en texto, y las de
+    // tipo placa, que no tienen nada que dibujar—.
     id: 'restriccion-nueva',
     path: '/restricciones/nueva',
     label: 'Nueva restricción',
-    component: RestrictionEditorView,
+    component: RestriccionesWorkspaceView,
     order: 3,
+    fullBleed: true,
     showInSidebar: false,
   },
   {
@@ -501,11 +524,13 @@ export const routes: MockRoute[] = [
     showInSidebar: false,
   },
   {
+    // Ídem, arrancando en modo edición sobre la restricción del path.
     id: 'restriccion-editar',
     path: '/restricciones/:restrictionId/editar',
     label: 'Editar restricción',
-    component: RestrictionEditorView,
+    component: RestriccionesWorkspaceView,
     order: 3,
+    fullBleed: true,
     showInSidebar: false,
   },
   {

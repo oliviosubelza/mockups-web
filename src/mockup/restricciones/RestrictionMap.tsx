@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
-import { CircleMarker, MapContainer, Polygon, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet'
+import { CircleMarker, MapContainer, Polygon, Polyline, TileLayer, useMap } from 'react-leaflet'
 import { CornerUpLeft, MapPinned, Trash2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
+import { MapaClick } from '../map/MapaClick'
 import { SUBDOMINIOS, TILES } from '../map/tiles'
 import {
   RESTRICTION_TYPE_META,
@@ -17,11 +18,6 @@ import {
 
 const CENTER: [number, number] = [-17.783, -63.182]
 const DRAW_COLOR = '#dc2626'
-
-function MapClickCapture({ onPoint }: { onPoint: (point: [number, number]) => void }) {
-  useMapEvents({ click: ({ latlng }) => onPoint([latlng.lat, latlng.lng]) })
-  return null
-}
 
 function FitGeometry({ points }: { points: [number, number][] }) {
   const map = useMap()
@@ -105,7 +101,7 @@ export function RestrictionMap({
           <TileLayer url={TILES.calles} subdomains={SUBDOMINIOS.calles} />
           <InvalidateOnResize />
           {points.length > 0 && <FitGeometry points={points} />}
-          {!readOnly && <MapClickCapture onPoint={(point) => update([...points, point])} />}
+          {!readOnly && <MapaClick onPunto={(punto) => update([...points, punto])} />}
           {restrictionType === 'RESTRICTED_AREA' && points.length >= 2 && (
             <Polygon
               positions={points}

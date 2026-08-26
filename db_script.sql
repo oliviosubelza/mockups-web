@@ -49,6 +49,50 @@
         is_active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
+    -- ── ZONAS DE DISTRIBUCIÓN ─────────────────────────────────────────────────────────────────
+    -- A QUÉ DISTRIBUIDORA le toca un pedido, según dónde cae.
+    --
+    -- NO ES `zones`, Y LA DIFERENCIA NO ES DE TAMAÑO SINO DE PREGUNTA. Son dos cortes
+    -- INDEPENDIENTES del mismo territorio:
+    --   · `zones` parte UNA ciudad en pedazos para armar rutas: contesta "qué paradas van juntas
+    --     en el mismo camión". Muchas zonas por ciudad, sin dueño.
+    --   · `distribution_zones` parte la ciudad entre DISTRIBUIDORAS: contesta "quién despacha
+    --     este pedido". Una zona por distribuidora, y la distribuidora ES su dueña.
+    -- Un pedido cae primero en una zona de distribución (quién lo despacha) y después en una de
+    -- reparto (con quién viaja). No tienen por qué coincidir.
+    --
+    -- SOLO HACE FALTA CON DOS O MÁS DISTRIBUIDORAS EN LA CIUDAD. Con una sola, todo lo de esa
+    -- ciudad es suyo por descarte, y dibujarle un polígono solo lograría que los pedidos de afuera
+    -- no le lleguen a nadie. De ahí que la relación sea 0..1 y no 1: la fila aparece recién cuando
+    -- hay que partir el mapa.
+    --
+    -- POR QUÉ NO TIENE `name`. El nombre de la zona es el nombre de la distribuidora, y guardarlo
+    -- acá sería tener dos nombres para la misma cosa esperando a divergir. Se lee con un JOIN.
+    --
+    -- POR QUÉ NO TIENE `city_id`. La ciudad es de la DISTRIBUIDORA (`distributors.city_id`).
+    -- Repetirla acá dejaría que la zona diga 'Montero' y su dueña 'Warnes', sin forma de saber
+    -- cuál de las dos manda.
+    --
+    -- LA RELACIÓN 1 A 1 LA HACE CUMPLIR EL ÍNDICE, NO LA FK. Una `FOREIGN KEY` sola admite veinte
+    -- filas con el mismo `distributor_id`, y veinte polígonos para una distribuidora es exactamente
+    -- el estado que esta tabla existe para impedir. El índice es PARCIAL
+    -- (`WHERE deleted_at IS NULL`) porque el borrado es lógico: sin eso, redibujar la zona de una
+    -- distribuidora quedaría bloqueado para siempre por la fila vieja.
+    CREATE TABLE distribution_zones (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        distributor_id BIGINT NOT NULL, -- Dueña de la zona; también aporta el nombre y la ciudad
+        polygon GEOMETRY(Polygon, 4326) NOT NULL, -- Perímetro dentro del cual esta distribuidora despacha
+        city_id VARCHAR(255),
+
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+        CONSTRAINT fk_distribution_zone_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
+    );
     -- ── RESTRICCIONES DE PLANIFICACIÓN ────────────────────────────────────────────────────────
     -- Zonas restringidas, vías cerradas y placas de circulación: los límites que la planificación
     -- tiene que respetar y que no salen ni de los pedidos ni de la flota.
