@@ -1,33 +1,25 @@
-// `useState` vuelve con el estado de la decisión, comentado más abajo.
-import { useMemo } from "react";
-import { useNavigate } from "react-router";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
 // `useRouteParams` y no `useParams`: el shell de este mockup renderiza la pantalla a mano, fuera de
 // un <Route element>, así que `useParams()` devolvería {} y la página se quedaría sin su id.
 import { useRouteParams } from "@/core/routing/active-route";
-import { ArrowLeft, PackageX, Store } from "lucide-react";
+import { ArrowLeft, Check, PackageX, Pencil, Store, X } from "lucide-react";
 import type { ReturnLine } from "../../../types";
 import { RETURN_LOT_LABELS, RETURN_REASON_LABELS, RETURN_SETTLEMENT_LABELS } from "../../../types";
-import { primarySourceOf } from "../../../lib/return-workflow";
+import { pendingLevelOf, primarySourceOf } from "../../../lib/return-workflow";
 import { lineAmount } from "../../../lib/order-math";
-import { useReturn } from "../../../hooks/use-returns";
+import { useReturn, useRejectReturn } from "../../../hooks/use-returns";
 import { useOrderClientDetails } from "../../../hooks/use-orders";
-import { seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
+import { canApproveReturns, seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
+import { decisionBlockedReason, editBlockedReason } from "../../../services/returns-service";
 import { PageHeader } from "../../../components/common/page-header";
 import { EmptyState } from "../../../components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DataTable, defineColumns } from "../../../components/data-table";
-/* Comentado a pedido, junto con los tres botones del header:
-import { Link } from "react-router";
-import { Check, Pencil, X } from "lucide-react";
-import { decisionBlockedReason, editBlockedReason } from "../../../services/returns-service";
-import { pendingLevelOf } from "../../../lib/return-workflow";
-import { useRejectReturn } from "../../../hooks/use-returns";
-import { canApproveReturns } from "../../../stores/session-store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DataTable, defineColumns } from "../../../components/data-table";
 import { ReturnDecisionDialog } from "../components/return-decision-dialog";
-*/
 import { amount, bs, formatDateTime, formatDay, formatTime } from "../../../lib/format";
 import { PhotoStack } from "../../../components/common/photo-viewer";
 import { ReturnStatusBadge } from "../components/return-status-badge";
@@ -64,25 +56,24 @@ function SectionTitle({ icon: Icon, children }: { icon: typeof Store; children: 
   );
 }
 
-/* Comentado a pedido: su único uso eran los tres botones del header.
- *
+/**
  * A header action that may be blocked, with the reason on hover. Disabled
  * controls emit no pointer events, so the tooltip listens on the wrapper.
  *
+ * `render` and not `asChild`: this kit is Base UI, not Radix — same reason
+ * `SelectorRol` uses `render` on its own dropdown trigger.
+ */
 function HeaderAction({ reason, children }: { reason: string | null; children: React.ReactNode }) {
   if (!reason) return <>{children}</>;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} className="[&>*]:pointer-events-none">
-          {children}
-        </span>
+      <TooltipTrigger render={<span tabIndex={0} className="[&>*]:pointer-events-none" />}>
+        <>{children}</>
       </TooltipTrigger>
       <TooltipContent className="max-w-56">{reason}</TooltipContent>
     </Tooltip>
   );
 }
-*/
 
 /**
  * The returned goods, read-only, in the same shape as the editor the seller
@@ -277,10 +268,8 @@ export function ReturnViewPage() {
   const { data: ret, isLoading } = useReturn(Number.isFinite(returnId) ? returnId : undefined);
   const { data: details } = useOrderClientDetails(ret?.clientId);
   const user = useCurrentUser();
-  /* Comentado a pedido, junto con el botón "Rechazar":
   const reject = useRejectReturn();
   const [decision, setDecision] = useState<"rechazado" | null>(null);
-  */
 
   if (isLoading) {
     return (
@@ -320,9 +309,8 @@ export function ReturnViewPage() {
     );
   }
 
-  /* Comentado a pedido, junto con los botones que alimentaba.
-
   const editBlocked = editBlockedReason(ret);
+
   // Shown or not shown, never shown-and-dead: a role that signs nothing gets no
   // approval buttons on the header at all.
   const canDecideHere = canApproveReturns(user.role) && !!user.employeeCode;
@@ -330,7 +318,6 @@ export function ReturnViewPage() {
     ? decisionBlockedReason(ret, user.employeeCode)
     : "Tu usuario no firma aprobaciones.";
   const level = pendingLevelOf(ret);
-  */
 
   return (
     <>
@@ -339,10 +326,6 @@ export function ReturnViewPage() {
         description={`Registrada el ${formatDateTime(ret.createdAt)} a las ${formatTime(ret.createdAt)} por ${ret.sellerName}.`}
       >
         <ReturnStatusBadge status={ret.status} />
-
-        {/* Comentado a pedido: "Revisar y decidir", "Rechazar" y "Corregir"
-            salieron del header para todos los roles. Se restaura quitando estos
-            comentarios y los del bloque de imports y de `HeaderAction` arriba.
 
         {canDecideHere && (
           <>
@@ -375,9 +358,9 @@ export function ReturnViewPage() {
           </>
         )}
 
-        // A blocked action is a disabled button, not a disabled link: `disabled`
-        // means nothing on an anchor, and a link that still navigates is worse
-        // than no button at all.
+        {/* A blocked action is a disabled button, not a disabled link: `disabled`
+            means nothing on an anchor, and a link that still navigates is worse
+            than no button at all. */}
         <HeaderAction reason={editBlocked}>
           {editBlocked ? (
             <Button type="button" variant="outline" disabled>
@@ -391,7 +374,6 @@ export function ReturnViewPage() {
             </Button>
           )}
         </HeaderAction>
-        */}
 
         <Button type="button" variant="outline" onClick={() => navigate("/devoluciones")}>
           <ArrowLeft className="h-4 w-4" /> Volver
@@ -502,13 +484,12 @@ export function ReturnViewPage() {
         )}
       </div>
 
-      {/* Comentado a pedido, junto con el botón "Rechazar" que lo abría.
-
+      {/*
           Only mounted while a rejection is being written: the level and the
           approver identity are guaranteed non-null then, by the same rule that
           enables the button. Refusing the whole claim needs no per-item work,
           which is why this one path stays here instead of on the grid.
-
+      */}
       {decision && level && user.employeeCode && (
         <ReturnDecisionDialog
           open
@@ -530,7 +511,6 @@ export function ReturnViewPage() {
           }}
         />
       )}
-      */}
     </>
   );
 }

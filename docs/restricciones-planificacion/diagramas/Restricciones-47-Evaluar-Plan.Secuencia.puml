@@ -1,0 +1,87 @@
+@startuml
+title 47 - Evaluación futura de zonas restringidas candidatas para un plan
+
+autonumber
+hide footbox
+
+actor "Frontend / Planificador" as Frontend
+boundary "API FUTURA PROPUESTA\nGET /planning/restrictions/applicable" as API
+control "Evaluador futuro\nNO IMPLEMENTADO" as Evaluator
+database "PostgreSQL\n(db_script.sql)" as DB
+
+note over Frontend, DB
+FUTURO / NO IMPLEMENTADO.
+El repositorio no contiene API ni evaluador.
+El flujo describe un contrato objetivo, no comportamiento existente.
+Solo devuelve candidatas temporales/vehiculares.
+end note
+
+Frontend -> API: GET /planning/restrictions/applicable?\ndispatchPlanId=7301&\nevaluatedAt=2026-09-07T23:30:00-04:00&\nrestrictionType=RESTRICTED_AREA
+API -> Evaluator: validar query y zona/offset de evaluatedAt
+
+alt Query no interpretable
+  Evaluator --> API: BAD_REQUEST
+  API --> Frontend: 400\n{success: false, code: 400, error}
+else evaluatedAt sin zona/offset o semántica inválida
+  Evaluator --> API: VALIDATION_ERROR
+  API --> Frontend: 422\n{success: false, code: 422, error}
+else Request válido
+  Evaluator -> DB: SELECT * FROM dispatch_plans\nWHERE id = :dispatchPlanId AND deleted_at IS NULL
+  DB --> Evaluator: plan o vacío
+
+  alt Plan no encontrado
+    Evaluator --> API: DISPATCH_PLAN_NOT_FOUND
+    API --> Frontend: 404\n{success: false, code: 404, error}
+  else Plan encontrado
+    Evaluator -> DB: SELECT planning_trucks + trucks\nWHERE dispatch_plan_id = :dispatchPlanId\nAND filas no eliminadas
+    DB --> Evaluator: camiones del plan
+
+    Evaluator -> DB: SELECT * FROM planning_restrictions\nWHERE distributor_id = :plan.distributor_id\nAND restriction_type = 'RESTRICTED_AREA'\nAND is_active = true AND deleted_at IS NULL
+    DB --> Evaluator: restricciones activas
+
+    Evaluator -> DB: SELECT * FROM planning_restriction_schedules\nWHERE planning_restriction_id IN (:ids)\nAND deleted_at IS NULL
+    DB --> Evaluator: horarios por restricción
+
+    Evaluator -> DB: SELECT * FROM planning_restriction_vehicle_rules\nWHERE planning_restriction_id IN (:ids)\nAND deleted_at IS NULL
+    DB --> Evaluator: reglas por restricción
+
+    Evaluator -> Evaluator: evaluar distribuidora, estado y borrado
+    Evaluator -> Evaluator: evaluar horarios en evaluatedAt zonificado\n(Y dentro de fila; O entre filas)
+    Evaluator -> Evaluator: evaluar reglas contra trucks\n(Y dentro de fila; O entre filas)
+    note right of Evaluator
+    minCapacityWeightKg:
+    capacity_weight_kg >= umbral.
+
+    plateLastDigit:
+    primer bloque numérico de trucks.plate,
+    último dígito.
+    Sin bloque: no coincide y registra
+    INVALID_TRUCK_PLATE_FORMAT.
+
+    plate, en ambos lados:
+    quitar espacios exteriores + mayúsculas;
+    conserva separadores internos.
+    end note
+
+    alt No hay candidatas temporales/vehiculares
+      Evaluator --> API: candidates = []
+      API --> Frontend: 200\n{success: true, code: 200, data}
+    else Hay candidatas temporales/vehiculares
+      Evaluator -> Evaluator: asignar spatialEvaluation.status\n= NOT_EVALUATED a cada candidata
+      Evaluator --> API: candidatas con estado espacial pendiente
+      API --> Frontend: 200\n{success: true, code: 200, data}
+    end
+  end
+end
+
+note over Evaluator, DB
+Consulta sin escritura.
+No actualiza planning_trucks.is_included_in_routing,
+planning_trucks.exclusion_reason ni
+planning_trucks.excluded_by_restriction_id.
+La existencia de esa FK no prueba lógica backend.
+La evaluación espacial requiere otro contrato futuro;
+este endpoint no la invoca ni recibe resultados de ella.
+end note
+
+@enduml

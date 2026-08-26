@@ -20,8 +20,7 @@ import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { ZonasLayer } from '../zonas/ZonasLayer'
 import { useZonesStore } from '../zones-store'
-import { momentoDelPlan } from '../restricciones/momento'
-import { vigenteEn } from '../restricciones/vigencia'
+import { PlanningRestrictionsLayer } from '../restricciones/PlanningRestrictionsLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
@@ -412,7 +411,7 @@ export function PlannerMapa({
   const herramienta = usePlannerStore((s) => s.herramienta)
   const verMercados = usePlannerStore((s) => s.verMercados)
   const verZonas = usePlannerStore((s) => s.verZonas)
-  const verZonasRestringidas = usePlannerStore((s) => s.verZonasRestringidas)
+  const verRestricciones = usePlannerStore((s) => s.verRestricciones)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const optimizado = usePlannerStore((s) => s.optimizado)
@@ -471,66 +470,20 @@ export function PlannerMapa({
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const cityIds = useCityIdsDelMapa(paradas, 'santacruz')
 
-  /**
-   * Zonas de reparto de las ciudades del plan.
-   *
-   * Salen del MISMO `zones-store` que la pantalla de Zonas y no de una copia: son dato maestro, se
-   * dibujan una vez y las reusan todos los planes. Así, una zona que se acaba de redibujar allá ya se
-   * ve acá sin recargar nada.
-   *
-   * Se filtran por ciudad y por vigencia: una zona dada de baja sigue nombrada en planes viejos, pero
-   * dibujarla hoy diría que el territorio está cubierto cuando no lo está.
-   *
-   * UN INTERRUPTOR POR TIPO, y no un filtro fijo. Las restringidas viven en el mismo store y significan
-   * lo contrario —no son territorio cubierto, son territorio recortado—, así que mezclarlas bajo la
-   * misma casilla haría que prender "zonas" trajera dos capas con lecturas opuestas y que apagarla
-   * escondiera una restricción para poder dejar de ver un particionamiento. Son preguntas distintas:
-   * "¿de quién es este barrio?" se prende cuando hace falta, "¿acá se puede?" viene prendida sola. Lo
-   * que las mantiene juntas en un mismo array es que `ZonasLayer` ya sabe pintar cada tipo como
-   * corresponde —roja y punteada la restringida, azul la de reparto—, así que la separación es de
-   * VISIBILIDAD y no de capa.
-   *
-   * Y LAS RESTRINGIDAS PASAN ADEMÁS POR EL FILTRO DEL TIEMPO, que es para lo que existe
-   * `restricciones/vigencia.ts`. Una obra que empieza la semana que viene no le recorta nada al plan
-   * de mañana. Se evalúa contra `momentoDelPlan()` —la fecha OPERATIVA del plan, o sea mañana— y no
-   * contra hoy: planificar es una actividad de víspera y evaluar contra hoy acierta un día de cada
-   * siete (ver `restricciones/momento.ts`).
-   *
-   * LA QUE NO RIGE NO SE DIBUJA, Y NO SE ATENÚA. Fue la decisión discutida acá y va a contramano del
-   * reflejo habitual, que sería pintarla al 30% "por las dudas". Este mapa contesta UNA pregunta —qué
-   * le recorta a ESTE plan— y ya tiene encima rutas, pines de entrega, mercados y zonas de reparto. Una
-   * franja roja pálida que no aplica no es información de menos riesgo: es un objeto más que hay que
-   * mirar, entender y descartar en cada barrido, y el que la ve en el borde del ojo no va a leer la
-   * opacidad, va a leer "acá no se puede". Peor todavía, entrena a dudar de las que SÍ rigen. Para
-   * "¿qué restricciones existen?" está la pantalla de Zonas, que las muestra todas con su vigencia
-   * escrita al lado; acá solo entran las que cambian el plan que se está armando.
-   *
-   * El filtro NO se le aplica a las de reparto aunque el campo exista en las dos: una zona de reparto
-   * es un particionamiento del territorio y no una regla con horario (ver `zones-store`). Su `vigencia`
-   * es `[]` siempre, así que `vigenteEn` devolvería `true` igual; el `if` explícito está para que la
-   * regla se lea, y para que el día que alguien cargue una vigencia en una zona de reparto por error
-   * eso no le haga desaparecer territorio al mapa.
-   */
+  /** Zonas logísticas de las ciudades del plan. Las restricciones ya no comparten este agregado: se
+   * dibujan en `PlanningRestrictionsLayer`, con store, vigencia y geometrías propios. */
   const zonasTodas = useZonesStore((s) => s.zonas)
   const zonas = useMemo(() => {
-    // Con los dos apagados se corta antes de recorrer nada: es el atajo del caso más común de todos,
-    // no una condición redundante con el filtro de abajo.
-    if (!verZonas && !verZonasRestringidas) return []
+    if (!verZonas) return []
     const ciudades = new Set(cityIds)
-    // Un solo momento para todo el recorrido: son todas la misma pregunta sobre el mismo plan, y
-    // recalcularlo por zona abriría la puerta a que dos se evalúen contra fechas distintas si el
-    // filtro corre justo al cruzar la medianoche.
-    const momento = momentoDelPlan()
     return zonasTodas.filter(
       (z) =>
-        (z.tipo === 'restringida' ? verZonasRestringidas : verZonas) &&
-        (z.tipo !== 'restringida' || vigenteEn(z.vigencia, momento)) &&
         z.isActive &&
         !z.deletedAt &&
         z.polygonGeoJson &&
         ciudades.has(z.cityId),
     )
-  }, [cityIds, verZonas, verZonasRestringidas, zonasTodas])
+  }, [cityIds, verZonas, zonasTodas])
   const { mercados, cargando: cargandoMercados } = useMercadosMapa(cityIds, verMercados)
 
   const colorPorRuta = useMemo(() => new Map(rutas.map((r) => [r.id, r.color])), [rutas])
@@ -727,6 +680,9 @@ export function PlannerMapa({
           onSeleccionar={setZonaSelId}
         />
       )}
+
+      {/* Advertencia visual solamente: no participa del optimizador ni afirma que el trazado la evite. */}
+      {verRestricciones && <PlanningRestrictionsLayer />}
 
       {/* Mercados de fondo: su pane propio (z 350) los deja debajo de trazos y pines, así que prender
           la capa no le quita legibilidad a nada de lo que ya estaba. No responden al click mientras hay

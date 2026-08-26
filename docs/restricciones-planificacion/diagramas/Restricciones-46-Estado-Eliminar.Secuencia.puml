@@ -1,0 +1,88 @@
+@startuml
+title 46.5 y 46.6 - Estado y eliminación de restricción (ejemplo: zona restringida)
+
+autonumber
+hide footbox
+
+actor "Frontend" as Frontend
+boundary "API PROPUESTA\nPATCH status / DELETE restriction" as API
+control "Lógica de aplicación propuesta\nNO IMPLEMENTADA" as App
+database "PostgreSQL\n(db_script.sql)" as DB
+
+note over Frontend, DB
+Contrato propuesto. No existe backend implementado.
+La DB no declara ON DELETE CASCADE para las tablas hijas.
+Las búsquedas por ID son genéricas y no filtran restriction_type.
+end note
+
+alt Activar o desactivar 46.5
+  Frontend -> API: PATCH /planning/restrictions/{restrictionId}/status\n{isActive}
+  API -> App: validar path, JSON y booleano
+
+  alt Solicitud mal formada
+    App --> API: BAD_REQUEST o VALIDATION_ERROR
+    API --> Frontend: 400 o 422\n{success: false, code, error}
+  else Solicitud válida
+    App -> DB: BEGIN
+    App -> DB: SELECT id FROM planning_restrictions\nWHERE id = :restrictionId AND deleted_at IS NULL\nFOR UPDATE\n(sin filtro por restriction_type)
+    DB --> App: fila o vacío
+
+    alt No encontrada
+      App -> DB: ROLLBACK
+      App --> API: RESTRICTION_NOT_FOUND
+      API --> Frontend: 404\n{success: false, code: 404, error}
+    else Encontrada
+      App -> DB: UPDATE planning_restrictions\nSET is_active = :isActive, updated_by, updated_at\nWHERE id = :restrictionId
+      alt Falla la actualización
+        DB --> App: error de persistencia
+        App -> DB: ROLLBACK
+        App --> API: INTERNAL_ERROR
+        API --> Frontend: 500\n{success: false, code: 500, error: {type: INTERNAL_ERROR}}
+      else Actualización exitosa
+        App -> DB: COMMIT
+        App --> API: {id, isActive, updatedBy, updatedAt}
+        API --> Frontend: 200\n{success: true, code: 200, data}
+      end
+    end
+  end
+else Eliminación lógica 46.6
+  Frontend -> API: DELETE /planning/restrictions/{restrictionId}
+  API -> App: validar restrictionId BIGINT positivo
+
+  alt Path no válido
+    App --> API: BAD_REQUEST
+    API --> Frontend: 400\n{success: false, code: 400, error}
+  else Path válido
+    App -> DB: BEGIN
+    App -> DB: SELECT id FROM planning_restrictions\nWHERE id = :restrictionId AND deleted_at IS NULL\nFOR UPDATE\n(sin filtro por restriction_type)
+    DB --> App: fila o vacío
+
+    alt No encontrada o ya eliminada
+      App -> DB: ROLLBACK
+      App --> API: RESTRICTION_NOT_FOUND
+      API --> Frontend: 404\n{success: false, code: 404, error}
+    else Encontrada
+      App -> DB: UPDATE planning_restriction_schedules\nSET deleted_at = :now, updated_by, updated_at\nWHERE planning_restriction_id = :restrictionId\nAND deleted_at IS NULL
+      App -> DB: UPDATE planning_restriction_vehicle_rules\nSET deleted_at = :now, updated_by, updated_at\nWHERE planning_restriction_id = :restrictionId\nAND deleted_at IS NULL
+      App -> DB: UPDATE planning_restrictions\nSET is_active = false, deleted_at = :now,\nupdated_by, updated_at\nWHERE id = :restrictionId
+
+      alt Falla cualquier actualización
+        DB --> App: error de persistencia
+        App -> DB: ROLLBACK
+        App --> API: INTERNAL_ERROR
+        API --> Frontend: 500\n{success: false, code: 500, error: {type: INTERNAL_ERROR}}
+      else Todas las actualizaciones son exitosas
+        App -> DB: COMMIT
+        App --> API: {id, isActive: false, deletedAt, auditoría}
+        API --> Frontend: 200\n{success: true, code: 200, data}
+      end
+    end
+  end
+end
+
+note over App, DB
+La eliminación de hijos es una política de aplicación propuesta,
+no una cascada garantizada por la base de datos.
+end note
+
+@enduml

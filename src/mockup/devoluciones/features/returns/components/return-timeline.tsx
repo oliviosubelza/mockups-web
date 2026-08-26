@@ -1,4 +1,4 @@
-import type { Return, WorkflowAction } from "../../../types";
+import type { Return, WorkflowAction, WorkflowInstance } from "../../../types";
 import { WorkflowTimeline } from "../../../components/common/workflow-timeline";
 import { lineMinUnits } from "../../../lib/order-math";
 import { cn } from "../../../lib/utils";
@@ -19,11 +19,25 @@ import { cn } from "../../../lib/utils";
 export function ReturnTimeline({ ret }: { ret: Return }) {
   if (!ret.workflow) return null;
 
-  const renderActionDetail = (action: WorkflowAction) => {
+  /**
+   * What `lines` looked like at the instance an action belongs to.
+   *
+   * `ret.lines` is only correct for the *live* instance — a correction resets
+   * it before the next round starts. Every retired instance has to read its
+   * own frozen copy from `pastLineSnapshots`, or its half of the histórico
+   * would show whatever the current round happens to hold instead of what was
+   * actually decided back then.
+   */
+  const linesOf = (instance: WorkflowInstance) => {
+    if (instance.id === ret.workflow?.id) return ret.lines;
+    return ret.pastLineSnapshots.find((s) => s.workflowId === instance.id)?.lines ?? [];
+  };
+
+  const renderActionDetail = (action: WorkflowAction, instance: WorkflowInstance) => {
     const movedAmount = action.amountBefore !== null && action.amountAfter !== null;
     if (!movedAmount) return null;
 
-    const decided = ret.lines.filter((line) => line.itemStatus !== "PENDING");
+    const decided = linesOf(instance).filter((line) => line.itemStatus !== "PENDING");
     if (decided.length === 0) return null;
 
     /**

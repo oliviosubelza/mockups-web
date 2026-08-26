@@ -14,8 +14,8 @@ para las dos.
 3. **Entre filas, O.** Alcanza con que una fila coincida.
 
 Cada campo NULL **no estrecha**: sin día es todos los días, sin horas son las 24 h, sin fechas es para
-siempre. Así una fila toda en NULL equivale a no tener filas, y no hay dos formas de decir lo mismo con
-resultados distintos.
+siempre. Una fila toda en NULL sería semánticamente equivalente a no tener filas, por lo que el mock y
+el contrato la rechazan y conservan el arreglo vacío como representación canónica.
 
 ## 3.2 Contra qué momento se evalúa
 
@@ -38,7 +38,7 @@ restricción justo cuando todavía se puede evitar.
 
 ## 3.3 Dos trampas que fallan en silencio
 
-Las dos están resueltas en el mockup (`src/mockup/restricciones/vigencia.ts`) y las dos hay que
+Las dos están resueltas en el mockup (`src/mockup/restricciones/domain.ts`) y las dos hay que
 resolverlas también en el backend.
 
 ### Zona horaria

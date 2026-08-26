@@ -42,25 +42,14 @@
 // y `guardar` la EXIGE. Solo con lo primero no alcanza —el imantado se puede apagar, o suspender con
 // ALT—, y solo con lo último la corrección llegaría cuando ya no te acordás qué vértice movió qué.
 //
-// …PERO SOLO ENTRE ZONAS DE REPARTO, y este es el eje del que cuelga casi todo lo que sigue. La misma
-// pantalla dibuja dos cosas distintas (`TipoZona` en `zones-store`): territorio que alguien atiende y
-// franjas donde no se puede circular. La regla de arriba existe porque dos repartidores no pueden
-// pelearse un cliente; una restricción no atiende a nadie, así que no tiene con quién pelearse y se
-// apila libremente sobre las de reparto y sobre otras restringidas. Un centro histórico cerrado ESTÁ
-// adentro de la zona de reparto que lo contiene: ese solape es el dato, no un error.
-//
-// De ahí que el tipo en curso apague las tres patas de la regla a la vez —el imantado, el panel de
-// validación y la parte de `motivoBloqueo` que mira vecinos— en vez de solo la última. Dejar el
-// imantado prendido corriéndole el vértice 1,15 m a un borde que se quiere pisar, o el panel midiendo
-// una holgura que a nadie le importa, sería peor que bloquear el guardado: estaría empujando a dibujar
-// mal. Lo que NO se afloja es la validez del propio contorno (mínimo de vértices, auto-cruce): eso no
-// habla de los vecinos, habla de si el polígono es un polígono.
+// Este workspace administra únicamente zonas logísticas. Las restricciones de planificación tienen
+// rutas, agregado, editor y capa propios; por eso todos los polígonos de acá comparten las mismas reglas
+// de holgura y auditoría.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
-  CalendarClock,
   ChevronLeft,
   Crosshair,
   MousePointerClick,
@@ -70,11 +59,9 @@ import {
   Save,
   ShieldCheck,
 } from 'lucide-react'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog,
@@ -103,15 +90,11 @@ import {
 import { areaKm2, formatearArea, perimetroM } from '../map/geo/medidas'
 import type { LatLngTuple } from '../map/geo/polyline'
 import { CIUDAD_IDS, CIUDAD_META, cityIdDe, ciudadDeCityId, type CiudadId } from '../mock-data'
-import { describirVigencia, type VentanaVigencia } from '../restricciones/vigencia'
-import { VigenciaEditor } from '../restricciones/VigenciaEditor'
 import {
   CIUDAD_CENTRO,
   latLngAPoligono,
   poligonoALatLng,
-  TIPO_ZONA_META,
   useZonesStore,
-  type TipoZona,
   type Zona,
 } from '../zones-store'
 import { ZonasCapasMapa } from './ZonasCapasMapa'
@@ -124,11 +107,6 @@ import { useHistorial } from './historial'
 import { useZonasMapaStore } from './zonas-mapa-store'
 
 const COLOR_ZONA = '#2563eb'
-/** El trazo en curso de una restringida va del mismo rojo con el que va a quedar dibujada. No es
- *  decoración: es la única señal de que estás dibujando el otro tipo de zona una vez que el mouse se fue
- *  al mapa y el `<Select>` de arriba quedó a 400 px de donde estás mirando. Con el contorno siempre azul
- *  la restringida recién se delataba al guardar. */
-const COLOR_ZONA_RESTRINGIDA = '#dc2626'
 const INITIAL_ZOOM = 12
 /** Ancho del panel de la lista. En px porque la cámara lo necesita como padding. */
 const LISTA_PX = 320
@@ -249,18 +227,6 @@ export function ZonasWorkspaceView() {
   // --- estado del formulario de la zona en curso ---
   const [nombre, setNombre] = useState('')
   const [ciudad, setCiudad] = useState<CiudadId>('santacruz')
-  /** Tipo de la zona en curso. Solo tiene sentido editando; en `explorar` es un valor dormido que nadie
-   *  lee (lo que se pinta ahí sale del `tipo` de cada zona guardada, no de este estado). */
-  const [tipo, setTipo] = useState<TipoZona>('reparto')
-  /**
-   * Vigencia de la zona en curso. Vacío = permanente, que es el default y el caso correcto.
-   *
-   * Se mantiene aunque el tipo sea `reparto` en vez de vaciarse al cambiar de tipo: el `<Select>` de
-   * tipo se puede tocar dos veces sin querer mientras se dibuja, y perder tres franjas cargadas por ese
-   * viaje de ida y vuelta sería un castigo por explorar la pantalla. Lo que decide qué se guarda es el
-   * `restringida` del momento de guardar, no el estado del campo.
-   */
-  const [vigencia, setVigencia] = useState<VentanaVigencia[]>([])
   const [snap, setSnap] = useState(true)
   const historial = useHistorial<LatLngTuple[]>([])
   const puntos = historial.presente
@@ -268,9 +234,6 @@ export function ZonasWorkspaceView() {
   const [trazando, setTrazando] = useState(rutaInicial.current.modo === 'dibujar')
 
   const editando = modo !== 'explorar'
-  /** El atajo que decide qué reglas corren. Se lee muchas veces, y `tipo === 'restringida'` repetido
-   *  ocho veces esconde que todas esas decisiones son LA MISMA. */
-  const restringida = editando && tipo === 'restringida'
   const vivas = useMemo(() => zonas.filter((z) => !z.deletedAt), [zonas])
   const seleccionada = useMemo(
     () => vivas.find((z) => z.id === seleccionadaId) ?? null,
@@ -283,8 +246,7 @@ export function ZonasWorkspaceView() {
     return vivas.filter(
       (z) =>
         (!texto || z.name.toLowerCase().includes(texto)) &&
-        (!filtros.estado || z.isActive === (filtros.estado === 'activa')) &&
-        (!filtros.tipo || z.tipo === filtros.tipo),
+        (!filtros.estado || z.isActive === (filtros.estado === 'activa')),
     )
   }, [vivas, filtros])
 
@@ -295,27 +257,11 @@ export function ZonasWorkspaceView() {
     return vivas.filter((z) => z.polygonGeoJson && z.isActive && z.id !== enEdicionId && z.cityId === cityIdDe(ciudad))
   }, [editando, visibles, vivas, enEdicionId, ciudad])
 
-  /**
-   * Los anillos contra los que se MIDE, una sola vez por cambio: los usan el imantado, la validación
-   * del contorno en curso y la auditoría, y reconvertir el GeoJSON en cada cuadro de un arrastre sería
-   * trabajo repetido al doble.
-   *
-   * No es lo mismo que `enMapa` —lo que se DIBUJA—, y separarlos es lo que hace que el tipo funcione:
-   *   · dibujando una restringida no hay vecinos, punto. La lista vacía apaga sola el imantado, deja la
-   *     evaluación sin conflictos posibles y vacía el panel; no hace falta un `if` por cada consumidor.
-   *   · dibujando una de reparto, las restringidas que estén encima quedan afuera. Están en el mapa
-   *     como contexto, pero medirle la holgura a la franja que uno viene a pisar produciría un
-   *     conflicto insalvable: la única forma de resolverlo sería mover el borde de la zona de reparto
-   *     para esquivar la restricción, que es exactamente lo contrario de lo que la restricción dice.
-   *   · en `explorar`, la auditoría hereda el mismo filtro y por eso no reporta como error los solapes
-   *     que las restringidas tienen por diseño.
-   */
-  const vecinos = useMemo(() => {
-    if (restringida) return []
-    return enMapa
-      .filter((z) => z.tipo === 'reparto')
-      .map((z) => ({ id: z.id, anillo: poligonoALatLng(z.polygonGeoJson) }))
-  }, [restringida, enMapa])
+  /** Anillos contra los que se miden holgura y solapamiento. */
+  const vecinos = useMemo(
+    () => enMapa.map((z) => ({ id: z.id, anillo: poligonoALatLng(z.polygonGeoJson) })),
+    [enMapa],
+  )
   const anillosSnap = useMemo(() => (editando ? vecinos.map((v) => v.anillo) : []), [editando, vecinos])
 
   /**
@@ -326,9 +272,6 @@ export function ZonasWorkspaceView() {
    * guardaría si apretaras Guardar ahora, y validar la otra (el trazo abierto, sin el lado que une el
    * último punto con el primero) daría por buenos contornos que al cerrarse pisan a la vecina.
    *
-   * Sigue corriendo para las restringidas aunque no tengan vecinos, y no es al pepe: con la lista vacía
-   * `evaluarContorno` no puede devolver conflictos, pero sí el `autoCruce`, que es lo único que se le
-   * exige a las dos por igual.
    */
   const evaluacion = useMemo(
     () => (editando ? evaluarContorno(puntos, puntos.length >= 3, vecinos) : SIN_CONFLICTOS),
@@ -383,12 +326,6 @@ export function ZonasWorkspaceView() {
     const pts = poligonoALatLng(zona.polygonGeoJson)
     setNombre(zona.name)
     setCiudad(ciudadDeCityId(zona.cityId) ?? 'santacruz')
-    // El tipo se TRAE de la zona y el selector queda deshabilitado (ver la barra de arriba): editar es
-    // corregirle el contorno o el nombre a algo que ya existe, no reclasificarlo. El store ignora
-    // `input.tipo` en `updateZona` de todos modos, así que dejarlo habilitado sería ofrecer un cambio
-    // que se descarta en silencio.
-    setTipo(zona.tipo)
-    setVigencia(zona.vigencia)
     historial.reiniciar(pts)
     setEnEdicionId(id)
     setSeleccionadaId(id)
@@ -399,18 +336,6 @@ export function ZonasWorkspaceView() {
 
   const abrirNueva = () => {
     setNombre('')
-    // Vuelve a `reparto` en cada zona nueva, aunque la anterior haya sido restringida. Arrastrar el
-    // último tipo elegido ahorraría un click al que dibuja tres restricciones seguidas, pero le
-    // regalaría una zona de tipo equivocado al que dibuja una y después vuelve a lo de siempre — y ese
-    // error no se puede deshacer editando (`updateZona` no muda el tipo): hay que borrar y rehacer.
-    // El default es el caso dominante: las restringidas son la excepción.
-    setTipo('reparto')
-    // La vigencia se resetea acá SÍ O SÍ, y es el olvido más caro de esta pantalla: el estado sobrevive
-    // a la zona anterior, así que sin esta línea la restricción que se acaba de cerrar le presta sus
-    // horarios a la siguiente. Y como el control solo aparece para las restringidas, el que dibuja una
-    // de reparto no vería nunca que quedaron ahí —cargados, invisibles y listos para viajar en el input
-    // el día que ese estado se lea sin mirar el tipo—.
-    setVigencia([])
     historial.reiniciar([])
     setEnEdicionId(null)
     setSeleccionadaId(null)
@@ -468,14 +393,6 @@ export function ZonasWorkspaceView() {
     if (puntos.length < 3) return 'Un polígono necesita al menos 3 vértices'
     if (evaluacion.autoCruce) return 'El contorno se cruza consigo mismo: sus propios bordes se tocan'
 
-    // ACÁ SE PARTE EN DOS. Todo lo de arriba pregunta si esto es un polígono; todo lo de abajo pregunta
-    // cómo se lleva con los vecinos, y una restringida no tiene esa conversación. El corte explícito
-    // sobra técnicamente —sin vecinos, `evaluacion.conflictos` ya viene vacío y las dos ramas de abajo
-    // devuelven `null` solas—, y está igual por dos razones: deja dicho que es una decisión y no una
-    // consecuencia, y aguanta que mañana `vecinos` deje de venir vacío para las restringidas (por
-    // ejemplo si se quisiera medir sin bloquear) sin que eso reviva un bloqueo que no corresponde.
-    if (restringida) return null
-
     const solapan = evaluacion.conflictos.filter((c) => c.tipo === 'solapa')
     if (solapan.length > 0) {
       return `Se pisa con ${solapan.map((c) => nombreDe(c.id)).join(', ')}`
@@ -487,23 +404,14 @@ export function ZonasWorkspaceView() {
     }
     return null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, puntos, evaluacion, restringida, vivas])
+  }, [nombre, puntos, evaluacion, vivas])
 
   const guardar = () => {
     if (motivoBloqueo) return toast.error(motivoBloqueo)
     const polygonGeoJson = latLngAPoligono(puntos)
     if (!polygonGeoJson) return
-    // El `tipo` viaja siempre en el input aunque `updateZona` lo descarte: el store es el que manda con
-    // esa regla, y armar dos payloads distintos según el modo obligaría a mantener dos formas de lo
-    // mismo para expresar algo que ya está dicho una vez y en el lugar correcto.
-    // La vigencia viaja vacía si la zona es de reparto, aunque el estado local tenga franjas de una
-    // restringida que se estaba dibujando antes: el campo existe en las dos pero solo significa algo en
-    // las restringidas (ver `zones-store`), y guardar un horario en un particionamiento del territorio
-    // sería dejar un dato que nadie va a mirar hasta el día que alguien lo mire y lo crea.
     const input = {
       name: nombre.trim(),
-      tipo,
-      vigencia: restringida ? vigencia : [],
       cityId: cityIdDe(ciudad),
       polygonGeoJson,
     }
@@ -576,7 +484,7 @@ export function ZonasWorkspaceView() {
                 transitorio ? historial.reemplazar(pts) : historial.confirmar(pts)
               }
               onFinalizar={cerrarPoligono}
-              color={restringida ? COLOR_ZONA_RESTRINGIDA : COLOR_ZONA}
+              color={COLOR_ZONA}
               anillosSnap={anillosSnap}
               snapActivo={snap}
               holguraMetros={HOLGURA_SNAP_M}
@@ -603,10 +511,7 @@ export function ZonasWorkspaceView() {
             </Button>
             {listaAbierta && (
               <>
-                {/* Ya no dice "Zonas de reparto": el listado tiene los dos tipos y el título sería el
-                    nombre de uno de ellos puesto arriba de los dos. Cuál es cuál lo dice el badge de
-                    cada fila. */}
-                <span className="min-w-0 flex-1 truncate text-xs font-semibold">Zonas</span>
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold">Zonas logísticas</span>
                 <span className="shrink-0 pr-1 text-[11px] tabular-nums text-muted-foreground">
                   {visibles.length}
                 </span>
@@ -700,40 +605,6 @@ export function ZonasWorkspaceView() {
                 </SelectContent>
               </Select>
 
-              {/* El tipo va acá, en la franja de la IDENTIDAD de la zona (ciudad, nombre) y no en el
-                  dock de la derecha, aunque cambie cómo se dibuja: el dock son instrumentos que se
-                  tocan cincuenta veces por zona, y esto se elige una vez y no se toca nunca más.
-                  Además es lo primero que hay que decidir —cambia qué reglas corren—, así que va antes
-                  del nombre en el orden de lectura.
-
-                  DESHABILITADO EDITANDO, no escondido: si desapareciera, una zona abierta no diría de
-                  qué tipo es, y saber que estás tocando una restringida es justo lo que explica que el
-                  imantado esté apagado y que no haya panel de validación. Apagado con el motivo en el
-                  `title` es la misma solución que el botón de guardar. */}
-              <Select
-                value={tipo}
-                onValueChange={(v) => setTipo(v as TipoZona)}
-                disabled={modo === 'editar'}
-              >
-                <SelectTrigger
-                  className="h-7 w-32 shrink-0 text-xs"
-                  title={
-                    modo === 'editar'
-                      ? 'El tipo se elige al crear la zona y no se puede cambiar después'
-                      : 'Reparto: territorio que alguien atiende, no puede pisar a otra zona de reparto. Restringida: franja donde no se circula, se superpone libremente.'
-                  }
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(TIPO_ZONA_META) as TipoZona[]).map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {TIPO_ZONA_META[id].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               <Input
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
@@ -741,45 +612,6 @@ export function ZonasWorkspaceView() {
                 maxLength={50}
                 className="h-7 w-44 min-w-0 text-xs"
               />
-
-              {/* LA VIGENCIA, SOLO PARA LAS RESTRINGIDAS. No es que esté deshabilitada en las de
-                  reparto como el `<Select>` de tipo: no está. La diferencia es deliberada y las dos
-                  son correctas por lo mismo —qué información deja cada ausencia—. El tipo apagado
-                  sigue DICIENDO de qué tipo es la zona abierta, que es un dato que hace falta; una
-                  vigencia apagada en una zona de reparto no diría nada, salvo insinuar que algún día
-                  se va a poder poner horario a un territorio, que es justamente lo que no queremos.
-
-                  UN TRIGGER CON EL RESUMEN Y NO LOS CAMPOS EN LA BARRA: la vigencia son hasta cuatro
-                  campos por franja y la barra ya tiene ciudad, tipo, nombre y guardar en un renglón de
-                  44 px. Lo que se necesita ver siempre es UNA frase —"Permanente", "Lu a Vi ·
-                  07:00–19:00"—, que es la respuesta a la pregunta; el resto es para cuando se la va a
-                  cambiar. Además la carga de horarios es un momento distinto del de dibujar el
-                  contorno, y un popover deja el mapa entero libre en cuanto se cierra. */}
-              {restringida && (
-                <Popover>
-                  <PopoverTrigger
-                    className={cn(
-                      buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'h-7 max-w-52 shrink-0 gap-1.5 px-2 text-xs',
-                      // Resaltado solo cuando hay algo cargado: "Permanente" es el default y no merece
-                      // llamar la atención, pero una restricción con horario SÍ —es la diferencia entre
-                      // una zona que recorta siempre y una que recorta a veces, y en el mapa se ven
-                      // igual—.
-                      vigencia.length > 0 && 'border-primary/50 bg-primary/5',
-                    )}
-                    title="Cuándo rige esta restricción"
-                  >
-                    <CalendarClock size={13} className="shrink-0" />
-                    <span className="min-w-0 truncate">{describirVigencia(vigencia)}</span>
-                  </PopoverTrigger>
-                  {/* 380 px: es el ancho para el que está pensado `VigenciaEditor` —siete chips de día en
-                      un renglón y las horas y fechas de a dos—. El default del popover (288) parte los
-                      días en dos líneas. */}
-                  <PopoverContent align="start" className="w-[380px]">
-                    <VigenciaEditor ventanas={vigencia} onChange={setVigencia} />
-                  </PopoverContent>
-                </Popover>
-              )}
 
               <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
@@ -809,19 +641,10 @@ export function ZonasWorkspaceView() {
       {/* ── Derecha alta: con qué la dibujo ──────────────────────────────────────────────────── */}
       {editando && (
         <div className="pointer-events-none absolute right-3 top-16 z-10 flex">
-          <ZonasHerramientasDock
-            snap={snap}
-            onSnap={() => setSnap((v) => !v)}
-            // El imantado se apaga explícitamente para las restringidas, además de quedar sin anillos
-            // por `vecinos`. La condición redundante está para que el motivo se pueda NOMBRAR: con
-            // solo la lista vacía el botón diría "no hay zonas vecinas en esta ciudad", que es falso
-            // —las hay, y se están viendo de fondo— y manda a buscar un problema que no existe.
-            snapDisponible={!restringida && anillosSnap.length > 0}
-            motivoSinSnap={
-              restringida
-                ? 'Imantado: solo para zonas de reparto — las restringidas pueden pisarse'
-                : undefined
-            }
+            <ZonasHerramientasDock
+              snap={snap}
+              onSnap={() => setSnap((v) => !v)}
+              snapDisponible={anillosSnap.length > 0}
             puedeDeshacer={historial.puedeDeshacer}
             onDeshacer={historial.deshacer}
             puedeRehacer={historial.puedeRehacer}
@@ -841,12 +664,7 @@ export function ZonasWorkspaceView() {
 
       {/* ── Abajo a la derecha: está bien lo que hay ─────────────────────────────────────────── */}
       <div className="pointer-events-none absolute bottom-4 right-3 z-10 flex flex-col items-end gap-2">
-        {/* Sin panel para las restringidas. Con `vecinos` vacío el panel no mentiría —diría "sin
-            conflictos" y sería cierto—, pero un semáforo permanentemente en verde entrena a no mirarlo,
-            y cuando después se vuelve a una zona de reparto ese mismo panel es el único lugar donde se
-            lee a cuántos centímetros está el borde. Vale más que no esté que tenerlo diciendo que todo
-            está bien porque no hay nada que revisar. */}
-        {editando && !restringida ? (
+        {editando ? (
           <PanelValidacionContorno
             vertices={puntos.length}
             evaluacion={evaluacion}
@@ -854,18 +672,10 @@ export function ZonasWorkspaceView() {
             onIrAZona={volarAZona}
           />
         ) : (
-          // El `!editando` es nuevo y hace falta: antes esta rama solo se alcanzaba explorando, y ahora
-          // también cae acá el caso de estar dibujando una restringida. Sin el guardia aparecería el
-          // panel de auditoría —con cero pares, porque `auditoria` no se calcula editando— diciendo que
-          // todas las zonas están bien justo mientras estás dibujando una.
           !editando &&
           verAuditoria && (
             <PanelAuditoria
               pares={auditoria}
-              // `vecinos` y no `enMapa`: el contador dice cuántas zonas SE AUDITARON, y las
-              // restringidas están en el mapa pero fuera de la auditoría. Con `enMapa` el panel diría
-              // "7 zonas · todas separadas" habiendo mirado cinco, que es la clase de número que
-              // después nadie vuelve a cuestionar.
               total={vecinos.length}
               nombreDe={nombreDe}
               onIrAlPar={volarAlPar}

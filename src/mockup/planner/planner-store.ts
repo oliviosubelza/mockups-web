@@ -95,18 +95,8 @@ interface PlannerState {
    * yendo de la suya?").
    */
   verZonas: boolean
-  /**
-   * Zonas RESTRINGIDAS dibujadas sobre el mapa.
-   *
-   * ENCENDIDA POR DEFECTO, al revés que `verZonas`, y la asimetría es deliberada: una restricción
-   * escondida por defecto es peor que una visible de más. Las de reparto son un particionamiento del
-   * territorio que el planificador ya se sabe —prenderlas contesta una pregunta puntual y no cambia lo
-   * que puede hacer—, mientras que una zona restringida CAMBIA lo que se puede planificar, y
-   * descubrirla después de armar el reparto es tarde: hay que rehacer el trabajo. Además son pocas, así
-   * que el costo de tenerlas prendidas siempre es unos pocos polígonos y no el mapa tapado que
-   * justifica el default apagado de las de reparto.
-   */
-  verZonasRestringidas: boolean
+  /** Restricciones de planificación dibujadas como advertencia informativa, encendidas por defecto. */
+  verRestricciones: boolean
   verMercados: boolean
   /** Etiqueta permanente (cliente + ventana) bajo cada pin. Apagada: a 30 paradas se pisan entre sí. */
   verEtiquetas: boolean
@@ -193,7 +183,7 @@ interface PlannerState {
   setColorPor: (c: ColorPor) => void
   setRutaFoco: (id: string | null) => void
   setVerZonas: (v: boolean) => void
-  setVerZonasRestringidas: (v: boolean) => void
+  setVerRestricciones: (v: boolean) => void
   setVerMercados: (v: boolean) => void
   setVerEtiquetas: (v: boolean) => void
   setVerTrazos: (v: boolean) => void
@@ -259,7 +249,7 @@ const INICIAL = {
   colorPor: 'canal' as ColorPor,
   rutaFoco: null as string | null,
   verZonas: false,
-  verZonasRestringidas: true,
+  verRestricciones: true,
   verMercados: false,
   verEtiquetas: false,
   verTrazos: true,
@@ -309,7 +299,7 @@ export const usePlannerStore = create<PlannerState>((set) => ({
   setColorPor: (colorPor) => set({ colorPor }),
   setRutaFoco: (rutaFoco) => set({ rutaFoco }),
   setVerZonas: (verZonas) => set({ verZonas }),
-  setVerZonasRestringidas: (verZonasRestringidas) => set({ verZonasRestringidas }),
+  setVerRestricciones: (verRestricciones) => set({ verRestricciones }),
   setVerMercados: (verMercados) => set({ verMercados }),
   setVerEtiquetas: (verEtiquetas) => set({ verEtiquetas }),
   setVerTrazos: (verTrazos) => set({ verTrazos }),

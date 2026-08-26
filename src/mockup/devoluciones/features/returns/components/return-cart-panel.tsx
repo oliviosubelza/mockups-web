@@ -8,8 +8,10 @@ import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 import { bs } from "../../../lib/format";
+import { shrinkSources } from "../../../lib/return-workflow";
 import { ReturnLinesEditor } from "./return-lines-editor";
 import { ReturnLineDialog } from "./return-line-dialog";
+import { ReturnReopenEditor } from "./return-reopen-editor";
 
 interface ReturnCartPanelProps {
   lines: ReturnLine[];
@@ -22,6 +24,15 @@ interface ReturnCartPanelProps {
   clientId: string;
   /** The return being corrected — its own lines do not count as quantity spent. */
   excludeReturnId?: number;
+  /**
+   * `"full"` (the default) is the alta screen: add, remove, and every field the
+   * eligibility gate checks. `"reopen"` is what a rejected return gets back:
+   * no adding, no removing, only reducing a quantity — see `ReturnReopenEditor`
+   * for why that is a different component and not a flag on this one's table.
+   */
+  mode?: "full" | "reopen";
+  /** Required when `mode` is `"reopen"`: the ceiling each line's quantity cannot cross. */
+  originalLines?: ReturnLine[];
   confirming: boolean;
   /** Text of the confirm button — creating and correcting are not the same act. */
   confirmLabel: string;
@@ -50,12 +61,15 @@ export function ReturnCartPanel({
   onLinesChange,
   clientId,
   excludeReturnId,
+  mode = "full",
+  originalLines,
   confirming,
   confirmLabel,
   headerBlockedReason,
   onConfirm,
 }: ReturnCartPanelProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const reopening = mode === "reopen";
 
   // The client's invoice history: asked once here, so every check the dialog
   // runs against it is instant and local.
@@ -137,49 +151,71 @@ export function ReturnCartPanel({
           {lines.length} {lines.length === 1 ? "producto" : "productos"}
         </span>
 
-        {/* The one way in. A product is described and checked before it becomes a
-            row, so this is a button and not a picker: there is nothing to pick
-            until the dialog can tell the seller what the invoices allow. */}
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          {addBlockedReason && (
-            <p className="truncate text-xs text-muted-foreground">{addBlockedReason}</p>
-          )}
-          <Tooltip>
-            <TooltipTrigger render={<span tabIndex={addBlockedReason ? 0 : -1} className="shrink-0" />}>
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  className={cn(addBlockedReason && "pointer-events-none")}
-                  disabled={!!addBlockedReason}
-                  onClick={openAdd}
-                >
-                  <Plus className="h-4 w-4" /> Agregar producto
-                </Button>
-              </>
-            </TooltipTrigger>
+        {/* The one way in, and only in `"full"` mode. A product is described and
+            checked before it becomes a row, so this is a button and not a
+            picker: there is nothing to pick until the dialog can tell the
+            seller what the invoices allow. Reopening a rejected return adds
+            nothing — the set of products is fixed the moment the screen opens. */}
+        {!reopening && (
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             {addBlockedReason && (
-              <TooltipContent className="max-w-72">{addBlockedReason}</TooltipContent>
+              <p className="truncate text-xs text-muted-foreground">{addBlockedReason}</p>
             )}
-          </Tooltip>
-        </div>
+            <Tooltip>
+              <TooltipTrigger render={<span tabIndex={addBlockedReason ? 0 : -1} className="shrink-0" />}>
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className={cn(addBlockedReason && "pointer-events-none")}
+                    disabled={!!addBlockedReason}
+                    onClick={openAdd}
+                  >
+                    <Plus className="h-4 w-4" /> Agregar producto
+                  </Button>
+                </>
+              </TooltipTrigger>
+              {addBlockedReason && (
+                <TooltipContent className="max-w-72">{addBlockedReason}</TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+        )}
       </div>
 
       {/* ---- Líneas: the only thing that scrolls in this panel ----
            The scrollport is the table's own (`fillHeight`), so this wrapper only
            hands it a bounded flex column to grow into. */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <ReturnLinesEditor lines={lines} onRemove={removeLine} />
+        {reopening ? (
+          <ReturnReopenEditor
+            lines={lines}
+            originalLines={originalLines ?? lines}
+            onQtyChange={(productId, qtyUnit) =>
+              onLinesChange(
+                lines.map((line) =>
+                  line.productId === productId
+                    ? { ...line, qtyUnit, sources: shrinkSources(line.sources, qtyUnit) }
+                    : line,
+                ),
+              )
+            }
+          />
+        ) : (
+          <ReturnLinesEditor lines={lines} onRemove={removeLine} />
+        )}
       </div>
 
-      <ReturnLineDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        takenProductIds={lines.map((line) => line.productId)}
-        returnable={returnable}
-        loadingReturnable={loadingReturnable}
-        onSubmit={submitLine}
-      />
+      {!reopening && (
+        <ReturnLineDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          takenProductIds={lines.map((line) => line.productId)}
+          returnable={returnable}
+          loadingReturnable={loadingReturnable}
+          onSubmit={submitLine}
+        />
+      )}
 
       {/* ---- Totales y cierre ---- */}
       <div className="shrink-0 space-y-2 border-t bg-muted/30 px-2.5 py-2">

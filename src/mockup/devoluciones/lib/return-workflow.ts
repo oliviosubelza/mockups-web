@@ -55,6 +55,30 @@ export function sourcesBlockedReason(line: ReturnLine): string | null {
 export const sourcesBalanced = (line: ReturnLine): boolean => sourcesBlockedReason(line) === null;
 
 /**
+ * Shrink a line's sources to add up to a smaller claim, in proportion to what
+ * each already carried.
+ *
+ * Reducing `qtyUnit` alone would leave the sources claiming the old, larger
+ * quantity — exactly the mismatch `sourcesBlockedReason` exists to catch. This
+ * is the one place a reopen edit is allowed to touch `sources`, and only to
+ * shrink them: nothing here can move a unit from one invoice to another or
+ * invent a source that was not already on the line.
+ */
+export function shrinkSources(sources: ReturnItemSource[], newQty: number): ReturnItemSource[] {
+  const oldQty = sourcesMinUnits(sources);
+  if (sources.length <= 1 || oldQty <= 0) {
+    return [{ ...sources[0], minUnits: newQty }, ...sources.slice(1).map((s) => ({ ...s, minUnits: 0 }))];
+  }
+  let remaining = newQty;
+  return sources.map((source, index) => {
+    if (index === sources.length - 1) return { ...source, minUnits: Math.max(0, remaining) };
+    const share = Math.min(remaining, Math.round((source.minUnits / oldQty) * newQty));
+    remaining -= share;
+    return { ...source, minUnits: share };
+  });
+}
+
+/**
  * The origin a one-line summary shows.
  *
  * Most returns come off a single invoice and a single batch, and a table that
@@ -210,10 +234,18 @@ export const canDecide = (ret: Return, employeeCode: number): boolean =>
  */
 export function editBlockedReason(ret: Return): string | null {
   const status = statusOf(ret);
-  if (status === "APPROVED" || status === "PARTIALLY_APPROVED") {
-    return "La devolución ya fue aprobada.";
+  // Only a return a desk actually sent back is reopenable. `IN_APPROVAL` is
+  // being decided right now — editing under an approver's feet is not a
+  // correction, it is a race — and the rest are already settled one way or the
+  // other, which a correction cannot undo.
+  if (status !== "RETURNED" && status !== "REJECTED") {
+    if (status === "APPROVED" || status === "PARTIALLY_APPROVED") {
+      return "La devolución ya fue aprobada.";
+    }
+    if (status === "ANNULLED") return "La devolución fue anulada.";
+    if (status === "IN_APPROVAL") return "La devolución está siendo evaluada: no se puede editar mientras tanto.";
+    return "La devolución todavía no fue enviada a aprobación.";
   }
-  if (status === "ANNULLED") return "La devolución fue anulada.";
   if (ret.editCount >= MAX_RETURN_EDITS) {
     return "Esta devolución ya fue corregida una vez. Solo se permite una corrección.";
   }
@@ -297,3 +329,38 @@ export const clearItemDecisions = (lines: ReturnLine[]): ReturnLine[] =>
     decisionByName: null,
     decisionAt: null,
   }));
+
+// ---- Reopening a rejected return ----------------------------------------------
+
+/**
+ * Why a correction cannot be saved, or `null` when it can.
+ *
+ * A return only reaches this point already `RETURNED` or `REJECTED`
+ * (`editBlockedReason` above refuses every other status), and reopening one is
+ * narrower than filing a new claim: whoever is holding the goods can say less
+ * came back than was claimed, never that more did, and never that a product
+ * stopped coming back at all. Removing the reason a level rejected it, rather
+ * than admitting it, is not a correction — it is a new claim wearing the old
+ * one's approvals.
+ */
+export function reopenLinesBlockedReason(previous: ReturnLine[], next: ReturnLine[]): string | null {
+  if (next.length !== previous.length) {
+    return "No se pueden agregar ni quitar productos al reabrir: solo se puede reducir la cantidad.";
+  }
+  const byProduct = new Map(previous.map((line) => [line.productId, line]));
+  for (const line of next) {
+    const before = byProduct.get(line.productId);
+    if (!before) {
+      return "No se pueden agregar ni quitar productos al reabrir: solo se puede reducir la cantidad.";
+    }
+    const claimedBefore = lineMinUnits(before);
+    const claimedNow = lineMinUnits(line);
+    if (claimedNow <= 0) {
+      return `${line.productName}: la cantidad tiene que ser mayor a cero. Si ya no corresponde, hay que rechazarlo en la revisión, no borrarlo acá.`;
+    }
+    if (claimedNow > claimedBefore) {
+      return `${line.productName}: no se puede pedir más de lo que ya estaba (${claimedBefore}).`;
+    }
+  }
+  return null;
+}

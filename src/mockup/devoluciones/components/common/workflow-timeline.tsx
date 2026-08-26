@@ -196,7 +196,7 @@ function InstanceTrail({
   /** Only worth naming when there is more than one pass. */
   showRound: boolean;
   onlyDecisions: boolean;
-  renderActionDetail?: (action: WorkflowAction) => React.ReactNode;
+  renderActionDetail?: (action: WorkflowAction, instance: WorkflowInstance) => React.ReactNode;
 }) {
   const rounds = roundsOf(instance);
 
@@ -252,7 +252,7 @@ function InstanceTrail({
                   <ActionEvent
                     key={action.id}
                     action={action}
-                    detail={renderActionDetail?.(action)}
+                    detail={renderActionDetail?.(action, instance)}
                   />
                 ))}
                 {isFirstRound && <CreatedEvent instance={instance} />}
@@ -274,7 +274,7 @@ export function WorkflowTimeline({
   /** Approvals this one replaced, newest first. */
   pastInstances?: WorkflowInstance[];
   /** Extra rows inside an expanded event — the entity's own detail. */
-  renderActionDetail?: (action: WorkflowAction) => React.ReactNode;
+  renderActionDetail?: (action: WorkflowAction, instance: WorkflowInstance) => React.ReactNode;
 }) {
   const [onlyDecisions, setOnlyDecisions] = useState(false);
 

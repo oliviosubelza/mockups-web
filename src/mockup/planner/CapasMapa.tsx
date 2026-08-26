@@ -31,6 +31,10 @@ import {
 import { cn } from '@/lib/utils'
 import { IconoConFlecha, useMenuHover } from '../map/menu-mapa'
 import { CAPAS_BASE } from '../map/tiles'
+import { DISTRIBUIDORAS } from '../mock-data'
+import { restrictionMatchesMoment } from '../restricciones/domain'
+import { momentoDelPlan } from '../restricciones/momento'
+import { usePlanningRestrictionsStore } from '../restricciones/store'
 import type { RutaPlan } from './planner-model'
 import { usePlannerStore, type CapaBase, type ColorPor } from './planner-store'
 
@@ -50,8 +54,8 @@ export function CapasMapa({
   const setVerMercados = usePlannerStore((s) => s.setVerMercados)
   const verZonas = usePlannerStore((s) => s.verZonas)
   const setVerZonas = usePlannerStore((s) => s.setVerZonas)
-  const verZonasRestringidas = usePlannerStore((s) => s.verZonasRestringidas)
-  const setVerZonasRestringidas = usePlannerStore((s) => s.setVerZonasRestringidas)
+  const verRestricciones = usePlannerStore((s) => s.verRestricciones)
+  const setVerRestricciones = usePlannerStore((s) => s.setVerRestricciones)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const setVerEtiquetas = usePlannerStore((s) => s.setVerEtiquetas)
   const verTrazos = usePlannerStore((s) => s.verTrazos)
@@ -65,8 +69,17 @@ export function CapasMapa({
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const toggleRutaVisible = usePlannerStore((s) => s.toggleRutaVisible)
   const optimizado = usePlannerStore((s) => s.optimizado)
+  const restrictions = usePlanningRestrictionsStore((state) => state.restrictions)
 
   const ocultas = rutasOcultas.length
+  const moment = momentoDelPlan()
+  const applicableRestrictions = restrictions.filter(
+    (restriction) =>
+      restriction.distributorId === DISTRIBUIDORAS[0]?.id &&
+      restriction.isActive &&
+      restriction.deletedAt === null &&
+      restrictionMatchesMoment(restriction, { date: moment.fecha, time: moment.hora }),
+  ).length
 
   // Apertura por hover + flecha: el patrón compartido de las barras de mapa. Ver `map/menu-mapa`.
   const menu = useMenuHover()
@@ -106,13 +119,13 @@ export function CapasMapa({
             CADA CAPA ENTRA POR EL LADO QUE ESCONDE ALGO, y ese lado depende de su default: las que
             arrancan apagadas (`verMercados`, `verEtiquetas`, `verZonas`) avisan cuando están PRENDIDAS
             —el mapa muestra de más y conviene saber de dónde salió ese dibujo—, y las que arrancan
-            prendidas (`verTrazos`, `verZonasRestringidas`) avisan cuando están APAGADAS. Por eso la
+            prendidas (`verTrazos`, `verRestricciones`) avisan cuando están APAGADAS. Por eso la
             condición mezcla negadas y sin negar: no es una inconsistencia, es la misma regla leída
-            desde el default de cada una. Y `verZonasRestringidas` es el caso donde más importa: apagar
+            desde el default de cada una. Y `verRestricciones` es el caso donde más importa: apagar
             las restricciones deja un mapa en el que TODO parece planificable. */}
         {(ocultas > 0 ||
           !verTrazos ||
-          !verZonasRestringidas ||
+          !verRestricciones ||
           verMercados ||
           verEtiquetas ||
           verZonas) && (
@@ -162,17 +175,16 @@ export function CapasMapa({
           >
             Zonas de reparto
           </DropdownMenuCheckboxItem>
-          {/* Pegada a las de reparto porque salen del mismo dato maestro y se dibujan en la misma capa,
-              pero con interruptor PROPIO y encendido por defecto: no son una variante de las otras sino
-              lo contrario —territorio recortado, no territorio cubierto—, y esconderlas por omisión
-              dejaría planificar sobre una restricción que nadie vio. Ver `verZonasRestringidas` en el
-              store. */}
+          {/* Agregado y capa independientes de las zonas. Se encienden por defecto para que el mapa no
+              oculte advertencias existentes, pero siguen siendo información: no modifican el ruteo. */}
           <DropdownMenuCheckboxItem
-            checked={verZonasRestringidas}
-            onCheckedChange={setVerZonasRestringidas}
+            checked={verRestricciones}
+            onCheckedChange={setVerRestricciones}
             className="text-xs"
+            title="Advertencias informativas: no alteran ni validan automáticamente las rutas"
           >
-            Zonas restringidas
+            Restricciones de planificación
+            <span className="ml-auto pl-2 tabular-nums text-muted-foreground">{applicableRestrictions}</span>
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={verMercados}
@@ -227,11 +239,9 @@ export function CapasMapa({
           <DropdownMenuCheckboxItem
             checked={zonasActivas}
             onCheckedChange={setZonasActivas}
-            // Sin NINGUNA capa de zonas prendida no hay zona que traer al frente. Son las dos y no
-            // solo las de reparto: desde que las restringidas arrancan encendidas, el caso normal al
-            // abrir el mapa es tener zonas a la vista con `verZonas` apagado, y mirar sólo el
-            // `verZonas` dejaba el ítem gris con polígonos dibujados en pantalla.
-            disabled={!verZonas && !verZonasRestringidas}
+            // Solo afecta el maestro logístico. La capa independiente de restricciones conserva su
+            // jerarquía visual y no responde a este énfasis.
+            disabled={!verZonas}
             className="text-xs"
           >
             Zonas en primer plano

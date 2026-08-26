@@ -106,8 +106,12 @@ export function ReturnFormPage() {
   const editingId = id ? Number(id) : null;
   const editing = editingId !== null && Number.isFinite(editingId);
   const { data: existing, isLoading: loadingExisting } = useReturn(editing ? editingId : undefined);
+  /** A reopened return only lets quantities go down — see `ReturnReopenEditor`. */
+  const reopening = editing && (existing?.status === "RETURNED" || existing?.status === "REJECTED");
 
   const [lines, setLines] = useState<ReturnLine[]>([]);
+  /** What the lines looked like when this screen opened — the ceiling a reopen edit cannot cross. */
+  const [originalLines, setOriginalLines] = useState<ReturnLine[]>([]);
   /**
    * Whether the paperwork is on screen. Collapsing rather than a draggable
    * divider: the form has one natural "answered" state, so the useful gesture
@@ -164,7 +168,9 @@ export function ReturnFormPage() {
       replacementDate: existing.replacementDate,
       justification: existing.justification,
     });
-    setLines(existing.lines.map((line) => ({ ...line, photos: [...line.photos] })));
+    const loaded = existing.lines.map((line) => ({ ...line, photos: [...line.photos] }));
+    setLines(loaded);
+    setOriginalLines(loaded.map((line) => ({ ...line })));
     setPrefilled(true);
   }, [editing, existing, prefilled, clients, reset]);
 
@@ -315,8 +321,11 @@ export function ReturnFormPage() {
           <div className="flex shrink-0 items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
             <p>
-              <span className="font-semibold">Esta es la única corrección permitida.</span> Al
-              guardar, la devolución vuelve a quedar pendiente del supervisor y las aprobaciones
+              <span className="font-semibold">Esta es la única corrección permitida.</span>{" "}
+              {reopening
+                ? "Solo se puede reducir la cantidad de cada producto — no se pueden agregar ni quitar productos."
+                : null}{" "}
+              Al guardar, la devolución vuelve a quedar pendiente del supervisor y las aprobaciones
               anteriores dejan de contar — quedan asentadas en el historial.
             </p>
           </div>
@@ -506,6 +515,8 @@ export function ReturnFormPage() {
             // While correcting, this return's own lines must not count against
             // the quantity it is allowed to claim.
             excludeReturnId={editing && editingId !== null ? editingId : undefined}
+            mode={reopening ? "reopen" : "full"}
+            originalLines={originalLines}
             confirming={createReturn.isPending || updateReturn.isPending}
             confirmLabel={editing ? "Guardar y reenviar" : "Enviar a aprobación"}
             headerBlockedReason={headerBlockedReason}

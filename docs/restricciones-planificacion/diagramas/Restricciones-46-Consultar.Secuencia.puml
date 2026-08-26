@@ -1,0 +1,65 @@
+@startuml
+title 46.1 y 46.2 - Listado y detalle de restricciones (ejemplo: zona restringida)
+
+autonumber
+hide footbox
+
+actor "Frontend" as Frontend
+boundary "API PROPUESTA\nGET /planning/restrictions" as API
+control "Consulta propuesta\nNO IMPLEMENTADA" as Query
+database "PostgreSQL\n(db_script.sql)" as DB
+
+note over Frontend, DB
+Contrato propuesto. No existe backend en este repositorio.
+El listado ejemplifica restrictionType = RESTRICTED_AREA.
+El detalle por ID es genérico y no filtra restriction_type.
+end note
+
+alt Listado 46.1
+  Frontend -> API: GET /planning/restrictions?\ndistributorId=17&restrictionType=RESTRICTED_AREA&...
+  API -> Query: validar query y paginación
+
+  alt Query no interpretable
+    Query --> API: BAD_REQUEST
+    API --> Frontend: 400\n{success: false, code: 400, error}
+  else Valor fuera del contrato
+    Query --> API: VALIDATION_ERROR
+    API --> Frontend: 422\n{success: false, code: 422, error}
+  else Query válida
+    Query -> DB: SELECT cabeceras FROM planning_restrictions\nWHERE distributor_id = :distributorId\nAND restriction_type = 'RESTRICTED_AREA'\nAND deleted_at IS NULL\n[effect, severity, is_active, search]\nORDER BY name, id LIMIT/OFFSET
+    Query -> DB: COUNT(*) con los mismos filtros
+    DB --> Query: filas + total
+    Query --> API: proyección paginada
+    API --> Frontend: 200\n{success: true, code: 200, data: {items, ...}}
+  end
+else Detalle 46.2
+  Frontend -> API: GET /planning/restrictions/{restrictionId}
+  API -> Query: validar restrictionId BIGINT positivo
+
+  alt Path no válido
+    Query --> API: BAD_REQUEST
+    API --> Frontend: 400\n{success: false, code: 400, error}
+  else Path válido
+    Query -> DB: SELECT * FROM planning_restrictions\nWHERE id = :restrictionId\nAND deleted_at IS NULL\n(sin filtro por restriction_type)
+    DB --> Query: cabecera o vacío
+
+    alt Cabecera no encontrada
+      Query --> API: RESTRICTION_NOT_FOUND
+      API --> Frontend: 404\n{success: false, code: 404, error}
+    else Cabecera encontrada
+      Query -> DB: SELECT * FROM planning_restriction_schedules\nWHERE planning_restriction_id = :restrictionId\nAND deleted_at IS NULL ORDER BY id
+      DB --> Query: schedules[]
+      Query -> DB: SELECT * FROM planning_restriction_vehicle_rules\nWHERE planning_restriction_id = :restrictionId\nAND deleted_at IS NULL ORDER BY id
+      DB --> Query: vehicleRules[]
+      Query --> API: recurso canónico completo
+      API --> Frontend: 200\n{success: true, code: 200, data}
+    end
+  end
+end
+
+note over Query, DB
+No se consulta zones: sus filas son zonas logísticas de reparto.
+El listado no inventa cityId ni scheduleSummary.
+end note
+
+@enduml

@@ -12,6 +12,10 @@ format.json
 diagrams
 .env
 .pdf
-analisis
+./analisis
 !db_script.sql
 cierre
+
+# Documentación contractual de restricciones de planificación
+!docs/restricciones-planificacion/analisis/
+!docs/restricciones-planificacion/diagramas/*.puml
