@@ -29,6 +29,7 @@ export function ZonasLayer({
   interactivo = true,
   aspectoEditor = false,
   mostrarNombres,
+  colorDe,
 }: {
   zonas: Zona[]
   papel: PapelZonas
@@ -46,6 +47,21 @@ export function ZonasLayer({
    * dibujado—, y ninguna de las dos es una opción que el usuario debería tener que descubrir.
    */
   mostrarNombres?: boolean
+  /**
+   * Color propio de cada zona, por id. Sin esto todas van del azul de zonas logísticas.
+   *
+   * Existe para el mapa de ZONAS DE DISTRIBUCIÓN, donde el territorio tiene DUEÑO: ahí el color no es
+   * decoración, es la respuesta a «¿de quién es este pedazo?». Con un solo azul, dos contornos
+   * pegados de distribuidoras distintas se leen como uno solo con una línea en el medio.
+   *
+   * En zonas logísticas no se pasa y el azul se queda: allá las zonas no tienen dueño y darles un
+   * color por zona sería inventar una dimensión que no existe.
+   *
+   * NO pisa al conflicto ni al estado inactivo: esos dos ya usan el color para decir otra cosa —rojo
+   * y ámbar para el solape, gris para lo que está fuera de circulación— y son más importantes que la
+   * identidad del dueño.
+   */
+  colorDe?: (zonaId: number) => string | undefined
 }) {
   const [hoverId, setHoverId] = useState<number | null>(null)
   const verNombresElegido = useZonasMapaStore((state) => state.verNombres)
@@ -82,7 +98,7 @@ export function ZonasLayer({
             ? GRIS
             : contexto
               ? GRIS
-              : AZUL
+              : (colorDe?.(zona.id) ?? AZUL)
         const baseOpacity = conflicto ? 0.22 : contexto ? 0.1 : seleccionada ? 0.28 : hover ? 0.2 : 0.12
         return (
           <Polygon
@@ -125,7 +141,7 @@ export function ZonasLayer({
                 ? colorConflicto(conflicto)
                 : !zona.isActive || contexto
                   ? GRIS_OSCURO
-                  : AZUL,
+                  : (colorDe?.(zona.id) ?? AZUL),
               weight: conflicto ? 3 : seleccionada ? 3.5 : hover ? 3 : contexto ? 1.5 : 2,
               opacity: (conflicto ? 1 : contexto ? 0.75 : 1) * (atenuada ? FACTOR_ATENUADA : 1),
               dashArray: conflicto ? undefined : contexto || !zona.isActive ? '5 4' : undefined,

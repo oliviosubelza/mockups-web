@@ -84,7 +84,33 @@ export type OrderOverrides = Record<string, boolean>
 
 interface DispatchPlanState {
   selectedTruckIds: string[]
-  activeDistribuidoraId: number | null
+  /**
+   * Los centros de distribución que entran al plan. Vacío = todos los de la ciudad.
+   *
+   * ═══ PASÓ DE UNO A VARIOS ═══
+   *
+   * Era `activeDistribuidoraId: number | null`, un solo centro, y el argumento era que un plan sale de
+   * UN depósito. Sigue siendo cierto para cada CAMIÓN, pero no para el plan: dos centros vecinos que
+   * reparten la misma ciudad se planifican juntos porque sus territorios se tocan y sus camiones se
+   * cruzan. Lo que un plan de dos centros permite es justamente lo que se pierde planificando por
+   * separado —que un camión salga de uno y vuelva al otro, cuando termina más cerca de ese—; ver
+   * `salida`/`llegada` en `RutaPlan`.
+   */
+  activeDistribuidoraIds: number[]
+  /**
+   * A qué centro vuelve cada camión al terminar, por `camionId`. Sin entrada = vuelve al suyo.
+   *
+   * ═══ VIVE EN EL PLAN Y NO EN EL RESULTADO ═══
+   *
+   * Es una decisión, como qué camiones entran y qué canales se traen: se toma ANTES de optimizar y
+   * sobrevive a reoptimizar. Estuvo un rato como estado local de la vista, calculado por el
+   * optimizador; se movió acá cuando dejó de ser automático.
+   *
+   * POR `camionId` Y NO POR ID DE RUTA. La ruta es un objeto derivado —se reconstruye cada vez que
+   * cambia la flota o un nombre— y su id sale del camión igual. Guardando por camión, la decisión
+   * sobrevive a que la ruta se rearme; guardando por ruta, se perdía sola.
+   */
+  retornosPorCamion: Record<string, number>
   activeCanales: CanalId[]
   // Filtros de NARROWING (Ciudad/Distribuidora/Mercado/Zona/Vendedor): a diferencia del canal (obligatorio), si un
   // array queda vacío no filtra — pasan todos los pedidos en esa dimensión. Ciudad es el más amplio.
@@ -105,7 +131,9 @@ interface DispatchPlanState {
   selectedTransferIds: string[]
   /** Devoluciones de los DOS movimientos (entrega y recojo): son subconjuntos disjuntos de DEVOLUCIONES. */
   selectedDevolucionIds: string[]
-  setActiveDistribuidoraId: (id: number | null) => void
+  setActiveDistribuidoraIds: (ids: number[]) => void
+  /** `null` devuelve el camión a su propio centro, que es el default. */
+  setRetornoCamion: (camionId: string, distribuidoraId: number | null) => void
   toggleTruck: (id: string) => void
   setSelectedTrucks: (ids: string[]) => void
   /**
@@ -157,7 +185,8 @@ interface DispatchPlanState {
  */
 const INITIAL_STATE = {
   selectedTruckIds: [] as string[],
-  activeDistribuidoraId: null as number | null,
+  activeDistribuidoraIds: [] as number[],
+  retornosPorCamion: {} as Record<string, number>,
   activeCanales: [] as CanalId[],
   activeCiudades: [] as CiudadId[],
   activeDistribuidoras: [] as string[],
@@ -181,10 +210,22 @@ function arrayEquals<T>(a: T[], b: T[]): boolean {
 export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
   ...INITIAL_STATE,
 
-  setActiveDistribuidoraId: (id) =>
+  setActiveDistribuidoraIds: (ids) =>
     set((state) => {
-      if (state.activeDistribuidoraId === id) return state
-      return { activeDistribuidoraId: id }
+      if (arrayEquals(state.activeDistribuidoraIds, ids)) return state
+      return { activeDistribuidoraIds: ids }
+    }),
+
+  setRetornoCamion: (camionId, distribuidoraId) =>
+    set((state) => {
+      const actual = state.retornosPorCamion[camionId] ?? null
+      if (actual === distribuidoraId) return state
+      const next = { ...state.retornosPorCamion }
+      // `null` BORRA la entrada en vez de guardar un valor: "sin entrada" y "vuelve al suyo" tienen
+      // que ser el mismo estado, o el día que cambie el default habría dos verdades.
+      if (distribuidoraId === null) delete next[camionId]
+      else next[camionId] = distribuidoraId
+      return { retornosPorCamion: next }
     }),
 
   toggleTruck: (id) =>
@@ -291,14 +332,16 @@ export const selectAvailableTrucks = (s: DispatchPlanState): Camion[] =>
   CAMIONES.filter(
     (c) =>
       c.estado === 'disponible' &&
-      (s.activeDistribuidoraId === null || distribuidoraIdDeCamion(c) === s.activeDistribuidoraId),
+      (s.activeDistribuidoraIds.length === 0 ||
+        s.activeDistribuidoraIds.includes(distribuidoraIdDeCamion(c))),
   )
 
 export const selectSelectedTrucks = (s: DispatchPlanState): Camion[] =>
   CAMIONES.filter(
     (c) =>
       s.selectedTruckIds.includes(c.id) &&
-      (s.activeDistribuidoraId === null || distribuidoraIdDeCamion(c) === s.activeDistribuidoraId),
+      (s.activeDistribuidoraIds.length === 0 ||
+        s.activeDistribuidoraIds.includes(distribuidoraIdDeCamion(c))),
   )
 
 export interface CapacityTotals {
@@ -461,7 +504,9 @@ export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean => {
   // «los pedidos de este centro».
   const distId = resolveDistribuidoraIdDePedido(p)
   return (
-    (s.activeDistribuidoraId === null || distId === s.activeDistribuidoraId) &&
+    // `null` (fuera de todo contorno de un centro que sí dibujó) no pertenece a ningún plan.
+    (s.activeDistribuidoraIds.length === 0 ||
+      (distId !== null && s.activeDistribuidoraIds.includes(distId))) &&
     (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
     (s.activeDistribuidoras.length === 0 ||
       (distId !== null && s.activeDistribuidoras.includes(String(distId)))) &&

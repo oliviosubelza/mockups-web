@@ -150,16 +150,66 @@ export function calcularAlertas({
       })
     }
 
+    // ── PARADAS SIN CAMIÓN: DOS CAUSAS, Y NO SE ARREGLAN IGUAL ──────────────────────────────────
+    //
+    // Este aviso decía siempre «no entraron con la capacidad elegida», y para la causa más frecuente
+    // era MENTIRA: la mayoría de las veces la parada lleva producto de FRÍO y no hay ningún camión
+    // refrigerado en el plan. Con ese texto, el que lo leía sumaba camiones secos y la parada seguía
+    // sin asignarse — el consejo empujaba al lado contrario de la solución.
+    //
+    // La refrigeración es una restricción DURA en `optimizar` (`sirve`): un camión seco no lleva frío
+    // ni aunque le sobre lugar. Un camión de frío sí puede llevar carga seca, así que la restricción
+    // corre en un solo sentido y por eso alcanza con preguntar si HAY alguno.
     const sinAsignar = paradasAsignadas.filter((p) => !p.rutaId)
     if (sinAsignar.length > 0) {
-      alertas.push({
-        id: 'sin-asignar',
-        nivel: 'alerta',
-        titulo: `${sinAsignar.length} parada${sinAsignar.length !== 1 ? 's' : ''} sin camión`,
-        detalle:
-          'No entraron en ninguna ruta con la capacidad elegida. Sumá flota, movelas a mano o sacalas del plan.',
-        panel: 'rutas',
-      })
+      // TERCERA CAUSA, y la más nueva: la parada es de un centro que no puso ningún camión en el
+      // plan. Una ruta es de UNA distribuidora —sale de su depósito, con su mercadería— así que una
+      // parada de un centro sin flota elegida no la puede llevar nadie por más lugar que sobre.
+      //
+      // Se separa por lo mismo que se separó el frío: sin distinguirla, el aviso decía «no entraron
+      // con la capacidad elegida» y el consejo era sumar camiones — de la distribuidora equivocada.
+      const centrosConFlota = new Set(rutas.map((r) => r.salidaId))
+      const porCentro = sinAsignar.filter(
+        (p) => p.distribuidoraId != null && !centrosConFlota.has(p.distribuidoraId),
+      )
+      const restantes = sinAsignar.filter((p) => !porCentro.includes(p))
+
+      const hayCamionDeFrio = rutas.some((r) => r.camion.tipo === 'Frío')
+      const porFrio = hayCamionDeFrio ? [] : restantes.filter(paradaRequiereFrio)
+      const porCapacidad = restantes.length - porFrio.length
+
+      if (porCentro.length > 0) {
+        alertas.push({
+          id: 'sin-asignar-centro',
+          nivel: 'alerta',
+          titulo: `${porCentro.length} parada${porCentro.length !== 1 ? 's' : ''} sin flota de su centro`,
+          detalle:
+            'Son de un centro de distribución que no puso ningún camión en el plan. Una ruta sale de un solo depósito, así que ningún otro camión las puede llevar: elegí flota de ese centro desde Flota, o sacá el centro del alcance.',
+          panel: 'flota',
+        })
+      }
+
+      if (porFrio.length > 0) {
+        alertas.push({
+          id: 'sin-asignar-frio',
+          nivel: 'alerta',
+          titulo: `${porFrio.length} parada${porFrio.length !== 1 ? 's' : ''} sin camión de frío`,
+          detalle:
+            'Llevan producto refrigerado y no hay ningún camión de frío en el plan. Sumá uno desde Flota: un camión de frío también puede cargar seco, así que no hace falta sacar nada.',
+          panel: 'flota',
+        })
+      }
+
+      if (porCapacidad > 0) {
+        alertas.push({
+          id: 'sin-asignar',
+          nivel: 'alerta',
+          titulo: `${porCapacidad} parada${porCapacidad !== 1 ? 's' : ''} sin camión`,
+          detalle:
+            'No entraron en ninguna ruta con la capacidad elegida. Sumá flota, movelas a mano o sacalas del plan.',
+          panel: 'rutas',
+        })
+      }
     }
   }
 

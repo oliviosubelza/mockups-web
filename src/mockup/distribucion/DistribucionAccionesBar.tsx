@@ -14,7 +14,7 @@
 // una barra de 44 px las dejaba sin contexto —un botón «Activar» no dice qué activa— y hacía que la
 // barra creciera hasta empujar el nombre del centro fuera de pantalla. Queda lo que se hace SOBRE EL
 // MAPA (dibujar, encuadrar) más la puerta a todo lo demás.
-import { Building2, Crosshair, Pencil, Settings2, X } from 'lucide-react'
+import { Building2, Crosshair, Pencil, Plus, Settings2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatearMetros } from '../map/geo/holgura'
@@ -24,30 +24,42 @@ import type { LatLngTuple } from '../map/geo/polyline'
 export function DistribucionAccionesBar({
   nombre,
   ciudad,
-  puntos,
+  anillos,
   zonaActiva,
   activa,
   onDibujar,
+  onEditar,
   onEncuadrar,
   onConfigurar,
   onCerrar,
 }: {
   nombre: string
   ciudad: string
-  /** Vértices de su zona. Vacío = todavía no tiene. */
-  puntos: LatLngTuple[]
-  /** `null` cuando la distribuidora no tiene zona. */
+  /** Los contornos de la distribuidora, uno por zona viva. Vacío = todavía no dibujó ninguno. */
+  anillos: LatLngTuple[][]
+  /** `null` cuando la distribuidora no tiene ningún contorno. */
   zonaActiva: boolean | null
   /** La DISTRIBUIDORA está en circulación, aparte de su zona. */
   activa: boolean
+  /** Dibuja un contorno NUEVO para esta distribuidora. */
   onDibujar: () => void
+  /**
+   * Edita un contorno existente. Con uno solo entra derecho; con varios abre el diálogo, que es el
+   * único lugar donde se puede elegir CUÁL.
+   */
+  onEditar: () => void
   onEncuadrar: () => void
   /** Abre el diálogo de configuración: cobertura, predeterminado, datos y borrado del contorno. */
   onConfigurar: () => void
   /** Quita la selección. Es la salida de este estado, y sin ella la barra no se podría cerrar. */
   onCerrar: () => void
 }) {
-  const conZona = puntos.length >= 3
+  const conZona = anillos.length > 0
+  // Las medidas de la barra son las del TERRITORIO, o sea la suma de sus contornos: son pedazos
+  // distintos del mapa, no versiones del mismo.
+  const areaTotal = anillos.reduce((suma, a) => suma + areaKm2(a), 0)
+  const perimetroTotal = anillos.reduce((suma, a) => suma + perimetroM(a), 0)
+  const vertices = anillos.reduce((suma, a) => suma + a.length, 0)
 
   return (
     <div className="pointer-events-auto flex h-11 max-w-full items-center gap-1.5 overflow-hidden rounded-xl border border-border bg-card/95 px-2 shadow-xl backdrop-blur-sm">
@@ -83,13 +95,19 @@ export function DistribucionAccionesBar({
           <span className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden />
           <span
             className="hidden shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground sm:flex"
-            title="Superficie, perímetro y cantidad de vértices del contorno"
+            title="Superficie, perímetro y vértices del territorio: la suma de todos sus contornos"
           >
-            <span className="font-medium text-foreground">{formatearArea(areaKm2(puntos))}</span>
+            <span className="font-medium text-foreground">{formatearArea(areaTotal)}</span>
             <span aria-hidden>·</span>
-            <span>{formatearMetros(perimetroM(puntos))}</span>
+            <span>{formatearMetros(perimetroTotal)}</span>
             <span aria-hidden>·</span>
-            <span>{puntos.length} vért.</span>
+            <span>{vertices} vért.</span>
+            {anillos.length > 1 && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{anillos.length} contornos</span>
+              </>
+            )}
           </span>
         </>
       )}
@@ -99,10 +117,35 @@ export function DistribucionAccionesBar({
       {/* La acción PRIMARIA va con el `Button` por defecto y no con un verde propio: el primario del
           tema ya es "esto es lo que viniste a hacer", y pintarlo a mano hace que esta barra no se
           parezca a la de zonas logísticas, que es su gemela. */}
-      <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs" onClick={onDibujar}>
-        <Pencil size={12} />
-        {conZona ? 'Editar contorno' : 'Dibujar contorno'}
-      </Button>
+      {/* ── DIBUJAR vs EDITAR, y por qué son DOS botones ────────────────────────────────────────
+          Con un contorno por distribuidora alcanzaba con uno solo que cambiaba de nombre. Con varios,
+          «Editar contorno» dejó de identificar algo y «Dibujar otro» escondía la acción más frecuente
+          —corregir el que ya está— detrás de un diálogo.
+
+          Sin contornos hay un solo botón, porque no hay nada que editar. */}
+      {conZona ? (
+        <>
+          <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs" onClick={onEditar}>
+            <Pencil size={12} />
+            Editar contorno
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+            onClick={onDibujar}
+            title="Dibujar otro territorio para este centro"
+          >
+            <Plus size={12} />
+            Agregar
+          </Button>
+        </>
+      ) : (
+        <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs" onClick={onDibujar}>
+          <Pencil size={12} />
+          Dibujar contorno
+        </Button>
+      )}
 
       <Button
         variant="ghost"

@@ -15,21 +15,23 @@
 // tarjeta más sin que nada se superponga. Y el orden que queda es el orden del trabajo: sobre qué
 // planifico → cómo va → con qué lo armo.
 //
-// ═══ UNO Y UNO, Y EL CENTRO NO TIENE «TODOS» ═══
+// ═══ UNA CIUDAD, VARIOS CENTROS ═══
 //
-// Una ciudad y un centro, los dos en modo `unico`. Un plan se ejecuta con una flota que sale de UN
-// depósito: planificar «Santa Cruz + Montero» a la vez produce rutas que ninguna distribuidora puede
-// correr.
+// La ciudad sigue siendo `unico`: planificar «Santa Cruz + Montero» a la vez produce rutas de sesenta
+// kilómetros entre paradas que ninguna flota corre.
 //
-// El CENTRO además no ofrece «todos». La ciudad sí —se puede estar mirando el mapa antes de decidir—,
-// pero un plan sin centro no existe: los camiones salen de un depósito, y «todos los centros» daría
-// una flota de tres distribuidoras cargando en tres galpones para una sola ruta.
+// El CENTRO pasó a multi. El argumento para que fuera uno solo —«un plan sale de un depósito»— vale
+// para cada CAMIÓN, no para el plan: dos centros que reparten la misma ciudad se planifican juntos
+// porque sus territorios se tocan y sus camiones se cruzan. Y lo que un plan de dos permite es
+// justamente lo que se pierde planificando por separado: que un camión salga de uno y VUELVA AL OTRO
+// cuando termina más cerca de ese (ver `elegirLlegadas` en `planner-model`).
 //
-// ═══ EL PREDETERMINADO SE ELIGE SOLO ═══
+// ═══ AL ELEGIR CIUDAD SE SELECCIONAN TODOS SUS CENTROS ═══
 //
-// Al elegir ciudad se selecciona su centro predeterminado (`distributors.is_default`). Es el que
-// recibe lo que ningún contorno cubre, así que es el que un plan nuevo quiere el 90% de las veces —y
-// la opción lo dice, para que se entienda por qué apareció ya elegido.
+// Y no solo el predeterminado. El caso normal es planificar la ciudad entera; acotar a uno es la
+// excepción, y una excepción no debería ser el estado inicial. Además con todos elegidos el plan
+// arranca pudiendo repartir llegadas entre los depósitos, que es la función nueva — con uno solo esa
+// posibilidad ni existe y habría que descubrirla tildando el segundo.
 import { Building2, MapPinned } from 'lucide-react'
 import { FiltroPopover } from '../FiltroPopover'
 import { CIUDAD_IDS, CIUDAD_META, type CiudadId } from '../mock-data'
@@ -63,20 +65,21 @@ export function PlannerAlcance({
   ciudad,
   onCiudad,
   pedidosPorCiudad,
-  centroId,
+  centroIds,
   onCentro,
   opcionesCentro,
-  centroTieneContorno,
+  centrosConContorno,
 }: {
   /** `null` = todas las ciudades. */
   ciudad: CiudadId | null
   onCiudad: (ciudad: CiudadId | null) => void
   pedidosPorCiudad: Map<CiudadId, number>
-  /** `null` = todavía sin elegir. No hay opción «todos»: ver el encabezado. */
-  centroId: number | null
+  /** Los centros del plan. Vacío = ninguno elegido todavía. */
+  centroIds: number[]
   onCentro: (id: number) => void
   opcionesCentro: OpcionCentro[]
-  centroTieneContorno: boolean
+  /** Cuántos de los centros elegidos tienen contorno dibujado. Decide qué dice la línea de abajo. */
+  centrosConContorno: number
 }) {
   return (
     // Sin ancho ni fondo propios: los pone la columna que la contiene, igual que la tarjeta de
@@ -109,13 +112,14 @@ export function PlannerAlcance({
         />
       </Campo>
 
-      <Campo label="Centro">
+      <Campo label={centroIds.length > 1 ? `Centros · ${centroIds.length}` : 'Centro'}>
+        {/* MULTI y ya no `unico`. El trigger muestra el contador, que es lo que hace `FiltroPopover`
+            en su modo por defecto: con dos centros elegidos, ver el nombre de uno solo mentiría. */}
         <FiltroPopover
           label="Elegir"
           icon={Building2}
-          modo="unico"
           ancho="w-72"
-          active={centroId === null ? [] : [String(centroId)]}
+          active={centroIds.map(String)}
           onToggle={(v) => onCentro(Number(v))}
           searchPlaceholder="Buscar centro…"
           emptyText="No hay centros en esta ciudad."
@@ -133,11 +137,15 @@ export function PlannerAlcance({
           centro no tiene contorno —la única distribuidora de una ciudad, o una recién creada— le tocan
           los pedidos que traen su sello. */}
       <p className="text-[11px] leading-snug text-muted-foreground">
-        {centroId === null
-          ? 'Elegí un centro: el plan sale de su depósito y toma los pedidos de su territorio.'
-          : centroTieneContorno
-            ? 'Entran solo los pedidos que caen dentro de su contorno.'
-            : 'Este centro no tiene contorno: entran todos los pedidos que le corresponden.'}
+        {centroIds.length === 0
+          ? 'Elegí al menos un centro: el plan sale de sus depósitos y toma los pedidos de sus territorios.'
+          : centrosConContorno === centroIds.length
+            ? centroIds.length === 1
+              ? 'Entran solo los pedidos que caen dentro de su contorno.'
+              : 'Entran los pedidos que caen dentro de sus contornos. Un camión puede volver al depósito del otro centro si termina más cerca.'
+            : centrosConContorno === 0
+              ? 'Sin contorno dibujado: entran todos los pedidos que les corresponden.'
+              : 'Los centros con contorno aportan lo que cae adentro; los que no tienen, lo que trae su sello.'}
       </p>
     </div>
   )

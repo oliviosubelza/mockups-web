@@ -55,6 +55,16 @@ body[data-resizing] * {
     background: hsl(var(--muted));
   }
 
+  /* Leaflet hace focable con teclado cualquier `path` interactivo (polígonos, líneas) para
+     accesibilidad. El navegador le dibuja el foco por default como un RECTÁNGULO —el bounding box
+     del path, no su contorno— porque un `outline` no puede seguir una forma arbitraria. En un
+     polígono de territorio eso se ve como un cuadro negro pegado encima del mapa cada vez que se
+     clickea uno. La selección real ya tiene su propio estilo (borde más grueso, tooltip); este foco
+     nativo no aporta nada y se apaga. */
+  .leaflet-interactive:focus {
+    outline: none;
+  }
+
   /* Eliminar la transparencia de los tooltips de Leaflet (100% opacos) */
   .leaflet-tooltip {
     opacity: 1 !important;

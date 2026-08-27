@@ -16,13 +16,22 @@
 // esperando a divergir: una zona que dice "Montero" con una dueña en "Warnes" no tiene forma de
 // resolverse. Se derivan al leer, con `zonasComoZonaLogistica`.
 //
-// ═══ UNA SOLA ZONA VIVA POR DISTRIBUIDORA ═══
+// ═══ VARIAS ZONAS POR DISTRIBUIDORA ═══
 //
-// En la base lo hace cumplir un `UNIQUE (distributor_id) WHERE deleted_at IS NULL`, y no la FK: una FK
-// sola admite veinte polígonos para la misma distribuidora, que es justo el estado que esta tabla existe
-// para impedir. Acá se sostiene igual: `guardarZona` busca la fila viva de esa distribuidora y la
-// REEMPLAZA en vez de insertar otra. No hay un `addZona` separado del `updateZona` a propósito — tener
-// los dos era la forma de que alguien llamara al primero dos veces.
+// Arrancó como una sola, con `guardarZona` reemplazando la fila viva y un `UNIQUE (distributor_id)` en
+// la base. No alcanza: un territorio de reparto no siempre es una mancha conexa. Un centro atiende un
+// cuadrante Y un par de barrios sueltos del otro lado del río, y con un polígono único hay que estirar
+// el contorno por el medio de la zona del vecino para poder llegar — momento en el que el polígono
+// deja de decir la verdad sobre quién despacha qué.
+//
+// Por eso `guardarZona` recibe un `zonaId` OPCIONAL: con id actualiza esa fila, sin id inserta una
+// nueva. Es una sola operación y no un `add` más un `update` separados, por el mismo motivo de
+// siempre: dos funciones son dos lugares donde arreglar la misma regla.
+//
+// LO QUE SIGUE PROHIBIDO ES EL SOLAPE entre distribuidoras DISTINTAS —un pedido del solape tendría dos
+// despachantes—. Eso no lo puede sostener ninguna restricción declarativa: es geometría, y vive en la
+// pantalla que dibuja. Entre zonas de la MISMA distribuidora el solape es inofensivo: las dos llevan
+// al mismo despachante.
 import { create } from 'zustand'
 import { DISTRIBUIDORAS } from '../mock-data'
 import {
@@ -107,8 +116,15 @@ function writeStored(zonas: ZonaDistribucion[]): void {
 
 interface DistribucionState {
   zonas: ZonaDistribucion[]
-  /** Alta y edición en UNA operación: hay a lo sumo una zona viva por distribuidora. Ver el encabezado. */
-  guardarZona: (distributorId: number, puntos: LatLngTuple[]) => ZonaDistribucion | null
+  /**
+   * Alta y edición en UNA operación. Con `zonaId` actualiza esa fila; sin él, inserta una zona más
+   * para esa distribuidora. Ver el encabezado.
+   */
+  guardarZona: (
+    distributorId: number,
+    puntos: LatLngTuple[],
+    zonaId?: number | null,
+  ) => ZonaDistribucion | null
   setZonaActiva: (id: number, isActive: boolean) => void
   /** Borrado LÓGICO: la distribuidora queda sin zona y se le puede dibujar otra. */
   removeZona: (id: number) => void
@@ -118,13 +134,16 @@ interface DistribucionState {
 export const useDistribucionStore = create<DistribucionState>((set, get) => ({
   zonas: readStored(),
 
-  guardarZona: (distributorId, puntos) => {
+  guardarZona: (distributorId, puntos, zonaId) => {
     const polygonGeoJson = latLngAPoligono(puntos)
     if (!polygonGeoJson) return null
 
     const actuales = get().zonas
     const ahora = nowIso()
-    const existente = actuales.find((z) => z.distributorId === distributorId && z.deletedAt === null)
+    // Se busca POR ID y ya no por distribuidora: con varias zonas vivas, "la de esta distribuidora"
+    // dejó de identificar una fila.
+    const existente =
+      zonaId != null ? actuales.find((z) => z.id === zonaId && z.deletedAt === null) : undefined
 
     if (existente) {
       const actualizada: ZonaDistribucion = {
@@ -140,8 +159,8 @@ export const useDistribucionStore = create<DistribucionState>((set, get) => ({
     }
 
     const nueva: ZonaDistribucion = {
-      // El id sale del máximo de TODAS las filas, incluidas las borradas lógicamente: reusar el id de una
-      // eliminada haría que dos registros distintos compartan clave en el historial.
+      // El id sale del máximo de TODAS las filas, incluidas las borradas lógicamente: reusar el id de
+      // una eliminada haría que dos registros distintos compartan clave en el historial.
       id: actuales.reduce((max, z) => Math.max(max, z.id), 0) + 1,
       distributorId,
       polygonGeoJson,
@@ -182,12 +201,56 @@ export const useDistribucionStore = create<DistribucionState>((set, get) => ({
   },
 }))
 
-/** La zona viva de una distribuidora, o `undefined`. Es la consulta que hace toda la pantalla. */
-export const zonaDeDistribuidora = (
+/**
+ * Un color por distribuidora, en el orden en que aparecen en su ciudad.
+ *
+ * ACÁ Y NO EN `DistribucionWorkspaceView` porque `PlannerMapa` necesita la MISMA paleta: dibuja los
+ * mismos contornos —un plan puede tener dos centros a la vez desde que existe `activeDistribuidoraIds`
+ * (ver `dispatch-plan-store`)— y si cada pantalla inventara la suya, la Discruz verde de una sería la
+ * Discruz fucsia de la otra. Peor: con dos o más centros en el MISMO plan, sin colores distintos sus
+ * contornos se pisan en un solo verde y no hay forma de saber cuál es cuál — que es exactamente lo que
+ * pasaba antes de que esto existiera.
+ *
+ * Verde primero porque es el color con el que la pantalla de distribución ya se identificaba cuando
+ * había una sola paleta. Ninguno es azul: ese es el de las zonas LOGÍSTICAS, que el planificador dibuja
+ * de fondo sobre el mismo mapa, y dos particiones distintas del territorio no pueden compartir color.
+ */
+export const PALETA_DISTRIBUIDORAS = [
+  '#059669', // esmeralda
+  '#c026d3', // fucsia
+  '#ea580c', // naranja
+  '#0891b2', // cian
+  '#65a30d', // lima
+  '#9333ea', // violeta
+]
+
+/**
+ * Arma el mapa id → color de `PALETA_DISTRIBUIDORAS`, en el orden en que vienen las distribuidoras.
+ *
+ * POR POSICIÓN Y NO POR ID: así la primera distribuidora de la lista que se le pase es siempre del
+ * mismo color y la paleta no cambia de orden si un id es más alto que otro por casualidad de alta.
+ */
+export const colorPorDistribuidora = (ids: number[]): Map<number, string> => {
+  const porId = new Map<number, string>()
+  ids.forEach((id, i) => porId.set(id, PALETA_DISTRIBUIDORAS[i % PALETA_DISTRIBUIDORAS.length]))
+  return porId
+}
+
+/** TODAS las zonas vivas de una distribuidora. Es la consulta que hace toda la pantalla. */
+export const zonasDeDistribuidora = (
   zonas: ZonaDistribucion[],
   distributorId: number,
-): ZonaDistribucion | undefined =>
-  zonas.find((z) => z.distributorId === distributorId && z.deletedAt === null)
+): ZonaDistribucion[] =>
+  zonas.filter((z) => z.distributorId === distributorId && z.deletedAt === null)
+
+/** Los vértices de TODAS las zonas de una distribuidora, una lista de anillos. */
+export const anillosDeDistribuidora = (
+  zonas: ZonaDistribucion[],
+  distributorId: number,
+): LatLngTuple[][] =>
+  zonasDeDistribuidora(zonas, distributorId)
+    .map(puntosDeZona)
+    .filter((anillo) => anillo.length >= 3)
 
 /**
  * Adapta las filas al shape de `Zona` para poder reusar `ZonasLayer` sin tocarlo.

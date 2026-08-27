@@ -106,7 +106,9 @@ import { distribuidorasVivasDeCiudad, useDistribuidorasStore } from './distribui
 import {
   puntosDeZona,
   useDistribucionStore,
-  zonaDeDistribuidora,
+  zonasDeDistribuidora,
+  anillosDeDistribuidora,
+  colorPorDistribuidora,
   zonasComoZonaLogistica,
 } from './distribucion-store'
 import { SapDistribuidorasModal } from './SapDistribuidorasModal'
@@ -262,7 +264,19 @@ export function DistribucionWorkspaceView() {
   const [showSapModal, setShowSapModal] = useState(false)
   const [listaAbierta, setListaAbierta] = useState(true)
   const [texto, setTexto] = useState('')
-  const [aBorrar, setABorrar] = useState<{ zonaId: number; nombre: string } | null>(null)
+  const [aBorrar, setABorrar] = useState<{
+    zonaId: number
+    nombre: string
+    /** Contornos que le quedan al centro después de borrar este. */
+    quedan: number
+  } | null>(null)
+  /**
+   * QUÉ contorno se está editando. `null` con `enEdicionId` puesto = se está dibujando uno NUEVO.
+   *
+   * Existe desde que una distribuidora puede tener varios: hasta entonces «editar el contorno de este
+   * centro» identificaba una fila sola y alcanzaba con el id de la distribuidora.
+   */
+  const [enEdicionZonaId, setEnEdicionZonaId] = useState<number | null>(null)
   /** Auditoría de lo ya guardado. Apagable: con varias zonas mal dibujadas el mapa queda rojo entero y
    *  deja de decir nada. */
   const [snap, setSnap] = useState(true)
@@ -301,13 +315,15 @@ export function DistribucionWorkspaceView() {
   const filas = useMemo<DistribuidoraFila[]>(
     () =>
       deLaCiudad.map((d) => {
-        const zona = zonaDeDistribuidora(zonasStore, d.id)
+        const zonas = zonasDeDistribuidora(zonasStore, d.id)
         return {
           id: d.id,
           nombre: d.name,
           esPorDefecto: d.isDefault,
-          puntos: puntosDeZona(zona),
-          zonaActiva: zona ? zona.isActive : null,
+          anillos: anillosDeDistribuidora(zonasStore, d.id),
+          // `null` = no tiene ninguno. `true` = al menos uno en circulación. Se resume con un `some`
+          // porque la cobertura es de la DISTRIBUIDORA: le alcanza con tener un territorio activo.
+          zonaActiva: zonas.length === 0 ? null : zonas.some((z) => z.isActive),
           activa: d.isActive,
         }
       }),
@@ -319,7 +335,7 @@ export function DistribucionWorkspaceView() {
     return busqueda ? filas.filter((f) => f.nombre.toLowerCase().includes(busqueda)) : filas
   }, [filas, texto])
 
-  const conZona = useMemo(() => filas.filter((f) => f.puntos.length >= 3).length, [filas])
+  const conZona = useMemo(() => filas.filter((f) => f.anillos.length > 0).length, [filas])
 
   /**
    * La coordenada del formulario, o `null` si todavía no es usable.
@@ -349,7 +365,7 @@ export function DistribucionWorkspaceView() {
         distributorId: d.id,
         nombre: editandoDatos && editandoDatosId === d.id && draft?.name.trim() ? draft.name : d.name,
         posicion: enDraft ?? ([d.latitude, d.longitude] as LatLngTuple),
-        conZona: zonaDeDistribuidora(zonasStore, d.id) !== undefined,
+        conZona: zonasDeDistribuidora(zonasStore, d.id).length > 0,
         activa: d.isActive,
       }
     })
@@ -388,13 +404,17 @@ export function DistribucionWorkspaceView() {
       id: fila.id,
       nombre: fila.nombre,
       ciudad: CIUDAD_META[ciudad].label,
-      puntos: fila.puntos,
+      contornos: zonasDeDistribuidora(zonasStore, fila.id).map((z) => ({
+        zonaId: z.id,
+        puntos: puntosDeZona(z),
+        activa: z.isActive,
+      })),
       zonaActiva: fila.zonaActiva,
       activa: fila.activa,
       esPorDefecto: fila.esPorDefecto,
       predeterminadoActual: deLaCiudad.find((d) => d.isDefault && d.id !== fila.id)?.name ?? null,
     }
-  }, [configurandoId, filas, ciudad, deLaCiudad])
+  }, [configurandoId, filas, ciudad, deLaCiudad, zonasStore])
 
   /** Cuál de los depósitos se está posicionando: se dibuja ámbar y arrastrable. */
   const posicionandoId = editandoDatos ? (editandoDatosId ?? ID_NUEVA) : null
@@ -403,20 +423,63 @@ export function DistribucionWorkspaceView() {
    * Las zonas que se dibujan, ya adaptadas al shape que pide `ZonasLayer`.
    *
    * Se filtran por CIUDAD y no por distribuidora: la pregunta del mapa es cómo quedó repartido ESTE
-   * territorio, y una zona de otra ciudad no compite por el mismo pedido. Editando, además, se saca la
-   * propia — su contorno lo dibuja `PolygonDrawLayer`, y tenerla dos veces la pintaría encima de sí misma.
+   * territorio, y una zona de otra ciudad no compite por el mismo pedido.
+   *
+   * EDITANDO SE SACA UNA SOLA ZONA: la que se está dibujando, porque de esa se encarga
+   * `PolygonDrawLayer` y tenerla dos veces la pintaría encima de sí misma.
+   *
+   * Antes se sacaba la DISTRIBUIDORA ENTERA (`z.distributorId !== enEdicionId`), y con una zona por
+   * distribuidora daba lo mismo. Con varias es un bug visible: al agregarle el segundo contorno a un
+   * centro desaparecían los que ya tenía, o sea justo la referencia que hace falta para dibujar el
+   * nuevo al lado y no encima.
+   *
+   * Y editando ya NO se filtran las inactivas: mientras se dibuja, un contorno apagado sigue siendo
+   * territorio ocupado y hay que verlo para no pisarlo. Se distingue por su trazo punteado.
    */
   const enMapa = useMemo(() => {
     const idsCiudad = new Set(deLaCiudad.map((d) => d.id))
     const vivas = zonasStore.filter(
-      (z) => z.deletedAt === null && idsCiudad.has(z.distributorId) && z.distributorId !== enEdicionId,
+      (z) => z.deletedAt === null && idsCiudad.has(z.distributorId) && z.id !== enEdicionZonaId,
     )
-    return zonasComoZonaLogistica(editando ? vivas.filter((z) => z.isActive) : vivas)
-  }, [zonasStore, deLaCiudad, enEdicionId, editando])
+    return zonasComoZonaLogistica(vivas)
+  }, [zonasStore, deLaCiudad, enEdicionZonaId])
 
-  /** Los ids de ZONA visibles, para traducir la selección del mapa a una distribuidora y al revés. */
+  /**
+   * El color de cada distribuidora, y de ahí el de sus contornos.
+   *
+   * ═══ POR QUÉ EL COLOR ES DATO ACÁ ═══
+   *
+   * En zonas logísticas todas van del mismo azul y está bien: son pedazos de territorio sin dueño. Un
+   * contorno de distribución SÍ tiene dueño, y esa es la única pregunta que el mapa contesta. Con un
+   * solo color, dos contornos pegados de distribuidoras distintas se leen como uno partido al medio, y
+   * los tres pedazos sueltos de una misma no se leen como un mismo territorio.
+   *
+   * LA PALETA SE ASIGNA POR POSICIÓN EN LA CIUDAD, no por id: así la primera distribuidora de cada
+   * ciudad es siempre del mismo color y el mapa no cambia de paleta al cambiar de ciudad. Son colores
+   * de Leaflet (hex) porque pinta SVG y no lee tokens de Tailwind.
+   *
+   * Ninguno es azul: el azul es el de las zonas LOGÍSTICAS, que se dibujan de fondo en el planificador
+   * sobre este mismo mapa. Dos particiones distintas del territorio no pueden compartir color.
+   */
+  const colorDeDistribuidora = useMemo(
+    () => colorPorDistribuidora(deLaCiudad.map((d) => d.id)),
+    [deLaCiudad],
+  )
+
+  const colorDeZona = (zonaId: number) => {
+    const dueña = zonasStore.find((z) => z.id === zonaId)?.distributorId
+    return dueña === undefined ? undefined : colorDeDistribuidora.get(dueña)
+  }
+
+  /**
+   * Ids de ZONA visibles, para traducir la selección del mapa a una distribuidora y al revés.
+   *
+   * De distribuidora a zona ya no hay una sola respuesta: se devuelve la PRIMERA viva, que es la que
+   * el mapa resalta al elegir el centro en el listado. Cuál de sus contornos editar se decide en el
+   * diálogo de configuración, que las lista todas.
+   */
   const zonaIdDeDistribuidora = (distributorId: number) =>
-    zonaDeDistribuidora(zonasStore, distributorId)?.id ?? null
+    zonasDeDistribuidora(zonasStore, distributorId)[0]?.id ?? null
   const distribuidoraDeZonaId = (zonaId: number) =>
     zonasStore.find((z) => z.id === zonaId)?.distributorId ?? null
 
@@ -505,15 +568,33 @@ export function DistribucionWorkspaceView() {
   }, [ciudad, mapaListo])
 
   // --- entradas a cada modo -------------------------------------------------------------------
-  const abrirEdicion = (distributorId: number) => {
+  /**
+   * Entra al editor de contorno. `zonaId` dice CUÁL: con id se edita ese; con `null` se dibuja uno
+   * nuevo para el centro, aunque ya tenga otros.
+   *
+   * El default es `null` —dibujar uno nuevo— porque es lo que hace el botón primario de la barra y el
+   * doble click del listado. Editar uno existente es una acción del diálogo, que los lista.
+   */
+  const abrirEdicion = (distributorId: number, zonaId: number | null = null) => {
     const fila = filas.find((f) => f.id === distributorId)
     if (!fila) return toast.error('Ese centro no está en esta ciudad')
-    historial.reiniciar(fila.puntos)
+    const zona = zonaId === null ? undefined : zonasStore.find((z) => z.id === zonaId)
+    const puntosIniciales = zona ? puntosDeZona(zona) : []
+    historial.reiniciar(puntosIniciales)
     setEnEdicionId(distributorId)
+    setEnEdicionZonaId(zonaId)
     setSeleccionadaId(distributorId)
-    setTrazando(fila.puntos.length === 0)
+    setTrazando(puntosIniciales.length === 0)
     setModo('zona')
-    volarA(fila.puntos)
+    // Sin geometría todavía: se encuadra el territorio que YA tiene, para dibujar el nuevo al lado y
+    // no en la otra punta del mapa. Y si no tiene ninguno, su depósito.
+    const destino =
+      puntosIniciales.length > 0
+        ? puntosIniciales
+        : fila.anillos.flat().length > 0
+          ? fila.anillos.flat()
+          : [[fila.id, 0] as LatLngTuple].slice(0, 0)
+    if (destino.length > 0) volarA(destino)
   }
 
   /** IMPORTACIÓN DESDE SAP: guarda en `distributors` y activa el trazo del polígono en `distribution_zones` */
@@ -566,6 +647,9 @@ export function DistribucionWorkspaceView() {
   }
 
   const salirAExplorar = () => {
+    // El contorno en edición se limpia junto con la distribuidora: dejarlo puesto haría que el
+    // siguiente «Dibujar otro» sobrescriba el que se acaba de cerrar.
+    setEnEdicionZonaId(null)
     setModo('explorar')
     setEnEdicionId(null)
     setDraft(null)
@@ -587,14 +671,21 @@ export function DistribucionWorkspaceView() {
     }
   }
 
+  /**
+   * Prende o apaga la cobertura del centro. Con varios contornos, los mueve a TODOS al mismo estado.
+   *
+   * Y no uno por uno: «poner la cobertura en circulación» es una decisión sobre la DISTRIBUIDORA —si
+   * despacha por territorio o no—, no sobre cada polígono. Dejar la mitad prendida sería un estado que
+   * la pantalla no sabe nombrar y que nadie pidió.
+   */
   const alternarZonaActiva = (distributorId: number) => {
-    const zona = zonaDeDistribuidora(zonasStore, distributorId)
-    if (!zona) {
+    const zonas = zonasDeDistribuidora(zonasStore, distributorId)
+    if (zonas.length === 0) {
       toast.info('Este centro todavía no tiene contorno dibujado')
       return
     }
-    const siguienteEstado = !zona.isActive
-    setZonaActiva(zona.id, siguienteEstado)
+    const siguienteEstado = !zonas.some((z) => z.isActive)
+    for (const z of zonas) setZonaActiva(z.id, siguienteEstado)
     if (siguienteEstado) {
       toast.success(`Cobertura de «${nombreDeDistribuidora(distributorId)}» en circulación`, {
         description: 'La zona vuelve a estar disponible para reparto y enrutamiento.',
@@ -628,11 +719,23 @@ export function DistribucionWorkspaceView() {
     })
   }
 
-  const pedirBorrar = (distributorId: number) => {
-    const zona = zonaDeDistribuidora(zonasStore, distributorId)
-    if (zona) {
-      setABorrar({ zonaId: zona.id, nombre: nombreDeDistribuidora(distributorId) })
-    }
+  /**
+   * Pide confirmación para borrar UN contorno, por su id de zona.
+   *
+   * Recibe `zonaId` y ya no `distributorId`: con varios contornos vivos, «el contorno de este centro»
+   * dejó de identificar una fila. El diálogo de configuración es el que sabe cuál se está borrando.
+   */
+  const pedirBorrar = (zonaId: number) => {
+    const zona = zonasStore.find((z) => z.id === zonaId && z.deletedAt === null)
+    if (!zona) return
+    const hermanas = zonasDeDistribuidora(zonasStore, zona.distributorId).length
+    setABorrar({
+      zonaId,
+      nombre: nombreDeDistribuidora(zona.distributorId),
+      // Cuántos le quedan después de este: cambia lo que significa borrarlo —el último deja al centro
+      // sin territorio y lo devuelve a despachar por sello—.
+      quedan: hermanas - 1,
+    })
   }
 
   const encuadrarTodo = () => {
@@ -686,9 +789,15 @@ export function DistribucionWorkspaceView() {
   const guardar = () => {
     if (motivoBloqueo) return toast.error(motivoBloqueo)
     if (enEdicionId === null) return
-    const guardada = guardarZona(enEdicionId, puntos)
+    // `enEdicionZonaId` decide si esto ACTUALIZA un contorno o AGREGA otro. Sin él, dibujar el segundo
+    // territorio de una distribuidora pisaba el primero.
+    const guardada = guardarZona(enEdicionId, puntos, enEdicionZonaId)
     if (!guardada) return toast.error('No se pudo construir el contorno')
-    toast.success(`Contorno de ${nombreDeDistribuidora(enEdicionId)} guardado`)
+    toast.success(
+      enEdicionZonaId === null
+        ? `Contorno agregado a ${nombreDeDistribuidora(enEdicionId)}`
+        : `Contorno de ${nombreDeDistribuidora(enEdicionId)} guardado`,
+    )
     setSeleccionadaId(enEdicionId)
     salirAExplorar()
   }
@@ -779,6 +888,7 @@ export function DistribucionWorkspaceView() {
               seleccionar(zonaId === null ? null : distribuidoraDeZonaId(zonaId))
             }
             enConflicto={enConflicto}
+            colorDe={colorDeZona}
             // SIN `aspectoEditor`: esa bandera hace que la capa lea `zonas-mapa-store`, que ya no es el
             // store de esta pantalla. El único aspecto que se controla desde acá es la etiqueta, y va por
             // la prop explícita — las opciones de énfasis (relleno sólido, resaltado, vértices al hover)
@@ -837,7 +947,12 @@ export function DistribucionWorkspaceView() {
                 transitorio ? historial.reemplazar(pts) : historial.confirmar(pts)
               }
               onFinalizar={cerrarPoligono}
-              color={COLOR_ZONA}
+              // El trazo en curso va del color de SU distribuidora, no de un verde fijo: es lo que
+              // hace que mientras dibujás el segundo contorno se vea que es del mismo dueño que el
+              // primero, y no de otro.
+              color={
+                (enEdicionId !== null ? colorDeDistribuidora.get(enEdicionId) : undefined) ?? COLOR_ZONA
+              }
               anillosSnap={anillosSnap}
               snapActivo={snap}
               holguraMetros={HOLGURA_SNAP_M}
@@ -1157,13 +1272,20 @@ export function DistribucionWorkspaceView() {
           <DistribucionAccionesBar
             nombre={seleccionada.nombre}
             ciudad={CIUDAD_META[ciudad].label}
-            puntos={seleccionada.puntos}
+            anillos={seleccionada.anillos}
             zonaActiva={seleccionada.zonaActiva}
             activa={seleccionada.activa}
-            onDibujar={() => abrirEdicion(seleccionada.id)}
+            onDibujar={() => abrirEdicion(seleccionada.id, null)}
+            // Con UN contorno entra derecho a editarlo; con varios abre el diálogo, que es el único
+            // lugar donde se puede elegir cuál.
+            onEditar={() => {
+              const zonas = zonasDeDistribuidora(zonasStore, seleccionada.id)
+              if (zonas.length === 1) abrirEdicion(seleccionada.id, zonas[0].id)
+              else setConfigurandoId(seleccionada.id)
+            }}
             onEncuadrar={() => {
-              if (seleccionada.puntos.length >= 3) {
-                volarA(seleccionada.puntos)
+              if (seleccionada.anillos.length > 0) {
+                volarA(seleccionada.anillos.flat())
               } else {
                 const d = deLaCiudad.find((item) => item.id === seleccionada.id)
                 if (d) volarA([[d.latitude, d.longitude]])
@@ -1216,9 +1338,11 @@ export function DistribucionWorkspaceView() {
       <AlertDialog open={aBorrar !== null} onOpenChange={(abierto) => !abierto && setABorrar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar el contorno de «{aBorrar?.nombre}»</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar un contorno de «{aBorrar?.nombre}»</AlertDialogTitle>
             <AlertDialogDescription>
-              El centro queda sin contorno y se le puede dibujar otro. El registro maestro se conserva.
+              {aBorrar?.quedan === 0
+                ? 'Es su último contorno: el centro vuelve a recibir los pedidos que traen su sello, sin acotar por territorio. El registro maestro se conserva.'
+                : `Le quedan ${aBorrar?.quedan} contorno${aBorrar?.quedan === 1 ? '' : 's'}. El registro maestro se conserva.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -14,6 +14,7 @@
 // por qué una restricción temporal está o no está dibujada. Ver el bloque donde se muestra.
 import { CalendarDays, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { momentoDelPlan } from '../restricciones/momento'
 
 const DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
@@ -60,8 +61,22 @@ export function PlannerHud({
 }) {
   const puedeOptimizar = camionesElegidos > 0 && paradas > 0 && !optimizando
 
-  // El gate es el mismo del flujo actual: sin camión, sin paradas, con paradas sin asignar o con déficit,
-  // generar rutas produciría un plan incompleto o inviable. El `title` dice por qué está bloqueado.
+  /**
+   * Por qué NO se puede generar todavía, o `undefined` si se puede. CINCO condiciones, en el orden en
+   * que se resuelven:
+   *
+   *   1. estar OPTIMIZADO — sin reparto no hay rutas que generar;
+   *   2. al menos un camión;
+   *   3. al menos una parada;
+   *   4. NINGUNA parada sin asignar — es el que más frena en la práctica, y no es un capricho: generar
+   *      con puntos sueltos produce un plan que deja entregas afuera sin decirlo. Lo típico es una
+   *      parada con producto de frío y ningún camión refrigerado con lugar; el panel de avisos dice
+   *      cuál es;
+   *   5. no haber déficit de capacidad.
+   *
+   * Se devuelve el MOTIVO y no un booleano por la misma razón de siempre: un botón apagado sin
+   * explicación deja al que llegó hasta acá sin saber qué le falta.
+   */
   const motivoBloqueo = !optimizado
     ? 'Primero optimizá el reparto'
     : camionesElegidos === 0
@@ -135,15 +150,36 @@ export function PlannerHud({
           'Optimizar'
         )}
       </Button>
-      <Button
-        size="sm"
-        className="h-7 px-2.5 text-xs"
-        disabled={motivoBloqueo !== undefined}
-        title={motivoBloqueo}
-        onClick={onGenerar}
-      >
-        Generar rutas
-      </Button>
+      {/* ── GENERAR RUTAS, y POR QUÉ NO SE PUEDE ────────────────────────────────────────────────
+          El motivo estaba solo en el `title`, y ahí era INALCANZABLE: el `Button` compartido trae
+          `disabled:pointer-events-none` en su clase base, así que un botón deshabilitado no recibe
+          hover y el navegador nunca muestra su tooltip. O sea que el gate existía, estaba bien
+          calculado y explicado, y desde afuera se veía como un botón apagado sin razón.
+
+          Ahora el motivo va en un `Tooltip` cuyo trigger es un `span`: el que escucha el hover es el
+          span, no el botón deshabilitado, y por eso sí aparece.
+
+          NO SE DIBUJA AL LADO. Se probó como una línea de texto permanente en la barra y no va: la
+          barra es de acciones, y un renglón que explica por qué una de ellas no se puede hacer la
+          convierte en un cartel. El que quiere saber qué le falta pasa por encima del botón; el resto
+          del tiempo, un botón apagado ya dice bastante. */}
+      <Tooltip>
+        <TooltipTrigger
+          // `render` y no `asChild`: el kit es Base UI. El `span` es el que recibe el hover, que es
+          // todo el truco para que un control deshabilitado pueda explicarse.
+          render={<span tabIndex={motivoBloqueo ? 0 : -1} />}
+        >
+          <Button
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            disabled={motivoBloqueo !== undefined}
+            onClick={onGenerar}
+          >
+            Generar rutas
+          </Button>
+        </TooltipTrigger>
+        {motivoBloqueo && <TooltipContent className="max-w-64">{motivoBloqueo}</TooltipContent>}
+      </Tooltip>
     </>
   )
 }

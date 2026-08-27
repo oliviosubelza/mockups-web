@@ -28,9 +28,15 @@ export interface DistribuidoraFila {
   nombre: string
   /** Recibe los pedidos que no caen en ningún contorno de la ciudad (`distributors.is_default`). */
   esPorDefecto: boolean
-  /** Vértices de su zona. Vacío = todavía no tiene contorno dibujado. */
-  puntos: LatLngTuple[]
-  /** `false` = tiene zona pero está fuera de circulación. `null` = no tiene zona. */
+  /**
+   * Los CONTORNOS de esta distribuidora, uno por zona viva. Vacío = todavía no dibujó ninguno.
+   *
+   * Pasó de un anillo a una lista cuando `distribution_zones` dejó de ser 1 a 1: un territorio de
+   * reparto no siempre es una mancha conexa —un cuadrante más dos barrios del otro lado del río— y con
+   * un polígono único hay que estirar el contorno por el medio de la zona del vecino para llegar.
+   */
+  anillos: LatLngTuple[][]
+  /** `false` = tiene contornos pero TODOS están fuera de circulación. `null` = no tiene ninguno. */
   zonaActiva: boolean | null
   /** La DISTRIBUIDORA está en circulación (`distributors.is_active`), aparte de su zona. */
   activa: boolean
@@ -76,11 +82,15 @@ export function DistribucionListaPanel({
 }) {
   const [tab, setTab] = useState<TabFiltro>('ALL')
 
-  const conZona = distribuidoras.filter((d) => d.puntos.length >= 3)
+  const conZona = distribuidoras.filter((d) => d.anillos.length > 0)
   const activas = conZona.filter((d) => d.zonaActiva === true && d.activa)
   const inactivas = conZona.filter((d) => d.zonaActiva === false || !d.activa)
-  const sinZona = distribuidoras.filter((d) => d.puntos.length < 3)
-  const areaCubierta = activas.reduce((suma, d) => suma + areaKm2(d.puntos), 0)
+  const sinZona = distribuidoras.filter((d) => d.anillos.length === 0)
+  // La superficie de una distribuidora es la SUMA de sus contornos: son territorios distintos, no
+  // versiones del mismo.
+  const areaDe = (fila: DistribuidoraFila) =>
+    fila.anillos.reduce((suma, anillo) => suma + areaKm2(anillo), 0)
+  const areaCubierta = activas.reduce((suma, d) => suma + areaDe(d), 0)
   const porDefecto = distribuidoras.find((d) => d.esPorDefecto)
 
   const conteos: Record<TabFiltro, number> = {
@@ -92,7 +102,7 @@ export function DistribucionListaPanel({
 
   const itemsFiltrados = useMemo(() => {
     return distribuidoras.filter((d) => {
-      const tieneZona = d.puntos.length >= 3
+      const tieneZona = d.anillos.length > 0
       if (tab === 'ACTIVAS' && (!tieneZona || d.zonaActiva !== true || !d.activa)) return false
       if (tab === 'INACTIVAS' && (!tieneZona || (d.zonaActiva === true && d.activa))) return false
       if (tab === 'SIN_ZONA' && tieneZona) return false
@@ -190,7 +200,7 @@ export function DistribucionListaPanel({
              el interruptor. Con la cabecera, la lista se lee como cualquier tabla del sistema. ─── */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         <span className="min-w-0 flex-1">Centro</span>
-        <span className="w-16 shrink-0 text-right">Superficie</span>
+        <span className="w-20 shrink-0 text-right">Superficie</span>
         <span className="w-16 shrink-0 text-center">Cobertura</span>
         <span className="w-6 shrink-0" aria-hidden />
       </div>
@@ -204,7 +214,7 @@ export function DistribucionListaPanel({
           <ul className="space-y-0.5">
             {itemsFiltrados.map((distribuidora) => {
               const seleccionada = distribuidora.id === seleccionadaId
-              const tieneZona = distribuidora.puntos.length >= 3
+              const tieneZona = distribuidora.anillos.length > 0
               const esActiva = tieneZona && distribuidora.zonaActiva === true && distribuidora.activa
 
               return (
@@ -247,8 +257,20 @@ export function DistribucionListaPanel({
                       />
                     )}
 
-                    <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground">
-                      {tieneZona ? formatearArea(areaKm2(distribuidora.puntos)) : '—'}
+                    {/* La superficie es la SUMA de sus contornos, y el «·N» dice cuántos son: sin eso,
+                        una distribuidora con tres territorios se lee igual que una con uno grande. */}
+                    <span
+                      className="w-20 shrink-0 text-right tabular-nums text-muted-foreground"
+                      title={
+                        distribuidora.anillos.length > 1
+                          ? `${distribuidora.anillos.length} contornos, superficie sumada`
+                          : undefined
+                      }
+                    >
+                      {tieneZona ? formatearArea(areaDe(distribuidora)) : '—'}
+                      {distribuidora.anillos.length > 1 && (
+                        <span className="ml-1">·{distribuidora.anillos.length}</span>
+                      )}
                     </span>
 
                     <span className="flex w-16 shrink-0 justify-center">

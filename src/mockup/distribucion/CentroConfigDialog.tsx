@@ -23,7 +23,8 @@
 //
 // Dibujar el contorno y editar los datos cambian el MODO de la pantalla (mapa a sangre, panel
 // izquierdo con el formulario): dejar el diálogo abierto encima taparía justo lo que se va a tocar.
-import { MapPin, Pencil, Trash2 } from 'lucide-react'
+import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,12 +38,19 @@ import { Switch } from '@/components/ui/switch'
 import { formatearArea, areaKm2 } from '../map/geo/medidas'
 import type { LatLngTuple } from '../map/geo/polyline'
 
+/** Un contorno de la distribuidora. Con varias zonas vivas, la fila del store deja de ser una sola. */
+export interface ContornoDelCentro {
+  zonaId: number
+  puntos: LatLngTuple[]
+  activa: boolean
+}
+
 export interface CentroConfig {
   id: number
   nombre: string
   ciudad: string
-  puntos: LatLngTuple[]
-  /** `false` = tiene contorno pero está fuera de circulación. `null` = no tiene contorno. */
+  contornos: ContornoDelCentro[]
+  /** `false` = tiene contornos pero TODOS fuera de circulación. `null` = no tiene ninguno. */
   zonaActiva: boolean | null
   /** La DISTRIBUIDORA está en circulación (`distributors.is_active`). */
   activa: boolean
@@ -94,16 +102,19 @@ export function CentroConfigDialog({
   /** El centro a configurar. `null` cierra el diálogo — es el estado abierto/cerrado y el dato en uno. */
   centro: CentroConfig | null
   onOpenChange: (abierto: boolean) => void
+  /** Prende o apaga la cobertura de TODOS los contornos del centro a la vez. */
   onAlternarActiva: (id: number) => void
   onPorDefecto: (id: number, esDefecto: boolean) => void
-  onEditarZona: (id: number) => void
+  /** `zonaId` = editar ese contorno. `null` = dibujar uno NUEVO para este centro. */
+  onEditarZona: (id: number, zonaId: number | null) => void
   onEditarDatos: (id: number) => void
-  onEliminarZona: (id: number) => void
+  onEliminarZona: (zonaId: number) => void
 }) {
   if (!centro) return null
 
-  const tieneZona = centro.puntos.length >= 3
+  const tieneZona = centro.contornos.length > 0
   const coberturaActiva = tieneZona && centro.zonaActiva === true && centro.activa
+  const areaTotal = centro.contornos.reduce((suma, c) => suma + areaKm2(c.puntos), 0)
 
   /** Cierra y después ejecuta: la acción cambia el modo de la pantalla detrás del diálogo. */
   const cerrarY = (accion: () => void) => () => {
@@ -118,7 +129,9 @@ export function CentroConfigDialog({
           <DialogTitle className="truncate">{centro.nombre}</DialogTitle>
           <DialogDescription>
             {centro.ciudad}
-            {tieneZona ? ` · ${formatearArea(areaKm2(centro.puntos))} · ${centro.puntos.length} vértices` : ' · sin contorno'}
+            {tieneZona
+              ? ` · ${centro.contornos.length} contorno${centro.contornos.length === 1 ? '' : 's'} · ${formatearArea(areaTotal)}`
+              : ' · sin contorno'}
           </DialogDescription>
         </DialogHeader>
 
@@ -127,10 +140,10 @@ export function CentroConfigDialog({
             titulo="Cobertura en circulación"
             descripcion={
               !tieneZona
-                ? 'Sin contorno no hay asignación por territorio. Dibujalo para poder activarla.'
+                ? 'Sin contorno no hay asignación por territorio. Dibujá uno para poder activarla.'
                 : coberturaActiva
-                  ? 'Los pedidos que caen dentro del contorno se despachan desde este centro.'
-                  : 'El contorno está dibujado pero no se usa para asignar pedidos.'
+                  ? 'Los pedidos que caen dentro de sus contornos se despachan desde este centro.'
+                  : 'Los contornos están dibujados pero no se usan para asignar pedidos.'
             }
             checked={coberturaActiva}
             disabled={!tieneZona}
@@ -154,17 +167,82 @@ export function CentroConfigDialog({
 
           <Separator />
 
-          {/* Las tres que no son estados sino destinos. Van abajo y con el borrado separado. */}
+          {/* ── LOS CONTORNOS, UNO POR FILA ──────────────────────────────────────────────────────
+              Acá había un solo botón «Editar contorno», porque había un solo contorno. Con varios, el
+              diálogo tiene que decir CUÁLES son y dejar operar sobre cada uno: editar el segundo no es
+              lo mismo que editar el primero, y borrar «el contorno» dejó de identificar algo.
+
+              Se listan con su superficie porque es lo único que los distingue a simple vista — no
+              tienen nombre, y ponerles uno sería inventar una columna que la tabla no tiene. */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium">
+                {tieneZona
+                  ? `${centro.contornos.length} contorno${centro.contornos.length === 1 ? '' : 's'}`
+                  : 'Sin contornos'}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={cerrarY(() => onEditarZona(centro.id, null))}
+              >
+                <Plus size={13} />
+                Dibujar otro
+              </Button>
+            </div>
+
+            {tieneZona ? (
+              <ul className="space-y-0.5">
+                {centro.contornos.map((contorno, i) => (
+                  <li
+                    key={contorno.zonaId}
+                    className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs"
+                  >
+                    <span className="w-5 shrink-0 tabular-nums text-muted-foreground">#{i + 1}</span>
+                    <span className="min-w-0 flex-1 tabular-nums">
+                      {formatearArea(areaKm2(contorno.puntos))}
+                      <span className="ml-1.5 text-[11px] text-muted-foreground">
+                        {contorno.puntos.length} vért.
+                      </span>
+                    </span>
+                    {!contorno.activa && (
+                      <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">
+                        Off
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 shrink-0 text-muted-foreground"
+                      title="Editar este contorno"
+                      onClick={cerrarY(() => onEditarZona(centro.id, contorno.zonaId))}
+                    >
+                      <Pencil size={12} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                      title="Eliminar este contorno"
+                      onClick={cerrarY(() => onEliminarZona(contorno.zonaId))}
+                    >
+                      <Trash2 size={12} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                Este centro recibe los pedidos que traen su sello. Dibujale un contorno para acotarlo a
+                un territorio.
+              </p>
+            )}
+          </div>
+
+          <Separator />
+
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={cerrarY(() => onEditarZona(centro.id))}
-            >
-              <Pencil size={13} />
-              {tieneZona ? 'Editar contorno' : 'Dibujar contorno'}
-            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -174,17 +252,6 @@ export function CentroConfigDialog({
               <MapPin size={13} />
               Datos y ubicación
             </Button>
-            {tieneZona && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto gap-1.5 text-destructive hover:text-destructive"
-                onClick={cerrarY(() => onEliminarZona(centro.id))}
-              >
-                <Trash2 size={13} />
-                Eliminar contorno
-              </Button>
-            )}
           </div>
         </div>
       </DialogContent>

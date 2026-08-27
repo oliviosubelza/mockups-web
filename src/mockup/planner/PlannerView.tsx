@@ -90,10 +90,10 @@ import {
   TEXTO_OCUPACION,
   construirParadas,
   construirRutas,
+  rutaIdDeCamion,
   optimizar as repartir,
   reordenarRuta,
   resecuenciar,
-  rutaIdDeCamion,
 } from './planner-model'
 import { RutasTablaPanel, RUTAS_TABLA_PLEGADO_PX } from './RutasTablaPanel'
 import { usePlannerStore, type PanelId } from './planner-store'
@@ -175,8 +175,9 @@ const TITULOS: Record<PanelId, string> = {
 
 export function PlannerView() {
   const selectedTruckIds = useDispatchPlanStore((s) => s.selectedTruckIds)
-  const activeDistribuidoraId = useDispatchPlanStore((s) => s.activeDistribuidoraId)
-  const setActiveDistribuidoraId = useDispatchPlanStore((s) => s.setActiveDistribuidoraId)
+  const activeDistribuidoraIds = useDispatchPlanStore(useShallow((s) => s.activeDistribuidoraIds))
+  const setActiveDistribuidoraIds = useDispatchPlanStore((s) => s.setActiveDistribuidoraIds)
+  const retornosPorCamion = useDispatchPlanStore(useShallow((s) => s.retornosPorCamion))
   const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
   const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
   const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
@@ -203,13 +204,6 @@ export function PlannerView() {
   const distribuidorasVivas = useMemo(() => {
     return distribuidorasStore.filter((d) => d.deletedAt === null && d.isActive)
   }, [distribuidorasStore])
-
-  const activeDist = useMemo(() => {
-    return (
-      distribuidorasVivas.find((d) => d.id === activeDistribuidoraId) ??
-      DISTRIBUIDORAS.find((d) => d.id === activeDistribuidoraId)
-    )
-  }, [activeDistribuidoraId, distribuidorasVivas])
 
   // ── ALCANCE DEL PLAN: una ciudad y un centro ───────────────────────────────────────────────
 
@@ -244,13 +238,13 @@ export function PlannerView() {
     [distribuidorasVivas, ciudadDelPlan],
   )
 
-  const centroTieneContorno = useMemo(
+  /** Cuántos de los centros elegidos tienen contorno. Decide qué explica la tarjeta de alcance. */
+  const centrosConContorno = useMemo(
     () =>
-      activeDistribuidoraId !== null &&
-      zonasDistribucion.some(
-        (z) => z.distributorId === activeDistribuidoraId && z.deletedAt === null && z.isActive,
-      ),
-    [activeDistribuidoraId, zonasDistribucion],
+      activeDistribuidoraIds.filter((id) =>
+        zonasDistribucion.some((z) => z.distributorId === id && z.deletedAt === null && z.isActive),
+      ).length,
+    [activeDistribuidoraIds, zonasDistribucion],
   )
 
   /**
@@ -280,12 +274,15 @@ export function PlannerView() {
   }, [centrosDelAlcance, zonasDistribucion])
 
   /**
-   * Elegir ciudad reescribe el alcance entero: la ciudad, el centro y la restricción de contorno.
+   * Elegir ciudad reescribe el alcance entero.
    *
-   * EL CENTRO SE ELIGE SOLO, y es el PREDETERMINADO de esa ciudad. Es el que recibe lo que ningún
-   * contorno cubre, así que es el que un plan nuevo quiere casi siempre; y si la ciudad no tiene
-   * predeterminado, queda en «todos» en vez de en uno cualquiera. Dejar el centro anterior sería peor
-   * que cualquiera de las dos: sería un centro de OTRA ciudad filtrando un plan que ya no es la suya.
+   * SE SELECCIONAN TODOS SUS CENTROS, no solo el predeterminado. El caso normal es planificar la
+   * ciudad entera; acotar a uno es la excepción y una excepción no debería ser el estado inicial.
+   * Además con todos elegidos el plan arranca pudiendo repartir llegadas entre los depósitos, que es
+   * la función que un plan de dos centros existe para dar — con uno solo esa posibilidad ni se ve.
+   *
+   * Dejar los centros anteriores sería lo peor de todo: centros de OTRA ciudad filtrando un plan que
+   * ya no es la suya.
    */
   const elegirCiudad = (ciudad: CiudadId | null) => {
     applySelection({
@@ -295,11 +292,11 @@ export function PlannerView() {
       zonas: activeZonas,
       vendedores: activeVendedores,
     })
-    const predeterminado =
+    setActiveDistribuidoraIds(
       ciudad === null
-        ? null
-        : (distribuidorasVivas.find((d) => d.cityId === cityIdDe(ciudad) && d.isDefault)?.id ?? null)
-    setActiveDistribuidoraId(predeterminado)
+        ? []
+        : distribuidorasVivas.filter((d) => d.cityId === cityIdDe(ciudad)).map((d) => d.id),
+    )
     pedirEncuadre('todo')
   }
 
@@ -328,22 +325,28 @@ export function PlannerView() {
   const columnaSiguienteTop = COLUMNA_TOP_PX + alcanceAlto + 6
 
   /**
-   * De dónde salen los camiones de ESTE plan: el depósito del centro elegido.
+   * DÓNDE ESTÁ CADA CENTRO, por id. Es lo que `optimizar` usa para abrir y cerrar cada recorrido.
    *
-   * Es lo que hace que optimizar en Montero arme recorridos que empiezan en Montero. Antes todas las
-   * rutas salían de `DEPOSITO` —la planta de Santa Cruz, escrita a mano en `mock-data`—, así que un
-   * plan del interior abría con un tramo de 60 km cruzando la provincia.
+   * ES UN MAPA Y YA NO UN PUNTO desde que el plan puede tener dos centros: cada ruta sale del depósito
+   * de SU camión y vuelve al que le quede más cerca al terminar. Con un solo centro se comporta igual
+   * que antes.
    *
-   * Sin centro elegido cae al depósito histórico: es el único origen que se puede afirmar cuando la
-   * pantalla todavía no sabe para quién está planificando.
+   * Se arma con TODAS las distribuidoras vivas y no solo las elegidas: una ruta puede cerrar en un
+   * depósito que no está en el alcance si es el que le queda cerca, y el mapa tiene que poder ubicarlo.
    */
-  const depositoDelPlan = useMemo<[number, number]>(() => {
-    const centro = distribuidorasVivas.find((d) => d.id === activeDistribuidoraId)
-    return centro ? [centro.latitude, centro.longitude] : [DEPOSITO.lat, DEPOSITO.lng]
-  }, [activeDistribuidoraId, distribuidorasVivas])
+  const depositosPorId = useMemo(() => {
+    const out = new Map<number, [number, number]>()
+    for (const d of distribuidorasVivas) out.set(d.id, [d.latitude, d.longitude])
+    return out
+  }, [distribuidorasVivas])
 
+  /** Tilda o destilda un centro del alcance. Multi: ver el encabezado de `PlannerAlcance`. */
   const elegirCentro = (id: number) => {
-    setActiveDistribuidoraId(id)
+    setActiveDistribuidoraIds(
+      activeDistribuidoraIds.includes(id)
+        ? activeDistribuidoraIds.filter((x) => x !== id)
+        : [...activeDistribuidoraIds, id],
+    )
     pedirEncuadre('todo')
   }
 
@@ -401,8 +404,30 @@ export function PlannerView() {
   // plan y vive en `dispatch-plan-store`.
   useEffect(() => resetPlanner, [resetPlanner])
 
-  const paradasBase = useMemo(() => construirParadas(pedidos), [pedidos])
-  const rutas = useMemo(() => construirRutas(camiones, nombresRuta), [camiones, nombresRuta])
+  // El resolvedor va POR PARÁMETRO: `construirParadas` es puro y el dueño efectivo de un pedido sale
+  // de la geometría de los contornos, que vive en el store. Sin esto la parada no sabe de qué centro
+  // es y el reparto la puede meter en la ruta de otro.
+  const paradasBase = useMemo(
+    () => construirParadas(pedidos, resolveDistribuidoraIdDePedido),
+    [pedidos],
+  )
+  /**
+   * Las llegadas que el plan decidió, traducidas de `camionId` a id de RUTA.
+   *
+   * El store las guarda por camión —sobreviven a que la ruta se rearme— y `construirRutas` las quiere
+   * por ruta, que es su clave. La traducción es una línea y va acá, en el borde.
+   */
+  const llegadasPorRuta = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const [camionId, centroId] of Object.entries(retornosPorCamion)) {
+      out[rutaIdDeCamion(camionId)] = centroId
+    }
+    return out
+  }, [retornosPorCamion])
+  const rutas = useMemo(
+    () => construirRutas(camiones, nombresRuta, llegadasPorRuta),
+    [camiones, nombresRuta, llegadasPorRuta],
+  )
   const paradas = useMemo(
     () => aplicarAsignaciones(paradasBase, asignaciones, rutas),
     [asignaciones, paradasBase, rutas],
@@ -487,7 +512,9 @@ export function PlannerView() {
     if (optimizando || camiones.length === 0 || paradasBase.length === 0) return
     setOptimizando(true)
     const id = window.setTimeout(() => {
-      setAsignaciones(repartir(paradasBase, rutas, depositoDelPlan))
+      // Una sola pasada: la llegada de cada ruta ya está decidida (se elige a mano, antes de
+      // optimizar), así que `rutas` entra con su `llegadaId` puesto y el reparto la respeta.
+      setAsignaciones(repartir(paradasBase, rutas, depositosPorId))
       setOptimizado(true)
       setOptimizando(false)
       pedirEncuadre('todo')
@@ -611,7 +638,7 @@ export function PlannerView() {
 
     setProcesando(enCurso)
     const id = window.setTimeout(() => {
-      setAsignaciones(resecuenciar(paradasBase, siguiente, [...tocadas], depositoDelPlan))
+      setAsignaciones(resecuenciar(paradasBase, siguiente, [...tocadas], rutas, depositosPorId))
       // Del store y no del render: entre el click y este callback pasan 900 ms, y en ese rato el ojo de
       // cualquier ruta pudo cambiar. Escribir el array capturado en el closure revertiría ese cambio.
       const ocultas = usePlannerStore.getState().rutasOcultas
@@ -823,10 +850,10 @@ export function PlannerView() {
           ciudad={ciudadDelPlan}
           onCiudad={elegirCiudad}
           pedidosPorCiudad={pedidosPorCiudad}
-          centroId={activeDistribuidoraId}
+          centroIds={activeDistribuidoraIds}
           onCentro={elegirCentro}
           opcionesCentro={opcionesCentro}
-          centroTieneContorno={centroTieneContorno}
+          centrosConContorno={centrosConContorno}
         />
       </div>
 

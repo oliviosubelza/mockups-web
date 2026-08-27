@@ -37,7 +37,7 @@
 // el mapa: su borde de abajo no se mueve, el que se mueve es el de arriba. La manija va donde está el
 // movimiento, y arrastrar hacia arriba agranda —de ahí el `yInicial - clientY` del cálculo—.
 import { useCallback, useMemo } from 'react'
-import { Boxes, ChevronDown, ChevronUp, Crosshair, Eye, EyeOff, PackageX, X } from 'lucide-react'
+import { ArrowRight, Boxes, ChevronDown, ChevronUp, Crosshair, Eye, EyeOff, PackageX, X } from 'lucide-react'
 import { DataTable, DENSITY, defineColumns } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -45,6 +45,7 @@ import { MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
 import { resumenAccesorios, totalAccesorios } from '../accesorios'
 import { TEXTO_OCUPACION, cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
 import { usePlannerStore } from './planner-store'
+import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
 
 const fmt = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 1 })
 
@@ -117,6 +118,16 @@ interface FilaRuta {
   pedidos: number
   bandeo: number
   bandeoResumen: string
+  /**
+   * De dónde sale y a dónde vuelve el camión. Iguales salvo que el plan haya movido la llegada.
+   *
+   * Se guardan los NOMBRES y no los ids porque esta fila es plana y la tabla solo los muestra; quien
+   * decide la llegada es `elegirLlegadas` en el modelo.
+   */
+  salida: string
+  llegada: string
+  /** `true` cuando vuelve a un centro DISTINTO del que salió. Es lo único que hay que destacar. */
+  retornaEnOtro: boolean
   oculta: boolean
 }
 
@@ -250,11 +261,21 @@ export function RutasTablaPanel({
   const accesorios = usePlannerStore((s) => s.accesorios)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
+  /**
+   * El nombre de un centro por su id. Sale del maestro y no de la ruta porque la ruta guarda ids: el
+   * nombre es de la distribuidora, y duplicarlo en la ruta sería tener dos nombres para lo mismo.
+   */
+  const distribuidoras = useDistribuidorasStore((s) => s.distribuidoras)
+  const nombreDeCentro = (id: number) =>
+    distribuidoras.find((d) => d.id === id)?.name ?? `Centro ${id}`
+
   const filas = useMemo<FilaRuta[]>(
     () =>
       rutas.map((ruta) => {
         const carga = cargaDeRuta(paradasAsignadas, ruta)
         const items = accesorios[ruta.id] ?? []
+        const salida = nombreDeCentro(ruta.salidaId)
+        const llegada = nombreDeCentro(ruta.llegadaId)
         return {
           id: ruta.id,
           nombre: ruta.nombre,
@@ -273,10 +294,14 @@ export function RutasTablaPanel({
           pedidos: carga.pedidos,
           bandeo: totalAccesorios(items),
           bandeoResumen: resumenAccesorios(items),
+          salida,
+          llegada,
+          retornaEnOtro: ruta.salidaId !== ruta.llegadaId,
           oculta: rutasOcultas.includes(ruta.id),
         }
       }),
-    [rutas, paradasAsignadas, accesorios, rutasOcultas],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rutas, paradasAsignadas, accesorios, rutasOcultas, distribuidoras],
   )
 
   const columnas = useMemo(
@@ -315,6 +340,25 @@ export function RutasTablaPanel({
               )}
             </div>
           ),
+        },
+        {
+          id: 'retorno',
+          header: 'Sale / vuelve',
+          size: 190,
+          enableSorting: false,
+          cell: (fila) =>
+            // Cuando sale y vuelve al mismo centro se escribe UNA vez: «Discruz → Discruz» hace leer
+            // dos veces lo mismo para descubrir que no pasó nada. La flecha aparece solo cuando hay
+            // algo que contar, que es el caso nuevo.
+            fila.retornaEnOtro ? (
+              <span className="flex min-w-0 items-center gap-1 text-xs">
+                <span className="truncate">{fila.salida}</span>
+                <ArrowRight size={11} className="shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium text-foreground">{fila.llegada}</span>
+              </span>
+            ) : (
+              <span className="truncate text-xs text-muted-foreground">{fila.salida}</span>
+            ),
         },
         {
           id: 'camion',

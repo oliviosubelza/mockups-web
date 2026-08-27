@@ -1310,6 +1310,13 @@ export interface Parada {
   puntoEntrega: string
   cliente: string
   canal: CanalId
+  /**
+   * Centro que despacha esta parada, o `null` si todavía no se resolvió.
+   *
+   * Lo pone `construirParadas` con el resolvedor del plan (contorno primero, sello después). Es una
+   * RESTRICCIÓN DEL RUTEO: una ruta pertenece a un centro y solo puede llevar paradas de ese centro.
+   */
+  distribuidoraId?: number | null
   /** Los candidate_order que colapsaron en esta parada. */
   pedidos: Pedido[]
   pesoTotal: number

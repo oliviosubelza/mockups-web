@@ -57,14 +57,14 @@
     --   · `zones` parte UNA ciudad en pedazos para armar rutas: contesta "qué paradas van juntas
     --     en el mismo camión". Muchas zonas por ciudad, sin dueño.
     --   · `distribution_zones` parte la ciudad entre DISTRIBUIDORAS: contesta "quién despacha
-    --     este pedido". Una zona por distribuidora, y la distribuidora ES su dueña.
+    --     este pedido". VARIAS zonas por distribuidora, y la distribuidora ES su dueña.
     -- Un pedido cae primero en una zona de distribución (quién lo despacha) y después en una de
     -- reparto (con quién viaja). No tienen por qué coincidir.
     --
     -- SOLO HACE FALTA CON DOS O MÁS DISTRIBUIDORAS EN LA CIUDAD. Con una sola, todo lo de esa
     -- ciudad es suyo por descarte, y dibujarle un polígono solo lograría que los pedidos de afuera
-    -- no le lleguen a nadie. De ahí que la relación sea 0..1 y no 1: la fila aparece recién cuando
-    -- hay que partir el mapa.
+    -- no le lleguen a nadie. De ahí que la relación sea 0..N y no 1: las filas aparecen recién
+    -- cuando hay que partir el mapa.
     --
     -- POR QUÉ NO TIENE `name`. El nombre de la zona es el nombre de la distribuidora, y guardarlo
     -- acá sería tener dos nombres para la misma cosa esperando a divergir. Se lee con un JOIN.
@@ -73,10 +73,19 @@
     -- Repetirla acá dejaría que la zona diga 'Montero' y su dueña 'Warnes', sin forma de saber
     -- cuál de las dos manda.
     --
-    -- LA RELACIÓN 1 A 1 LA HACE CUMPLIR EL ÍNDICE, NO LA FK. Una `FOREIGN KEY` sola admite veinte
-    -- filas con el mismo `distributor_id`, y veinte polígonos para una distribuidora es exactamente
-    -- el estado que esta tabla existe para impedir. El índice es PARCIAL
-    -- (`WHERE deleted_at IS NULL`) porque el borrado es lógico: sin eso, redibujar la zona de una
+    -- VARIAS ZONAS POR DISTRIBUIDORA, y por eso NO hay índice único sobre `distributor_id`.
+    --
+    -- Arrancó como 1 a 1 —un polígono por distribuidora, con un `UNIQUE (distributor_id) WHERE
+    -- deleted_at IS NULL` que lo hacía cumplir— y la realidad no entra en esa forma: un territorio de
+    -- reparto no siempre es una mancha conexa. Un centro atiende un cuadrante de la ciudad Y un par de
+    -- barrios sueltos del otro lado del río; ese caso con un solo polígono obliga a estirar el
+    -- contorno por el medio de la zona del vecino para poder llegar, y ahí el polígono deja de decir
+    -- la verdad sobre quién despacha qué.
+    --
+    -- Lo que la tabla sigue impidiendo es el SOLAPE entre distribuidoras distintas, pero eso ninguna
+    -- restricción declarativa lo puede sostener: es una comprobación geométrica
+    -- (`ST_Overlaps` entre las filas vivas de la misma ciudad) y vive en la aplicación. El borrado es
+    -- lógico: sin eso, redibujar una zona de una
     -- distribuidora quedaría bloqueado para siempre por la fila vieja.
     CREATE TABLE distribution_zones (
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

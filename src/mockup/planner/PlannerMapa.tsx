@@ -21,7 +21,7 @@ import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { ZonasLayer } from '../zonas/ZonasLayer'
 import { useZonesStore } from '../zones-store'
-import { useDistribucionStore, puntosDeZona } from '../distribucion/distribucion-store'
+import { useDistribucionStore, puntosDeZona, colorPorDistribuidora } from '../distribucion/distribucion-store'
 import { areaKm2, formatearArea } from '../map/geo/medidas'
 import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
 import { useDispatchPlanStore } from '../dispatch-plan-store'
@@ -285,7 +285,7 @@ function pinDeposito(comoGota: boolean) {
   )
 }
 
-function pinCentroDistribucion(nombre: string, activo: boolean, comoGota: boolean) {
+function pinCentroDistribucion(nombre: string, activo: boolean, comoGota: boolean, color: string) {
   const lado = activo ? (comoGota ? 40 : 28) : (comoGota ? 32 : 22)
   return reactIcon(
     <div
@@ -293,11 +293,11 @@ function pinCentroDistribucion(nombre: string, activo: boolean, comoGota: boolea
         width: lado,
         height: lado,
         borderRadius: 10,
-        background: activo ? '#059669' : '#1e293b',
+        background: activo ? color : '#1e293b',
         border: activo ? '2.5px solid #ffffff' : '2px solid #ffffff',
         boxSizing: 'border-box',
         boxShadow: activo
-          ? '0 0 0 3px rgba(16, 185, 129, 0.45), 0 4px 10px rgba(0,0,0,0.45)'
+          ? `0 0 0 3px ${color}73, 0 4px 10px rgba(0,0,0,0.45)`
           : '0 2px 6px rgba(0,0,0,0.35)',
         display: 'flex',
         alignItems: 'center',
@@ -494,23 +494,28 @@ export function PlannerMapa({
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
   // ── Alcance del plan: de acá salen los contornos que se dibujan y el depósito de los trazos ──
-  const activeDistribuidoraId = useDispatchPlanStore((s) => s.activeDistribuidoraId)
+  const activeDistribuidoraIds = useDispatchPlanStore(useShallow((s) => s.activeDistribuidoraIds))
   const activeCiudades = useDispatchPlanStore(useShallow((s) => s.activeCiudades))
   const zonasDistribucionTodas = useDistribucionStore((s) => s.zonas)
   const distribuidorasTodas = useDistribuidorasStore((s) => s.distribuidoras)
 
   /**
-   * De dónde arrancan y dónde cierran los trazos, y qué entra en cada encuadre: el depósito del centro
-   * elegido.
+   * Dónde está cada centro. Cada ruta abre en el depósito de SU camión y cierra en el de su llegada.
    *
-   * Coincide con el `depositoDelPlan` que `PlannerView` le pasa a `optimizar`: si se separaran, el
-   * recorrido calculado y el dibujado empezarían en puntos distintos. Sin centro elegido cae al
-   * depósito histórico, que es el único origen afirmable mientras no se sepa para quién se planifica.
+   * Coincide con el `depositosPorId` que `PlannerView` le pasa a `optimizar`: si se separaran, el
+   * recorrido calculado y el dibujado empezarían y terminarían en puntos distintos.
    */
+  const depositosPorId = useMemo(() => {
+    const out = new Map<number, [number, number]>()
+    for (const d of distribuidorasTodas) out.set(d.id, [d.latitude, d.longitude])
+    return out
+  }, [distribuidorasTodas])
+
+  /** El depósito que la CÁMARA usa para encuadrar: el del primer centro del alcance. */
   const depositoDelPlan = useMemo<[number, number]>(() => {
-    const centro = distribuidorasTodas.find((d) => d.id === activeDistribuidoraId)
+    const centro = distribuidorasTodas.find((d) => activeDistribuidoraIds.includes(d.id))
     return centro ? [centro.latitude, centro.longitude] : [DEPOSITO.lat, DEPOSITO.lng]
-  }, [activeDistribuidoraId, distribuidorasTodas])
+  }, [activeDistribuidoraIds, distribuidorasTodas])
 
   /**
    * Ids de ciudad activos. Vacío = no filtra, igual que en el resto de los filtros de narrowing.
@@ -524,6 +529,22 @@ export function PlannerMapa({
     [activeCiudades],
   )
 
+  /**
+   * Un color por centro, ESTABLE dentro de la ciudad y no solo entre los elegidos.
+   *
+   * Sale de TODOS los centros de la ciudad y no de `activeDistribuidoraIds`: si se armara solo con los
+   * elegidos, tildar un tercer centro correría el orden y el segundo cambiaría de color a mitad de
+   * plan. Misma paleta que `DistribucionWorkspaceView` (`colorPorDistribuidora`) — un plan puede tener
+   * DOS centros a la vez (`activeDistribuidoraIds`), y sin colores distintos sus contornos se pisan en
+   * un solo verde: no hay forma de saber cuál es cuál donde se tocan.
+   */
+  const colorDeDistribuidora = useMemo(() => {
+    const ids = distribuidorasTodas
+      .filter((d) => cityIdsActivos.size === 0 || cityIdsActivos.has(d.cityId))
+      .map((d) => d.id)
+    return colorPorDistribuidora(ids)
+  }, [distribuidorasTodas, cityIdsActivos])
+
   const zonasCD = useMemo(() => {
     if (!verCentrosDistribucion) return []
     return zonasDistribucionTodas
@@ -531,7 +552,7 @@ export function PlannerMapa({
       .map((z) => {
         const pts = puntosDeZona(z)
         const dist = distribuidorasTodas.find((d) => d.id === z.distributorId)
-        const esDirecta = activeDistribuidoraId !== null && activeDistribuidoraId === z.distributorId
+        const esDirecta = activeDistribuidoraIds.includes(z.distributorId)
         // El contorno del centro elegido no es un dibujo de referencia: es el LÍMITE de lo que se está
         // viendo, porque acotar por centro es acotar por su territorio. Por eso va marcado más fuerte.
         return {
@@ -539,14 +560,16 @@ export function PlannerMapa({
           puntos: pts,
           dist,
           esDirecta,
-          esSeleccionada: activeDistribuidoraId === null || activeDistribuidoraId === z.distributorId,
+          esSeleccionada: activeDistribuidoraIds.length === 0 || activeDistribuidoraIds.includes(z.distributorId),
+          color: colorDeDistribuidora.get(z.distributorId) ?? '#059669',
         }
       })
       .filter((item) => item.puntos.length >= 3)
       .filter((item) => cityIdsActivos.size === 0 || (item.dist && cityIdsActivos.has(item.dist.cityId)))
   }, [
-    activeDistribuidoraId,
+    activeDistribuidoraIds,
     cityIdsActivos,
+    colorDeDistribuidora,
     distribuidorasTodas,
     verCentrosDistribucion,
     zonasDistribucionTodas,
@@ -557,23 +580,23 @@ export function PlannerMapa({
     return distribuidorasTodas
       .filter((d) => d.deletedAt === null && d.isActive && d.latitude && d.longitude)
       .filter((d) => cityIdsActivos.size === 0 || cityIdsActivos.has(d.cityId))
-      .filter((d) => activeDistribuidoraId === null || activeDistribuidoraId === d.id)
-  }, [activeDistribuidoraId, cityIdsActivos, distribuidorasTodas, verCentrosDistribucion])
+      .filter((d) => activeDistribuidoraIds.length === 0 || activeDistribuidoraIds.includes(d.id))
+  }, [activeDistribuidoraIds, cityIdsActivos, distribuidorasTodas, verCentrosDistribucion])
 
   const puntosAdicionalesEncuadre = useMemo(() => {
     const pts: [number, number][] = []
-    if (activeDistribuidoraId !== null) {
+    if (activeDistribuidoraIds.length > 0) {
       const directas = zonasCD.filter((z) => z.esDirecta)
       for (const d of directas) {
         pts.push(...d.puntos)
       }
-      const dep = distribuidorasTodas.find((d) => d.id === activeDistribuidoraId)
+      const dep = distribuidorasTodas.find((d) => activeDistribuidoraIds.includes(d.id))
       if (dep) {
         pts.push([dep.latitude, dep.longitude])
       }
     }
     return pts
-  }, [activeDistribuidoraId, distribuidorasTodas, zonasCD])
+  }, [activeDistribuidoraIds, distribuidorasTodas, zonasCD])
 
   /**
    * ¿Está sostenida la tecla Shift?
@@ -655,10 +678,14 @@ export function PlannerMapa({
         const propias = paradas
           .filter((p) => p.rutaId === ruta.id)
           .sort((a, b) => a.secuencia - b.secuencia)
-        return { ruta, path: trazoDeRuta(propias, depositoDelPlan) }
+        // Cada trazo abre en el depósito de SU camión y cierra en el de su llegada, que puede ser
+        // otro: es lo que hace visible que el camión terminó cerca del otro centro y se quedó ahí.
+        const salida = depositosPorId.get(ruta.salidaId) ?? depositoDelPlan
+        const llegada = depositosPorId.get(ruta.llegadaId) ?? salida
+        return { ruta, path: trazoDeRuta(propias, salida, llegada) }
       })
       .filter((t) => t.path.length > 2)
-  }, [depositoDelPlan, ocultas, optimizado, paradas, rutas, verTrazos])
+  }, [depositoDelPlan, depositosPorId, ocultas, optimizado, paradas, rutas, verTrazos])
 
   /**
    * El recorrido POR CALLES de cada ruta, cuando ya llegó.
@@ -802,15 +829,19 @@ export function PlannerMapa({
         margenAbajo={margenAbajo}
       />
 
-      {/* ── Polígonos de Centros de Distribución (distribution_zones) ── */}
-      {zonasCD.map(({ zona, puntos: pts, dist, esDirecta, esSeleccionada }) => (
+      {/* ── Polígonos de Centros de Distribución (distribution_zones) ──
+          COLOR POR CENTRO Y NO UN VERDE FIJO: un plan puede tener DOS centros elegidos a la vez
+          (`activeDistribuidoraIds`), y con un solo verde para "esDirecta" sus contornos se pisaban en
+          uno solo donde se tocan — no había forma de saber cuál era cuál. El de contexto (ni elegido ni
+          descartado, solo de referencia) sigue en gris: ese no tiene territorio en juego todavía. */}
+      {zonasCD.map(({ zona, puntos: pts, dist, esDirecta, esSeleccionada, color }) => (
         <Polygon
           key={`cd-zona-${zona.id}`}
           positions={pts}
           pathOptions={{
-            color: esDirecta ? '#059669' : esSeleccionada ? '#10b981' : '#94a3b8',
+            color: esDirecta ? color : esSeleccionada ? '#10b981' : '#94a3b8',
             weight: esDirecta ? 3 : esSeleccionada ? 2 : 1.5,
-            fillColor: esDirecta ? '#059669' : esSeleccionada ? '#10b981' : '#94a3b8',
+            fillColor: esDirecta ? color : esSeleccionada ? '#10b981' : '#94a3b8',
             fillOpacity: esDirecta ? 0.18 : esSeleccionada ? 0.12 : 0.04,
             dashArray: esDirecta ? undefined : '5, 5',
           }}
@@ -830,12 +861,17 @@ export function PlannerMapa({
 
       {/* ── Marcadores de Origen / Depósito de Centro de Distribución ── */}
       {depositosCD.map((dep) => {
-        const activo = activeDistribuidoraId === dep.id
+        const activo = activeDistribuidoraIds.includes(dep.id)
         return (
           <Marker
             key={`deposito-cd-${dep.id}`}
             position={[dep.latitude, dep.longitude]}
-            icon={pinCentroDistribucion(dep.name, activo, comoGota)}
+            icon={pinCentroDistribucion(
+              dep.name,
+              activo,
+              comoGota,
+              colorDeDistribuidora.get(dep.id) ?? '#059669',
+            )}
           >
             <Tooltip direction="top" offset={[0, -18]} className="text-xs font-bold">
               <div className="flex flex-col items-center">

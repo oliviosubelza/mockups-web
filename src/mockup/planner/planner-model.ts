@@ -12,6 +12,7 @@ import { ordenarPorCercania } from '../map/geo/hilbert'
 import { nearestOrder } from '../map/route-optimizer'
 import {
   DEPOSITO,
+  distribuidoraIdDeCamion,
   MAX_CLIENTES_POR_CAMION,
   type Camion,
   type Parada,
@@ -24,6 +25,33 @@ export interface RutaPlan {
   nombre: string
   color: string
   camion: Camion
+  /**
+   * De qué CENTRO sale el camión. Es su distribuidora, la que le carga la mercadería.
+   *
+   * Sale de `distribuidoraIdDeCamion`: la flota pertenece a un centro y eso no lo decide el plan.
+   */
+  salidaId: number
+  /**
+   * A qué CENTRO vuelve al terminar. Igual a `salidaId` salvo que el plan diga otra cosa.
+   *
+   * ═══ POR QUÉ SALIDA Y LLEGADA PUEDEN NO SER EL MISMO ═══
+   *
+   * Un camión puede terminar su recorrido en la otra punta de la ciudad, a diez cuadras del depósito
+   * de otro centro y a quince kilómetros del propio. Obligarlo a cerrar donde abrió es pagar ese
+   * viaje de vuelta todos los días para que la mercadería duerma en el galpón "correcto" — que entre
+   * centros de la misma empresa no significa nada.
+   *
+   * ═══ SE ELIGE A MANO, Y ANTES DE OPTIMIZAR ═══
+   *
+   * Hubo una versión que la decidía sola, midiendo desde la última parada de cada ruta. Se sacó: el
+   * retorno no es un problema de kilómetros, es una decisión operativa —dónde durmió el camión, qué
+   * encargado lo recibe, qué se carga al día siguiente— y el optimizador no tiene ninguno de esos
+   * datos. Además llegaba tarde: para elegirla necesitaba el recorrido ya armado, y quien planifica
+   * quiere fijarla ANTES, como fija los camiones.
+   *
+   * El default es cerrar donde abrió, así que quien no la toca no se entera de que existe.
+   */
+  llegadaId: number
 }
 
 /** Id de ruta derivado del camión. Mismo formato que usa PlanningView (`r-<camionId>`). */
@@ -46,7 +74,17 @@ export type Asignaciones = Record<string, Asignacion>
  * va una vez y descarga todo). Es la misma regla de `construirParadasScope`, pero sin repartir
  * camiones — acá el reparto es una acción explícita del usuario ("Optimizar"), no un efecto.
  */
-export function construirParadas(pedidos: Pedido[]): Parada[] {
+export function construirParadas(
+  pedidos: Pedido[],
+  /**
+   * Quién despacha cada pedido. Es `resolveDistribuidoraIdDePedido`, que vive en el store del plan
+   * porque lee la geometría de los contornos; este módulo es puro y lo recibe.
+   *
+   * Sin esto la parada no sabe de quién es, y el reparto puede meterla en la ruta de otra
+   * distribuidora — que es lo que hacía.
+   */
+  duenoDe: (pedido: Pedido) => number | null = () => null,
+): Parada[] {
   const porPunto = new Map<string, Pedido[]>()
   for (const pedido of pedidos) {
     porPunto.set(pedido.puntoEntregaId, [...(porPunto.get(pedido.puntoEntregaId) ?? []), pedido])
@@ -60,6 +98,9 @@ export function construirParadas(pedidos: Pedido[]): Parada[] {
       puntoEntrega: primero.puntoEntrega,
       cliente: primero.cliente,
       canal: primero.canal,
+      // El dueño del PUNTO, tomado del primer pedido: un delivery_point está en un solo lugar, así que
+      // todos sus pedidos caen en el mismo contorno y le toca el mismo centro.
+      distribuidoraId: duenoDe(primero),
       pedidos: delPunto,
       pesoTotal: Number(delPunto.reduce((acc, p) => acc + p.peso, 0).toFixed(2)),
       volumenTotal: Number(delPunto.reduce((acc, p) => acc + p.volumen, 0).toFixed(1)),
@@ -84,14 +125,21 @@ export function construirParadas(pedidos: Pedido[]): Parada[] {
 export function construirRutas(
   camiones: Camion[],
   nombres: Record<string, string> = {},
+  /** Llegadas decididas por el plan, por id de ruta. Sin entrada, el camión vuelve a su propio centro. */
+  llegadas: Record<string, number> = {},
 ): RutaPlan[] {
   return camiones.map((camion, i) => {
     const id = rutaIdDeCamion(camion.id)
+    const salidaId = distribuidoraIdDeCamion(camion)
     return {
       id,
       nombre: nombres[id] ?? `Ruta ${i + 1}`,
       color: camion.color,
       camion,
+      salidaId,
+      // El default es CERRAR DONDE ABRIÓ, que es lo que pasaba siempre antes de que esto existiera.
+      // Cambiarlo es una decisión explícita del plan, no un efecto de haber elegido dos centros.
+      llegadaId: llegadas[id] ?? salidaId,
     }
   })
 }
@@ -122,19 +170,24 @@ export function optimizar(
   paradas: Parada[],
   rutas: RutaPlan[],
   /**
-   * De dónde SALEN los camiones. Es el depósito de la distribuidora que se está planificando.
+   * DÓNDE ESTÁ CADA CENTRO, por `distributor_id`. De acá salen la salida y la llegada de cada ruta.
    *
    * VIENE POR PARÁMETRO Y NO DE `DEPOSITO`. Esa constante es la planta de Santa Cruz, escrita a mano,
    * y era el origen de TODAS las rutas — así que planificar Montero armaba recorridos que arrancaban a
-   * 60 km, con el primer tramo cruzando media provincia. El depósito lo sabe la pantalla, que es la
-   * que tiene el alcance del plan; este módulo es puro y no va a leer un store para averiguarlo.
+   * 60 km. Las coordenadas las sabe la pantalla, que tiene el alcance del plan; este módulo es puro y
+   * no va a leer un store para averiguarlas.
    *
-   * El default conserva el comportamiento viejo para los llamadores que todavía no tienen alcance.
+   * ES UN MAPA Y YA NO UN PUNTO porque un plan puede tener DOS centros, y entonces cada ruta abre y
+   * cierra en el suyo. Vacío = todo cae al depósito histórico, que es el comportamiento de antes.
    */
-  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  depositos: Map<number, [number, number]> = new Map(),
 ): Asignaciones {
   const asignaciones: Asignaciones = {}
   if (paradas.length === 0 || rutas.length === 0) return asignaciones
+
+  const FALLBACK: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
+  const salidaDe = (r: RutaPlan) => depositos.get(r.salidaId) ?? FALLBACK
+  const llegadaDe = (r: RutaPlan) => depositos.get(r.llegadaId) ?? salidaDe(r)
 
   const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
 
@@ -164,11 +217,30 @@ export function optimizar(
   const sinAsignar: Parada[] = []
   let actual = 0
 
-  // LA REFRIGERACIÓN ES UNA RESTRICCIÓN DURA, no una preferencia. Repartir sin mirarla mandaba pedidos
-  // de frío a camiones secos: el plan cerraba perfecto en kilos y la mercadería no llegaba. Un camión de
-  // frío SÍ puede llevar carga seca, así que la restricción es en un solo sentido.
+  // ── DOS RESTRICCIONES DURAS, no preferencias ────────────────────────────────────────────────
+  //
+  // 1. EL CENTRO. Una ruta es de UNA distribuidora: sale de su depósito, con su camión y su
+  //    mercadería. Una parada de otro centro no la puede llevar aunque le sobre lugar y le quede de
+  //    paso — esa carga está en el otro galpón.
+  //
+  //    Sin esto, planificar dos centros a la vez armaba rutas que enhebraban puntos de los dos, y el
+  //    mapa mostraba un recorrido cruzando de un territorio al otro. Que se puedan planificar juntos
+  //    NO significa que se consoliden: el plan es de dos centros, cada ruta sigue siendo de uno.
+  //
+  //    Se compara contra `salidaId` y no contra `llegadaId`: lo que ata la parada al centro es de
+  //    dónde salió la mercadería, no dónde termina durmiendo el camión.
+  //
+  // 2. LA REFRIGERACIÓN. Repartir sin mirarla mandaba pedidos de frío a camiones secos: el plan
+  //    cerraba perfecto en kilos y la mercadería no llegaba. Un camión de frío SÍ puede llevar carga
+  //    seca, así que esta corre en un solo sentido.
+  const mismoCentro = (parada: Parada, i: number) =>
+    // `null`/`undefined` = parada sin centro resuelto (no hay contornos, o el llamador no pasó el
+    // resolvedor). No se restringe: la alternativa sería no poder rutear nada.
+    parada.distribuidoraId == null || parada.distribuidoraId === rutas[i].salidaId
+
   const sirve = (parada: Parada, i: number) =>
-    !parada.pedidos.some((p) => p.productType === 'Frío') || rutas[i].camion.tipo === 'Frío'
+    mismoCentro(parada, i) &&
+    (!parada.pedidos.some((p) => p.productType === 'Frío') || rutas[i].camion.tipo === 'Frío')
 
   const entra = (parada: Parada, i: number, kg: number[], m3: number[]) =>
     sirve(parada, i) && kg[i] >= parada.pesoTotal && m3[i] >= parada.volumenTotal
@@ -235,7 +307,10 @@ export function optimizar(
   }
 
   for (const [rutaId, stops] of grupos) {
-    nearestOrder(depot, stops).forEach((parada, i) => {
+    // Se secuencia desde LA SALIDA DE ESA RUTA, no desde un depósito único: con dos centros, ordenar
+    // por cercanía al depósito equivocado da un recorrido que arranca cruzando la ciudad.
+    const ruta = rutas.find((r) => r.id === rutaId)!
+    nearestOrder(salidaDe(ruta), stops).forEach((parada, i) => {
       asignaciones[parada.id] = { rutaId, secuencia: i + 1 }
     })
   }
@@ -258,15 +333,18 @@ const punto = (p: Parada): [number, number] => [p.lat, p.lng]
 function insertarMasBarato(
   orden: Parada[],
   nueva: Parada,
-  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  salida: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  llegada: [number, number] = salida,
 ): Parada[] {
   if (orden.length === 0) return [nueva]
 
   let mejor = 0
   let mejorCosto = Infinity
   for (let i = 0; i <= orden.length; i++) {
-    const antes = i === 0 ? depot : punto(orden[i - 1])
-    const despues = i === orden.length ? depot : punto(orden[i])
+    // Los dos extremos del recorrido son DISTINTOS cuando el camión no vuelve a donde salió: el
+    // primer tramo cuelga de la salida y el último de la llegada.
+    const antes = i === 0 ? salida : punto(orden[i - 1])
+    const despues = i === orden.length ? llegada : punto(orden[i])
     // Lo que CUESTA meterla acá: los dos tramos nuevos menos el tramo que se parte al medio.
     const costo = distancia(antes, punto(nueva)) + distancia(punto(nueva), despues) - distancia(antes, despues)
     if (costo < mejorCosto) {
@@ -294,9 +372,12 @@ export function resecuenciar(
   paradas: Parada[],
   asignaciones: Asignaciones,
   rutaIds: string[],
-  /** Depósito del plan. Ver `optimizar`: decide dónde se abre y se cierra el recorrido. */
-  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  /** Las rutas del plan, para saber de dónde sale y a dónde vuelve cada una. */
+  rutas: RutaPlan[] = [],
+  /** Dónde está cada centro. Ver `optimizar`. */
+  depositos: Map<number, [number, number]> = new Map(),
 ): Asignaciones {
+  const FALLBACK: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
   const next = { ...asignaciones }
 
   for (const rutaId of rutaIds) {
@@ -306,8 +387,12 @@ export function resecuenciar(
       .sort((a, b) => (next[a.id]?.secuencia ?? 0) - (next[b.id]?.secuencia ?? 0))
     const recienLlegadas = stops.filter((p) => (next[p.id]?.secuencia ?? 0) === 0)
 
+    const ruta = rutas.find((r) => r.id === rutaId)
+    const salida = (ruta && depositos.get(ruta.salidaId)) ?? FALLBACK
+    const llegada = (ruta && depositos.get(ruta.llegadaId)) ?? salida
+
     let orden = yaOrdenadas
-    for (const parada of recienLlegadas) orden = insertarMasBarato(orden, parada, depot)
+    for (const parada of recienLlegadas) orden = insertarMasBarato(orden, parada, salida, llegada)
 
     orden.forEach((parada, i) => {
       next[parada.id] = { rutaId, secuencia: i + 1 }
@@ -614,8 +699,10 @@ export function rangoPeso(paradas: Parada[]): { min: number; max: number } {
  */
 export function trazoDeRuta(
   paradasDeRuta: Parada[],
-  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  salida: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+  /** Dónde CIERRA. Sin esto vuelve a la salida, que es el caso de un plan de un solo centro. */
+  llegada: [number, number] = salida,
 ): [number, number][] {
   if (paradasDeRuta.length === 0) return []
-  return [depot, ...paradasDeRuta.map((p) => [p.lat, p.lng] as [number, number]), depot]
+  return [salida, ...paradasDeRuta.map((p) => [p.lat, p.lng] as [number, number]), llegada]
 }
