@@ -94,8 +94,12 @@ export function PlannerHud({
           de negocio, no una preferencia: planificar es una actividad de víspera. El razonamiento largo,
           con lo que rompería ofrecer un calendario, está en `fechaDelPlanNuevo` (`planes-store.ts`).
           Darle forma de botón acá invitaría a buscarle el desplegable que no tiene. */}
+      {/* SE ESCONDE EN PANTALLAS ANGOSTAS (`hidden 2xl:flex`). Es lo único de esta barra que no se
+          clickea, así que es lo primero que puede irse cuando el detalle de una parada le come 320 px
+          de ancho a la franja. Antes la barra entera tenía `shrink-0` y en vez de achicarse se
+          desbordaba encima de la columna izquierda y del detalle. El dato sigue en el `title`. */}
       <span
-        className="mr-0.5 flex shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-muted-foreground"
+        className="mr-0.5 hidden shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-muted-foreground 2xl:flex"
         title="Día operativo del plan: las rutas y las restricciones de circulación se calculan para esta fecha"
       >
         <CalendarDays size={13} className="shrink-0" />

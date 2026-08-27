@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { CircleMarker, MapContainer, Polygon, Polyline, TileLayer, useMap } from 'react-leaflet'
+import { CircleMarker, MapContainer, Polygon, Polyline, useMap } from 'react-leaflet'
 import { CornerUpLeft, MapPinned, Trash2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { MapaClick } from '../map/MapaClick'
-import { SUBDOMINIOS, TILES } from '../map/tiles'
+import { CAPA_POR_DEFECTO } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import {
   RESTRICTION_TYPE_META,
   SPATIAL_NOT_EVALUATED,
@@ -98,7 +99,9 @@ export function RestrictionMap({
           attributionControl={false}
           className="h-full w-full"
         >
-          <TileLayer url={TILES.calles} subdomains={SUBDOMINIOS.calles} />
+          {/* Este mapa no tiene selector de capas: usa la de por defecto, como el resto. Antes
+              tenía `calles` fija, así que era el único que salía a todo color. */}
+          <CapaBaseTiles capa={CAPA_POR_DEFECTO} />
           <InvalidateOnResize />
           {points.length > 0 && <FitGeometry points={points} />}
           {!readOnly && <MapaClick onPunto={(punto) => update([...points, punto])} />}

@@ -21,7 +21,6 @@ import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   AlertTriangle,
-  Building2,
   Globe,
   Lock,
   MapPin,
@@ -43,16 +42,14 @@ import {
 import {
   CANAL_IDS,
   CANAL_META,
-  CIUDAD_IDS,
-  CIUDAD_META,
   MERCADO_IDS,
   MERCADO_META,
   pedidoEsSeleccionable,
   VENDEDORES,
   ZONA_IDS,
   ZONA_META,
+  PEDIDOS,
   type CanalId,
-  type CiudadId,
   type MercadoId,
   type Parada,
   type ZonaId,
@@ -175,12 +172,11 @@ export function PedidosPanel({
   // para juntar varios toggles en un fetch; sobre el mapa el efecto tiene que verse en el toggle, que
   // es justamente lo que esta pantalla viene a proponer.
   const toggle = (
-    dimension: 'canales' | 'ciudades' | 'mercados' | 'zonas' | 'vendedores',
+    dimension: 'canales' | 'mercados' | 'zonas' | 'vendedores',
     value: string,
   ) => {
     const actual = {
       canales: activeCanales as string[],
-      ciudades: activeCiudades as string[],
       mercados: activeMercados as string[],
       zonas: activeZonas as string[],
       vendedores: activeVendedores,
@@ -191,12 +187,15 @@ export function PedidosPanel({
 
     applySelection({
       canales: (dimension === 'canales' ? siguiente : actual.canales) as CanalId[],
-      ciudades: (dimension === 'ciudades' ? siguiente : actual.ciudades) as CiudadId[],
+      // LA CIUDAD YA NO SE TOCA DESDE ACÁ: subió a la barra de arriba, al lado del centro de
+      // distribución. Se reenvía tal cual está para no pisarla.
+      ciudades: activeCiudades,
       mercados: (dimension === 'mercados' ? siguiente : actual.mercados) as MercadoId[],
       zonas: (dimension === 'zonas' ? siguiente : actual.zonas) as ZonaId[],
       vendedores: dimension === 'vendedores' ? siguiente : actual.vendedores,
     })
   }
+
 
   const fuera = useMemo(() => enScope.filter((p) => !entraPorCorte(p)), [enScope])
   const fueraIncluidos = useMemo(
@@ -286,19 +285,19 @@ export function PedidosPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* ── 1. Filtros ──
-          ORDEN: Ciudad (el más amplio) primero, después Canal, Mercado, Zona, Vendedor — mismo orden
-          que el paso 1, para que quien ya conoce la pantalla no tenga que reaprenderlo. */}
+          LA CIUDAD SE FUE ARRIBA, a la barra del mapa, al lado del centro de distribución. Es la
+          dimensión más amplia —decide qué territorio se está planificando— y compartía fila con
+          «Vendedor», que acota una decena de pedidos. Además es lo que ACOTA las zonas de distribución
+          que se ofrecen acá, y un filtro que gobierna a otro no puede estar a su lado como un par.
+
+          EL CENTRO DE DISTRIBUCIÓN TAMPOCO ESTÁ ACÁ: junto con la ciudad forman el ALCANCE del plan
+          —qué se está planificando— y viven en su propia tarjeta sobre el mapa. Lo de esta barra es
+          otra cosa: recortes DENTRO de ese alcance, que se prenden y se apagan mientras se trabaja.
+
+          ORDEN DE LO QUE QUEDA: Canal primero, porque sin canal no hay nada (el plan arranca vacío);
+          después las tres dimensiones que RECORTAN — la zona, el mercado y el vendedor. */}
       <div className="shrink-0 border-b border-border px-2 py-2">
         <div className="flex flex-wrap items-center gap-1">
-          <FiltroPopover
-            label="Ciudad"
-            icon={Building2}
-            active={activeCiudades}
-            onToggle={(v) => toggle('ciudades', v)}
-            searchPlaceholder="Buscar ciudad…"
-            emptyText="Sin ciudades"
-            options={CIUDAD_IDS.map((c) => ({ value: c, label: CIUDAD_META[c].label }))}
-          />
           <FiltroPopover
             label="Canal"
             icon={Store}
@@ -316,6 +315,16 @@ export function PedidosPanel({
               ),
             }))}
           />
+
+          <FiltroPopover
+            label="Zona logística"
+            icon={MapPin}
+            active={activeZonas}
+            onToggle={(v) => toggle('zonas', v)}
+            searchPlaceholder="Buscar zona…"
+            emptyText="Sin zonas"
+            options={ZONA_IDS.map((z) => ({ value: z, label: ZONA_META[z].label }))}
+          />
           <FiltroPopover
             label="Mercado"
             icon={Globe}
@@ -324,15 +333,6 @@ export function PedidosPanel({
             searchPlaceholder="Buscar mercado…"
             emptyText="Sin mercados"
             options={MERCADO_IDS.map((m) => ({ value: m, label: MERCADO_META[m].label }))}
-          />
-          <FiltroPopover
-            label="Zona"
-            icon={MapPin}
-            active={activeZonas}
-            onToggle={(v) => toggle('zonas', v)}
-            searchPlaceholder="Buscar zona…"
-            emptyText="Sin zonas"
-            options={ZONA_IDS.map((z) => ({ value: z, label: ZONA_META[z].label }))}
           />
           <FiltroPopover
             label="Vendedor"

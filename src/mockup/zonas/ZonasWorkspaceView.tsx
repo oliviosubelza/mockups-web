@@ -46,7 +46,7 @@
 // rutas, agregado, editor y capa propios; por eso todos los polígonos de acá comparten las mismas reglas
 // de holgura y auditoría.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, useMap } from 'react-leaflet'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
@@ -74,7 +74,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useRouteParams } from '@/core/routing/active-route'
-import { SUBDOMINIOS, TILES } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { PolygonDrawLayer } from '../map/PolygonDrawLayer'
 import { encuadrar } from '../map/encuadrar'
@@ -456,7 +456,7 @@ export function ZonasWorkspaceView() {
           {/* `key`: sin él, Leaflet reusa la capa y solo le cambia la URL, y las teselas viejas del
               fondo anterior se quedan pintadas hasta que alguien mueve el mapa. Remontando, entra
               limpia. Está explicado igual en `PlannerMapa`, que fue donde se descubrió. */}
-          <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
+          <CapaBaseTiles capa={capa} />
           <InvalidateOnResize />
           <CapturarMapa
             onMapa={(m) => {

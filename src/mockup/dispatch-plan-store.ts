@@ -15,6 +15,7 @@ import {
   TRANSFERENCIAS,
   aMinutos,
   ciudadDe,
+  cityIdDe,
   distribuidoraIdDe,
   distribuidoraIdDeCamion,
   finVentana,
@@ -29,6 +30,8 @@ import {
   type ZonaId,
 } from './mock-data'
 import { useDistribucionStore, puntosDeZona } from './distribucion/distribucion-store'
+import { useDistribuidorasStore } from './distribucion/distribuidoras-store'
+import { pedidosDeContornos, type ContornoPoblable } from './pedidos-de-contorno'
 import { puntoEnAnillo } from './map/geo/solapamiento'
 
 // ── Corte de hora (dentro/fuera) ──
@@ -139,10 +142,23 @@ interface DispatchPlanState {
   reset: () => void
 }
 
+/**
+ * Con qué arranca una planificación NUEVA. `reset()` vuelve exactamente acá, así que esto es lo que
+ * se ve al entrar al editor desde «Nueva planificación».
+ *
+ * ARRANCA DE CERO, Y ANTES NO. `activeCanales` venía con `CANAL_IDS` —los cinco canales— y
+ * `activeDistribuidoraId` con un `501` escrito a mano. El efecto era que el editor se abría con mil y
+ * pico de pedidos ya adentro y un centro de distribución elegido que nadie eligió: la primera acción
+ * de cualquiera era DESTILDAR, que es exactamente al revés de lo que un plan nuevo pide. Un plan se
+ * arma agregando lo que va a entrar, no sacando lo que no.
+ *
+ * El panel de pedidos ya sabía qué hacer con esto: tiene su estado vacío («Elegí un canal») escrito
+ * desde antes, que hasta ahora no se veía nunca.
+ */
 const INITIAL_STATE = {
   selectedTruckIds: [] as string[],
-  activeDistribuidoraId: 501 as number | null,
-  activeCanales: CANAL_IDS as CanalId[],
+  activeDistribuidoraId: null as number | null,
+  activeCanales: [] as CanalId[],
   activeCiudades: [] as CiudadId[],
   activeDistribuidoras: [] as string[],
   activeMercados: [] as MercadoId[],
@@ -300,38 +316,132 @@ export const selectAvailableCapacity = (s: DispatchPlanState): CapacityTotals =>
 }
 
 /**
- * Resuelve el centro de distribución al que pertenece el pedido.
- * 1. Si existen polígonos trazados en useDistribucionStore para centros de distribución activos,
- *    verifica si las coordenadas GPS [lat, lng] del pedido caen dentro de dicho polígono.
- * 2. Si no cae dentro de ningún polígono, aplica la asignación geográfica/sectorial por defecto.
+ * TODOS los pedidos que la planificación puede ver: los del dataset base MÁS los generados dentro de
+ * cada contorno dibujado.
+ *
+ * ═══ POR QUÉ HAY DOS FUENTES ═══
+ *
+ * `PEDIDOS` se construye al importar el módulo, así que no puede conocer un contorno que se dibujó
+ * después ni una ciudad que el generador base nunca pobló (los arma todos en Santa Cruz). Los pedidos
+ * de contorno tapan los dos huecos: ver `pedidos-de-contorno.ts`.
+ *
+ * NO se mezclan en `PEDIDOS`. Esa constante la leen otras diez pantallas —monitoreo, historial,
+ * exportaciones— que hablan de un dataset fijo; meterle filas que aparecen y desaparecen según lo que
+ * alguien dibujó en otra pantalla les cambiaría el piso sin avisar. La unión vive acá, donde la
+ * pregunta es "qué se puede planificar hoy".
  */
-export const resolveDistribuidoraIdDePedido = (p: Pedido): number => {
+export const universoPedidos = (): Pedido[] => {
+  const zonas = useDistribucionStore.getState().zonas.filter((z) => z.deletedAt === null && z.isActive)
+  if (zonas.length === 0) return PEDIDOS
+
+  // ── CACHÉ, y no es opcional ────────────────────────────────────────────────────────────────
+  // `selectScopedOrders` llama a esto en cada lectura del store —o sea en cada render que toca un
+  // filtro— y adentro hay un punto-en-polígono por pedido y por contorno: 660 × 10 con los volúmenes
+  // de hoy. Sin caché eso corre decenas de veces por segundo y además devuelve un array nuevo cada
+  // vez, que a Zustand le parece estado cambiante.
+  //
+  // La clave es la identidad de los contornos: cambia al dibujar, al borrar y al mover un vértice,
+  // que son exactamente los momentos en que el universo cambia.
+  const clave = zonas.map((z) => `${z.id}:${z.updatedAt}`).join('|')
+  if (cacheUniverso.clave === clave) return cacheUniverso.pedidos
+
+  const maestro = useDistribuidorasStore.getState().distribuidoras
+  const contornos: ContornoPoblable[] = []
+  for (const z of zonas) {
+    const dueña = maestro.find((d) => d.id === z.distributorId && d.deletedAt === null)
+    if (!dueña) continue
+    const puntos = puntosDeZona(z)
+    if (puntos.length < 3) continue
+    // Cuántos pedidos REALES ya caen adentro: es lo que decide si hay que inventar alguno.
+    let reales = 0
+    for (const p of PEDIDOS) {
+      if (puntoEnAnillo([p.lat, p.lng], puntos) !== 'fuera') reales++
+    }
+    contornos.push({ distributorId: z.distributorId, cityId: dueña.cityId, puntos, pedidosReales: reales })
+  }
+
+  const pedidos = [...PEDIDOS, ...pedidosDeContornos(contornos)]
+  cacheUniverso = { clave, pedidos }
+  return pedidos
+}
+
+/** Ver `universoPedidos`: se guarda por identidad de los contornos, no por tiempo. */
+let cacheUniverso: { clave: string; pedidos: Pedido[] } = { clave: '', pedidos: [] }
+
+/**
+ * En qué ZONA DE DISTRIBUCIÓN cae el pedido, o `null` si no cae en ninguna.
+ *
+ * ═══ ESTRICTA A PROPÓSITO, SIN DESCARTE ═══
+ *
+ * Devuelve el `distributor_id` del polígono que CONTIENE el punto y nada más. Un pedido que no cae en
+ * ningún polígono devuelve `null` y eso NO es un error: es la respuesta correcta, y es lo que hace que
+ * el centro predeterminado de la ciudad (`distributors.is_default`) tenga sentido.
+ *
+ * ═══ NO HAY QUE SEMBRAR PEDIDOS PARA QUE ESTO DÉ NÚMEROS ═══
+ *
+ * Los pedidos del mockup se plantan sobre calles reales de la ciudad (`PUNTOS_CALLE_SCZ`), así que un
+ * polígono dibujado sobre un barrio encierra los que están ahí — el conteo sale del dataset que ya
+ * existe, no de datos inventados para que el filtro luzca bien. Si una zona da cero, es que el
+ * polígono no cubre nada, y eso es información: el selector lo muestra al lado de cada zona para que
+ * se vea ANTES de elegirla.
+ *
+ * El costo es que recorre las zonas por pedido. Con el tamaño de este dataset no se nota; el día que
+ * se note, la respuesta es un índice espacial, que es lo que PostGIS hace del otro lado.
+ */
+export const zonaDistribucionDePedido = (p: Pedido): number | null => {
   try {
-    const zonas = useDistribucionStore.getState().zonas.filter((z) => z.deletedAt === null && z.isActive)
+    const zonas = useDistribucionStore
+      .getState()
+      .zonas.filter((z) => z.deletedAt === null && z.isActive)
     for (const z of zonas) {
       const pts = puntosDeZona(z)
-      if (pts.length >= 3) {
-        if (puntoEnAnillo([p.lat, p.lng], pts) !== 'fuera') {
-          return z.distributorId
-        }
-      }
+      if (pts.length < 3) continue
+      if (puntoEnAnillo([p.lat, p.lng], pts) !== 'fuera') return z.distributorId
     }
   } catch {
-    // Fallback defensivo
+    // Storage o geometría rota: se responde "en ninguna", que es lo mismo que sin zonas dibujadas.
   }
-  return distribuidoraIdDe(p)
+  return null
 }
+
+/**
+ * A QUIÉN le toca despachar el pedido. Siempre devuelve alguien.
+ *
+ * Dos escalones, y el orden importa:
+ *   1. el CONTORNO que lo contiene. La geometría gana: dibujar un territorio es exactamente decir
+ *      «lo que caiga acá adentro es mío», y si el sello dijera otra cosa, el dibujo no serviría de
+ *      nada;
+ *   2. el dueño SELLADO en el pedido (`Pedido.distribuidoraId`), para el que no cae en ninguno.
+ *
+ * SE FUE EL ESCALÓN DEL PREDETERMINADO, y ese era el bug. Estaba entre los dos, así que un pedido de
+ * Andiven que no cayera dentro de ningún contorno terminaba contado como de Bramar —la predeterminada
+ * de Montero— y Andiven aparecía con cero pedidos en el selector. El predeterminado sigue existiendo y
+ * sigue significando lo mismo; lo que no puede es pisar a un pedido que ya sabe de quién es.
+ */
+export const resolveDistribuidoraIdDePedido = (p: Pedido): number =>
+  zonaDistribucionDePedido(p) ?? p.distribuidoraId
 
 /**
  * Filtros de narrowing (Centro de Distribución/Ciudad/Mercado/Zona/Vendedor):
  * Un array vacío NO filtra (pasan todos). El canal es obligatorio.
  */
 export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean => {
+  // El dueño EFECTIVO: el contorno que lo contiene, o el sellado. Ver `resolveDistribuidoraIdDePedido`.
+  //
+  // ACOTAR POR CENTRO ES ACOTAR POR SU TERRITORIO, sin casilla que prender. Si el centro elegido tiene
+  // contorno, `resolveDistribuidoraIdDePedido` ya solo le atribuye lo que cae adentro, así que esta
+  // comparación es exactamente «los puntos de este polígono». Y si NO tiene contorno —el caso de la
+  // única distribuidora de una ciudad, o de una recién creada— le tocan los que traen su sello, que es
+  // el otro comportamiento que hace falta.
+  //
+  // Hubo un `soloDentroDelContorno` como casilla en la tarjeta de alcance. Se fue: con un contorno
+  // sembrado por distribuidora la casilla estaba siempre prendida y prometía una opción que no era.
   const distId = resolveDistribuidoraIdDePedido(p)
   return (
     (s.activeDistribuidoraId === null || distId === s.activeDistribuidoraId) &&
     (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
     (s.activeDistribuidoras.length === 0 || s.activeDistribuidoras.includes(String(distId))) &&
+
     (s.activeMercados.length === 0 || s.activeMercados.includes(mercadoDe(p))) &&
     (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
     (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))
@@ -340,7 +450,7 @@ export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean => {
 
 /** Pedidos de los canales activos que pasan el narrowing — el universo sobre el que se decide. */
 export const selectScopedOrders = (s: DispatchPlanState): Pedido[] =>
-  PEDIDOS.filter((p) => s.activeCanales.includes(p.canal) && matchesNarrowing(p, s))
+  universoPedidos().filter((p) => s.activeCanales.includes(p.canal) && matchesNarrowing(p, s))
 
 /**
  * Todo lo que efectivamente entra al plan. Un solo filtro con `estaIncluido`: la regla de corte da

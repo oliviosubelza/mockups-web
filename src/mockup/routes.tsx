@@ -95,6 +95,7 @@ export interface MockRoute {
  */
 export const MODULOS = {
   planificacion: 'Planificación',
+  zonas: 'Zonas',
   devoluciones: 'Devoluciones',
   reportesEHistoriales: 'Reportes e Historiales',
 } as const
@@ -395,23 +396,43 @@ export const routes: MockRoute[] = [
     fullBleed: true,
     showInSidebar: false,
   },
+  // ── Zonas ───────────────────────────────────────────────────────────────────────────────────
+  // Tres cortes distintos del MISMO territorio, y por eso van juntos bajo una sección en vez de
+  // sueltos: quien viene a dibujar un polígono tiene que elegir primero cuál de los tres está
+  // dibujando, y con los ítems sueltos esa elección no se veía —«Restricciones» ni siquiera decía
+  // que fuera algo geográfico—.
+  //
+  //   · Zonas logísticas   (`zones`)              → con qué otras paradas viaja el pedido.
+  //   · Zonas de distribución (`distribution_zones`) → qué distribuidora lo despacha.
+  //   · Restricciones      (`planning_restrictions`) → por dónde y cuándo NO se puede pasar.
+  //
+  // Siguen siendo tres pantallas y no pestañas de una: un pedido cae en una zona de cada tipo y no
+  // tienen por qué coincidir, así que mezclarlas haría creer que un polígono sirve para las tres.
+  //
+  // LOS TRES VAN CON `order: 3`. La sección hereda el MENOR `order` de sus hijos, así que ese 3 es
+  // el que la ubica entre «Órdenes de transporte» (2) y «Activos logísticos» (4). Entre hermanos
+  // empatados manda el orden de este array, que es el de arriba.
   {
-    // Dato maestro: zonas de reparto por ciudad. Ítem propio en el sidebar — no es una acción de
-    // un plan puntual, es un perímetro que muchos planes van a reusar.
+    // Dato maestro: zonas de reparto por ciudad. No es una acción de un plan puntual, es un
+    // perímetro que muchos planes van a reusar.
     //
     // UNA sola pantalla para las tres rutas de zonas: el mapa es el contenido y el listado flota
     // encima. Antes eran dos —tabla acá, editor a pantalla completa en las otras dos— y para tocar
     // una zona había que entrar de a una desde la tabla, sin ver nunca dos zonas juntas.
     id: 'zonas',
     path: '/zonas',
-    label: 'Zonas',
+    // «Zonas logísticas» y no «Zonas» a secas: dentro de una sección llamada «Zonas», un hijo
+    // llamado igual que el padre no dice cuál de las tres es. Es además el título que la propia
+    // pantalla usa en su panel flotante.
+    label: 'Zonas logísticas',
     icon: LandPlot,
     component: ZonasWorkspaceView,
     order: 3,
     fullBleed: true,
-    // Los dos catálogos arrancan bloque: la línea dice "de acá para abajo es dato maestro" sin
-    // gastar un encabezado de sección en dos ítems.
+    // El separador lo hereda la SECCIÓN (se toma con un `.some()` sobre los hijos), así que la línea
+    // sale arriba del encabezado «Zonas» y no entre dos ítems de adentro.
     separatorBefore: true,
+    group: MODULOS.zonas,
   },
   {
     // Entra al mismo workspace pero arrancando en modo dibujo. Se conserva como ruta propia para no
@@ -442,24 +463,35 @@ export const routes: MockRoute[] = [
     // pedido; la de distribución, quién lo despacha. Un pedido cae en una de cada tipo, y no tienen por
     // qué coincidir. Mezclarlas en una sola pantalla haría creer que un polígono sirve para las dos cosas.
     //
-    // Va INMEDIATAMENTE después de Zonas: comparten editor, y quien entiende una entiende la otra.
+    // Va INMEDIATAMENTE después de Zonas logísticas: comparten editor, y quien entiende una
+    // entiende la otra.
     id: 'zonas-distribucion',
     path: '/zonas-distribucion',
-    label: 'Centros de distribución',
+    // Antes decía «Centros de distribución», que nombraba el DEPÓSITO y no el polígono. Lo que esta
+    // pantalla administra es el territorio que cada distribuidora despacha (`distribution_zones`);
+    // el depósito es apenas el ícono desde el que se recorta.
+    label: 'Zonas de distribución',
     icon: Building2,
     component: DistribucionWorkspaceView,
     order: 3,
     fullBleed: true,
+    group: MODULOS.zonas,
   },
   {
-    // Dato maestro independiente de las zonas logísticas. Sus horarios y reglas vehiculares forman
-    // un solo agregado y nunca se mezclan con la partición territorial de reparto.
+    // Dato maestro independiente de las zonas logísticas: comparte la sección porque también recorta
+    // el mapa, pero sus horarios y reglas vehiculares forman un agregado propio y nunca se mezclan
+    // con la partición territorial de reparto.
+    //
+    // El label NO dice «Zonas restringidas» aunque la sección sea «Zonas»: acá adentro también viven
+    // las restricciones POR PLACA, que no tienen polígono que dibujar. Llamarlas zona dejaría a esas
+    // filas sin nombre en el único lugar donde se las administra.
     id: 'restricciones',
     path: '/restricciones',
     label: 'Restricciones',
     icon: ShieldAlert,
     component: RestrictionsCatalogView,
     order: 3,
+    group: MODULOS.zonas,
   },
   {
     // Alta y edición van al MISMO workspace de mapa a sangre, igual que en zonas: `/nueva` entra
@@ -498,13 +530,17 @@ export const routes: MockRoute[] = [
     // usan muchas OTs, igual que Zonas. Que además se vaya a ELEGIR desde la planificación no lo
     // convierte en parte de ella (los camiones también se eligen ahí y son dato maestro aparte).
     //
-    // Va después de Zonas a propósito: los dos son catálogos, y el sidebar los deja juntos.
+    // Va después de la sección «Zonas» a propósito: los dos son dato maestro y el sidebar los deja
+    // juntos. `order: 4` y ya no 3: la sección hereda el 3 de sus hijos, y con el empate el
+    // desempate lo decidía el orden de inserción —los ítems sueltos se agregan ANTES que las
+    // secciones—, así que este caía por encima de Zonas. Mismo tropiezo que ya tuvo «Confirmar
+    // rutas» cuando se agrupó Planificación.
     id: 'activos-logisticos',
     path: '/activos-logisticos',
     label: 'Activos logísticos',
     icon: Boxes,
     component: ActivosLogisticosView,
-    order: 3,
+    order: 4,
   },
   {
     // Módulo Unificado: Historial de órdenes de transporte (redirecciona a Tab 2 del Hub)

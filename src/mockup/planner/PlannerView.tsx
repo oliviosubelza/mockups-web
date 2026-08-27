@@ -23,10 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { toast } from 'sonner'
 import {
-  Building2,
-  Check,
   ChevronLeft,
-  ChevronsUpDown,
   ClipboardList,
   Loader2,
   MapPinned,
@@ -35,24 +32,10 @@ import {
   Route,
   Trash2,
   Truck,
-  Warehouse,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
 import {
   Select,
   SelectContent,
@@ -73,15 +56,17 @@ import {
   AUXILIARES,
   CAMIONES,
   CHOFERES,
-  CIUDAD_META,
+  DEPOSITO,
   DISTRIBUIDORAS,
   PEDIDOS,
-  distribuidoraIdDe,
-  distribuidoraIdDeCamion,
+  ciudadDe,
+  cityIdDe,
   tripulacionDeCamion,
+  type CiudadId,
   type PlanCamion,
 } from '../mock-data'
-import { resolveDistribuidoraIdDePedido } from '../dispatch-plan-store'
+import { PlannerAlcance, TODAS } from './PlannerAlcance'
+import { resolveDistribuidoraIdDePedido, universoPedidos } from '../dispatch-plan-store'
 import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
 import { useDistribucionStore } from '../distribucion/distribucion-store'
 import { kgToTons } from '../unit-conversion'
@@ -135,6 +120,20 @@ const fmt0 = new Intl.NumberFormat('es-BO', { maximumFractionDigits: 0 })
  */
 const COLUMNA_TOP_PX = MARGEN_PX
 
+/**
+ * Alto de arranque de la tarjeta de ALCANCE, en px, hasta que se mide de verdad.
+ *
+ * `METRICAS_ALTO_PX` puede ser una constante porque su contenido es fijo: seis números en una grilla
+ * que no cambia. Esta tarjeta NO: la casilla «solo dentro del contorno» aparece y desaparece, y un
+ * nombre de centro largo puede pasar a dos líneas. Escribir el número a mano era garantizar que el día
+ * que se agregue un campo, la tarjeta de abajo lo tape sin que nadie lo relacione con este archivo.
+ *
+ * Así que se MIDE (`ResizeObserver`, abajo) y esto es solo el valor del primer cuadro, antes de que el
+ * observador reporte. Está calculado sobre el caso sin casilla para que el error inicial sea "queda un
+ * hueco", que se ve un instante, y no "se superponen", que se ve mal.
+ */
+const ALCANCE_ALTO_INICIAL_PX = 148
+
 /** Los flotantes entran y salen con el mismo tiempo, o el movimiento se ve descoordinado. */
 const DESLIZA = 'transition-transform duration-300 ease-out'
 
@@ -184,14 +183,20 @@ export function PlannerView() {
   // Suscripción, no `getState()`: el mensaje del estado vacío cambia con el filtro, así que tiene que
   // re-renderizar cuando el canal cambia.
   const sinCanal = useDispatchPlanStore((s) => s.activeCanales.length === 0)
+  // Las dimensiones que la barra de arriba lee y reenvía. `applySelection` es de todo-o-nada, así que
+  // para tocar solo la ciudad hay que mandarle las otras cuatro tal como están.
+  const activeCanales = useDispatchPlanStore(useShallow((s) => s.activeCanales))
+  const activeCiudades = useDispatchPlanStore(useShallow((s) => s.activeCiudades))
+  const activeMercados = useDispatchPlanStore(useShallow((s) => s.activeMercados))
+  const activeZonas = useDispatchPlanStore(useShallow((s) => s.activeZonas))
+  const activeVendedores = useDispatchPlanStore(useShallow((s) => s.activeVendedores))
+  const applySelection = useDispatchPlanStore((s) => s.applySelection)
   // Estos selectores derivan arrays NUEVOS en cada llamada; sin igualdad shallow, Zustand v5 los ve
   // como snapshot cambiante y entra en bucle de render.
   const camiones = useDispatchPlanStore(useShallow(selectSelectedTrucks))
   const disponibles = useDispatchPlanStore(useShallow(selectAvailableTrucks))
   const elegibles = disponibles.length
   const pedidos = useDispatchPlanStore(useShallow(selectIncludedOrders))
-
-  const [distribuidoraPopoverOpen, setDistribuidoraPopoverOpen] = useState(false)
   const distribuidorasStore = useDistribuidorasStore((s) => s.distribuidoras)
   const zonasDistribucion = useDistribucionStore((s) => s.zonas)
 
@@ -205,6 +210,140 @@ export function PlannerView() {
       DISTRIBUIDORAS.find((d) => d.id === activeDistribuidoraId)
     )
   }, [activeDistribuidoraId, distribuidorasVivas])
+
+  // ── ALCANCE DEL PLAN: una ciudad y un centro ───────────────────────────────────────────────
+
+  /**
+   * La ciudad del plan. El store la guarda como ARRAY (`activeCiudades`) porque el predicado de
+   * narrowing es el mismo para todas las dimensiones; acá se lee como uno o ninguno, que es lo que la
+   * pantalla permite elegir. Un plan sale de un depósito con una flota: dos ciudades a la vez
+   * producirían rutas que ninguna distribuidora puede correr.
+   */
+  const ciudadDelPlan: CiudadId | null = activeCiudades[0] ?? null
+
+  /**
+   * Cuántos pedidos hay por ciudad. Va como `hint`: se ve el reparto antes de elegir.
+   *
+   * Cuenta el UNIVERSO —base + los generados dentro de cada contorno—, no `PEDIDOS`: si el hint dijera
+   * "0" para Montero mientras el mapa muestra los diez de su contorno, el número estaría mintiendo
+   * sobre la única pantalla que lo usa. Depende de `zonasDistribucion` porque dibujar un contorno
+   * cambia el conteo.
+   */
+  const pedidosPorCiudad = useMemo(() => {
+    const conteo = new Map<CiudadId, number>()
+    for (const p of universoPedidos()) conteo.set(ciudadDe(p), (conteo.get(ciudadDe(p)) ?? 0) + 1)
+    return conteo
+  }, [zonasDistribucion])
+
+  /** Los centros vivos de la ciudad del plan, o todos si no hay ciudad elegida. */
+  const centrosDelAlcance = useMemo(
+    () =>
+      ciudadDelPlan === null
+        ? distribuidorasVivas
+        : distribuidorasVivas.filter((d) => d.cityId === cityIdDe(ciudadDelPlan)),
+    [distribuidorasVivas, ciudadDelPlan],
+  )
+
+  const centroTieneContorno = useMemo(
+    () =>
+      activeDistribuidoraId !== null &&
+      zonasDistribucion.some(
+        (z) => z.distributorId === activeDistribuidoraId && z.deletedAt === null && z.isActive,
+      ),
+    [activeDistribuidoraId, zonasDistribucion],
+  )
+
+  /**
+   * Las opciones del selector de centro, con «Todos» adelante.
+   *
+   * El `hint` es cuántos pedidos le TOCAN hoy —`resolveDistribuidoraIdDePedido`, o sea el contorno si
+   * lo tiene y el predeterminado o el reparto por sector si no—: el mismo número que la pantalla va a
+   * mostrar si se lo elige, y por eso sirve para decidir sin elegir.
+   *
+   * La etiqueta dice «· predeterminado» en el que lo es. Sin eso, que un centro apareciera ya elegido
+   * al cambiar de ciudad se leería como un capricho de la pantalla.
+   */
+  const opcionesCentro = useMemo(() => {
+    const conteo = new Map<number, number>()
+    for (const p of universoPedidos()) {
+      const id = resolveDistribuidoraIdDePedido(p)
+      conteo.set(id, (conteo.get(id) ?? 0) + 1)
+    }
+    // Sin «todos»: un plan sale de UN depósito. Ver el encabezado de `PlannerAlcance`.
+    return centrosDelAlcance.map((d) => ({
+      value: String(d.id),
+      label: d.isDefault ? `${d.name} · predeterminado` : d.name,
+      hint: conteo.get(d.id) || undefined,
+    }))
+  }, [centrosDelAlcance, zonasDistribucion])
+
+  /**
+   * Elegir ciudad reescribe el alcance entero: la ciudad, el centro y la restricción de contorno.
+   *
+   * EL CENTRO SE ELIGE SOLO, y es el PREDETERMINADO de esa ciudad. Es el que recibe lo que ningún
+   * contorno cubre, así que es el que un plan nuevo quiere casi siempre; y si la ciudad no tiene
+   * predeterminado, queda en «todos» en vez de en uno cualquiera. Dejar el centro anterior sería peor
+   * que cualquiera de las dos: sería un centro de OTRA ciudad filtrando un plan que ya no es la suya.
+   */
+  const elegirCiudad = (ciudad: CiudadId | null) => {
+    applySelection({
+      canales: activeCanales,
+      ciudades: ciudad === null ? [] : [ciudad],
+      mercados: activeMercados,
+      zonas: activeZonas,
+      vendedores: activeVendedores,
+    })
+    const predeterminado =
+      ciudad === null
+        ? null
+        : (distribuidorasVivas.find((d) => d.cityId === cityIdDe(ciudad) && d.isDefault)?.id ?? null)
+    setActiveDistribuidoraId(predeterminado)
+    pedirEncuadre('todo')
+  }
+
+  /**
+   * Dónde termina la tarjeta de alcance: es de dónde arranca el resto de la columna.
+   *
+   * MEDIDO y no calculado. Ver `ALCANCE_ALTO_INICIAL_PX`: el contenido de la tarjeta cambia de alto
+   * solo (la casilla del contorno) y a mano eso se desincroniza a la primera.
+   */
+  const alcanceRef = useRef<HTMLDivElement | null>(null)
+  const [alcanceAlto, setAlcanceAlto] = useState(ALCANCE_ALTO_INICIAL_PX)
+  useEffect(() => {
+    const nodo = alcanceRef.current
+    if (!nodo) return
+    const observador = new ResizeObserver(([entrada]) => {
+      const alto = Math.round(entrada.contentRect.height)
+      // Solo si cambió de verdad: escribir el mismo número dispara un render por cada cuadro del
+      // resize del navegador.
+      setAlcanceAlto((actual) => (actual === alto ? actual : alto))
+    })
+    observador.observe(nodo)
+    return () => observador.disconnect()
+  }, [])
+
+  /** Borde superior de la tarjeta que sigue en la columna. */
+  const columnaSiguienteTop = COLUMNA_TOP_PX + alcanceAlto + 6
+
+  /**
+   * De dónde salen los camiones de ESTE plan: el depósito del centro elegido.
+   *
+   * Es lo que hace que optimizar en Montero arme recorridos que empiezan en Montero. Antes todas las
+   * rutas salían de `DEPOSITO` —la planta de Santa Cruz, escrita a mano en `mock-data`—, así que un
+   * plan del interior abría con un tramo de 60 km cruzando la provincia.
+   *
+   * Sin centro elegido cae al depósito histórico: es el único origen que se puede afirmar cuando la
+   * pantalla todavía no sabe para quién está planificando.
+   */
+  const depositoDelPlan = useMemo<[number, number]>(() => {
+    const centro = distribuidorasVivas.find((d) => d.id === activeDistribuidoraId)
+    return centro ? [centro.latitude, centro.longitude] : [DEPOSITO.lat, DEPOSITO.lng]
+  }, [activeDistribuidoraId, distribuidorasVivas])
+
+  const elegirCentro = (id: number) => {
+    setActiveDistribuidoraId(id)
+    pedirEncuadre('todo')
+  }
 
   const panel = usePlannerStore((s) => s.panel)
   const dockAbierto = usePlannerStore((s) => s.dockAbierto)
@@ -304,11 +443,13 @@ export function PlannerView() {
   )
 
   // Márgenes que los flotantes le tapan al mapa. La cámara los usa como padding asimétrico para que
-  // "encuadrar" no mande una parada abajo de un panel. Plegado, lo único que tapa son los 32 px del
-  // lanzador.
-  // Basta con que UNA de las dos tarjetas de la columna esté visible para que tape 300 px: la cámara
-  // tiene que reservarlos igual, o encuadrar mandaría paradas debajo de las métricas.
-  const margenIzq = MARGEN_PX * 2 + (dockAbierto || verMetricas ? PANEL_PX : 0)
+  // "encuadrar" no mande una parada abajo de un panel, y la barra de arriba los usa como padding para
+  // no montarse sobre la columna.
+  //
+  // LA COLUMNA SIEMPRE OCUPA SUS 300 px, aunque las métricas y el dock estén plegados: la tarjeta de
+  // ALCANCE no se pliega. Antes esto era condicional y por eso, con todo cerrado, la barra centrada se
+  // corría a la izquierda y quedaba encima de la tarjeta.
+  const margenIzq = MARGEN_PX * 2 + PANEL_PX
   const margenDer = detalleVisible ? DETALLE_PX + MARGEN_PX * 2 : MARGEN_PX * 3
 
   /**
@@ -344,7 +485,7 @@ export function PlannerView() {
     if (optimizando || camiones.length === 0 || paradasBase.length === 0) return
     setOptimizando(true)
     const id = window.setTimeout(() => {
-      setAsignaciones(repartir(paradasBase, rutas))
+      setAsignaciones(repartir(paradasBase, rutas, depositoDelPlan))
       setOptimizado(true)
       setOptimizando(false)
       pedirEncuadre('todo')
@@ -468,7 +609,7 @@ export function PlannerView() {
 
     setProcesando(enCurso)
     const id = window.setTimeout(() => {
-      setAsignaciones(resecuenciar(paradasBase, siguiente, [...tocadas]))
+      setAsignaciones(resecuenciar(paradasBase, siguiente, [...tocadas], depositoDelPlan))
       // Del store y no del render: entre el click y este callback pasan 900 ms, y en ese rato el ojo de
       // cualquier ruta pudo cambiar. Escribir el array capturado en el closure revertiría ese cambio.
       const ocultas = usePlannerStore.getState().rutasOcultas
@@ -664,11 +805,34 @@ export function PlannerView() {
           la misma columna, no dos objetos que cayeron cerca. Alto fijo (`METRICAS_ALTO_PX`) para que el
           panel de abajo sepa dónde empezar sin medir el DOM y no salte cuando un número pasa de dos a
           tres dígitos. */}
+      {/* ── ALCANCE DEL PLAN ──
+          PRIMERA tarjeta de la columna, y SIEMPRE visible: no se pliega con las métricas ni con el
+          dock. Sin alcance no hay nada que planificar, así que esconderlo con un toggle sería
+          esconder el control que desbloquea la pantalla.
+
+          Por eso también es una tarjeta APARTE de las métricas y no un bloque dentro: las métricas se
+          pliegan y esto no. */}
+      <div
+        ref={alcanceRef}
+        className={cn(FLOTANTE, 'left-3')}
+        style={{ width: PANEL_PX, top: COLUMNA_TOP_PX }}
+      >
+        <PlannerAlcance
+          ciudad={ciudadDelPlan}
+          onCiudad={elegirCiudad}
+          pedidosPorCiudad={pedidosPorCiudad}
+          centroId={activeDistribuidoraId}
+          onCentro={elegirCentro}
+          opcionesCentro={opcionesCentro}
+          centroTieneContorno={centroTieneContorno}
+        />
+      </div>
+
       <div
         className={cn(FLOTANTE, DESLIZA, 'left-3')}
         style={{
           width: PANEL_PX,
-          top: COLUMNA_TOP_PX,
+          top: columnaSiguienteTop,
           transform: verMetricas ? 'translateX(0)' : `translateX(calc(-100% - ${MARGEN_PX}px))`,
         }}
         aria-hidden={!verMetricas}
@@ -697,7 +861,7 @@ export function PlannerView() {
         className={cn(FLOTANTE, DESLIZA, 'left-3 bottom-3 transition-[transform,top]')}
         style={{
           width: PANEL_PX,
-          top: verMetricas ? COLUMNA_TOP_PX + METRICAS_ALTO_PX + 6 : COLUMNA_TOP_PX,
+          top: verMetricas ? columnaSiguienteTop + METRICAS_ALTO_PX + 6 : columnaSiguienteTop,
           transform: dockAbierto ? 'translateX(0)' : `translateX(calc(-100% - ${MARGEN_PX}px))`,
         }}
         aria-hidden={!dockAbierto}
@@ -754,7 +918,12 @@ export function PlannerView() {
         className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center transition-[padding] duration-300 ease-out"
         style={{ paddingLeft: margenIzq, paddingRight: margenDer }}
       >
-        <div className="pointer-events-auto flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card/95 px-2.5 shadow-xl backdrop-blur-sm">
+        {/* `min-w-0` + `overflow-x-auto` y NO `shrink-0`: la franja que le queda a esta barra se
+            angosta cuando se abre el detalle de una parada (320 px). Con `shrink-0` la barra no cedía
+            y se desbordaba por los dos lados —encima de la columna izquierda y del detalle—, que es
+            exactamente lo que se veía. Ahora se achica hasta donde puede y, si aun así no entra,
+            scrollea por dentro en vez de invadir a los vecinos. */}
+        <div className="pointer-events-auto flex h-11 min-w-0 max-w-full items-center gap-1.5 overflow-x-auto rounded-xl border border-border bg-card/95 px-2.5 shadow-xl backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Button
             variant="ghost"
             size="sm"
@@ -765,108 +934,6 @@ export function PlannerView() {
             <ChevronLeft size={14} />
             <span className="hidden sm:inline">Volver</span>
           </Button>
-
-          <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
-
-          {/* Selector de Centro de Distribución con Buscador */}
-          <Popover open={distribuidoraPopoverOpen} onOpenChange={setDistribuidoraPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                role="combobox"
-                aria-expanded={distribuidoraPopoverOpen}
-                className="h-7 max-w-[290px] justify-between gap-1.5 border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 px-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors shadow-none cursor-pointer"
-                title={activeDist ? (activeDist as { name?: string; nombre?: string }).name ?? (activeDist as { name?: string; nombre?: string }).nombre : 'Todos los centros de distribución'}
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <Building2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span className="truncate">
-                    {activeDist ? ((activeDist as { name?: string; nombre?: string }).name ?? (activeDist as { name?: string; nombre?: string }).nombre) : 'Todos los Centros'}
-                  </span>
-                </div>
-                <ChevronsUpDown size={12} className="shrink-0 opacity-60 ml-0.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[340px] p-0 shadow-2xl border-border" align="start">
-              <Command>
-                <CommandInput placeholder="Buscar centro de distribución o ciudad…" className="h-9 text-xs" />
-                <CommandList className="max-h-72">
-                  <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
-                    No se encontraron centros de distribución.
-                  </CommandEmpty>
-                  <CommandGroup heading="Centro de Distribución a Planificar">
-                    <CommandItem
-                      value="todos los centros de distribucion general"
-                      onSelect={() => {
-                        setActiveDistribuidoraId(null)
-                        setDistribuidoraPopoverOpen(false)
-                        pedirEncuadre('todo')
-                        toast.info('Planificando sin filtro de centro (todos los territorios y zonas)')
-                      }}
-                      className="flex items-center justify-between text-xs py-2 cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Warehouse size={14} className="text-muted-foreground" />
-                        <span className="font-medium">Todos los Centros de Distribución</span>
-                      </div>
-                      {activeDistribuidoraId === null && <Check size={14} className="text-emerald-600 font-bold" />}
-                    </CommandItem>
-                    {distribuidorasVivas.map((dist) => {
-                      const isSelected = activeDistribuidoraId === dist.id
-                      const ciudadNombre = Object.values(CIUDAD_META).find((c) => c.cityId === dist.cityId)?.label ?? 'Santa Cruz'
-                      const trucksCount = CAMIONES.filter((c) => distribuidoraIdDeCamion(c) === dist.id && c.estado === 'disponible').length
-                      const ordersCount = PEDIDOS.filter((p) => resolveDistribuidoraIdDePedido(p) === dist.id).length
-                      const tienePoligono = zonasDistribucion.some(
-                        (z) => z.distributorId === dist.id && z.deletedAt === null && z.isActive && z.polygonGeoJson,
-                      )
-
-                      return (
-                        <CommandItem
-                          key={dist.id}
-                          value={`${dist.name} ${ciudadNombre}`}
-                          onSelect={() => {
-                            setActiveDistribuidoraId(dist.id)
-                            setDistribuidoraPopoverOpen(false)
-                            pedirEncuadre('todo')
-                            toast.success(`Centro: ${dist.name}`, {
-                              description: `${ordersCount} puntos de entrega ${tienePoligono ? '· Polígono activo' : '· Sin polígono'} · ${trucksCount} camiones`,
-                            })
-                          }}
-                          className="flex items-center justify-between text-xs py-2 cursor-pointer"
-                        >
-                          <div className="flex flex-col min-w-0 pr-2">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <Building2
-                                size={13}
-                                className={cn('shrink-0', isSelected ? 'text-emerald-600 font-bold' : 'text-muted-foreground')}
-                              />
-                              <span className={cn('truncate font-medium', isSelected && 'text-emerald-700 dark:text-emerald-300 font-bold')}>
-                                {dist.name}
-                              </span>
-                              {tienePoligono && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold shrink-0">
-                                  Polígono
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 pl-4">
-                              <span>{ciudadNombre}</span>
-                              <span>•</span>
-                              <span className="font-semibold text-foreground">{ordersCount} puntos</span>
-                              <span>•</span>
-                              <span>{trucksCount} camiones</span>
-                            </div>
-                          </div>
-                          {isSelected && <Check size={14} className="text-emerald-600 font-bold shrink-0" />}
-                        </CommandItem>
-                      )
-                    })}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
 
           <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
@@ -1227,7 +1294,7 @@ export function PlannerView() {
             <p className="text-xs text-muted-foreground">
               {sinCanal
                 ? 'Abrí Pedidos y elegí al menos un canal: los puntos aparecen en el mapa a medida que filtrás.'
-                : 'Los filtros actuales no dejan pasar ningún pedido. Sacá alguna ciudad, zona o vendedor.'}
+                : 'Los filtros actuales no dejan pasar ningún pedido. Aflojá la ciudad o el centro de arriba, o alguna zona de acá.'}
             </p>
             <Button size="sm" variant="outline" className="mt-1" onClick={() => mostrarPanel('pedidos')}>
               {sinCanal ? 'Abrir pedidos' : 'Revisar filtros'}

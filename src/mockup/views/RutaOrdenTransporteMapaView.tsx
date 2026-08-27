@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import L from 'leaflet'
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   MapPin,
@@ -37,7 +37,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { divIcon } from '../map/div-icon'
-import { TILES, SUBDOMINIOS, type CapaBase, CAPAS_BASE } from '../map/tiles'
+import { type CapaBase, CAPAS_BASE } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
 import type { LatLngTuple } from '../map/geo/polyline'
 import type { OrdenTransporteHistorial, ParadaHistorial } from '../historial-orders-data'
@@ -764,11 +765,7 @@ export function RutaOrdenTransporteMapaView({
               <InvalidateOnResize />
 
               {/* Capa de mosaicos base */}
-              <TileLayer
-                url={TILES[capaBase]}
-                subdomains={SUBDOMINIOS[capaBase]}
-                maxZoom={19}
-              />
+              <CapaBaseTiles capa={capaBase} />
 
               {/* Animación y control de cámara */}
               <MapCameraController

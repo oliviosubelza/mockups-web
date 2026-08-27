@@ -44,26 +44,23 @@
 // comparar la unión de los polígonos contra el límite de la ciudad, y no tenemos ese límite—. Lo que sí
 // se muestra es la COBERTURA («3 de 4 con zona»), que atrapa el caso frecuente: falta dibujar una.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, useMap } from 'react-leaflet'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import {
-  AlertTriangle,
   Building2,
   CheckCircle2,
   ChevronLeft,
   Crosshair,
-  LandPlot,
   MousePointerClick,
   PanelLeftClose,
   PanelLeftOpen,
   Save,
-  ShieldCheck,
-  Sparkles,
+  CircleDashed,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,17 +71,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { SUBDOMINIOS, TILES } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { PolygonDrawLayer } from '../map/PolygonDrawLayer'
 import { encuadrar } from '../map/encuadrar'
 import {
-  auditarZonas,
   evaluarContorno,
   formatearMetros,
   METROS_HOLGURA,
   type Evaluacion,
-  type ParConflicto,
   type TipoConflicto,
 } from '../map/geo/holgura'
 import { areaKm2, formatearArea, perimetroM } from '../map/geo/medidas'
@@ -95,7 +90,6 @@ import { MapaClick } from '../map/MapaClick'
 import { FiltroPopover } from '../FiltroPopover'
 import { ZonasLayer } from '../zonas/ZonasLayer'
 import { ZonasHerramientasDock } from '../zonas/ZonasHerramientasDock'
-import { PanelAuditoria, PanelValidacionContorno } from '../zonas/ZonasConflictosPanel'
 import { useHistorial } from '../zonas/historial'
 import { DistribucionAccionesBar } from './DistribucionAccionesBar'
 import { DistribucionCapasMapa } from './DistribucionCapasMapa'
@@ -117,7 +111,7 @@ import {
 } from './distribucion-store'
 import { SapDistribuidorasModal } from './SapDistribuidorasModal'
 import type { SapDistribuidora } from './sap-distribuidoras'
-import { DistribucionDetallePanel } from './DistribucionDetallePanel'
+import { CentroConfigDialog, type CentroConfig } from './CentroConfigDialog'
 
 /** Verde y no el azul de las zonas logísticas: son dos cortes distintos del mismo mapa, y si se dibujaran
  *  del mismo color una captura de una pantalla sería indistinguible de la otra. */
@@ -134,6 +128,14 @@ const DERECHA_PX = 272
  * `zonas/ZonasWorkspaceView`: el vértice hace un viaje de ida y vuelta por la proyección de pantalla
  * (grados → píxeles → grados) y volver justo en el límite haría que la validación rechazara lo que el
  * propio imantado acaba de construir.
+ */
+/**
+ * Cuánto deja el imantado entre el borde nuevo y el vecino, en metros.
+ *
+ * SE QUEDA aunque la REGLA de holgura ya no bloquee el guardado: 1,15 m a escala de ciudad no se ve, y
+ * lo que evita es que un vértice pegado al vecino se registre como SOLAPAMIENTO por el arrastre de la
+ * coma flotante — que sí sigue siendo un bloqueo, porque ahí el pedido tendría dos despachantes.
+ * Sigue saliendo de `METROS_HOLGURA` para no tener dos constantes de la misma medida.
  */
 const HOLGURA_SNAP_M = METROS_HOLGURA + 0.15
 
@@ -164,8 +166,17 @@ function CapturarMapa({ onMapa }: { onMapa: (m: L.Map) => void }) {
   return null
 }
 
-/** Genera un polígono inicial hexagonal regular de N km de radio centrado en el depósito. */
-function generarPoligonoSugerido(centro: LatLngTuple, radioKm = 4.5): LatLngTuple[] {
+/**
+ * Radio del contorno de arranque, en km.
+ *
+ * Es una CONSTANTE y no un número suelto porque el botón, su tooltip y el toast lo nombran: estaba
+ * escrito «5 km» en los tres lugares mientras la función generaba 4,5, así que la pantalla decía una
+ * medida y dibujaba otra.
+ */
+const RADIO_SUGERIDO_KM = 4.5
+
+/** Genera un contorno inicial —hexágono regular— de N km de radio centrado en el depósito. */
+function generarPoligonoSugerido(centro: LatLngTuple, radioKm = RADIO_SUGERIDO_KM): LatLngTuple[] {
   const [lat, lng] = centro
   const vertices: LatLngTuple[] = []
   const numPuntos = 6
@@ -254,8 +265,9 @@ export function DistribucionWorkspaceView() {
   const [aBorrar, setABorrar] = useState<{ zonaId: number; nombre: string } | null>(null)
   /** Auditoría de lo ya guardado. Apagable: con varias zonas mal dibujadas el mapa queda rojo entero y
    *  deja de decir nada. */
-  const [verAuditoria, setVerAuditoria] = useState(false)
   const [snap, setSnap] = useState(true)
+  /** Id del centro cuyo diálogo de configuración está abierto. `null` = cerrado. */
+  const [configurandoId, setConfigurandoId] = useState<number | null>(null)
   const historial = useHistorial<LatLngTuple[]>([])
   const puntos = historial.presente
   /** `true` mientras se agregan vértices con click; `false` = ajustando los existentes. */
@@ -277,6 +289,7 @@ export function DistribucionWorkspaceView() {
   const distribuidoras = useDistribuidorasStore((s) => s.distribuidoras)
   const addDistribuidora = useDistribuidorasStore((s) => s.addDistribuidora)
   const updateDistribuidora = useDistribuidorasStore((s) => s.updateDistribuidora)
+  const setDistribuidoraPorDefecto = useDistribuidorasStore((s) => s.setDistribuidoraPorDefecto)
   const deLaCiudad = useMemo(
     () => distribuidorasVivasDeCiudad(distribuidoras, cityIdDe(ciudad)),
     [distribuidoras, ciudad],
@@ -292,6 +305,7 @@ export function DistribucionWorkspaceView() {
         return {
           id: d.id,
           nombre: d.name,
+          esPorDefecto: d.isDefault,
           puntos: puntosDeZona(zona),
           zonaActiva: zona ? zona.isActive : null,
           activa: d.isActive,
@@ -359,22 +373,28 @@ export function DistribucionWorkspaceView() {
     [filas, seleccionadaId],
   )
 
-  const distribuidoraSeleccionada = useMemo(() => {
-    if (seleccionadaId === null) return null
-    const d = deLaCiudad.find((item) => item.id === seleccionadaId)
-    if (!d) return null
-    const fila = filas.find((f) => f.id === seleccionadaId)
+  /**
+   * El centro que se está configurando, con todo lo que el diálogo necesita.
+   *
+   * Se deriva de `filas` y no se guarda en el estado: si mientras el diálogo está abierto se prende la
+   * cobertura o cambia el predeterminado, los switches tienen que reflejarlo. Una copia congelada al
+   * abrir mostraría el estado anterior hasta cerrar y volver a entrar.
+   */
+  const centroEnConfiguracion = useMemo<CentroConfig | null>(() => {
+    if (configurandoId === null) return null
+    const fila = filas.find((f) => f.id === configurandoId)
+    if (!fila) return null
     return {
-      id: d.id,
-      nombre: d.name,
+      id: fila.id,
+      nombre: fila.nombre,
       ciudad: CIUDAD_META[ciudad].label,
-      latitud: d.latitude,
-      longitud: d.longitude,
-      puntos: fila?.puntos ?? [],
-      zonaActiva: fila?.zonaActiva ?? null,
-      distribuidoraActiva: d.isActive,
+      puntos: fila.puntos,
+      zonaActiva: fila.zonaActiva,
+      activa: fila.activa,
+      esPorDefecto: fila.esPorDefecto,
+      predeterminadoActual: deLaCiudad.find((d) => d.isDefault && d.id !== fila.id)?.name ?? null,
     }
-  }, [seleccionadaId, deLaCiudad, filas, ciudad])
+  }, [configurandoId, filas, ciudad, deLaCiudad])
 
   /** Cuál de los depósitos se está posicionando: se dibuja ámbar y arrastrable. */
   const posicionandoId = editandoDatos ? (editandoDatosId ?? ID_NUEVA) : null
@@ -423,26 +443,28 @@ export function DistribucionWorkspaceView() {
     [editando, puntos, vecinos],
   )
 
-  const auditoria = useMemo(
-    () => (verAuditoria && !editando ? auditarZonas(vecinos) : []),
-    [verAuditoria, editando, vecinos],
-  )
-
+  /**
+   * Qué contornos se pintan como en conflicto. SOLO mientras se dibuja, y solo por SOLAPAMIENTO.
+   *
+   * Ya no hay auditoría en reposo: revisar la ciudad entera buscando bordes que se rocen era una
+   * pregunta de zonas logísticas, donde dos zonas no deben tocarse. Acá el territorio se parte y los
+   * vecinos comparten borde a propósito. Lo que sí sigue importando es que dos contornos se PISEN
+   * —ahí un pedido tendría dos despachantes— y eso se ve en el momento en que se está causando.
+   */
   const enConflicto = useMemo(() => {
     const mapa = new Map<number, TipoConflicto>()
-    const marcar = (id: number, tipo: TipoConflicto) => {
-      // `solapa` gana sobre `holgura`: si una zona tiene los dos problemas, el grave es el que se pinta.
-      if (tipo === 'solapa' || !mapa.has(id)) mapa.set(id, tipo)
+    if (editando) {
+      for (const c of evaluacion.conflictos) {
+        if (c.tipo === 'solapa') mapa.set(c.id, c.tipo)
+      }
     }
-    if (editando) evaluacion.conflictos.forEach((c) => marcar(c.id, c.tipo))
-    else auditoria.forEach((p) => [p.a, p.b].forEach((id) => marcar(id, p.tipo)))
     return mapa
-  }, [editando, evaluacion, auditoria])
+  }, [editando, evaluacion])
 
   // --- cámara ----------------------------------------------------------------------------------
   const margenes = {
     margenIzq: (listaAbierta ? LISTA_PX : RAIL_PX) + 24,
-    margenDer: editando || verAuditoria ? DERECHA_PX : 24,
+    margenDer: editando ? DERECHA_PX : 24,
   }
   const volarA = (pts: LatLngTuple[]) => {
     if (mapaRef.current && pts.length > 0) encuadrar(mapaRef.current, pts, { ...margenes, zoomMax: 15 })
@@ -462,15 +484,6 @@ export function DistribucionWorkspaceView() {
     const zona = zonasStore.find((z) => z.id === zonaId)
     if (zona) volarA(poligonoALatLng(zona.polygonGeoJson))
   }
-  /** Encuadra las DOS zonas del par: un conflicto de bordes solo se entiende viendo las dos juntas. */
-  const volarAlPar = (par: ParConflicto) => {
-    const pts = [par.a, par.b].flatMap((id) => {
-      const z = zonasStore.find((x) => x.id === id)
-      return z ? poligonoALatLng(z.polygonGeoJson) : []
-    })
-    volarA(pts)
-  }
-
   /**
    * Al cambiar de ciudad hay que MOVER LA CÁMARA, y en `/zonas` no hace falta.
    *
@@ -494,7 +507,7 @@ export function DistribucionWorkspaceView() {
   // --- entradas a cada modo -------------------------------------------------------------------
   const abrirEdicion = (distributorId: number) => {
     const fila = filas.find((f) => f.id === distributorId)
-    if (!fila) return toast.error('Esa distribuidora no está en esta ciudad')
+    if (!fila) return toast.error('Ese centro no está en esta ciudad')
     historial.reiniciar(fila.puntos)
     setEnEdicionId(distributorId)
     setSeleccionadaId(distributorId)
@@ -519,8 +532,8 @@ export function DistribucionWorkspaceView() {
     setTrazando(true)
     setModo('zona')
     volarA([[nueva.latitude, nueva.longitude]])
-    toast.success(`Distribuidora «${nueva.name}» importada desde SAP`, {
-      description: 'Haz clic en el mapa para trazar el polígono de distribución.',
+    toast.success(`«${nueva.name}» registrada desde SAP`, {
+      description: 'Clickeá en el mapa para dibujar su contorno.',
     })
   }
 
@@ -536,7 +549,7 @@ export function DistribucionWorkspaceView() {
   /** EDICIÓN de los datos de una distribuidora: nombre y ubicación del depósito. */
   const abrirDatos = (distributorId: number) => {
     const distribuidora = deLaCiudad.find((d) => d.id === distributorId)
-    if (!distribuidora) return toast.error('Esa distribuidora no está en esta ciudad')
+    if (!distribuidora) return toast.error('Ese centro no está en esta ciudad')
     setDraft({
       name: distribuidora.name,
       // `toFixed(6)` y no el número crudo: el `latitude` guardado puede traer arrastre de coma flotante
@@ -577,20 +590,42 @@ export function DistribucionWorkspaceView() {
   const alternarZonaActiva = (distributorId: number) => {
     const zona = zonaDeDistribuidora(zonasStore, distributorId)
     if (!zona) {
-      toast.info('Esta distribuidora todavía no tiene un polígono trazado')
+      toast.info('Este centro todavía no tiene contorno dibujado')
       return
     }
     const siguienteEstado = !zona.isActive
     setZonaActiva(zona.id, siguienteEstado)
     if (siguienteEstado) {
-      toast.success(`Zona de «${nombreDeDistribuidora(distributorId)}» activada`, {
+      toast.success(`Cobertura de «${nombreDeDistribuidora(distributorId)}» en circulación`, {
         description: 'La zona vuelve a estar disponible para reparto y enrutamiento.',
       })
     } else {
-      toast.warning(`Zona de «${nombreDeDistribuidora(distributorId)}» desactivada`, {
+      toast.warning(`Cobertura de «${nombreDeDistribuidora(distributorId)}» fuera de circulación`, {
         description: 'Territorio fuera de circulación automática.',
       })
     }
+  }
+
+  /**
+   * Pone o saca el predeterminado de la ciudad.
+   *
+   * El toast nombra a la que PIERDE la bandera además de a la que la gana: es un cambio excluyente y
+   * sin decirlo parece que ahora hay dos.
+   */
+  const marcarPorDefecto = (distributorId: number, esDefecto: boolean) => {
+    const anterior = deLaCiudad.find((d) => d.isDefault && d.id !== distributorId)
+    setDistribuidoraPorDefecto(distributorId, esDefecto)
+    if (!esDefecto) {
+      toast.warning(`${nombreDeDistribuidora(distributorId)} ya no es el centro predeterminado`, {
+        description: 'Los pedidos fuera de todo contorno quedan sin despachante.',
+      })
+      return
+    }
+    toast.success(`${nombreDeDistribuidora(distributorId)} es el centro predeterminado`, {
+      description: anterior
+        ? `Recibe lo que ningún contorno cubre. Antes lo hacía ${anterior.name}.`
+        : 'Recibe los pedidos que no caen dentro de ningún contorno de la ciudad.',
+    })
   }
 
   const pedirBorrar = (distributorId: number) => {
@@ -602,7 +637,7 @@ export function DistribucionWorkspaceView() {
 
   const encuadrarTodo = () => {
     const pts = puntosDeLaCiudad()
-    if (pts.length === 0) return toast.info('Esta ciudad no tiene distribuidoras asignadas')
+    if (pts.length === 0) return toast.info('Esta ciudad no tiene centros asignados')
     volarA(pts)
   }
 
@@ -614,13 +649,13 @@ export function DistribucionWorkspaceView() {
     historial.confirmar(sugerido)
     setTrazando(false)
     volarA(sugerido)
-    toast.success('Perímetro de 5 km generado — ajusta los vértices o guarda la zona')
+    toast.success(`Contorno de ${RADIO_SUGERIDO_KM} km dibujado — ajustá los vértices o guardá`)
   }
 
   const cerrarPoligono = (finales: LatLngTuple[]) => {
     historial.confirmar(finales)
     setTrazando(false)
-    toast.success('Polígono cerrado — ajustá los vértices o guardá la zona')
+    toast.success('Contorno cerrado — ajustá los vértices o guardá')
   }
 
   /**
@@ -631,7 +666,7 @@ export function DistribucionWorkspaceView() {
    * distribuidora y ya existe.
    */
   const motivoBloqueo: string | null = useMemo(() => {
-    if (puntos.length < 3) return 'Un polígono necesita al menos 3 vértices'
+    if (puntos.length < 3) return 'Un contorno necesita al menos 3 vértices'
     if (evaluacion.autoCruce) return 'El contorno se cruza consigo mismo: sus propios bordes se tocan'
 
     const solapan = evaluacion.conflictos.filter((c) => c.tipo === 'solapa')
@@ -640,11 +675,10 @@ export function DistribucionWorkspaceView() {
       // es que dos distribuidoras creerían suyo el mismo pedido.
       return `Se pisa con la zona de ${solapan.map((c) => nombreDeZona(c.id)).join(', ')}`
     }
-    const cerca = evaluacion.conflictos.filter((c) => c.tipo === 'holgura')
-    if (cerca.length > 0) {
-      const peor = cerca.reduce((a, b) => ((a.metros ?? 0) <= (b.metros ?? 0) ? a : b))
-      return `El borde queda a ${formatearMetros(peor.metros ?? 0)} de ${nombreDeZona(peor.id)}: el mínimo es ${formatearMetros(METROS_HOLGURA)}`
-    }
+    // NO se chequea la HOLGURA. La regla del metro entre bordes es de zonas logísticas, donde dos
+    // zonas de reparto no deben tocarse; acá se está partiendo un territorio, así que dos contornos
+    // vecinos pegados es exactamente el resultado buscado. Y el hueco tampoco es un error: se lo lleva
+    // el centro predeterminado de la ciudad.
     return null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puntos, evaluacion, zonasStore, deLaCiudad])
@@ -653,8 +687,8 @@ export function DistribucionWorkspaceView() {
     if (motivoBloqueo) return toast.error(motivoBloqueo)
     if (enEdicionId === null) return
     const guardada = guardarZona(enEdicionId, puntos)
-    if (!guardada) return toast.error('No se pudo construir el polígono')
-    toast.success(`Zona de ${nombreDeDistribuidora(enEdicionId)} guardada`)
+    if (!guardada) return toast.error('No se pudo construir el contorno')
+    toast.success(`Contorno de ${nombreDeDistribuidora(enEdicionId)} guardado`)
     setSeleccionadaId(enEdicionId)
     salirAExplorar()
   }
@@ -690,7 +724,7 @@ export function DistribucionWorkspaceView() {
       setSeleccionadaId(editandoDatosId)
     } else {
       const creada = addDistribuidora(input)
-      toast.success(`${creada.name} creada — ahora dibujale su zona`)
+      toast.success(`${creada.name} creada — ahora dibujale su contorno`)
       setSeleccionadaId(creada.id)
     }
     salirAExplorar()
@@ -725,7 +759,7 @@ export function DistribucionWorkspaceView() {
           {/* `key`: sin él, Leaflet reusa la capa y solo le cambia la URL, y las teselas viejas del
               fondo anterior se quedan pintadas hasta que alguien mueve el mapa. Está explicado igual en
               `PlannerMapa`, que fue donde se descubrió. */}
-          <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
+          <CapaBaseTiles capa={capa} />
           <InvalidateOnResize />
           <CapturarMapa
             onMapa={(m) => {
@@ -835,38 +869,31 @@ export function DistribucionWorkspaceView() {
                     ? editandoDatosId === null
                       ? 'Nuevo centro de distribución'
                       : 'Datos del centro'
-                    : distribuidoraSeleccionada
-                      ? 'Ficha del Centro'
-                      : 'Centros de Distribución'}
+                    : 'Centros de distribución'}
                 </span>
-                {distribuidoraSeleccionada && !editandoDatos && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
-                    onClick={() => setSeleccionadaId(null)}
-                    title="Volver a la lista de centros"
-                  >
-                    <ChevronLeft size={12} />
-                    <span>Lista</span>
-                  </Button>
-                )}
-                {!editandoDatos && !distribuidoraSeleccionada && (
+                {!editandoDatos && (
                   <span
                     className="shrink-0 pr-1 text-[11px] tabular-nums text-muted-foreground"
-                    title="Centros con zona dibujada, sobre el total de la ciudad"
+                    title="Centros con contorno dibujado, sobre el total de la ciudad"
                   >
-                    {conZona} de {filas.length} con zona
+                    {conZona} de {filas.length} con contorno
                   </span>
                 )}
               </>
             )}
           </div>
 
-          {/* EL PANEL CAMBIA DE CONTENIDO SEGÚN EL MODO:
-              - Si se editan datos -> DistribuidoraFormPanel
-              - Si hay distribuidora seleccionada -> DistribucionDetallePanel (Ficha completa con acciones)
-              - Por defecto -> DistribucionListaPanel (Listado con filtros y buscador) */}
+          {/* EL PANEL TIENE DOS ESTADOS Y NO TRES:
+                 - editando los DATOS de un centro -> DistribuidoraFormPanel
+                 - siempre lo demás              -> DistribucionListaPanel
+
+              ACÁ HABÍA UNA TERCERA RAMA: elegir un centro reemplazaba el listado por una FICHA con sus
+              medidas y sus acciones. Se fue. Seleccionar es un gesto de EXPLORACIÓN —se hace para mirar
+              un polígono en el mapa y compararlo con el de al lado— y perder la lista en cada click
+              obligaba a volver atrás para elegir el siguiente. Lo que la ficha mostraba está repartido
+              donde corresponde: las medidas y las acciones, en la barra flotante que aparece abajo del
+              mapa (`DistribucionAccionesBar`, pegada a lo que se está mirando); la configuración, en el
+              diálogo del engranaje. Es el mismo reparto que ya tiene `zonas/ZonasWorkspaceView`. */}
           {listaAbierta &&
             (editandoDatos && draft !== null ? (
               <DistribuidoraFormPanel
@@ -875,29 +902,6 @@ export function DistribucionWorkspaceView() {
                 ciudad={CIUDAD_META[ciudad].label}
                 esNueva={editandoDatosId === null}
                 onEncuadrar={() => posicionDelDraft && volarA([posicionDelDraft])}
-              />
-            ) : distribuidoraSeleccionada !== null ? (
-              <DistribucionDetallePanel
-                distribuidoraId={distribuidoraSeleccionada.id}
-                nombre={distribuidoraSeleccionada.nombre}
-                ciudad={distribuidoraSeleccionada.ciudad}
-                latitud={distribuidoraSeleccionada.latitud}
-                longitud={distribuidoraSeleccionada.longitud}
-                puntos={distribuidoraSeleccionada.puntos}
-                zonaActiva={distribuidoraSeleccionada.zonaActiva}
-                distribuidoraActiva={distribuidoraSeleccionada.distribuidoraActiva}
-                onEditarZona={() => abrirEdicion(distribuidoraSeleccionada.id)}
-                onEditarDatos={() => abrirDatos(distribuidoraSeleccionada.id)}
-                onEncuadrar={() => {
-                  if (distribuidoraSeleccionada.puntos.length >= 3) {
-                    volarA(distribuidoraSeleccionada.puntos)
-                  } else {
-                    volarA([[distribuidoraSeleccionada.latitud, distribuidoraSeleccionada.longitud]])
-                  }
-                }}
-                onAlternarActiva={() => alternarZonaActiva(distribuidoraSeleccionada.id)}
-                onEliminarZona={() => pedirBorrar(distribuidoraSeleccionada.id)}
-                onCerrar={() => setSeleccionadaId(null)}
               />
             ) : (
               <div className="min-h-0 flex-1">
@@ -909,7 +913,7 @@ export function DistribucionWorkspaceView() {
                   onSeleccionar={seleccionar}
                   onEditarZona={abrirEdicion}
                   onNueva={() => setShowSapModal(true)}
-                  onAlternarActiva={alternarZonaActiva}
+                  onConfigurar={setConfigurandoId}
                   totalEnCiudad={filas.length}
                 />
               </div>
@@ -954,11 +958,23 @@ export function DistribucionWorkspaceView() {
               es la que se va a guardar— pero ahí se muestra, porque el formulario la nombra y verla
               confirma dónde va a quedar. */}
           {editando ? (
-            <span className="min-w-0 max-w-40 shrink-0 truncate text-xs text-muted-foreground">
-              {CIUDAD_META[ciudad].label}
+            <span className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              Ciudad
+              <span className="min-w-0 max-w-40 truncate font-medium text-foreground">
+                {CIUDAD_META[ciudad].label}
+              </span>
             </span>
           ) : (
-            <div className={editandoDatos ? 'pointer-events-none opacity-60' : undefined}>
+            <div
+              className={cn(
+                'flex items-center gap-1.5',
+                editandoDatos && 'pointer-events-none opacity-60',
+              )}
+            >
+              {/* LA LEYENDA, porque el trigger en modo `unico` muestra el VALOR y no la dimensión: sin
+                  ella el botón dice «Santa Cruz de la Sierra» y no hay nada que diga que eso es la
+                  ciudad y no, por ejemplo, el centro seleccionado. */}
+              <span className="shrink-0 text-[11px] text-muted-foreground">Ciudad</span>
               <FiltroPopover
                 label="Ciudad"
                 icon={Building2}
@@ -986,20 +1002,15 @@ export function DistribucionWorkspaceView() {
             </div>
           )}
 
-          {/* KPI de Cobertura Territorial Global */}
           {!editando && !editandoDatos && (
-            <div className="hidden xl:flex items-center gap-2 pl-1 text-xs">
+            <div className="hidden items-center gap-1.5 pl-1 text-xs xl:flex">
               <span className="h-4 w-px bg-border" aria-hidden />
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <LandPlot size={12} className="text-emerald-500" />
-                <span>Cobertura:</span>
-                <span className="font-bold text-foreground font-mono">
-                  {filas.length > 0 ? ((conZona / filas.length) * 100).toFixed(0) : 0}%
-                </span>
-              </div>
-              <Badge variant="outline" className="text-[10px] font-semibold border-emerald-500/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10">
-                {conZona} de {filas.length} delimitados
-              </Badge>
+              {/* Cuántos centros de la ciudad tienen contorno. Es una cifra de contexto, no una
+                  alarma: va en el gris del resto de la barra y sin badge de color. */}
+              <span className="text-muted-foreground">Con contorno</span>
+              <span className="font-medium tabular-nums text-foreground">
+                {conZona} de {filas.length}
+              </span>
             </div>
           )}
 
@@ -1014,7 +1025,7 @@ export function DistribucionWorkspaceView() {
               <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
               <Button
                 size="sm"
-                className="h-7 shrink-0 gap-1.5 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
                 disabled={motivoBloqueoDatos !== null}
                 title={motivoBloqueoDatos ?? 'Guardar el centro de distribución'}
                 onClick={guardarDatos}
@@ -1028,55 +1039,39 @@ export function DistribucionWorkspaceView() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 px-2 text-xs cursor-pointer"
+                className="h-7 gap-1.5 px-2 text-xs"
                 onClick={encuadrarTodo}
               >
                 <Crosshair size={13} />
                 Encuadrar todo
               </Button>
-              <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
-              <Button
-                variant={verAuditoria ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs cursor-pointer"
-                aria-pressed={verAuditoria}
-                onClick={() => setVerAuditoria((v) => !v)}
-                title={`Revisar que ningún centro de distribución se pise`}
-              >
-                {verAuditoria && auditoria.length > 0 ? (
-                  <AlertTriangle size={13} className="text-destructive" />
-                ) : (
-                  <ShieldCheck size={13} className={verAuditoria ? 'text-emerald-600' : ''} />
-                )}
-                Auditar bordes
-                {verAuditoria && auditoria.length > 0 && (
-                  <span className="ml-0.5 rounded bg-destructive/15 px-1 text-[10px] font-semibold tabular-nums text-destructive">
-                    {auditoria.length}
-                  </span>
-                )}
-              </Button>
             </>
           ) : (
             <>
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="min-w-0 max-w-44 truncate text-xs font-bold text-foreground">
+                <span className="min-w-0 max-w-44 truncate text-xs font-semibold">
                   {enEdicionId === null ? '' : nombreDeDistribuidora(enEdicionId)}
                 </span>
-                <Badge className="bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[9.5px]">
+                <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
                   Trazando
                 </Badge>
               </div>
 
               {puntos.length === 0 && (
+                // NO ES UNA SUGERENCIA NI UNA MAGIA: dibuja un hexágono de 5 km de radio alrededor
+                // del depósito para tener de dónde arrastrar. Antes decía «Sugerir radio 5 km» con un
+                // ícono de chispas sobre fondo ámbar: las chispas prometen un cálculo que acá no
+                // existe —son seis vértices y una trigonometría—, y el ámbar lo hacía parecer una
+                // advertencia. El botón ahora dice lo que hace.
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1 px-2 text-xs bg-amber-50/80 hover:bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 cursor-pointer"
+                  className="h-7 gap-1.5 px-2 text-xs"
                   onClick={aplicarPoligonoSugerido}
-                  title="Genera automáticamente un polígono de 5 km alrededor de la planta para ajustarlo"
+                  title={`Dibuja un contorno de ${RADIO_SUGERIDO_KM} km de radio alrededor del depósito, para ajustarlo a mano`}
                 >
-                  <Sparkles size={11} className="text-amber-600" />
-                  <span>Sugerir radio 5 km</span>
+                  <CircleDashed size={12} />
+                  Contorno de {RADIO_SUGERIDO_KM} km
                 </Button>
               )}
 
@@ -1084,11 +1079,11 @@ export function DistribucionWorkspaceView() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="h-7 gap-1 px-2 text-xs cursor-pointer font-semibold"
+                  className="h-7 gap-1.5 px-2 text-xs"
                   onClick={() => cerrarPoligono(puntos)}
                 >
-                  <CheckCircle2 size={12} className="text-emerald-600" />
-                  <span>Cerrar polígono</span>
+                  <CheckCircle2 size={12} />
+                  Cerrar contorno
                 </Button>
               )}
 
@@ -1096,18 +1091,13 @@ export function DistribucionWorkspaceView() {
 
               <Button
                 size="sm"
-                className={cn(
-                  'h-7 shrink-0 gap-1.5 px-2.5 text-xs font-bold cursor-pointer transition-all',
-                  motivoBloqueo === null
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                    : 'opacity-60',
-                )}
+                className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
                 disabled={motivoBloqueo !== null}
                 title={motivoBloqueo ?? 'Guardar la zona de distribución'}
                 onClick={guardar}
               >
                 <Save size={13} />
-                Guardar Zona
+                Guardar
               </Button>
             </>
           )}
@@ -1140,26 +1130,16 @@ export function DistribucionWorkspaceView() {
         </div>
       )}
 
-      {/* ── Abajo a la derecha: está bien lo que hay ─────────────────────────────────────────── */}
+      {/* ── Abajo a la derecha: solo el menú de aspecto ──────────────────────────────────────────
+             Acá vivían dos paneles que se fueron: el de VALIDACIÓN DEL CONTORNO (metros de separación
+             contra cada vecino, mientras se dibuja) y el de AUDITORÍA DE BORDES (los pares que se
+             pisan, con la pantalla en reposo).
+             Los dos vinieron prestados de zonas logísticas, donde la regla del metro de holgura
+             existe porque dos zonas de reparto no deben tocarse. Acá el territorio se PARTE: dos
+             contornos vecinos comparten borde a propósito, y el hueco que quede no es un error —se lo
+             lleva el centro predeterminado—. Medir esa separación al milímetro y avisar por ella era
+             señalar como problema justo lo que se está tratando de hacer. */}
       <div className="pointer-events-none absolute bottom-4 right-3 z-10 flex flex-col items-end gap-2">
-        {editando ? (
-          <PanelValidacionContorno
-            vertices={puntos.length}
-            evaluacion={evaluacion}
-            nombreDe={nombreDeZona}
-            onIrAZona={volarAZonaId}
-          />
-        ) : (
-          verAuditoria && (
-            <PanelAuditoria
-              pares={auditoria}
-              total={vecinos.length}
-              nombreDe={nombreDeZona}
-              onIrAlPar={volarAlPar}
-            />
-          )
-        )}
-
         <div className="pointer-events-auto flex flex-col items-center rounded-xl border border-border bg-card/95 p-1 shadow-xl backdrop-blur-sm">
           <DistribucionCapasMapa />
         </div>
@@ -1170,7 +1150,7 @@ export function DistribucionWorkspaceView() {
         className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center"
         style={{
           paddingLeft: (listaAbierta ? LISTA_PX : RAIL_PX) + 24,
-          paddingRight: editando || verAuditoria ? DERECHA_PX : 64,
+          paddingRight: editando ? DERECHA_PX : 64,
         }}
       >
         {!editando && !editandoDatos && seleccionada ? (
@@ -1181,7 +1161,6 @@ export function DistribucionWorkspaceView() {
             zonaActiva={seleccionada.zonaActiva}
             activa={seleccionada.activa}
             onDibujar={() => abrirEdicion(seleccionada.id)}
-            onEditarDatos={() => abrirDatos(seleccionada.id)}
             onEncuadrar={() => {
               if (seleccionada.puntos.length >= 3) {
                 volarA(seleccionada.puntos)
@@ -1190,8 +1169,7 @@ export function DistribucionWorkspaceView() {
                 if (d) volarA([[d.latitude, d.longitude]])
               }
             }}
-            onAlternarActiva={() => alternarZonaActiva(seleccionada.id)}
-            onEliminar={() => pedirBorrar(seleccionada.id)}
+            onConfigurar={() => setConfigurandoId(seleccionada.id)}
             onCerrar={() => setSeleccionadaId(null)}
           />
         ) : (
@@ -1205,12 +1183,12 @@ export function DistribucionWorkspaceView() {
               </span>
             ) : !editando ? (
               <span className="truncate">
-                Elegí un centro de distribución del listado para dibujar o ajustar su polígono · doble click lo abre directo.
+                Elegí un centro del listado para dibujar o ajustar su contorno · doble click lo abre directo.
               </span>
             ) : trazando ? (
               <span className="truncate">
                 {puntos.length === 0 ? (
-                  <>Click en el mapa para empezar el polígono</>
+                  <>Click en el mapa para empezar el contorno</>
                 ) : (
                   <>
                     <span className="font-medium tabular-nums text-foreground">{puntos.length}</span> vértice
@@ -1238,9 +1216,9 @@ export function DistribucionWorkspaceView() {
       <AlertDialog open={aBorrar !== null} onOpenChange={(abierto) => !abierto && setABorrar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar el polígono de «{aBorrar?.nombre}»</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar el contorno de «{aBorrar?.nombre}»</AlertDialogTitle>
             <AlertDialogDescription>
-              El centro de distribución queda sin polígono y se le puede delimitar otro. El registro maestro se conserva.
+              El centro queda sin contorno y se le puede dibujar otro. El registro maestro se conserva.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1249,7 +1227,7 @@ export function DistribucionWorkspaceView() {
               onClick={() => {
                 if (!aBorrar) return
                 removeZona(aBorrar.zonaId)
-                toast.success(`Polígono de ${aBorrar.nombre} eliminado`)
+                toast.success(`Contorno de ${aBorrar.nombre} eliminado`)
                 setABorrar(null)
               }}
             >
@@ -1259,7 +1237,18 @@ export function DistribucionWorkspaceView() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Modal de Sincronización SAP S/4HANA ───────────────────────────────── */}
+      {/* ── Configuración de un centro. Sale del botón de la lista y del de la ficha. ───────── */}
+      <CentroConfigDialog
+        centro={centroEnConfiguracion}
+        onOpenChange={(abierto) => !abierto && setConfigurandoId(null)}
+        onAlternarActiva={alternarZonaActiva}
+        onPorDefecto={marcarPorDefecto}
+        onEditarZona={abrirEdicion}
+        onEditarDatos={abrirDatos}
+        onEliminarZona={pedirBorrar}
+      />
+
+      {/* ── Alta: se elige del maestro de SAP ─────────────────────────────────── */}
       <SapDistribuidorasModal
         open={showSapModal}
         onOpenChange={setShowSapModal}

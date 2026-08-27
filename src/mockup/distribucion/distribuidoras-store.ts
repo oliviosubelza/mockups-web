@@ -31,7 +31,7 @@
 import { create } from 'zustand'
 import { DISTRIBUIDORAS } from '../mock-data'
 
-const STORAGE_KEY = 'mockups-web:distribuidoras'
+const STORAGE_KEY = 'mockups-web:distribuidoras-v2'
 const USUARIO_MOCK = 'Juan Pérez'
 
 /** Espejo de la fila `distributors`. `departmentId` queda afuera: en `db_script.sql` está comentado. */
@@ -42,6 +42,26 @@ export interface Distribuidora {
   latitude: number
   longitude: number
   isActive: boolean
+  /**
+   * Este centro recibe los pedidos que NO caen dentro de ningún contorno de su ciudad.
+   *
+   * ═══ POR QUÉ HACE FALTA ═══
+   *
+   * Los contornos no tienen por qué cubrir la ciudad entera, y esa es justamente la forma en que se
+   * quiere trabajar: con dos centros en una ciudad, se le dibuja el territorio a UNO —el que atiende
+   * una zona concreta— y el otro se queda con todo lo demás sin tener que trazar el negativo del
+   * primero a mano. Sin esta bandera, un pedido que cae en un hueco no tiene despachante y el hueco
+   * hay que taparlo dibujando.
+   *
+   * ═══ UNO POR CIUDAD, COMO MÁXIMO ═══
+   *
+   * En la base sería un `UNIQUE (city_id) WHERE is_default AND deleted_at IS NULL` —el mismo recurso
+   * con el que `distribution_zones` sostiene su una-zona-por-distribuidora—. Acá lo sostiene
+   * `setDistribuidoraPorDefecto`, que apaga la bandera en las hermanas de la misma ciudad antes de
+   * prenderla. Cero también es un estado válido: una ciudad sin predeterminado deja los huecos sin
+   * dueño, y la pantalla lo avisa en vez de elegir por su cuenta.
+   */
+  isDefault: boolean
   createdBy: string
   updatedBy: string
   createdAt: string
@@ -64,6 +84,10 @@ function nowIso(): string {
 /** Copia de `DISTRIBUIDORAS`, que sigue siendo la fuente de los ids, nombres y coordenadas. */
 function semilla(): Distribuidora[] {
   const creado = nowIso()
+  const primeraDeCadaCiudad = new Map<number, number>()
+  for (const d of DISTRIBUIDORAS) {
+    if (!primeraDeCadaCiudad.has(d.cityId)) primeraDeCadaCiudad.set(d.cityId, d.id)
+  }
   return DISTRIBUIDORAS.map((d) => ({
     id: d.id,
     name: d.nombre,
@@ -71,6 +95,10 @@ function semilla(): Distribuidora[] {
     latitude: d.lat,
     longitude: d.lng,
     isActive: true,
+    // La PRIMERA de cada ciudad arranca como predeterminada. Sembrar el maestro sin ninguna dejaría
+    // a todas las ciudades avisando "sin predeterminado" desde el primer arranque, que es una alarma
+    // por un estado que nadie provocó.
+    isDefault: primeraDeCadaCiudad.get(d.cityId) === d.id,
     createdBy: USUARIO_MOCK,
     updatedBy: USUARIO_MOCK,
     createdAt: creado,
@@ -117,6 +145,11 @@ interface DistribuidorasState {
   addDistribuidora: (input: DistribuidoraInput) => Distribuidora
   updateDistribuidora: (id: number, input: DistribuidoraInput) => void
   setDistribuidoraActiva: (id: number, isActive: boolean) => void
+  /**
+   * Pone (o saca) el predeterminado de una ciudad. Excluyente: prenderlo en una lo apaga en sus
+   * hermanas, que es lo que en la base haría el índice único parcial.
+   */
+  setDistribuidoraPorDefecto: (id: number, esDefecto: boolean) => void
   /** Borrado LÓGICO: sale de los listados pero los planes viejos siguen apuntando a su id. */
   removeDistribuidora: (id: number) => void
   resetDistribuidoras: () => void
@@ -137,6 +170,9 @@ export const useDistribuidorasStore = create<DistribuidorasState>((set, get) => 
       latitude: input.latitude,
       longitude: input.longitude,
       isActive: true,
+      // Un alta nunca se roba el predeterminado de su ciudad: si ya hay uno, cambiarlo es una decisión
+      // explícita. Solo lo toma si la ciudad no tenía ninguno, que es el caso de la primera de todas.
+      isDefault: !actuales.some((d) => d.cityId === input.cityId && d.deletedAt === null && d.isDefault),
       createdBy: USUARIO_MOCK,
       updatedBy: USUARIO_MOCK,
       createdAt: ahora,
@@ -164,6 +200,21 @@ export const useDistribuidorasStore = create<DistribuidorasState>((set, get) => 
           }
         : d,
     )
+    writeStored(siguientes)
+    set({ distribuidoras: siguientes })
+  },
+
+  setDistribuidoraPorDefecto: (id, esDefecto) => {
+    const ahora = nowIso()
+    const objetivo = get().distribuidoras.find((d) => d.id === id)
+    if (!objetivo) return
+    const siguientes = get().distribuidoras.map((d) => {
+      // Fuera de la ciudad del objetivo no se toca nada: el predeterminado es por ciudad.
+      if (d.cityId !== objetivo.cityId) return d
+      const valor = d.id === id ? esDefecto : false
+      if (d.isDefault === valor) return d
+      return { ...d, isDefault: valor, updatedBy: USUARIO_MOCK, updatedAt: ahora }
+    })
     writeStored(siguientes)
     set({ distribuidoras: siguientes })
   },
@@ -205,3 +256,10 @@ export const distribuidorasVivasDeCiudad = (
   distribuidoras: Distribuidora[],
   cityId: number,
 ): Distribuidora[] => distribuidoras.filter((d) => d.deletedAt === null && d.cityId === cityId)
+
+/** El centro predeterminado de una ciudad, o `undefined` si nadie lo es. */
+export const distribuidoraPorDefectoDeCiudad = (
+  distribuidoras: Distribuidora[],
+  cityId: number,
+): Distribuidora | undefined =>
+  distribuidoras.find((d) => d.deletedAt === null && d.cityId === cityId && d.isDefault)

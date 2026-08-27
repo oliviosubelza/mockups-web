@@ -1,14 +1,21 @@
-import { useState, useMemo, useEffect } from 'react'
-import {
-  Building2,
-  CheckCircle2,
-  MapPin,
-  RefreshCw,
-  Search,
-  Sparkles,
-  ArrowRight,
-  Plus,
-} from 'lucide-react'
+// ALTA DE UN CENTRO DE DISTRIBUCIÓN: se elige del maestro de SAP, no se inventa acá.
+//
+// SAP es el dueño del centro (código, nombre, dirección, coordenada); nosotros somos dueños de su
+// TERRITORIO (`distribution_zones`). Por eso el alta es una importación y el paso siguiente es
+// dibujar el contorno, no llenar un formulario.
+//
+// ═══ SE MIGRÓ AL `DataTable` COMPARTIDO ═══
+//
+// La tabla estaba armada a mano con `<Table>` y las pestañas de filtro con `<button>` crudos de tres
+// colores. Con el DataTable de `@/components/data-table` la lista gana lo que no tenía —columnas
+// redimensionables y ocultables, orden por columna, densidad, export y buscador en su toolbar— y deja
+// de ser una tabla que se parece a las demás solo de lejos.
+//
+// LA SELECCIÓN ES DE A UNA y por eso NO usa `selectable` (que es multi, con checkbox): se elige con
+// un click en la fila y la elegida se marca con un tilde en la primera columna. Importar dos centros
+// a la vez no es una operación que exista —cada uno necesita su propio contorno dibujado después—.
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Building2, Check, MapPin, Plus, RefreshCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -18,20 +25,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { DataTable, defineColumns } from '@/components/data-table'
 import { cn } from '@/lib/utils'
-import {
-  consultarDistribuidorasSap,
-  type SapDistribuidora,
-} from './sap-distribuidoras'
+import { consultarDistribuidorasSap, type SapDistribuidora } from './sap-distribuidoras'
 import type { Distribuidora } from './distribuidoras-store'
 import { CIUDAD_META, type CiudadId, cityIdDe } from '../mock-data'
 
@@ -46,6 +42,89 @@ interface SapDistribuidorasModalProps {
 
 type TabFiltro = 'PENDIENTES' | 'ALL' | 'IMPORTADAS'
 
+/** Una fila de SAP más lo único que agrega esta pantalla: si ya está en nuestra base. */
+interface FilaSap extends SapDistribuidora {
+  estaEnDb: boolean
+}
+
+const FILTROS: { value: TabFiltro; label: string }[] = [
+  { value: 'PENDIENTES', label: 'Pendientes' },
+  { value: 'ALL', label: 'Todos' },
+  { value: 'IMPORTADAS', label: 'Ya registrados' },
+]
+
+const columns = defineColumns<FilaSap & { seleccionado: boolean }>([
+  {
+    // La marca de selección como columna y no como radio suelto: el tilde ocupa el mismo lugar que
+    // ocuparía el check de una tabla seleccionable, así que la fila se lee igual que en el resto.
+    id: 'marca',
+    header: '',
+    size: 36,
+    enableSorting: false,
+    enableHiding: false,
+    enableResizing: false,
+    pin: 'left',
+    meta: { align: 'center' },
+    cell: (fila) =>
+      fila.estaEnDb || fila.seleccionado ? (
+        <Check
+          size={13}
+          className={fila.estaEnDb ? 'text-muted-foreground' : 'text-primary'}
+          aria-label={fila.estaEnDb ? 'Ya registrado' : 'Seleccionado'}
+        />
+      ) : null,
+  },
+  {
+    id: 'sapCode',
+    header: 'Código SAP',
+    accessorKey: 'sapCode',
+    size: 130,
+    cell: (fila) => <span className="font-mono text-xs">{fila.sapCode}</span>,
+  },
+  {
+    id: 'name',
+    header: 'Centro de distribución',
+    accessorKey: 'name',
+    size: 300,
+    cell: (fila) => (
+      <div className="min-w-0 py-0.5">
+        <div className="truncate font-medium leading-tight">{fila.name}</div>
+        <div className="truncate text-[10px] text-muted-foreground">{fila.address}</div>
+      </div>
+    ),
+  },
+  {
+    id: 'plantType',
+    header: 'Tipo',
+    accessorKey: 'plantType',
+    size: 170,
+    cell: (fila) => <span className="truncate text-muted-foreground">{fila.plantType}</span>,
+  },
+  {
+    id: 'capacityPlts',
+    header: 'Capacidad',
+    accessorKey: 'capacityPlts',
+    size: 110,
+    meta: { align: 'right' },
+    cell: (fila) => (
+      <span className="whitespace-nowrap tabular-nums">
+        {fila.capacityPlts.toLocaleString('es-BO')} <span className="text-muted-foreground">plts</span>
+      </span>
+    ),
+  },
+  {
+    id: 'estado',
+    header: 'Estado',
+    size: 120,
+    enableSorting: false,
+    cell: (fila) => (
+      <Badge variant="outline" className="h-4 px-1 text-[10px]">
+        {fila.estaEnDb ? 'Registrado' : 'Disponible'}
+      </Badge>
+    ),
+  },
+])
+
 export function SapDistribuidorasModal({
   open,
   onOpenChange,
@@ -54,355 +133,204 @@ export function SapDistribuidorasModal({
   onImportar,
   onCrearManual,
 }: SapDistribuidorasModalProps) {
-  const currentCityId = cityIdDe(ciudad)
-  const [loading, setLoading] = useState(false)
-  const [busqueda, setBusqueda] = useState('')
-  const [tabFiltro, setTabFiltro] = useState<TabFiltro>('PENDIENTES')
+  const cityId = cityIdDe(ciudad)
+  const [cargando, setCargando] = useState(false)
+  const [tab, setTab] = useState<TabFiltro>('PENDIENTES')
   const [seleccionada, setSeleccionada] = useState<SapDistribuidora | null>(null)
   const [sapItems, setSapItems] = useState<SapDistribuidora[]>([])
 
-  // Identificar cuáles de SAP ya existen en la DB local por nombre exacto
-  const itemsConEstado = useMemo(() => {
-    return sapItems.map((item) => {
-      const yaEnDb = distribuidorasEnDb.find(
+  /** Cruce por nombre exacto dentro de la ciudad: es la única llave que compartimos con SAP hoy. */
+  const yaEnDb = useCallback(
+    (item: SapDistribuidora) =>
+      distribuidorasEnDb.some(
         (db) =>
           db.cityId === item.cityId &&
           db.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
-      )
-      return {
-        ...item,
-        estaEnDb: !!yaEnDb,
-        dbId: yaEnDb?.id,
-        dbNombre: yaEnDb?.name,
-      }
-    })
-  }, [sapItems, distribuidorasEnDb])
+      ),
+    [distribuidorasEnDb],
+  )
 
-  // Cargar centros de SAP y preseleccionar la primera pendiente
-  useEffect(() => {
-    if (open) {
-      setLoading(true)
-      consultarDistribuidorasSap(currentCityId)
-        .then((items) => {
-          setSapItems(items)
-          const primeraPendiente = items.find(
-            (it) =>
-              !distribuidorasEnDb.some(
-                (db) =>
-                  db.cityId === it.cityId &&
-                  db.name.trim().toLowerCase() === it.name.trim().toLowerCase(),
-              ),
-          )
-          setSeleccionada(primeraPendiente ?? items[0] ?? null)
-        })
-        .finally(() => {
-          setLoading(false)
-        })
-    }
-  }, [open, currentCityId, distribuidorasEnDb])
-
-  const refrescarSap = () => {
-    setLoading(true)
-    consultarDistribuidorasSap(currentCityId)
+  /**
+   * Consulta SAP y preselecciona la primera pendiente.
+   *
+   * Una sola función para el efecto de apertura y para el botón de sincronizar: eran dos copias del
+   * mismo cuerpo, y cualquier arreglo en una se olvidaba en la otra.
+   */
+  const consultar = useCallback(() => {
+    setCargando(true)
+    consultarDistribuidorasSap(cityId)
       .then((items) => {
         setSapItems(items)
-        const primeraPendiente = items.find(
-          (it) =>
-            !distribuidorasEnDb.some(
-              (db) =>
-                db.cityId === it.cityId &&
-                db.name.trim().toLowerCase() === it.name.trim().toLowerCase(),
-            ),
-        )
-        setSeleccionada(primeraPendiente ?? items[0] ?? null)
+        setSeleccionada(items.find((it) => !yaEnDb(it)) ?? null)
       })
-      .finally(() => {
-        setLoading(false)
-      })
+      .finally(() => setCargando(false))
+  }, [cityId, yaEnDb])
+
+  useEffect(() => {
+    if (open) consultar()
+  }, [open, consultar])
+
+  const filas = useMemo(
+    () =>
+      sapItems.map((item) => ({
+        ...item,
+        estaEnDb: yaEnDb(item),
+        seleccionado: seleccionada?.sapCode === item.sapCode,
+      })),
+    [sapItems, yaEnDb, seleccionada],
+  )
+
+  const conteos: Record<TabFiltro, number> = {
+    PENDIENTES: filas.filter((f) => !f.estaEnDb).length,
+    ALL: filas.length,
+    IMPORTADAS: filas.filter((f) => f.estaEnDb).length,
   }
 
-  // Filtrado por texto y tabs
-  const itemsFiltrados = useMemo(() => {
-    return itemsConEstado.filter((item) => {
-      if (tabFiltro === 'PENDIENTES' && item.estaEnDb) return false
-      if (tabFiltro === 'IMPORTADAS' && !item.estaEnDb) return false
+  const filtradas = useMemo(
+    () =>
+      filas.filter((f) => {
+        if (tab === 'PENDIENTES' && f.estaEnDb) return false
+        if (tab === 'IMPORTADAS' && !f.estaEnDb) return false
+        return true
+      }),
+    [filas, tab],
+  )
 
-      if (!busqueda.trim()) return true
-      const q = busqueda.toLowerCase()
-      return (
-        item.sapCode.toLowerCase().includes(q) ||
-        item.name.toLowerCase().includes(q) ||
-        item.address.toLowerCase().includes(q) ||
-        item.plantType.toLowerCase().includes(q)
-      )
-    })
-  }, [itemsConEstado, tabFiltro, busqueda])
-
-  const totalPendientes = itemsConEstado.filter((i) => !i.estaEnDb).length
-  const totalImportadas = itemsConEstado.filter((i) => i.estaEnDb).length
+  const puedeImportar = seleccionada !== null && !yaEnDb(seleccionada)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[min(940px,calc(100vw-2rem))] max-w-none sm:max-w-none max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden border-border bg-card shadow-2xl rounded-2xl"
+        className="flex max-h-[90vh] w-[min(940px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         aria-describedby="sap-modal-description"
       >
-        {/* ── Encabezado Limpio ─────────────────────────────────────────────────── */}
-        <DialogHeader className="p-4 sm:px-6 border-b border-border bg-muted/20 flex flex-row items-center justify-between shrink-0 space-y-0">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <div>
-              <DialogTitle className="text-base font-bold text-foreground">
-                Crear nuevo centro de distribución
-              </DialogTitle>
-              <DialogDescription id="sap-modal-description" className="sr-only">
-                Selecciona un centro de distribución desde SAP o créalo manualmente.
-              </DialogDescription>
-            </div>
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between space-y-0 border-b border-border p-3 sm:px-4">
+          <div className="min-w-0">
+            <DialogTitle className="text-sm font-semibold">Nuevo centro de distribución</DialogTitle>
+            <DialogDescription id="sap-modal-description" className="text-xs">
+              Se elige del maestro de SAP. Después se le dibuja el contorno en el mapa.
+            </DialogDescription>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5">
-              <MapPin className="h-3 w-3 mr-1 text-primary" />
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline" className="h-6 gap-1 px-1.5 text-[11px] font-normal">
+              <MapPin size={11} className="text-muted-foreground" />
               {CIUDAD_META[ciudad].label}
             </Badge>
-
             <Button
               variant="ghost"
               size="sm"
-              onClick={refrescarSap}
-              disabled={loading}
-              className="h-7 px-2 text-xs gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground"
-              title="Consultar SAP"
+              onClick={consultar}
+              disabled={cargando}
+              className="h-7 gap-1.5 px-2 text-xs"
+              title="Volver a consultar el maestro de SAP"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin text-primary')} />
-              <span>Sincronizar SAP</span>
+              <RefreshCw size={13} className={cn(cargando && 'animate-spin')} />
+              Sincronizar
             </Button>
           </div>
         </DialogHeader>
 
-        {/* ── Filtros y Buscador ────────────────────────────────────────────────── */}
-        <div className="p-3 sm:px-6 border-b border-border/80 bg-background/50 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por código o nombre…"
-              className="h-8 pl-8 text-xs bg-background"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setTabFiltro('PENDIENTES')}
-              className={cn(
-                'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5',
-                tabFiltro === 'PENDIENTES'
-                  ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                  : 'bg-muted/40 hover:bg-muted text-muted-foreground',
-              )}
-            >
-              <Sparkles className="h-3 w-3" />
-              <span>Pendientes ({totalPendientes})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTabFiltro('ALL')}
-              className={cn(
-                'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap',
-                tabFiltro === 'ALL'
-                  ? 'bg-foreground text-background font-bold shadow-xs'
-                  : 'bg-muted/40 hover:bg-muted text-muted-foreground',
-              )}
-            >
-              Todos ({itemsConEstado.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTabFiltro('IMPORTADAS')}
-              className={cn(
-                'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1',
-                tabFiltro === 'IMPORTADAS'
-                  ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                  : 'bg-muted/40 hover:bg-muted text-muted-foreground',
-              )}
-            >
-              <CheckCircle2 className="h-3 w-3" />
-              <span>En BD ({totalImportadas})</span>
-            </button>
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          <DataTable
+            tableId="mockup-sap-distribuidoras"
+            columns={columns}
+            data={filtradas}
+            getRowId={(fila) => fila.sapCode}
+            isLoading={cargando}
+            searchable
+            searchPlaceholder="Buscar por código, nombre o dirección…"
+            searchKeys={['sapCode', 'name', 'address', 'plantType']}
+            clientPagination
+            defaultPageSize={10}
+            defaultDensity="compact"
+            bodyMinHeight={320}
+            // Un click elige; los ya registrados no se pueden elegir porque no hay nada que importar.
+            onRowClick={(fila) => {
+              if (!fila.estaEnDb) setSeleccionada(fila)
+            }}
+            rowClassName={(fila) =>
+              fila.estaEnDb
+                ? 'opacity-55'
+                : fila.seleccionado
+                  ? 'bg-primary/10 cursor-pointer'
+                  : 'cursor-pointer'
+            }
+            emptyTitle="Sin centros"
+            emptyMessage={
+              tab === 'PENDIENTES'
+                ? 'Todos los centros de SAP de esta ciudad ya están registrados.'
+                : 'SAP no devolvió centros para esta ciudad.'
+            }
+            filterBar={
+              <div className="flex flex-wrap items-center gap-1">
+                {FILTROS.map(({ value, label }) => (
+                  <Button
+                    key={value}
+                    variant={tab === value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-[11px]"
+                    onClick={() => setTab(value)}
+                  >
+                    {label}
+                    <span className="tabular-nums text-muted-foreground">{conteos[value]}</span>
+                  </Button>
+                ))}
+              </div>
+            }
+          />
         </div>
 
-        {/* ── Tabla de Centros de Distribución ──────────────────────────────────── */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:px-6">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-              <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs text-muted-foreground">
-                Consultando centros de distribución en SAP ERP…
-              </p>
-            </div>
-          ) : itemsFiltrados.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-center text-muted-foreground space-y-2">
-              <Building2 className="h-8 w-8 opacity-40" />
-              <p className="text-xs">No hay centros de distribución disponibles para este filtro.</p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-10 text-center py-2 px-2"></TableHead>
-                    <TableHead className="w-28 text-xs font-semibold py-2 px-3">Código SAP</TableHead>
-                    <TableHead className="text-xs font-semibold py-2 px-3">Centro de Distribución</TableHead>
-                    <TableHead className="w-36 text-xs font-semibold py-2 px-3">Tipo</TableHead>
-                    <TableHead className="w-28 text-xs font-semibold py-2 px-3">Capacidad</TableHead>
-                    <TableHead className="w-28 text-center text-xs font-semibold py-2 px-3">Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {itemsFiltrados.map((item) => {
-                    const esSeleccionada = seleccionada?.sapCode === item.sapCode
-                    return (
-                      <TableRow
-                        key={item.sapCode}
-                        onClick={() => {
-                          if (!item.estaEnDb) {
-                            setSeleccionada(item)
-                          }
-                        }}
-                        className={cn(
-                          'transition-colors text-xs',
-                          item.estaEnDb
-                            ? 'opacity-60 bg-muted/20 cursor-default'
-                            : esSeleccionada
-                              ? 'bg-primary/10 hover:bg-primary/15 font-medium cursor-pointer'
-                              : 'hover:bg-muted/40 cursor-pointer',
-                        )}
-                      >
-                        {/* Selector Radio */}
-                        <TableCell className="text-center py-2 px-2">
-                          <div className="flex items-center justify-center">
-                            {item.estaEnDb ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                            ) : (
-                              <div
-                                className={cn(
-                                  'flex h-4 w-4 items-center justify-center rounded-full border transition-all',
-                                  esSeleccionada
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-muted-foreground/40 bg-background',
-                                )}
-                              >
-                                {esSeleccionada && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        {/* Código SAP */}
-                        <TableCell className="font-mono font-bold text-primary py-2 px-3">
-                          {item.sapCode}
-                        </TableCell>
-
-                        {/* Nombre y Dirección */}
-                        <TableCell className="py-2 px-3">
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-foreground truncate">
-                              {item.name}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
-                              <MapPin className="h-2.5 w-2.5 shrink-0" />
-                              {item.address}
-                            </span>
-                          </div>
-                        </TableCell>
-
-                        {/* Tipo de Planta */}
-                        <TableCell className="py-2 px-3">
-                          <Badge variant="secondary" className="text-[10.5px] font-normal py-0 px-1.5">
-                            {item.plantType}
-                          </Badge>
-                        </TableCell>
-
-                        {/* Capacidad */}
-                        <TableCell className="py-2 px-3 tabular-nums font-mono text-muted-foreground">
-                          {item.capacityPlts} plts
-                        </TableCell>
-
-                        {/* Estado */}
-                        <TableCell className="text-center py-2 px-3">
-                          {item.estaEnDb ? (
-                            <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
-                              Registrado
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                              Disponible
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-
-        {/* ── Footer ───────────────────────────────────────────────────────────── */}
-        <div className="p-3.5 sm:px-6 border-t border-border bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-            {seleccionada && !seleccionada.estaEnDb ? (
-              <span className="truncate">
-                Seleccionado: <strong className="text-foreground">{seleccionada.name}</strong> ({seleccionada.sapCode})
-              </span>
+        <div className="flex shrink-0 flex-col items-center justify-between gap-2 border-t border-border p-3 sm:flex-row sm:px-4">
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {puedeImportar && seleccionada ? (
+              <>
+                Se va a registrar{' '}
+                <span className="font-medium text-foreground">{seleccionada.name}</span> (
+                {seleccionada.sapCode}).
+              </>
             ) : (
-              <span>Selecciona un centro de distribución de la tabla</span>
+              'Elegí un centro de la tabla.'
             )}
-          </div>
+          </p>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onOpenChange(false)
-                onCrearManual()
-              }}
-              className="h-8 text-xs cursor-pointer gap-1 text-muted-foreground hover:text-foreground"
-            >
-              <Plus className="h-3 w-3" />
-              <span>Crear manual</span>
-            </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* ── «CREAR A MANO», DESACTIVADO ─────────────────────────────────────────────────
+                El alta manual queda FUERA de circulación: SAP es el dueño del maestro de centros, y
+                crear uno acá deja una fila que después llega otra vez desde SAP con otro nombre y sin
+                forma de cruzarlas. Se comenta en vez de borrarse porque puede volver a hacer falta el
+                día que haya un centro que SAP no tenga.
+                El camino sigue existiendo entero: `onCrearManual` → `abrirAlta` → `DistribuidoraFormPanel`.
+                Para reactivarlo alcanza con descomentar esto.
 
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onOpenChange(false)}
-              className="h-8 text-xs cursor-pointer"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => {
+                onOpenChange(false)
+                onCrearManual()
+              }}
             >
+              <Plus size={13} />
+              Crear a mano
+            </Button>
+            ── */}
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-
             <Button
               size="sm"
-              disabled={!seleccionada || seleccionada.estaEnDb}
+              className="h-7 gap-1.5 text-xs"
+              disabled={!puedeImportar}
               onClick={() => {
-                if (seleccionada && !seleccionada.estaEnDb) {
-                  onImportar(seleccionada)
-                  onOpenChange(false)
-                }
+                if (!seleccionada || !puedeImportar) return
+                onImportar(seleccionada)
+                onOpenChange(false)
               }}
-              className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5 shadow-xs cursor-pointer"
             >
-              <span>Trazar Zona</span>
-              <ArrowRight className="h-3.5 w-3.5" />
+              <Building2 size={13} />
+              Registrar y dibujar
             </Button>
           </div>
         </div>

@@ -1,19 +1,24 @@
+// Listado del maestro de CENTROS DE DISTRIBUCIÓN. Buscar, filtrar y elegir son sus únicas
+// responsabilidades: operar sobre el elegido es trabajo de la ficha y de la barra de acciones.
+//
+// SE ALINEÓ CON `zonas/ZonasListaPanel`, que es el mismo panel para el otro corte del territorio.
+// Antes tenía pastillas de filtro hechas con `<button>` crudos —una verde, una ámbar y una gris—, un
+// botón de alta con un ícono de chispas, cabeceras en `font-bold` y un cartel «ON/OFF» al lado de
+// cada switch. Nada de eso decía algo que el estado del control no dijera solo, y cuatro familias de
+// color en un panel de 260 px hacen que ninguna signifique nada.
+//
+// LO QUE QUEDA EN COLOR es lo único que es una ADVERTENCIA: que la ciudad no tenga centro
+// PREDETERMINADO, porque entonces un pedido fuera de todo contorno no tiene despachante. El resto
+// —activo, inactivo, superficie— se lee de la tabla.
+//
+// EL CARTEL DE «UN SOLO CENTRO» SE FUE: decía que con una sola distribuidora todo le llega por
+// descarte, que es exactamente lo que ahora dice —y con más precisión, porque depende de la bandera y
+// no de la cantidad— la franja del predeterminado.
 import { useState, useMemo } from 'react'
-import {
-  Building2,
-  CheckCircle2,
-  LandPlot,
-  MapPin,
-  Pencil,
-  Search,
-  Sparkles,
-  SlidersHorizontal,
-  ChevronRight,
-} from 'lucide-react'
+import { Building2, CircleDot, Plus, Search, Settings2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { areaKm2, formatearArea } from '../map/geo/medidas'
 import type { LatLngTuple } from '../map/geo/polyline'
@@ -21,7 +26,9 @@ import type { LatLngTuple } from '../map/geo/polyline'
 export interface DistribuidoraFila {
   id: number
   nombre: string
-  /** Vértices de su zona. Vacío = todavía no tiene polígono dibujado. */
+  /** Recibe los pedidos que no caen en ningún contorno de la ciudad (`distributors.is_default`). */
+  esPorDefecto: boolean
+  /** Vértices de su zona. Vacío = todavía no tiene contorno dibujado. */
   puntos: LatLngTuple[]
   /** `false` = tiene zona pero está fuera de circulación. `null` = no tiene zona. */
   zonaActiva: boolean | null
@@ -31,6 +38,14 @@ export interface DistribuidoraFila {
 
 type TabFiltro = 'ALL' | 'ACTIVAS' | 'INACTIVAS' | 'SIN_ZONA'
 
+/** Los filtros como DATO y no como cuatro bloques de JSX repetidos, igual que `ESTADOS` en zonas. */
+const FILTROS: { value: TabFiltro; label: string }[] = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'ACTIVAS', label: 'Activos' },
+  { value: 'INACTIVAS', label: 'Inactivos' },
+  { value: 'SIN_ZONA', label: 'Sin contorno' },
+]
+
 export function DistribucionListaPanel({
   distribuidoras,
   texto,
@@ -39,7 +54,7 @@ export function DistribucionListaPanel({
   onSeleccionar,
   onEditarZona,
   onNueva,
-  onAlternarActiva,
+  onConfigurar,
   totalEnCiudad,
 }: {
   distribuidoras: DistribuidoraFila[]
@@ -49,7 +64,14 @@ export function DistribucionListaPanel({
   onSeleccionar: (id: number | null) => void
   onEditarZona: (id: number) => void
   onNueva: () => void
-  onAlternarActiva?: (id: number) => void
+  /**
+   * Abre el diálogo de configuración del centro.
+   *
+   * UNA sola prop y no seis. El panel dejó de saber qué se puede hacer con un centro —cobertura,
+   * predeterminado, contorno, datos, borrado—: eso lo sabe el diálogo, que es donde se hace. Acá solo
+   * queda el gesto que lo abre.
+   */
+  onConfigurar: (id: number) => void
   totalEnCiudad: number
 }) {
   const [tab, setTab] = useState<TabFiltro>('ALL')
@@ -59,6 +81,14 @@ export function DistribucionListaPanel({
   const inactivas = conZona.filter((d) => d.zonaActiva === false || !d.activa)
   const sinZona = distribuidoras.filter((d) => d.puntos.length < 3)
   const areaCubierta = activas.reduce((suma, d) => suma + areaKm2(d.puntos), 0)
+  const porDefecto = distribuidoras.find((d) => d.esPorDefecto)
+
+  const conteos: Record<TabFiltro, number> = {
+    ALL: distribuidoras.length,
+    ACTIVAS: activas.length,
+    INACTIVAS: inactivas.length,
+    SIN_ZONA: sinZona.length,
+  }
 
   const itemsFiltrados = useMemo(() => {
     return distribuidoras.filter((d) => {
@@ -73,234 +103,186 @@ export function DistribucionListaPanel({
   }, [distribuidoras, tab, texto])
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-card/40">
-      {/* ── Resumen Superior con Métricas Clave ──────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-1.5 border-b border-border/80 bg-muted/30 px-3 py-2 shrink-0">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <Building2 size={10} className="shrink-0 text-slate-500" />
-            <span className="truncate">Centros</span>
-          </div>
-          <div className="truncate text-xs font-bold tabular-nums text-foreground mt-0.5">
-            {totalEnCiudad} centros
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <CheckCircle2 size={10} className="shrink-0 text-emerald-500" />
-            <span className="truncate">Activas</span>
-          </div>
-          <div className="truncate text-xs font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
-            {activas.length} en reparto
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <LandPlot size={10} className="shrink-0 text-blue-500" />
-            <span className="truncate">Área Total</span>
-          </div>
-          <div className="truncate text-xs font-bold tabular-nums text-foreground mt-0.5">
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* ── Resumen: tres cifras en una línea, sin tarjetas ni íconos de colores. Es contexto para
+             leer la lista de abajo, no un tablero. ────────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center gap-x-3 gap-y-0.5 border-b border-border px-2.5 py-1.5 text-[11px] text-muted-foreground">
+        <span>
+          <span className="font-medium tabular-nums text-foreground">{totalEnCiudad}</span> centros
+        </span>
+        <span aria-hidden>·</span>
+        <span>
+          <span className="font-medium tabular-nums text-foreground">{activas.length}</span> en reparto
+        </span>
+        <span aria-hidden>·</span>
+        <span title="Superficie que cubren los contornos activos">
+          <span className="font-medium tabular-nums text-foreground">
             {areaCubierta > 0 ? formatearArea(areaCubierta) : '—'}
-          </div>
-        </div>
+          </span>{' '}
+          cubiertos
+        </span>
       </div>
 
-      {/* ── Botón de Alta y Búsqueda ────────────────────────────────────────── */}
-      <div className="shrink-0 space-y-2 border-b border-border/80 p-2.5 bg-background/50">
-        <Button
-          size="sm"
-          className="h-8 w-full gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm shadow-emerald-600/20 cursor-pointer transition-all hover:scale-[1.01]"
-          onClick={onNueva}
-        >
-          <Sparkles size={13} />
-          <span>Nuevo Centro de Distribución (SAP)</span>
+      {/* EL PREDETERMINADO ES UN DATO DE LA CIUDAD, NO DE UNA FILA: es quien se queda con todo lo que
+          los contornos no cubren, así que se dice acá arriba y no hay que ir fila por fila a buscar
+          la estrella. Sin ninguno, un pedido que cae en un hueco no tiene despachante — y eso es una
+          advertencia, no un dato más. */}
+      <div
+        className={cn(
+          'flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5 text-[11px]',
+          porDefecto ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400',
+        )}
+      >
+        {/* `CircleDot` y no una estrella. Una estrella dice "favorito" —una preferencia, algo que se
+            marca porque gusta—, y esto no lo es: de los centros de la ciudad hay EXACTAMENTE uno que
+            recibe lo que nadie cubre, que es literalmente un radio button. El ícono lo dice así. */}
+        <CircleDot size={11} className="shrink-0" />
+        {porDefecto ? (
+          <span className="min-w-0 truncate">
+            Sin contorno van a <span className="font-medium text-foreground">{porDefecto.nombre}</span>
+          </span>
+        ) : (
+          <span className="min-w-0 truncate">
+            Sin centro predeterminado: los pedidos fuera de todo contorno quedan sin despachante.
+          </span>
+        )}
+      </div>
+
+      <div className="shrink-0 space-y-2 border-b border-border p-2.5">
+        <Button size="sm" className="h-7 w-full gap-1.5 text-xs" onClick={onNueva}>
+          <Plus size={13} />
+          Nuevo centro
         </Button>
 
         <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={texto}
             onChange={(event) => onTexto(event.target.value)}
-            placeholder="Buscar centro de distribución…"
-            className="h-7.5 pl-8 text-xs bg-background"
+            placeholder="Buscar centro…"
+            className="h-7 pl-7 text-xs"
           />
         </div>
 
-        {/* Pestañas de Filtrado Rápido */}
-        <div className="grid grid-cols-4 gap-1 pt-0.5">
-          <button
-            type="button"
-            onClick={() => setTab('ALL')}
-            className={cn(
-              'px-1 py-1 rounded-md text-[10.5px] font-medium text-center transition-all cursor-pointer',
-              tab === 'ALL'
-                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground',
-            )}
-          >
-            Todos ({distribuidoras.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('ACTIVAS')}
-            className={cn(
-              'px-1 py-1 rounded-md text-[10.5px] font-medium text-center transition-all cursor-pointer',
-              tab === 'ACTIVAS'
-                ? 'bg-emerald-600 text-white font-bold shadow-xs'
-                : 'bg-muted/40 hover:bg-muted/80 text-emerald-700 dark:text-emerald-400',
-            )}
-          >
-            Activos ({activas.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('INACTIVAS')}
-            className={cn(
-              'px-1 py-1 rounded-md text-[10.5px] font-medium text-center transition-all cursor-pointer',
-              tab === 'INACTIVAS'
-                ? 'bg-amber-600 text-white font-bold shadow-xs'
-                : 'bg-muted/40 hover:bg-muted/80 text-amber-700 dark:text-amber-400',
-            )}
-          >
-            Off ({inactivas.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('SIN_ZONA')}
-            className={cn(
-              'px-1 py-1 rounded-md text-[10.5px] font-medium text-center transition-all cursor-pointer',
-              tab === 'SIN_ZONA'
-                ? 'bg-slate-700 text-white font-bold shadow-xs'
-                : 'bg-muted/40 hover:bg-muted/80 text-slate-600 dark:text-slate-400',
-            )}
-          >
-            Sin zona ({sinZona.length})
-          </button>
+        {/* Filtros con el `Button` compartido en `secondary`/`ghost` — el mismo par que usa el panel de
+            zonas logísticas. Un filtro apagado no necesita color propio: necesita no parecer apretado. */}
+        <div className="flex flex-wrap items-center gap-1">
+          {FILTROS.map(({ value, label }) => {
+            const activo = tab === value
+            return (
+              <Button
+                key={value}
+                variant={activo ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => setTab(value)}
+              >
+                {label}
+                <span className="tabular-nums text-muted-foreground">{conteos[value]}</span>
+              </Button>
+            )
+          })}
         </div>
       </div>
 
-      {/* ── Aviso de Un Solo Centro ──────────────────────────────────── */}
-      {totalEnCiudad === 1 && (
-        <p className="flex shrink-0 items-start gap-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-2 text-[11px] leading-snug text-emerald-900 dark:text-emerald-200">
-          <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span>
-            Un solo centro de distribución en esta ciudad: todos los pedidos van a él por descarte.
-          </span>
-        </p>
-      )}
+      {/* ── CABECERA DE COLUMNAS. Antes la fila mostraba un número —«12,4 km²»— y un switch, los dos
+             sin decir qué eran: había que deducir que el número era superficie y adivinar qué prendía
+             el interruptor. Con la cabecera, la lista se lee como cualquier tabla del sistema. ─── */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="min-w-0 flex-1">Centro</span>
+        <span className="w-16 shrink-0 text-right">Superficie</span>
+        <span className="w-16 shrink-0 text-center">Cobertura</span>
+        <span className="w-6 shrink-0" aria-hidden />
+      </div>
 
-      {/* ── Lista de Centros y Zonas con Switch Directo ───────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2 space-y-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {itemsFiltrados.length === 0 ? (
-          <div className="py-10 text-center space-y-1.5">
-            <Building2 size={24} className="mx-auto text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">
-              {texto
-                ? 'Ningún centro de distribución coincide con la búsqueda.'
-                : 'No hay centros de distribución en esta categoría.'}
-            </p>
-          </div>
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {texto ? 'Ningún centro coincide con la búsqueda.' : 'No hay centros en esta categoría.'}
+          </p>
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="space-y-0.5">
             {itemsFiltrados.map((distribuidora) => {
               const seleccionada = distribuidora.id === seleccionadaId
               const tieneZona = distribuidora.puntos.length >= 3
               const esActiva = tieneZona && distribuidora.zonaActiva === true && distribuidora.activa
 
               return (
-                <li key={distribuidora.id}>
-                  <div
+                <li
+                  key={distribuidora.id}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md pr-1 transition-colors',
+                    seleccionada ? 'bg-primary/10' : 'hover:bg-muted/60',
+                  )}
+                >
+                  {/* El doble click abre el editor de contorno: el mismo gesto que la lista de zonas
+                      logísticas, y el que evita gastar una columna de botones en la acción que se hace
+                      casi siempre. */}
+                  <button
+                    type="button"
                     onClick={() => onSeleccionar(seleccionada ? null : distribuidora.id)}
-                    className={cn(
-                      'group w-full rounded-xl border p-2.5 text-left transition-all cursor-pointer relative flex flex-col gap-1.5',
-                      seleccionada
-                        ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40'
-                        : 'border-border/70 hover:border-primary/40 bg-card hover:bg-muted/40 hover:shadow-xs',
-                    )}
+                    onDoubleClick={() => onEditarZona(distribuidora.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1.5 pl-2 text-left text-xs"
                   >
-                    {/* Fila Superior: Icono, Nombre y Switch */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div
-                          className={cn(
-                            'flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold',
-                            esActiva
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-muted text-muted-foreground',
-                          )}
-                        >
-                          <Building2 size={12} />
-                        </div>
-                        <span
-                          className={cn(
-                            'truncate text-xs font-bold text-foreground',
-                            !distribuidora.activa && 'line-through decoration-muted-foreground/50',
-                          )}
-                        >
-                          {distribuidora.nombre}
-                        </span>
-                      </div>
+                    <Building2
+                      size={13}
+                      className={cn('shrink-0', esActiva ? 'text-primary' : 'text-muted-foreground')}
+                    />
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate font-medium',
+                        !distribuidora.activa && 'line-through decoration-muted-foreground/50',
+                      )}
+                    >
+                      {distribuidora.nombre}
+                    </span>
+                    {/* La marca repite en la fila lo que dice la franja de arriba, porque desde una
+                        fila cualquiera no se ve la franja sin subir la vista. Sin texto: la franja ya
+                        lo explicó una vez, y en 260 px un badge no entra al lado del nombre. */}
+                    {distribuidora.esPorDefecto && (
+                      <CircleDot
+                        size={11}
+                        className="shrink-0 text-muted-foreground"
+                        aria-label="Centro predeterminado"
+                      />
+                    )}
 
-                      {/* Switch de Activación Directo */}
-                      {tieneZona ? (
-                        <div
-                          className="flex items-center gap-1.5 shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                          title={esActiva ? 'Desactivar zona' : 'Activar zona'}
+                    <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground">
+                      {tieneZona ? formatearArea(areaKm2(distribuidora.puntos)) : '—'}
+                    </span>
+
+                    <span className="flex w-16 shrink-0 justify-center">
+                      {!tieneZona ? (
+                        // Lo ÚNICO que sigue destacado, porque es lo único que hay que arreglar: sin
+                        // contorno el centro no recibe pedidos por polígono.
+                        <Badge
+                          variant="outline"
+                          className="h-4 border-dashed px-1 text-[10px] text-amber-600 dark:text-amber-400"
                         >
-                          <span className={cn('text-[9.5px] font-bold', esActiva ? 'text-emerald-600' : 'text-muted-foreground')}>
-                            {esActiva ? 'ON' : 'OFF'}
-                          </span>
-                          <Switch
-                            size="sm"
-                            checked={esActiva}
-                            onCheckedChange={() => onAlternarActiva?.(distribuidora.id)}
-                            className="cursor-pointer"
-                          />
-                        </div>
+                          Sin trazar
+                        </Badge>
                       ) : (
-                        <Badge variant="outline" className="h-4.5 px-1.5 text-[9.5px] border-dashed border-amber-400 text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/30">
-                          Sin zona
+                        <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                          {esActiva ? 'Activa' : 'Inactiva'}
                         </Badge>
                       )}
-                    </div>
+                    </span>
+                  </button>
 
-                    {/* Fila Inferior: Medidas y Botón de Edición Rápida */}
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5 border-t border-border/40">
-                      <span className="truncate">
-                        {tieneZona ? (
-                          <>
-                            <span className="font-semibold text-foreground font-mono">
-                              {formatearArea(areaKm2(distribuidora.puntos))}
-                            </span>{' '}
-                            • {distribuidora.puntos.length} vértices
-                          </>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-medium text-[10.5px]">
-                            Requiere trazar polígono
-                          </span>
-                        )}
-                      </span>
-
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer rounded-md"
-                          title={tieneZona ? 'Editar polígono en mapa' : 'Dibujar polígono en mapa'}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onEditarZona(distribuidora.id)
-                          }}
-                        >
-                          <Pencil size={11} />
-                        </Button>
-                        <ChevronRight size={13} className="text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                      </div>
-                    </div>
-                  </div>
+                  {/* Abre el diálogo de configuración. Antes acá colgaba un `DropdownMenu` con seis
+                      ítems: dos de ellos eran interruptores disfrazados de botones —había que abrir el
+                      menú para saber si la cobertura estaba prendida— y la decisión de predeterminado
+                      no entraba en una línea sin decir a quién se la estaba sacando. */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 shrink-0 text-muted-foreground"
+                    aria-label={`Configurar ${distribuidora.nombre}`}
+                    title="Configurar"
+                    onClick={() => onConfigurar(distribuidora.id)}
+                  >
+                    <Settings2 size={13} />
+                  </Button>
                 </li>
               )
             })}

@@ -40,9 +40,16 @@ export const PREFIJOS_POR_CANAL = {
   supermercado: ['Hipermaxi', 'Fidalga', 'IC Norte', 'Ketal', 'Slan Center', 'Tía', 'Súper Ecológico'],
   // Provincia: el nombre lo cierra la LOCALIDAD (ver LOCALIDADES), no un barrio de la capital.
   // Son los ÚNICOS clientes cuyo nombre no tiene un pool libre detrás: hay exactamente
-  // `prefijos × LOCALIDADES` nombres posibles y `clientesDeProvincia` tira error al quedarse corto.
-  // Con 5 prefijos el techo eran 60 pedidos por canal, menos de los que hoy pide VOLUMEN.
-  provincia: ['Distribuidora', 'Comercial', 'Mercado', 'Abarrotes', 'Depósito', 'Almacén', 'Proveedora', 'Casa'],
+  // `prefijos × LOCALIDADES` nombres posibles y `clientesDeProvincia` TIRA ERROR al quedarse corto,
+  // lo que en la práctica es una pantalla en blanco (el dataset se arma al importar el módulo).
+  //
+  // EL TECHO ES 12 × 12 = 144, y `VOLUMEN.pedidosPorCanal` es 110. Subieron a 12 prefijos cuando el
+  // volumen pasó de 68 a 110 por canal: con los 8 anteriores el techo eran 96 y la app no arrancaba.
+  // Si el volumen vuelve a subir, este es el pool que hay que mirar primero.
+  provincia: [
+    'Distribuidora', 'Comercial', 'Mercado', 'Abarrotes', 'Depósito', 'Almacén', 'Proveedora', 'Casa',
+    'Bodega', 'Despensa', 'Minimarket', 'Pulpería',
+  ],
   // Ecommerce no tiene razón social: el "cliente" es el número de pedido web.
   ecommerce: [] as string[],
 } as const

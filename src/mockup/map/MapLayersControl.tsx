@@ -1,5 +1,6 @@
-import { LayersControl, TileLayer } from 'react-leaflet'
-import { CAPAS_BASE, CAPA_POR_DEFECTO, SUBDOMINIOS, TILES } from './tiles'
+import { LayersControl } from 'react-leaflet'
+import { CAPAS_BASE, CAPA_POR_DEFECTO } from './tiles'
+import { CapaBaseTiles } from './CapaBaseTiles'
 
 // Selector de capa base del mapa de órdenes. Usa el `LayersControl` de Leaflet —y no el menú propio de
 // planificación y monitoreo— porque esta pantalla no tiene paneles flotantes tapándole las esquinas.
@@ -12,7 +13,9 @@ export function MapLayersControl() {
     <LayersControl position="topright">
       {CAPAS_BASE.map(({ valor, label }) => (
         <LayersControl.BaseLayer key={valor} checked={valor === CAPA_POR_DEFECTO} name={label}>
-          <TileLayer url={TILES[valor]} subdomains={SUBDOMINIOS[valor]} />
+          {/* `CapaBaseTiles` y no un `TileLayer` pelado: el gris de Esri necesita su capa de
+              rótulos encima, y esa decisión vive en un solo lugar. */}
+          <CapaBaseTiles capa={valor} />
         </LayersControl.BaseLayer>
       ))}
     </LayersControl>

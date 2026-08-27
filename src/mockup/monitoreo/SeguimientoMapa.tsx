@@ -8,7 +8,7 @@
 // son las primitivas: `divIcon`, el control de capas y el invalidate por resize.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapPin, Truck, Warehouse } from 'lucide-react'
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { cn } from '@/lib/utils'
 import type { LatLngTuple } from '../map/geo/polyline'
 import { cortarEn, unirTramos } from '../map/geo/recorrido'
@@ -17,7 +17,8 @@ import { reactIcon } from '../map/div-icon'
 import { encuadrar } from '../map/encuadrar'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { CLAVES_TRAZO, TRAZO, TRAZO_LABEL, type ClaveTrazo } from './trazo-estilo'
-import { CAPA_POR_DEFECTO, SUBDOMINIOS, TILES } from '../map/tiles'
+import { CAPA_POR_DEFECTO } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { DEPOSITO } from '../mock-data'
@@ -1120,7 +1121,7 @@ export function SeguimientoMapa({
     >
       {/* `key={capa}`: sin remontar, Leaflet reusa la capa y mezcla teselas de las dos durante la
           transición. `subdomains` porque CARTO sirve desde a–d y OSM desde a–c. */}
-      <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
+      <CapaBaseTiles capa={capa} />
       <ZoomWatch onZoom={setZoom} />
       <InvalidateOnResize />
 

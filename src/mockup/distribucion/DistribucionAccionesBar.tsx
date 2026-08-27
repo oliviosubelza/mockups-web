@@ -4,15 +4,17 @@
 // mouse ya se mueve, y el panel izquierdo se queda con un solo papel —encontrar y elegir— en vez de
 // crecer y encogerse por abajo cada vez que cambia la selección.
 //
-// LA ACCIÓN PRIMARIA CAMBIA DE NOMBRE SEGÚN EL ESTADO, y no es cosmético: «Dibujar zona» y «Editar zona»
-// son dos trabajos distintos. El primero empieza de cero y el segundo ajusta vértices existentes; el
-// botón es el mismo porque el destino es el mismo modo, pero llamarlo «Editar» cuando no hay nada
-// dibujado haría buscar lo que se supone que hay que editar.
+// LA ACCIÓN PRIMARIA CAMBIA DE NOMBRE SEGÚN EL ESTADO, y no es cosmético: «Dibujar contorno» y «Editar
+// contorno» son dos trabajos distintos. El primero empieza de cero y el segundo ajusta vértices
+// existentes; el botón es el mismo porque el destino es el mismo modo, pero llamarlo «Editar» cuando no
+// hay nada dibujado haría buscar lo que se supone que hay que editar.
 //
-// Y CUANDO NO HAY ZONA, ACTIVAR Y ELIMINAR NO EXISTEN: no hay fila en `distribution_zones` sobre la que
-// operar. Se esconden en vez de deshabilitarse porque su ausencia ya está explicada por el botón de al
-// lado, que dice «Dibujar».
-import { Building2, Crosshair, MapPin, Pencil, Power, Trash2, X } from 'lucide-react'
+// TRES BOTONES Y NO SEIS. Acá había además «Datos», «Activar/Desactivar» y «Eliminar contorno»: las
+// mismas tres que ahora viven en el diálogo de configuración, que es donde se explican. Repetirlas en
+// una barra de 44 px las dejaba sin contexto —un botón «Activar» no dice qué activa— y hacía que la
+// barra creciera hasta empujar el nombre del centro fuera de pantalla. Queda lo que se hace SOBRE EL
+// MAPA (dibujar, encuadrar) más la puerta a todo lo demás.
+import { Building2, Crosshair, Pencil, Settings2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatearMetros } from '../map/geo/holgura'
@@ -26,10 +28,8 @@ export function DistribucionAccionesBar({
   zonaActiva,
   activa,
   onDibujar,
-  onEditarDatos,
   onEncuadrar,
-  onAlternarActiva,
-  onEliminar,
+  onConfigurar,
   onCerrar,
 }: {
   nombre: string
@@ -41,11 +41,9 @@ export function DistribucionAccionesBar({
   /** La DISTRIBUIDORA está en circulación, aparte de su zona. */
   activa: boolean
   onDibujar: () => void
-  /** Abre el formulario: nombre y ubicación del depósito. */
-  onEditarDatos: () => void
   onEncuadrar: () => void
-  onAlternarActiva: () => void
-  onEliminar: () => void
+  /** Abre el diálogo de configuración: cobertura, predeterminado, datos y borrado del contorno. */
+  onConfigurar: () => void
   /** Quita la selección. Es la salida de este estado, y sin ella la barra no se podría cerrar. */
   onCerrar: () => void
 }) {
@@ -85,7 +83,7 @@ export function DistribucionAccionesBar({
           <span className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden />
           <span
             className="hidden shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground sm:flex"
-            title="Superficie, perímetro y cantidad de vértices del centro de distribución"
+            title="Superficie, perímetro y cantidad de vértices del contorno"
           >
             <span className="font-medium text-foreground">{formatearArea(areaKm2(puntos))}</span>
             <span aria-hidden>·</span>
@@ -98,61 +96,35 @@ export function DistribucionAccionesBar({
 
       <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
-      <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer" onClick={onDibujar}>
+      {/* La acción PRIMARIA va con el `Button` por defecto y no con un verde propio: el primario del
+          tema ya es "esto es lo que viniste a hacer", y pintarlo a mano hace que esta barra no se
+          parezca a la de zonas logísticas, que es su gemela. */}
+      <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs" onClick={onDibujar}>
         <Pencil size={12} />
-        {conZona ? 'Editar polígono' : 'Trazar polígono'}
+        {conZona ? 'Editar contorno' : 'Dibujar contorno'}
       </Button>
 
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
-        onClick={onEditarDatos}
-        title="Cambiar el nombre o mover el depósito"
-      >
-        <MapPin size={12} />
-        Datos
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
+        className="h-7 shrink-0 gap-1.5 px-2 text-xs"
         onClick={onEncuadrar}
         disabled={!conZona}
-        title={conZona ? 'Centrar el mapa en este centro' : 'Este centro todavía no tiene polígono'}
+        title={conZona ? 'Centrar el mapa en este centro' : 'Este centro todavía no tiene contorno'}
       >
         <Crosshair size={12} />
         Encuadrar
       </Button>
-
-      {conZona && (
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
-            onClick={onAlternarActiva}
-            title={
-              zonaActiva
-                ? 'Desactivar la cobertura operativa de este centro'
-                : 'Activar la cobertura operativa de este centro'
-            }
-          >
-            <Power size={12} />
-            {zonaActiva ? 'Desactivar' : 'Activar'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-            onClick={onEliminar}
-            title="Borra el polígono delimitador. El centro se conserva."
-          >
-            <Trash2 size={12} />
-            Eliminar polígono
-          </Button>
-        </>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+        onClick={onConfigurar}
+        title="Cobertura, centro predeterminado, datos del depósito"
+      >
+        <Settings2 size={12} />
+        Configurar
+      </Button>
 
       <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
       <Button

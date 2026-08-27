@@ -34,7 +34,7 @@ import {
 import type { LatLngTuple } from '../map/geo/polyline'
 import { useDistribuidorasStore } from './distribuidoras-store'
 
-const STORAGE_KEY = 'mockups-web:centros-distribucion-v3'
+const STORAGE_KEY = 'mockups-web:centros-distribucion-v5'
 const LOCAL_USER = 'mockup'
 
 /** Espejo de la fila `distribution_zones`. Sin `name` ni `city_id`: ver el encabezado. */
@@ -60,7 +60,23 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-/** Semilla inicial vacía para que el mapa arranque completamente limpio. */
+/**
+ * Semilla VACÍA: los contornos los dibuja el usuario.
+ *
+ * ═══ HUBO UNA SEMILLA, Y SE FUE ═══
+ *
+ * Por un momento esto devolvió un contorno por distribuidora, calculado como la envolvente convexa de
+ * sus propios pedidos. Resolvía el arranque en frío —la pantalla se veía funcionando sin preparar
+ * nada— pero traía un problema peor: envolventes CALCULADAS de nubes vecinas se pisan, y un territorio
+ * que se superpone con el de al lado no significa nada (un pedido del solape tiene dos despachantes).
+ * Dibujarlos a mano es además el flujo que la pantalla de zonas de distribución existe para ofrecer, y
+ * un contorno ya puesto se lo saltea.
+ *
+ * QUÉ PASA MIENTRAS NO HAY NINGUNO, y por qué está bien: un centro sin contorno recibe los pedidos que
+ * traen su sello (`Pedido.distribuidoraId`), así que las diez distribuidoras arrancan con ~66 cada una
+ * y el planificador funciona desde el primer minuto. Al dibujarle el contorno a una, su plan pasa a
+ * ser lo que cae adentro. Ver `matchesNarrowing` en `dispatch-plan-store`.
+ */
 function semillaZonas(): ZonaDistribucion[] {
   return []
 }

@@ -101,7 +101,7 @@ export function DistribucionCapasMapa() {
             className="text-xs"
             title="El depósito cae dentro de su propia zona, así que prenderlo escribe el mismo nombre dos veces"
           >
-            Nombre sobre el polígono
+            Nombre sobre el contorno
           </DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

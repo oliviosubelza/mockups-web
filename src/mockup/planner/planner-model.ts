@@ -118,11 +118,24 @@ export function construirRutas(
  * ADEMÁS, respeta la refrigeración: una parada con algún pedido de frío solo puede caer en un camión
  * `Frío`. Si no hay ninguno con lugar, queda sin asignar — y el panel de avisos dice por qué.
  */
-export function optimizar(paradas: Parada[], rutas: RutaPlan[]): Asignaciones {
+export function optimizar(
+  paradas: Parada[],
+  rutas: RutaPlan[],
+  /**
+   * De dónde SALEN los camiones. Es el depósito de la distribuidora que se está planificando.
+   *
+   * VIENE POR PARÁMETRO Y NO DE `DEPOSITO`. Esa constante es la planta de Santa Cruz, escrita a mano,
+   * y era el origen de TODAS las rutas — así que planificar Montero armaba recorridos que arrancaban a
+   * 60 km, con el primer tramo cruzando media provincia. El depósito lo sabe la pantalla, que es la
+   * que tiene el alcance del plan; este módulo es puro y no va a leer un store para averiguarlo.
+   *
+   * El default conserva el comportamiento viejo para los llamadores que todavía no tienen alcance.
+   */
+  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+): Asignaciones {
   const asignaciones: Asignaciones = {}
   if (paradas.length === 0 || rutas.length === 0) return asignaciones
 
-  const depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
   const porCercania = ordenarPorCercania(paradas, (p) => [p.lat, p.lng])
 
   const libreKg = rutas.map((r) => (r.camion.capacidadPeso ?? 0) * 1000)
@@ -242,8 +255,11 @@ const punto = (p: Parada): [number, number] => [p.lat, p.lng]
  * agrega al trazo. Es la heurística de inserción más económica, y su gracia acá es que NO toca el orden
  * de las que ya estaban — solo elige dónde meter la nueva.
  */
-function insertarMasBarato(orden: Parada[], nueva: Parada): Parada[] {
-  const depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
+function insertarMasBarato(
+  orden: Parada[],
+  nueva: Parada,
+  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+): Parada[] {
   if (orden.length === 0) return [nueva]
 
   let mejor = 0
@@ -278,6 +294,8 @@ export function resecuenciar(
   paradas: Parada[],
   asignaciones: Asignaciones,
   rutaIds: string[],
+  /** Depósito del plan. Ver `optimizar`: decide dónde se abre y se cierra el recorrido. */
+  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
 ): Asignaciones {
   const next = { ...asignaciones }
 
@@ -289,7 +307,7 @@ export function resecuenciar(
     const recienLlegadas = stops.filter((p) => (next[p.id]?.secuencia ?? 0) === 0)
 
     let orden = yaOrdenadas
-    for (const parada of recienLlegadas) orden = insertarMasBarato(orden, parada)
+    for (const parada of recienLlegadas) orden = insertarMasBarato(orden, parada, depot)
 
     orden.forEach((parada, i) => {
       next[parada.id] = { rutaId, secuencia: i + 1 }
@@ -588,9 +606,16 @@ export function rangoPeso(paradas: Parada[]): { min: number; max: number } {
   return { min, max: tope > min ? tope : pesos[pesos.length - 1] }
 }
 
-/** Trazo de una ruta: depósito → paradas en secuencia → depósito. Sin marcadores extra. */
-export function trazoDeRuta(paradasDeRuta: Parada[]): [number, number][] {
+/**
+ * Trazo de una ruta: depósito → paradas en secuencia → depósito.
+ *
+ * `depot` por parámetro, mismo motivo que en `optimizar`: el trazo tiene que salir del depósito de la
+ * distribuidora que se está planificando, o la línea arranca en otra ciudad.
+ */
+export function trazoDeRuta(
+  paradasDeRuta: Parada[],
+  depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng],
+): [number, number][] {
   if (paradasDeRuta.length === 0) return []
-  const depot: [number, number] = [DEPOSITO.lat, DEPOSITO.lng]
   return [depot, ...paradasDeRuta.map((p) => [p.lat, p.lng] as [number, number]), depot]
 }

@@ -189,7 +189,7 @@ export function PanelGeometria({
       <div className="border-t border-border">
         <div className="flex items-center gap-1.5 px-2.5 pt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
           <LandPlot size={11} />
-          <span className="flex-1">Zonas de reparto alcanzadas</span>
+          <span className="flex-1">Zonas logísticas alcanzadas</span>
           {completa && (
             <span className="font-semibold tabular-nums text-foreground">{zonasAlcanzadas.length}</span>
           )}

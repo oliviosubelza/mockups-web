@@ -175,14 +175,14 @@ export function CapasMapa({
             onCheckedChange={setVerCentrosDistribucion}
             className="text-xs font-medium"
           >
-            Centros de distribución (Polígonos)
+            Zonas de distribución
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={verZonas}
             onCheckedChange={setVerZonas}
             className="text-xs"
           >
-            Zonas de reparto
+            Zonas logísticas
           </DropdownMenuCheckboxItem>
           {/* Agregado y capa independientes de las zonas. Se encienden por defecto para que el mapa no
               oculte advertencias existentes, pero siguen siendo información: no modifican el ruteo. */}

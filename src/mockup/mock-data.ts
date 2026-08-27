@@ -29,7 +29,7 @@ import type { StepItem } from '@/components/ui/steps'
 import type { AccesorioRuta } from './accesorios'
 import { ordenarPorCercania } from './map/geo/hilbert'
 import type { LatLngTuple } from './map/geo/polyline'
-import { createRand, uniqueNames } from './mock-random'
+import { createRand, uniqueNames, type Rand } from './mock-random'
 import {
   APELLIDOS,
   CODIGOS_EMPRESA,
@@ -77,7 +77,18 @@ const SEMILLA = 20260728
  */
 const VOLUMEN = {
   camiones: 54,
-  pedidosPorCanal: 68,
+  /**
+   * Pedidos por canal. Con 6 canales y 10 distribuidoras dan ~66 por distribuidora.
+   *
+   * SUBIÓ DE 68 A 110 cuando los pedidos dejaron de ser todos de Santa Cruz. Antes los 408 caían en
+   * una sola ciudad y alcanzaban; repartidos entre diez distribuidoras eran 40 cada una, y la mitad
+   * de las pantallas de esta app se miran POR distribuidora — un plan con 40 pedidos y 38 camiones no
+   * muestra nada de lo que la pantalla existe para mostrar.
+   *
+   * El techo sigue siendo `PUNTOS_CALLE_SCZ` (440 coordenadas), pero ya no lo toca: solo 2 de las 10
+   * distribuidoras son de Santa Cruz, así que de los 660 pedidos ~132 piden calle del pool.
+   */
+  pedidosPorCanal: 110,
   planes: 36,
   corridas: 30,
   /** Techo del listado de órdenes de transporte. Hoy no llega a tocarlo: el reparto por camión da ~57. */
@@ -689,6 +700,18 @@ export interface Pedido {
    * "Cotoca" y los filtros contradecían el mapa.
    */
   ciudad: CiudadId
+  /**
+   * Distribuidora DUEÑA del pedido (`distributors.id`), sellada al generarlo.
+   *
+   * Antes esto se DEDUCÍA con una heurística (`distribuidoraIdDe`: norte/este a la primera, sur/centro
+   * a la segunda) sobre una ciudad que además siempre era Santa Cruz. Dos problemas: ocho de las diez
+   * distribuidoras no tenían un solo pedido, y la que sí tenía los recibía por una regla que ninguna
+   * columna del modelo respalda. Ahora el pedido dice de quién es, como en la base.
+   *
+   * La ZONA DE DISTRIBUCIÓN sigue siendo otra cosa y se resuelve por geometría: un pedido es de esta
+   * distribuidora, y además puede caer o no dentro del contorno que ella dibujó.
+   */
+  distribuidoraId: number
   mercado: MercadoId
   zona: ZonaId
   /** Las líneas del pedido. Ver `ItemPedido`: hoy NO vienen en el snapshot. */
@@ -858,6 +881,54 @@ function generarItems(pedidoId: string, productType: ProductType): ItemPedido[] 
 export const PEDIDOS: Pedido[] = (() => {
   const clientesUsados = new Set<string>()
   const vendedor = rand.cycler(VENDEDORES_POOL)
+  /** Reparte los pedidos entre las CIUDADES, en ciclo: ninguna queda sin datos. */
+  const ciudadDelPedido = rand.cycler(CIUDAD_IDS)
+  /** Un ciclo por ciudad del interior, para repartir entre sus distribuidoras. */
+  const cicloPorCiudad = new Map<CiudadId, () => (typeof DISTRIBUIDORAS)[number]>()
+
+  /**
+   * Las distribuidoras de una ciudad, en el orden del maestro.
+   *
+   * LO QUE ESTÁ EN JUEGO: de los pedidos de cada distribuidora sale después su contorno sembrado, que
+   * es la ENVOLVENTE CONVEXA de esa nube (`zonas-distribucion-seed.ts`). Dos nubes entrelazadas dan
+   * dos envolventes que se pisan casi por completo, y ahí el territorio deja de significar algo: un
+   * punto adentro de los dos polígonos no tiene dueño definido.
+   *
+   * Por eso el reparto NO es un sorteo ni un ciclo cuando hay dos en la misma ciudad.
+   */
+  const deLaCiudad = (ciudad: CiudadId) =>
+    DISTRIBUIDORAS.filter((d) => d.cityId === cityIdDe(ciudad))
+
+  /**
+   * La dueña de un pedido de la CAPITAL, según de qué lado del centro cae.
+   *
+   * PARTIDA POR LONGITUD, y eso es lo que garantiza que las dos envolventes NO se pisen: dos nubes
+   * separadas por una recta son linealmente separables, y el teorema del hiperplano separador dice que
+   * entonces sus envolventes convexas tampoco se tocan. Partir por zona logística —norte+este contra
+   * sur+centro— parecía más natural pero no cumple eso: «centro» está en el medio y su envolvente se
+   * mete adentro de la otra.
+   *
+   * La zona logística sigue existiendo y sigue siendo independiente: son dos particiones distintas del
+   * mismo territorio, que es exactamente lo que las dos pantallas afirman.
+   */
+  const duenaEnLaCapital = (lng: number): (typeof DISTRIBUIDORAS)[number] => {
+    const dos = deLaCiudad('santacruz')
+    if (dos.length < 2) return dos[0] ?? DISTRIBUIDORAS[0]
+    return lng < CIUDAD_CENTRO.santacruz[1] ? dos[0] : dos[1]
+  }
+
+  /** La dueña de un pedido del INTERIOR: ciclo entre las de esa ciudad, separadas por sus depósitos. */
+  const duenaEnElInterior = (ciudad: CiudadId): (typeof DISTRIBUIDORAS)[number] => {
+    const dos = deLaCiudad(ciudad)
+    if (dos.length === 0) return DISTRIBUIDORAS[0]
+    if (dos.length === 1) return dos[0]
+    let ciclo = cicloPorCiudad.get(ciudad)
+    if (!ciclo) {
+      ciclo = rand.cycler(dos)
+      cicloPorCiudad.set(ciudad, ciclo)
+    }
+    return ciclo()
+  }
   const out: Pedido[] = []
   // Localidades "cercanas" a la capital: una tienda de barrio en Cotoca es plausible, en Buena Vista
   // (a 100 km) no. Dan algo de dispersión al filtro de Ciudad sin volver falso el dataset.
@@ -885,12 +956,36 @@ export const PEDIDOS: Pedido[] = (() => {
    * Una calle libre de la zona. Si la zona se agotó cae a cualquier otra: preferimos un pedido con la
    * zona un poco corrida antes que dos pines superpuestos, porque lo primero no se ve y lo segundo sí.
    *
-   * Con los volúmenes de hoy la caída SÍ ocurre, y está medida: de 408 sorteos, la zona sur se lleva
-   * 120 sobre 110 calles, así que 26 pedidos terminan colocados por barrido y 10 de ellos en otra
-   * zona. Ninguna coordenada se repite, que es lo único que no se puede negociar. El margen es
-   * angosto a propósito —ver el techo de `pedidosPorCanal` en VOLUMEN—: pasando los ~440 pedidos el
-   * pool se agota entero y los pines empiezan a superponerse de verdad.
+   * EL MARGEN SE ENSANCHÓ. Antes los 408 pedidos caían todos en Santa Cruz y agotaban zonas enteras
+   * (la sur se llevaba 120 sobre 110 calles). Desde que el pedido se reparte entre las diez
+   * distribuidoras, solo las 2 de la capital piden calle: ~132 de los 660, sobre 440 disponibles. La
+   * caída por barrido prácticamente no ocurre y ninguna coordenada se repite.
    */
+  /**
+   * Una coordenada cerca del depósito de una distribuidora, para las ciudades que NO tienen pool de
+   * calles.
+   *
+   * `PUNTOS_CALLE_SCZ` son 440 coordenadas relevadas sobre calles reales de Santa Cruz; no existe el
+   * equivalente para Montero, Warnes, La Guardia y Cotoca. Antes eso no importaba porque todos los
+   * pedidos eran de la capital.
+   *
+   * SE SORTEA SOBRE UN ANILLO y no sobre un disco: con un disco uniforme en radio, la mitad de los
+   * puntos cae en el 25% central y el pueblo entero se ve como una mancha alrededor del depósito. El
+   * anillo (radio entre el 35% y el 100% del máximo) los reparte por el área que la ciudad ocupa de
+   * verdad.
+   *
+   * NO caen sobre calles, y se sabe: son localidades chicas que se miran alejadas, donde el pin marca
+   * la manzana y no el portón. La capital —que es la que se mira de cerca— sigue usando el pool.
+   */
+  const cercaDelDeposito = (dist: { lat: number; lng: number }): readonly [number, number] => {
+    const RADIO_MAX_KM = 3.5
+    const angulo = rand.next() * Math.PI * 2
+    const radioKm = RADIO_MAX_KM * (0.35 + rand.next() * 0.65)
+    const dLat = (radioKm / 111.32) * Math.sin(angulo)
+    const dLng = ((radioKm / 111.32) * Math.cos(angulo)) / Math.cos((dist.lat * Math.PI) / 180)
+    return [Number((dist.lat + dLat).toFixed(6)), Number((dist.lng + dLng).toFixed(6))] as const
+  }
+
   const calleLibre = (zona: ZonaId): readonly [number, number] => {
     const clave = (p: readonly [number, number]) => `${p[0]},${p[1]}`
     const tomar = (p: readonly [number, number]) => {
@@ -937,12 +1032,20 @@ export const PEDIDOS: Pedido[] = (() => {
     // El punto LLEVA su cliente: un delivery_point pertenece a UN cliente, así que compartir punto
     // implica compartir cliente (es el caso "el mismo local hizo dos pedidos"). Sin esto una parada
     // unificada mostraba un cliente mientras sus pedidos pertenecían a otros distintos.
+    // EL PUNTO LLEVA SU CIUDAD, SU ZONA Y SU DISTRIBUIDORA, no solo su coordenada. Compartir punto es
+    // "el mismo local hizo dos pedidos": el segundo pedido está en el MISMO lugar, así que le
+    // corresponden la misma ciudad y la misma distribuidora. Sin esto, un pedido sorteado para Montero
+    // que reusaba un punto de Santa Cruz quedaba con coordenadas de la capital y etiqueta de Montero —
+    // el filtro de ciudad y el mapa decían cosas distintas del mismo pedido.
     const puntosDelCanal: {
       id: string
       nombre: string
       lat: number
       lng: number
       cliente: string
+      ciudad: CiudadId
+      zona: ZonaId
+      distribuidoraId: number
     }[] = []
 
     for (let i = 0; i < cantidad; i++) {
@@ -952,25 +1055,52 @@ export const PEDIDOS: Pedido[] = (() => {
       // El jitter era un cuadrado de casi 5 km de lado y no sabía dónde hay ciudad: dejaba pines en el
       // Río Piraí, en las lagunas de oxidación y en campo abierto sin una calle a cientos de metros.
       // Ver `PUNTOS_CALLE_SCZ` para de dónde salen las coordenadas y cómo regenerarlas.
-      const ciudad: CiudadId = 'santacruz'
-      const zona = rand.pick(ZONA_IDS)
+      // ── A QUIÉN LE TOCA, Y DÓNDE CAE ────────────────────────────────────────────────────────
+      // El pedido se reparte por CICLO entre las diez distribuidoras y de ahí saca su ciudad y su
+      // coordenada. Antes decía `const ciudad = 'santacruz'` escrito, así que ocho distribuidoras y
+      // cuatro ciudades existían en los filtros sin un solo pedido detrás.
+      //
+      // Por ciclo y no por sorteo: con `pick` puro alguna quedaba en cero, que es justo el estado que
+      // esto viene a eliminar.
+      // ── A QUIÉN LE TOCA ─────────────────────────────────────────────────────────────────────
+      // Ver `duenaDe`. En la capital el dueño lo decide la COORDENADA, así que hay que tenerla antes;
+      // en el interior lo decide un ciclo por ciudad y la coordenada sale del depósito que toque.
+      const ciudadSorteada = ciudadDelPedido()
+      const zonaSorteada = ZONA_POR_CIUDAD[ciudadSorteada] ?? rand.pick(ZONA_IDS)
       const lugar = rand.pick(LUGARES_SCZ)
-
-      // `[lat, lng]`, orden de Leaflet. Desestructurado en dos líneas para que el orden quede escrito y
-      // nadie lo invierta al leerlo de corrido.
-      const [lat, lng] = calleLibre(zona)
 
       // ~22% de los pedidos reusan un punto de entrega ya existente del canal → paradas unificadas.
       const compartir = puntosDelCanal.length > 0 && rand.chance(0.22)
       const punto = compartir
         ? rand.pick(puntosDelCanal)
-        : {
-            id: `DP-${String(siguientePunto++).padStart(4, '0')}`,
-            nombre: `Suc. ${lugar} · ${rand.pick(VIAS)} ${rand.int(2, 48)}`,
-            lat,
-            lng,
-            cliente: clientePropio,
-          }
+        : (() => {
+            // La coordenada se pide DENTRO de esta rama: `calleLibre` marca la calle como usada, y
+            // llamándola siempre se quemaba una del pool en cada pedido que después compartía punto.
+            //
+            // EL ORDEN IMPORTA. En la capital la coordenada decide el dueño (partición por longitud);
+            // en el interior el dueño decide la coordenada (anillo alrededor de su depósito).
+            // `[lat, lng]`, orden de Leaflet.
+            const enLaCapital = ciudadSorteada === 'santacruz'
+            const interiorDist = enLaCapital ? null : duenaEnElInterior(ciudadSorteada)
+            const [lat, lng] = enLaCapital
+              ? calleLibre(zonaSorteada)
+              : cercaDelDeposito(interiorDist!)
+            const dist = interiorDist ?? duenaEnLaCapital(lng)
+            return {
+              id: `DP-${String(siguientePunto++).padStart(4, '0')}`,
+              nombre: `Suc. ${lugar} · ${rand.pick(VIAS)} ${rand.int(2, 48)}`,
+              lat,
+              lng,
+              cliente: clientePropio,
+              ciudad: ciudadSorteada,
+              zona: zonaSorteada,
+              distribuidoraId: dist.id,
+            }
+          })()
+
+      // Todo lo GEOGRÁFICO sale del punto, no del sorteo: ver la nota de `puntosDelCanal`.
+      const ciudad = punto.ciudad
+      const zona = punto.zona
       if (!compartir) puntosDelCanal.push(punto)
       // Al compartir punto, el pedido es del cliente DUEÑO del punto (su nombre propio queda sin
       // usar, que es correcto: hay menos clientes distintos que pedidos, como en la realidad).
@@ -1009,6 +1139,7 @@ export const PEDIDOS: Pedido[] = (() => {
         lat: punto.lat,
         lng: punto.lng,
         ciudad,
+        distribuidoraId: punto.distribuidoraId,
         mercado: MERCADO_POR_CIUDAD[ciudad],
         zona,
         items: generarItems(`p${siguienteId}`, productType),
@@ -1020,22 +1151,103 @@ export const PEDIDOS: Pedido[] = (() => {
   return out
 })()
 
+/**
+ * Arma UN pedido en una coordenada dada. Es la fábrica que usa el generador de pedidos por contorno
+ * (`pedidos-de-contorno.ts`) para poblar una zona de distribución recién dibujada.
+ *
+ * ═══ POR QUÉ ACÁ Y NO ALLÁ ═══
+ *
+ * Todo lo que un pedido necesita para ser plausible —las ventanas horarias válidas, los perfiles de
+ * peso y monto por canal, las densidades que dan el volumen, los nombres de local, las vías, el
+ * mercado de cada ciudad, los ítems— son constantes PRIVADAS de este módulo. Exportar las once para
+ * que otro archivo las combine sería publicar el interior del generador y garantizar que las dos
+ * copias se separen: bastaría con tocar `PERFIL_CANAL` acá para que los pedidos de contorno quedaran
+ * con otro criterio de peso sin que nadie lo note.
+ *
+ * Lo que sale exportado es la OPERACIÓN, no los ingredientes: se pide "un pedido de este canal, en
+ * esta coordenada, de esta ciudad" y se recibe un `Pedido` armado con las mismas reglas que los del
+ * dataset base.
+ *
+ * `rand` viene POR PARÁMETRO y no del `rand` del módulo: el que llama necesita sembrarlo con algo
+ * derivado del contorno para que la misma zona dé siempre los mismos pedidos. Usando el de acá, el
+ * orden de generación dependería de cuántas veces se llamó antes y el mapa cambiaría solo.
+ */
+export function crearPedidoEn(input: {
+  id: string
+  salesOrder: string
+  puntoEntregaId: string
+  canal: CanalId
+  ciudad: CiudadId
+  /** Distribuidora dueña. La sabe el que llama: es la del contorno donde cayó el punto. */
+  distribuidoraId: number
+  zona: ZonaId
+  lat: number
+  lng: number
+  cliente: string
+  vendedor: string
+  rand: Rand
+}): Pedido {
+  const { rand: r, canal, ciudad, zona, lat, lng, cliente, vendedor } = input
+  const perfil = PERFIL_CANAL[canal]
+  const corte = CANAL_META[canal].timeOff
+  // El mismo tercio fuera de corte que el dataset base: la bandeja de "fuera de corte" tiene que
+  // tener algo adentro también cuando los pedidos vienen de un contorno.
+  const ventana = r.chance(0.33)
+    ? r.pick(ventanasQueCierranDespuesDe(corte))
+    : r.pick(ventanasQueCierranAntesDe(corte))
+  const productType: ProductType = r.chance(0.35) ? 'Frío' : 'Seco'
+  const peso = r.int(perfil.peso[0], perfil.peso[1])
+
+  return {
+    id: input.id,
+    salesOrder: input.salesOrder,
+    cliente,
+    canal,
+    company: r.pick(EMPRESAS),
+    paymentType: r.pick(PAYMENT_TYPES),
+    productType,
+    fechaEntrega: FECHA_PLAN,
+    total: r.float(perfil.total[0], perfil.total[1], 2),
+    vendedor,
+    puntoEntregaId: input.puntoEntregaId,
+    puntoEntrega: `Suc. ${r.pick(LUGARES_SCZ)} · ${r.pick(VIAS)} ${r.int(2, 48)}`,
+    ventana,
+    peso,
+    volumen: Number(
+      (
+        peso /
+        (productType === 'Frío'
+          ? r.int(DENSIDAD_FRIO[0], DENSIDAD_FRIO[1])
+          : r.int(DENSIDAD_SECO[0], DENSIDAD_SECO[1]))
+      ).toFixed(2),
+    ),
+    priority: r.pick([1, 2, 3] as const),
+    listo: r.chance(0.9),
+    lat,
+    lng,
+    ciudad,
+    distribuidoraId: input.distribuidoraId,
+    mercado: MERCADO_POR_CIUDAD[ciudad],
+    zona,
+    items: generarItems(input.id, productType),
+  }
+}
+
 // Los pedidos ya guardan ciudad/mercado/zona; estos accesores quedan por compatibilidad con los
 // consumidores (filtros del panel y narrowing del store), que los llaman como función.
 export const ciudadDe = (p: Pedido): CiudadId => p.ciudad
 export const mercadoDe = (p: Pedido): MercadoId => p.mercado
 export const zonaDe = (p: Pedido): ZonaId => p.zona
 
-/** Resuelve la distribuidora asignada al pedido según su ciudad y sector geográfico */
-export const distribuidoraIdDe = (p: Pedido): number => {
-  const cityId = cityIdDe(p.ciudad)
-  const dists = DISTRIBUIDORAS.filter((d) => d.cityId === cityId)
-  if (dists.length === 0) return 501
-  if (dists.length === 1) return dists[0].id
-  // Reparto norte/este a la primera distribuidora, sur/centro a la segunda
-  if (p.zona === 'norte' || p.zona === 'este') return dists[0].id
-  return dists[1].id
-}
+/**
+ * La distribuidora dueña del pedido. LO LEE, ya no lo adivina.
+ *
+ * Esto era una heurística —«norte y este a la primera, sur y centro a la segunda»— sobre una ciudad
+ * que además siempre era Santa Cruz. Ninguna columna del modelo dice eso, y el resultado era que la
+ * mitad del maestro no tenía pedidos. Ahora el dueño se sella al generar el pedido
+ * (`Pedido.distribuidoraId`) y esto es un accesor, como `ciudadDe` o `zonaDe`.
+ */
+export const distribuidoraIdDe = (p: Pedido): number => p.distribuidoraId
 
 export const distribuidoraNombreDe = (p: Pedido): string => {
   const id = distribuidoraIdDe(p)

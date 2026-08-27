@@ -60,6 +60,7 @@ export function FiltroPopover({
   emptyText,
   modo = 'multi',
   ancho = 'w-56',
+  triggerClassName,
 }: {
   label: string
   icon: LucideIcon
@@ -72,6 +73,13 @@ export function FiltroPopover({
   modo?: ModoFiltro
   /** Ancho del popover. Se puede ensanchar cuando las etiquetas son largas y `w-56` las corta. */
   ancho?: string
+  /**
+   * Clases del TRIGGER. Existe para el caso en que el filtro no vive en una barra sino en una columna
+   * de ancho fijo: ahí `shrink-0` + `max-w-44` truncan la etiqueta contra un borde que sobra
+   * («Distribuidora Discruz · prede…» con 60 px libres al lado). Pasando `w-full justify-between` el
+   * botón ocupa la fila y el texto usa todo lo que hay.
+   */
+  triggerClassName?: string
 }) {
   const [open, setOpen] = useState(false)
   const unico = modo === 'unico'
@@ -84,6 +92,7 @@ export function FiltroPopover({
           buttonVariants({ variant: 'outline', size: 'sm' }),
           'h-7 shrink-0 gap-1.5 px-2 text-xs',
           active.length > 0 && !unico && 'border-primary/50 bg-primary/5',
+          triggerClassName,
         )}
         title={unico ? label : undefined}
       >
@@ -93,7 +102,9 @@ export function FiltroPopover({
             acá el valor manda sobre TODO lo que se ve en la pantalla. La etiqueta de la dimensión queda
             en el `title`, que es donde hace falta solo la primera vez. */}
         {unico ? (
-          <span className="min-w-0 max-w-44 truncate">{elegida?.label ?? label}</span>
+          // `flex-1` y no `max-w-44`: el ancho lo decide el trigger (ver `triggerClassName`), no una
+          // constante escrita acá que no sabe en qué contenedor lo montaron.
+          <span className="min-w-0 flex-1 truncate text-left">{elegida?.label ?? label}</span>
         ) : (
           <>
             {label}

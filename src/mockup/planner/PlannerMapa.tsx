@@ -11,11 +11,12 @@
 // sola y vale para todos los marcadores a la vez, el depósito incluido: lejos, vista de conjunto —
 // formas compactas y chicas—; cerca, vista de detalle.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Building2, Warehouse } from 'lucide-react'
 import type { Polyline as CapaPolyline } from 'leaflet'
-import { MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
-import { SUBDOMINIOS, TILES } from '../map/tiles'
+import { CapaBaseTiles } from '../map/CapaBaseTiles'
 import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { ZonasLayer } from '../zonas/ZonasLayer'
@@ -30,7 +31,7 @@ import { encuadrar } from '../map/encuadrar'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
 import { oscurecer } from '../map/color'
 import { reactIcon } from '../map/div-icon'
-import { CANAL_META, DEPOSITO, type Parada } from '../mock-data'
+import { CANAL_META, DEPOSITO, cityIdDe, type Parada } from '../mock-data'
 import { PlannerHerramientas } from './PlannerHerramientas'
 import {
   anchoPin,
@@ -324,6 +325,7 @@ function Camara({
   paradas,
   puntosAdicionales,
   foco,
+  deposito,
   margenIzq,
   margenDer,
   margenAbajo,
@@ -331,6 +333,13 @@ function Camara({
   paradas: Parada[]
   puntosAdicionales?: [number, number][]
   foco: Parada | null
+  /**
+   * Depósito del plan: entra en todo encuadre porque la ruta sale y vuelve de ahí.
+   *
+   * POR PROP y no leído del store acá adentro: quien conoce el alcance es `PlannerMapa`, que ya lo
+   * deriva para dibujar los trazos. Calcularlo dos veces sería dos verdades para el mismo punto.
+   */
+  deposito: [number, number]
   margenIzq: number
   margenDer: number
   margenAbajo: number
@@ -361,11 +370,17 @@ function Camara({
   paradasRef.current = paradas
   const rutaFocoRef = useRef(rutaFoco)
   rutaFocoRef.current = rutaFoco
+  const depositoRef = useRef(deposito)
+  depositoRef.current = deposito
 
   useEffect(() => {
     if (!objetivo) return
     // El depósito entra en el encuadre de un recorrido igual que en el del plan: la ruta sale y vuelve
     // de ahí, así que un cuadro que lo deja afuera muestra medio viaje.
+    //
+    // Es el depósito DEL PLAN y no `DEPOSITO`: metiendo la planta de Santa Cruz en el encuadre de un
+    // plan de Montero, la cámara se abre a los 60 km que hay entre las dos y las paradas quedan del
+    // tamaño de un pixel. Va por ref porque este efecto depende solo del token de encuadre.
     const deRuta = (): [number, number][] =>
       paradasRef.current
         .filter((p) => p.rutaId === rutaFocoRef.current)
@@ -374,11 +389,11 @@ function Camara({
       objetivo === 'foco' && focoRef.current
         ? [[focoRef.current.lat, focoRef.current.lng] as [number, number]]
         : objetivo === 'ruta' && rutaFocoRef.current
-          ? [...deRuta(), [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
+          ? [...deRuta(), depositoRef.current]
           : [
               ...puntos.current,
               ...puntosExtrasRef.current,
-              [DEPOSITO.lat, DEPOSITO.lng] as [number, number],
+              depositoRef.current,
             ]
     encuadrar(map, destino, {
       ...margenes.current,
@@ -478,9 +493,36 @@ export function PlannerMapa({
   const alternarSeleccion = usePlannerStore((s) => s.alternarSeleccion)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
 
+  // ── Alcance del plan: de acá salen los contornos que se dibujan y el depósito de los trazos ──
   const activeDistribuidoraId = useDispatchPlanStore((s) => s.activeDistribuidoraId)
+  const activeCiudades = useDispatchPlanStore(useShallow((s) => s.activeCiudades))
   const zonasDistribucionTodas = useDistribucionStore((s) => s.zonas)
   const distribuidorasTodas = useDistribuidorasStore((s) => s.distribuidoras)
+
+  /**
+   * De dónde arrancan y dónde cierran los trazos, y qué entra en cada encuadre: el depósito del centro
+   * elegido.
+   *
+   * Coincide con el `depositoDelPlan` que `PlannerView` le pasa a `optimizar`: si se separaran, el
+   * recorrido calculado y el dibujado empezarían en puntos distintos. Sin centro elegido cae al
+   * depósito histórico, que es el único origen afirmable mientras no se sepa para quién se planifica.
+   */
+  const depositoDelPlan = useMemo<[number, number]>(() => {
+    const centro = distribuidorasTodas.find((d) => d.id === activeDistribuidoraId)
+    return centro ? [centro.latitude, centro.longitude] : [DEPOSITO.lat, DEPOSITO.lng]
+  }, [activeDistribuidoraId, distribuidorasTodas])
+
+  /**
+   * Ids de ciudad activos. Vacío = no filtra, igual que en el resto de los filtros de narrowing.
+   *
+   * Es lo que hace que los contornos APAREZCAN al elegir una ciudad: sin esto se dibujaban los de las
+   * cinco a la vez, y los de Montero quedaban a treinta kilómetros del plan que se está armando,
+   * arrastrando el encuadre.
+   */
+  const cityIdsActivos = useMemo(
+    () => new Set(activeCiudades.map((c) => cityIdDe(c))),
+    [activeCiudades],
+  )
 
   const zonasCD = useMemo(() => {
     if (!verCentrosDistribucion) return []
@@ -490,24 +532,33 @@ export function PlannerMapa({
         const pts = puntosDeZona(z)
         const dist = distribuidorasTodas.find((d) => d.id === z.distributorId)
         const esDirecta = activeDistribuidoraId !== null && activeDistribuidoraId === z.distributorId
-        const esSeleccionada = activeDistribuidoraId === null || activeDistribuidoraId === z.distributorId
+        // El contorno del centro elegido no es un dibujo de referencia: es el LÍMITE de lo que se está
+        // viendo, porque acotar por centro es acotar por su territorio. Por eso va marcado más fuerte.
         return {
           zona: z,
           puntos: pts,
           dist,
           esDirecta,
-          esSeleccionada,
+          esSeleccionada: activeDistribuidoraId === null || activeDistribuidoraId === z.distributorId,
         }
       })
       .filter((item) => item.puntos.length >= 3)
-  }, [activeDistribuidoraId, distribuidorasTodas, verCentrosDistribucion, zonasDistribucionTodas])
+      .filter((item) => cityIdsActivos.size === 0 || (item.dist && cityIdsActivos.has(item.dist.cityId)))
+  }, [
+    activeDistribuidoraId,
+    cityIdsActivos,
+    distribuidorasTodas,
+    verCentrosDistribucion,
+    zonasDistribucionTodas,
+  ])
 
   const depositosCD = useMemo(() => {
     if (!verCentrosDistribucion) return []
     return distribuidorasTodas
       .filter((d) => d.deletedAt === null && d.isActive && d.latitude && d.longitude)
+      .filter((d) => cityIdsActivos.size === 0 || cityIdsActivos.has(d.cityId))
       .filter((d) => activeDistribuidoraId === null || activeDistribuidoraId === d.id)
-  }, [activeDistribuidoraId, distribuidorasTodas, verCentrosDistribucion])
+  }, [activeDistribuidoraId, cityIdsActivos, distribuidorasTodas, verCentrosDistribucion])
 
   const puntosAdicionalesEncuadre = useMemo(() => {
     const pts: [number, number][] = []
@@ -604,10 +655,10 @@ export function PlannerMapa({
         const propias = paradas
           .filter((p) => p.rutaId === ruta.id)
           .sort((a, b) => a.secuencia - b.secuencia)
-        return { ruta, path: trazoDeRuta(propias) }
+        return { ruta, path: trazoDeRuta(propias, depositoDelPlan) }
       })
       .filter((t) => t.path.length > 2)
-  }, [ocultas, optimizado, paradas, rutas, verTrazos])
+  }, [depositoDelPlan, ocultas, optimizado, paradas, rutas, verTrazos])
 
   /**
    * El recorrido POR CALLES de cada ruta, cuando ya llegó.
@@ -738,13 +789,14 @@ export function PlannerMapa({
     >
       {/* `key`: sin él, Leaflet reusa la capa y solo le cambia la URL, y las teselas viejas del fondo
           anterior se quedan pintadas hasta que el usuario mueve el mapa. Remontando, entra limpio. */}
-      <TileLayer key={capa} url={TILES[capa]} subdomains={SUBDOMINIOS[capa]} />
+      <CapaBaseTiles capa={capa} />
       <InvalidateOnResize />
       <ZoomWatch onZoom={setZoom} />
       <Camara
         paradas={paradas}
         puntosAdicionales={puntosAdicionalesEncuadre}
         foco={foco}
+        deposito={depositoDelPlan}
         margenIzq={margenIzq}
         margenDer={margenDer}
         margenAbajo={margenAbajo}
