@@ -404,44 +404,67 @@ export const zonaDistribucionDePedido = (p: Pedido): number | null => {
   return null
 }
 
+/** Los `distributor_id` que HOY tienen un contorno vivo. Cacheado por identidad de los contornos. */
+const centrosConContorno = (): Set<number> => {
+  const zonas = useDistribucionStore.getState().zonas.filter((z) => z.deletedAt === null && z.isActive)
+  const clave = zonas.map((z) => `${z.id}:${z.updatedAt}`).join('|')
+  if (cacheConContorno.clave !== clave) {
+    cacheConContorno = {
+      clave,
+      ids: new Set(zonas.filter((z) => puntosDeZona(z).length >= 3).map((z) => z.distributorId)),
+    }
+  }
+  return cacheConContorno.ids
+}
+let cacheConContorno: { clave: string; ids: Set<number> } = { clave: '\u0000', ids: new Set() }
+
 /**
- * A QUIÉN le toca despachar el pedido. Siempre devuelve alguien.
+ * A QUIÉN le toca despachar el pedido, o `null` si hoy no le toca a nadie.
  *
- * Dos escalones, y el orden importa:
- *   1. el CONTORNO que lo contiene. La geometría gana: dibujar un territorio es exactamente decir
- *      «lo que caiga acá adentro es mío», y si el sello dijera otra cosa, el dibujo no serviría de
- *      nada;
- *   2. el dueño SELLADO en el pedido (`Pedido.distribuidoraId`), para el que no cae en ninguno.
+ * ═══ EL CONTORNO NO ES UNA ETIQUETA, ES UN RECORTE ═══
  *
- * SE FUE EL ESCALÓN DEL PREDETERMINADO, y ese era el bug. Estaba entre los dos, así que un pedido de
- * Andiven que no cayera dentro de ningún contorno terminaba contado como de Bramar —la predeterminada
- * de Montero— y Andiven aparecía con cero pedidos en el selector. El predeterminado sigue existiendo y
- * sigue significando lo mismo; lo que no puede es pisar a un pedido que ya sabe de quién es.
+ *   1. Cae DENTRO de un contorno → es de su dueño. La geometría manda.
+ *   2. No cae en ninguno y su centro TODAVÍA NO DIBUJÓ el suyo → es de su centro. No hay territorio
+ *      que respetar, así que sigue siendo de quien siempre fue.
+ *   3. No cae en ninguno y su centro SÍ dibujó → `null`. No es de nadie.
+ *
+ * EL CASO 3 ES EL PUNTO ENTERO. Dibujar un contorno es decir «mi territorio es este»: lo que queda
+ * afuera deja de existir para la planificación —no se muestra, no se rutea, no se cuenta— hasta que
+ * alguien lo encierre. No hay dueño de repuesto.
+ *
+ * Por eso devuelve `number | null` y no un número siempre. Hubo dos versiones que sí devolvían
+ * siempre un número, y las dos fallaron por el mismo motivo —inventar un dueño para lo que quedó
+ * afuera—, cada una a su manera:
+ *
+ *   · con el PREDETERMINADO como escalón intermedio: los pedidos de un centro sin contorno se los
+ *     llevaba el predeterminado, y ese centro mostraba cero;
+ *   · con el PREDETERMINADO como último escalón: al centro predeterminado le volvía todo lo que se le
+ *     escapaba del contorno, así que su plan seguía mostrando puntos afuera del polígono. Que es
+ *     exactamente lo que este archivo tiene que impedir.
  */
-export const resolveDistribuidoraIdDePedido = (p: Pedido): number =>
-  zonaDistribucionDePedido(p) ?? p.distribuidoraId
+export const resolveDistribuidoraIdDePedido = (p: Pedido): number | null => {
+  const porContorno = zonaDistribucionDePedido(p)
+  if (porContorno !== null) return porContorno
+  return centrosConContorno().has(p.distribuidoraId) ? null : p.distribuidoraId
+}
 
 /**
  * Filtros de narrowing (Centro de Distribución/Ciudad/Mercado/Zona/Vendedor):
  * Un array vacío NO filtra (pasan todos). El canal es obligatorio.
  */
 export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean => {
-  // El dueño EFECTIVO: el contorno que lo contiene, o el sellado. Ver `resolveDistribuidoraIdDePedido`.
+  // El dueño EFECTIVO, que puede ser NINGUNO (`null`): un pedido fuera del contorno de su propio
+  // centro no está en el plan de nadie. Ver `resolveDistribuidoraIdDePedido`.
   //
-  // ACOTAR POR CENTRO ES ACOTAR POR SU TERRITORIO, sin casilla que prender. Si el centro elegido tiene
-  // contorno, `resolveDistribuidoraIdDePedido` ya solo le atribuye lo que cae adentro, así que esta
-  // comparación es exactamente «los puntos de este polígono». Y si NO tiene contorno —el caso de la
-  // única distribuidora de una ciudad, o de una recién creada— le tocan los que traen su sello, que es
-  // el otro comportamiento que hace falta.
-  //
-  // Hubo un `soloDentroDelContorno` como casilla en la tarjeta de alcance. Se fue: con un contorno
-  // sembrado por distribuidora la casilla estaba siempre prendida y prometía una opción que no era.
+  // ACOTAR POR CENTRO ES ACOTAR POR SU TERRITORIO, sin casilla que prender. Con contorno dibujado solo
+  // pasa lo que cae adentro; sin contorno, lo que trae su sello. Son las dos únicas lecturas que tiene
+  // «los pedidos de este centro».
   const distId = resolveDistribuidoraIdDePedido(p)
   return (
     (s.activeDistribuidoraId === null || distId === s.activeDistribuidoraId) &&
     (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
-    (s.activeDistribuidoras.length === 0 || s.activeDistribuidoras.includes(String(distId))) &&
-
+    (s.activeDistribuidoras.length === 0 ||
+      (distId !== null && s.activeDistribuidoras.includes(String(distId)))) &&
     (s.activeMercados.length === 0 || s.activeMercados.includes(mercadoDe(p))) &&
     (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
     (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))

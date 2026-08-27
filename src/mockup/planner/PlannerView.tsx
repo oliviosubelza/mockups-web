@@ -256,9 +256,10 @@ export function PlannerView() {
   /**
    * Las opciones del selector de centro, con «Todos» adelante.
    *
-   * El `hint` es cuántos pedidos le TOCAN hoy —`resolveDistribuidoraIdDePedido`, o sea el contorno si
-   * lo tiene y el predeterminado o el reparto por sector si no—: el mismo número que la pantalla va a
-   * mostrar si se lo elige, y por eso sirve para decidir sin elegir.
+   * El `hint` es cuántos pedidos le TOCAN hoy: los de adentro de su contorno si lo tiene, y los que
+   * traen su sello si todavía no lo dibujó. Es EXACTAMENTE el número que la pantalla va a mostrar si
+   * se lo elige, y por eso sirve para decidir sin elegir —incluido el caso de un contorno que quedó
+   * chico, donde el hint baja y se ve antes de entrar—.
    *
    * La etiqueta dice «· predeterminado» en el que lo es. Sin eso, que un centro apareciera ya elegido
    * al cambiar de ciudad se leería como un capricho de la pantalla.
@@ -266,8 +267,9 @@ export function PlannerView() {
   const opcionesCentro = useMemo(() => {
     const conteo = new Map<number, number>()
     for (const p of universoPedidos()) {
+      // `null` = fuera del contorno de su propio centro, o sea de nadie: no se cuenta para ninguno.
       const id = resolveDistribuidoraIdDePedido(p)
-      conteo.set(id, (conteo.get(id) ?? 0) + 1)
+      if (id !== null) conteo.set(id, (conteo.get(id) ?? 0) + 1)
     }
     // Sin «todos»: un plan sale de UN depósito. Ver el encabezado de `PlannerAlcance`.
     return centrosDelAlcance.map((d) => ({
