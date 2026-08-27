@@ -11,14 +11,13 @@ import type { Role } from "../types";
  * a person switching roles tomorrow does not have to be found and edited into
  * every level that used to name them.
  *
- * Deliberately **not** sourced from `USERS` in `stores/session-store.ts`, even
- * though that is the login roster and would be the obvious place to read this
- * from. `session-store.ts` already depends on `data/seed.ts` (for
- * `SEED_SELLERS`), and `data/seed.ts` calls into `startInstance` to build the
- * seeded returns — reaching back into `session-store.ts` from here would close
- * that into an import cycle. A real directory has no such constraint; this
- * roster is the mock absorbing the accident instead of the design. Keep the
- * three codes below in sync with `USERS` by hand.
+ * Deliberately **not** sourced from `USERS` in `src/mockup/session-store.ts`, even though
+ * that is the login roster and would be the obvious place to read this from. The session
+ * store depends on `data/seed.ts` (for `SEED_SELLERS`), and `data/seed.ts` calls into
+ * `startInstance` to build the seeded returns — reaching back into the session store from
+ * here would close that into an import cycle. A real directory has no such constraint; this
+ * roster is the mock absorbing the accident instead of the design. Keep the three codes
+ * below in sync with `USERS` by hand.
  */
 const ROLE_ROSTER: Record<Role, { code: number; name: string }[]> = {
   supervisor: [{ code: 57, name: "Sergio Peña Montero" }],

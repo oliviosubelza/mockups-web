@@ -9,10 +9,10 @@ import type {
 
 /**
  * Display label for a role approver, duplicated from `ROLE_LABELS` in
- * `stores/session-store.ts` rather than imported from it.
+ * `src/mockup/session-store.ts` rather than imported from it.
  *
- * Same reason as `lib/role-directory.ts`: that module sits downstream of
- * `data/seed.ts`, which imports this file — importing it back would be a cycle.
+ * Same reason as `lib/role-directory.ts`: the session store reads `data/seed.ts`, which
+ * imports this file — importing it back would be a cycle.
  */
 const APPROVER_ROLE_LABELS: Record<Role, string> = {
   administrador: "Administrador",
@@ -135,9 +135,10 @@ function roleLevel(
  * closes it, because a return that keeps bouncing between three desks and the
  * field never gets paid.
  *
- * Each desk is a role, not a list of people — `SelectorRol` decides who can act
- * on a level simply by being who they are, the same way `RETURN_APPROVER_ROLES`
- * already decides who sees the approval screens at all.
+ * Each desk is a role, not a list of people — whoever the profile menu in the top bar
+ * (`src/mockup/PerfilMenu.tsx`) is switched to can act on a level simply by being who they
+ * are, the same way `RETURN_APPROVER_ROLES` already decides who sees the approval screens
+ * at all.
  */
 const returnLevels = (): WorkflowLevel[] => [
   roleLevel({

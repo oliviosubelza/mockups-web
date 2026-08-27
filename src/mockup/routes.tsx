@@ -36,11 +36,7 @@ import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { HistorialRevisionesView } from './views/HistorialRevisionesView'
 import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
 import { CierreLogisticoView } from './views/CierreLogisticoView'
-import {
-  DevolucionDetalleScreen,
-  DevolucionesListaScreen,
-  DevolucionFormScreen,
-} from './devoluciones/rutas'
+import { DevolucionDetalleScreen, DevolucionesListaScreen } from './devoluciones/rutas'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -295,8 +291,8 @@ export const routes: MockRoute[] = [
     order: 2,
   },
   // ── Devoluciones ────────────────────────────────────────────────────────────────────────────
-  // Módulo traído de `mockups_sales` (ver `devoluciones/rutas.tsx`). Los paths son los MISMOS que allá
-  // a propósito: cualquier link o captura que circule entre los dos proyectos sigue resolviendo.
+  // Dos pantallas y no cinco: el ALTA es de Ventas, que la registra contra nuestro servicio. De este
+  // lado empieza el workflow, así que lo que hay es una bandeja y la pantalla donde se decide.
   {
     id: 'devoluciones',
     path: '/devoluciones',
@@ -308,29 +304,10 @@ export const routes: MockRoute[] = [
     separatorBefore: true,
   },
   {
-    // Alta. No hay enlace desde el listado — la crea Sales desde su propio flujo,
-    // consumiendo el mismo servicio. Queda ruteada por si se navega directo.
-    id: 'devolucion-nueva',
-    path: '/devoluciones/nueva',
-    label: 'Nueva devolución',
-    component: DevolucionFormScreen,
-    order: 5,
-    showInSidebar: false,
-  },
-  {
     id: 'devolucion-detalle',
     path: '/devoluciones/:id',
     label: 'Detalle de devolución',
     component: DevolucionDetalleScreen,
-    order: 5,
-    showInSidebar: false,
-  },
-  {
-    // Misma página que el alta: distingue por el `:id`, igual que en el original.
-    id: 'devolucion-editar',
-    path: '/devoluciones/:id/editar',
-    label: 'Editar devolución',
-    component: DevolucionFormScreen,
     order: 5,
     showInSidebar: false,
   },

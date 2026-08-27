@@ -6,7 +6,6 @@ import { Bell, Menu, Moon, Search, Sun } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarResizeHandle } from '@/components/sidebar-resize-handle'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -19,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useSidebarWidthStore } from '@/core/sidebar/use-sidebar-resize'
+import { PerfilMenu } from './PerfilMenu'
 
 export type MockTheme = 'light' | 'dark'
 
@@ -102,9 +102,9 @@ function TopBar({ title, breadcrumb, theme, onThemeChange }: Omit<MockupShellPro
 
         <Separator orientation="vertical" className="mx-0.5 h-5" />
 
-        <Avatar className="h-7 w-7">
-          <AvatarFallback className="bg-primary text-xs text-primary-foreground">OS</AvatarFallback>
-        </Avatar>
+        {/* Quién sos y con qué rol estás mirando. Vive acá y no dentro de una pantalla porque el rol
+            decide qué muestra y qué deja firmar más de un módulo — ver `PerfilMenu`. */}
+        <PerfilMenu />
       </div>
     </header>
   )

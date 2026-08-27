@@ -178,6 +178,31 @@ export function applicableLevelsOf(instance: WorkflowInstance): WorkflowInstance
   return shown.length > 0 ? shown : progressLevelsOf(instance);
 }
 
+/**
+ * En qué escalón va el documento, contado sobre los niveles que realmente cruza.
+ *
+ * Reemplaza a la barra de puntos que dibujaba `WorkflowProgress`: en una tabla y en una franja de
+ * datos lo que se necesita es un VALOR —"2 de 3"— y no un widget. La posición se cuenta sobre
+ * `applicableLevelsOf` y no sobre `order`, porque con los niveles omitidos fuera de la vista el
+ * número propio del nivel contaría lugares que nadie ve.
+ *
+ * Cerrada la instancia no hay nivel abierto: la posición pasa a ser el total, que es lo correcto
+ * para "recorrió los tres".
+ */
+export function levelPositionOf(instance: WorkflowInstance): {
+  level: WorkflowInstanceLevel | null;
+  position: number;
+  total: number;
+} {
+  const levels = applicableLevelsOf(instance);
+  const open = levels.find((l) => l.status === "IN_PROGRESS") ?? null;
+  return {
+    level: open,
+    position: open ? levels.indexOf(open) + 1 : levels.length,
+    total: levels.length,
+  };
+}
+
 /** One round of an instance, as the timeline groups it. */
 export interface WorkflowRound {
   attempt: number;
