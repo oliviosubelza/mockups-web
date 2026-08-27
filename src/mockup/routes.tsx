@@ -445,7 +445,7 @@ export const routes: MockRoute[] = [
     // Va INMEDIATAMENTE después de Zonas: comparten editor, y quien entiende una entiende la otra.
     id: 'zonas-distribucion',
     path: '/zonas-distribucion',
-    label: 'Zonas de distribución',
+    label: 'Centros de distribución',
     icon: Building2,
     component: DistribucionWorkspaceView,
     order: 3,

@@ -95,8 +95,9 @@ interface PlannerState {
    * yendo de la suya?").
    */
   verZonas: boolean
-  /** Restricciones de planificación dibujadas como advertencia informativa, encendidas por defecto. */
   verRestricciones: boolean
+  /** Polígonos y depósitos de centros de distribución, encendidos por defecto. */
+  verCentrosDistribucion: boolean
   verMercados: boolean
   /** Etiqueta permanente (cliente + ventana) bajo cada pin. Apagada: a 30 paradas se pisan entre sí. */
   verEtiquetas: boolean
@@ -184,6 +185,7 @@ interface PlannerState {
   setRutaFoco: (id: string | null) => void
   setVerZonas: (v: boolean) => void
   setVerRestricciones: (v: boolean) => void
+  setVerCentrosDistribucion: (v: boolean) => void
   setVerMercados: (v: boolean) => void
   setVerEtiquetas: (v: boolean) => void
   setVerTrazos: (v: boolean) => void
@@ -250,6 +252,7 @@ const INICIAL = {
   rutaFoco: null as string | null,
   verZonas: false,
   verRestricciones: true,
+  verCentrosDistribucion: true,
   verMercados: false,
   verEtiquetas: false,
   verTrazos: true,
@@ -300,6 +303,7 @@ export const usePlannerStore = create<PlannerState>((set) => ({
   setRutaFoco: (rutaFoco) => set({ rutaFoco }),
   setVerZonas: (verZonas) => set({ verZonas }),
   setVerRestricciones: (verRestricciones) => set({ verRestricciones }),
+  setVerCentrosDistribucion: (verCentrosDistribucion) => set({ verCentrosDistribucion }),
   setVerMercados: (verMercados) => set({ verMercados }),
   setVerEtiquetas: (verEtiquetas) => set({ verEtiquetas }),
   setVerTrazos: (verTrazos) => set({ verTrazos }),

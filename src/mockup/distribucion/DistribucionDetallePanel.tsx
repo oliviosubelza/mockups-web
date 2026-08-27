@@ -202,14 +202,14 @@ export function DistribucionDetallePanel({
 
                 <div className="flex items-center gap-1.5 text-[10.5px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-200 dark:border-emerald-900/60">
                   <ShieldCheck size={13} className="shrink-0" />
-                  <span>Polígono verificado: Sin solapamiento con distribuidoras vecinas.</span>
+                  <span>Polígono verificado: Sin solapamiento con centros vecinos.</span>
                 </div>
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3.5 text-center space-y-2.5">
                 <AlertTriangle size={24} className="mx-auto text-amber-600 dark:text-amber-400" />
                 <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-snug">
-                  Esta distribuidora no cuenta con un perímetro delimitado. Dibuja el polígono en el mapa para habilitar su despacho.
+                  Este centro de distribución no cuenta con un perímetro delimitado. Dibuja el polígono en el mapa para habilitar su despacho.
                 </p>
                 <Button
                   size="sm"

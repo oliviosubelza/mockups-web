@@ -833,11 +833,11 @@ export function DistribucionWorkspaceView() {
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold">
                   {editandoDatos
                     ? editandoDatosId === null
-                      ? 'Nueva distribuidora'
-                      : 'Datos de la distribuidora'
+                      ? 'Nuevo centro de distribución'
+                      : 'Datos del centro'
                     : distribuidoraSeleccionada
-                      ? 'Ficha de Zona'
-                      : 'Zonas de Distribución'}
+                      ? 'Ficha del Centro'
+                      : 'Centros de Distribución'}
                 </span>
                 {distribuidoraSeleccionada && !editandoDatos && (
                   <Button
@@ -845,7 +845,7 @@ export function DistribucionWorkspaceView() {
                     size="sm"
                     className="h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
                     onClick={() => setSeleccionadaId(null)}
-                    title="Volver a la lista de zonas"
+                    title="Volver a la lista de centros"
                   >
                     <ChevronLeft size={12} />
                     <span>Lista</span>
@@ -854,9 +854,9 @@ export function DistribucionWorkspaceView() {
                 {!editandoDatos && !distribuidoraSeleccionada && (
                   <span
                     className="shrink-0 pr-1 text-[11px] tabular-nums text-muted-foreground"
-                    title="Distribuidoras con zona dibujada, sobre el total de la ciudad"
+                    title="Centros con zona dibujada, sobre el total de la ciudad"
                   >
-                    {conZona} de {filas.length}
+                    {conZona} de {filas.length} con zona
                   </span>
                 )}
               </>
@@ -998,7 +998,7 @@ export function DistribucionWorkspaceView() {
                 </span>
               </div>
               <Badge variant="outline" className="text-[10px] font-semibold border-emerald-500/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10">
-                {conZona} de {filas.length} zonas activas
+                {conZona} de {filas.length} delimitados
               </Badge>
             </div>
           )}
@@ -1008,7 +1008,7 @@ export function DistribucionWorkspaceView() {
             <>
               <span className="min-w-0 max-w-52 truncate text-xs font-semibold">
                 {editandoDatosId === null
-                  ? 'Nueva distribuidora'
+                  ? 'Nuevo centro de distribución'
                   : nombreDeDistribuidora(editandoDatosId)}
               </span>
               <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
@@ -1016,7 +1016,7 @@ export function DistribucionWorkspaceView() {
                 size="sm"
                 className="h-7 shrink-0 gap-1.5 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
                 disabled={motivoBloqueoDatos !== null}
-                title={motivoBloqueoDatos ?? 'Guardar la distribuidora'}
+                title={motivoBloqueoDatos ?? 'Guardar el centro de distribución'}
                 onClick={guardarDatos}
               >
                 <Save size={13} />
@@ -1041,7 +1041,7 @@ export function DistribucionWorkspaceView() {
                 className="h-7 gap-1.5 px-2 text-xs cursor-pointer"
                 aria-pressed={verAuditoria}
                 onClick={() => setVerAuditoria((v) => !v)}
-                title={`Revisar que ninguna zona de distribución se pise`}
+                title={`Revisar que ningún centro de distribución se pise`}
               >
                 {verAuditoria && auditoria.length > 0 ? (
                   <AlertTriangle size={13} className="text-destructive" />
@@ -1205,8 +1205,7 @@ export function DistribucionWorkspaceView() {
               </span>
             ) : !editando ? (
               <span className="truncate">
-                Elegí una distribuidora del listado para dibujar o ajustar su zona · doble click la abre
-                directo.
+                Elegí un centro de distribución del listado para dibujar o ajustar su polígono · doble click lo abre directo.
               </span>
             ) : trazando ? (
               <span className="truncate">
@@ -1239,11 +1238,9 @@ export function DistribucionWorkspaceView() {
       <AlertDialog open={aBorrar !== null} onOpenChange={(abierto) => !abierto && setABorrar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar la zona de «{aBorrar?.nombre}»</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar el polígono de «{aBorrar?.nombre}»</AlertDialogTitle>
             <AlertDialogDescription>
-              La distribuidora queda SIN zona y se le puede dibujar otra. El registro se conserva: un plan
-              viejo puede seguir apuntando a él por id. Ojo: mientras no tenga zona, los pedidos de ese
-              territorio no se le asignan por polígono.
+              El centro de distribución queda sin polígono y se le puede delimitar otro. El registro maestro se conserva.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1252,7 +1249,7 @@ export function DistribucionWorkspaceView() {
               onClick={() => {
                 if (!aBorrar) return
                 removeZona(aBorrar.zonaId)
-                toast.success(`Zona de ${aBorrar.nombre} eliminada`)
+                toast.success(`Polígono de ${aBorrar.nombre} eliminado`)
                 setABorrar(null)
               }}
             >

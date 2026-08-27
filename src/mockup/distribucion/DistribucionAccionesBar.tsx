@@ -85,7 +85,7 @@ export function DistribucionAccionesBar({
           <span className="mx-0.5 hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden />
           <span
             className="hidden shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground sm:flex"
-            title="Superficie, perímetro y cantidad de vértices de la zona de distribución"
+            title="Superficie, perímetro y cantidad de vértices del centro de distribución"
           >
             <span className="font-medium text-foreground">{formatearArea(areaKm2(puntos))}</span>
             <span aria-hidden>·</span>
@@ -98,18 +98,15 @@ export function DistribucionAccionesBar({
 
       <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
-      <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs" onClick={onDibujar}>
+      <Button size="sm" className="h-7 shrink-0 gap-1.5 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer" onClick={onDibujar}>
         <Pencil size={12} />
-        {conZona ? 'Editar zona' : 'Dibujar zona'}
+        {conZona ? 'Editar polígono' : 'Trazar polígono'}
       </Button>
-      {/* DOS EDICIONES SEPARADAS, y la distinción es real: «Editar zona» toca el POLÍGONO
-          (`distribution_zones`) y «Datos» toca la DISTRIBUIDORA (`distributors` — nombre y ubicación del
-          depósito). Son dos tablas, dos formularios y dos modos del mapa; un solo botón «Editar» dejaría
-          adivinando qué se va a abrir. */}
+
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+        className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
         onClick={onEditarDatos}
         title="Cambiar el nombre o mover el depósito"
       >
@@ -119,44 +116,40 @@ export function DistribucionAccionesBar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+        className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
         onClick={onEncuadrar}
         disabled={!conZona}
-        title={conZona ? 'Centrar el mapa en esta zona' : 'Esta distribuidora todavía no tiene zona'}
+        title={conZona ? 'Centrar el mapa en este centro' : 'Este centro todavía no tiene polígono'}
       >
         <Crosshair size={12} />
         Encuadrar
       </Button>
-      {/* ACTIVAR/DESACTIVAR Y ELIMINAR APUNTAN A LA ZONA, no a la distribuidora, y por eso solo aparecen
-          cuando hay zona: sin polígono no hay fila en `distribution_zones` sobre la que operar. Se
-          esconden en vez de deshabilitarse porque su ausencia ya está explicada por el botón «Dibujar
-          zona» de al lado. Dar de baja la distribuidora entera es otra cosa y se hace desde el
-          formulario. */}
+
       {conZona && (
         <>
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs cursor-pointer"
             onClick={onAlternarActiva}
             title={
               zonaActiva
-                ? 'Sacar la ZONA de circulación: los pedidos de ese territorio dejan de asignarse por polígono'
-                : 'Volver a poner la zona en circulación'
+                ? 'Desactivar la cobertura operativa de este centro'
+                : 'Activar la cobertura operativa de este centro'
             }
           >
             <Power size={12} />
-            {zonaActiva ? 'Desactivar zona' : 'Activar zona'}
+            {zonaActiva ? 'Desactivar' : 'Activar'}
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1.5 px-2 text-xs text-destructive hover:text-destructive"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
             onClick={onEliminar}
-            title="Borra el polígono. La distribuidora queda sin zona."
+            title="Borra el polígono delimitador. El centro se conserva."
           >
             <Trash2 size={12} />
-            Eliminar zona
+            Eliminar polígono
           </Button>
         </>
       )}

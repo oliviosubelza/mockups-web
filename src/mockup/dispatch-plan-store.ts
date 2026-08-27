@@ -28,6 +28,8 @@ import {
   type Pedido,
   type ZonaId,
 } from './mock-data'
+import { useDistribucionStore, puntosDeZona } from './distribucion/distribucion-store'
+import { puntoEnAnillo } from './map/geo/solapamiento'
 
 // ── Corte de hora (dentro/fuera) ──
 // Los pedidos cuya ventana TERMINA a más tardar a la hora de corte de su canal están DENTRO del
@@ -140,7 +142,7 @@ interface DispatchPlanState {
 const INITIAL_STATE = {
   selectedTruckIds: [] as string[],
   activeDistribuidoraId: 501 as number | null,
-  activeCanales: [] as CanalId[],
+  activeCanales: CANAL_IDS as CanalId[],
   activeCiudades: [] as CiudadId[],
   activeDistribuidoras: [] as string[],
   activeMercados: [] as MercadoId[],
@@ -298,16 +300,43 @@ export const selectAvailableCapacity = (s: DispatchPlanState): CapacityTotals =>
 }
 
 /**
- * Filtros de narrowing (Distribuidora/Ciudad/Mercado/Zona/Vendedor): un array vacío NO filtra (pasa todo); si tiene
- * valores, el pedido debe coincidir con alguno. El canal NO va acá porque es obligatorio.
+ * Resuelve el centro de distribución al que pertenece el pedido.
+ * 1. Si existen polígonos trazados en useDistribucionStore para centros de distribución activos,
+ *    verifica si las coordenadas GPS [lat, lng] del pedido caen dentro de dicho polígono.
+ * 2. Si no cae dentro de ningún polígono, aplica la asignación geográfica/sectorial por defecto.
  */
-export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean =>
-  (s.activeDistribuidoraId === null || distribuidoraIdDe(p) === s.activeDistribuidoraId) &&
-  (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
-  (s.activeDistribuidoras.length === 0 || s.activeDistribuidoras.includes(String(distribuidoraIdDe(p)))) &&
-  (s.activeMercados.length === 0 || s.activeMercados.includes(mercadoDe(p))) &&
-  (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
-  (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))
+export const resolveDistribuidoraIdDePedido = (p: Pedido): number => {
+  try {
+    const zonas = useDistribucionStore.getState().zonas.filter((z) => z.deletedAt === null && z.isActive)
+    for (const z of zonas) {
+      const pts = puntosDeZona(z)
+      if (pts.length >= 3) {
+        if (puntoEnAnillo([p.lat, p.lng], pts) !== 'fuera') {
+          return z.distributorId
+        }
+      }
+    }
+  } catch {
+    // Fallback defensivo
+  }
+  return distribuidoraIdDe(p)
+}
+
+/**
+ * Filtros de narrowing (Centro de Distribución/Ciudad/Mercado/Zona/Vendedor):
+ * Un array vacío NO filtra (pasan todos). El canal es obligatorio.
+ */
+export const matchesNarrowing = (p: Pedido, s: DispatchPlanState): boolean => {
+  const distId = resolveDistribuidoraIdDePedido(p)
+  return (
+    (s.activeDistribuidoraId === null || distId === s.activeDistribuidoraId) &&
+    (s.activeCiudades.length === 0 || s.activeCiudades.includes(ciudadDe(p))) &&
+    (s.activeDistribuidoras.length === 0 || s.activeDistribuidoras.includes(String(distId))) &&
+    (s.activeMercados.length === 0 || s.activeMercados.includes(mercadoDe(p))) &&
+    (s.activeZonas.length === 0 || s.activeZonas.includes(zonaDe(p))) &&
+    (s.activeVendedores.length === 0 || s.activeVendedores.includes(p.vendedor))
+  )
+}
 
 /** Pedidos de los canales activos que pasan el narrowing — el universo sobre el que se decide. */
 export const selectScopedOrders = (s: DispatchPlanState): Pedido[] =>
