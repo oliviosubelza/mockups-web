@@ -81,6 +81,9 @@ import {
   tripulacionDeCamion,
   type PlanCamion,
 } from '../mock-data'
+import { resolveDistribuidoraIdDePedido } from '../dispatch-plan-store'
+import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
+import { useDistribucionStore } from '../distribucion/distribucion-store'
 import { kgToTons } from '../unit-conversion'
 import { AlertasPanel } from './AlertasPanel'
 import { calcularAlertas } from './planner-alertas'
@@ -189,7 +192,19 @@ export function PlannerView() {
   const pedidos = useDispatchPlanStore(useShallow(selectIncludedOrders))
 
   const [distribuidoraPopoverOpen, setDistribuidoraPopoverOpen] = useState(false)
-  const activeDist = DISTRIBUIDORAS.find((d) => d.id === activeDistribuidoraId)
+  const distribuidorasStore = useDistribuidorasStore((s) => s.distribuidoras)
+  const zonasDistribucion = useDistribucionStore((s) => s.zonas)
+
+  const distribuidorasVivas = useMemo(() => {
+    return distribuidorasStore.filter((d) => d.deletedAt === null && d.isActive)
+  }, [distribuidorasStore])
+
+  const activeDist = useMemo(() => {
+    return (
+      distribuidorasVivas.find((d) => d.id === activeDistribuidoraId) ??
+      DISTRIBUIDORAS.find((d) => d.id === activeDistribuidoraId)
+    )
+  }, [activeDistribuidoraId, distribuidorasVivas])
 
   const panel = usePlannerStore((s) => s.panel)
   const dockAbierto = usePlannerStore((s) => s.dockAbierto)
@@ -753,7 +768,7 @@ export function PlannerView() {
 
           <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
 
-          {/* Selector de Distribuidora de Nivel Superior con Buscador */}
+          {/* Selector de Centro de Distribución con Buscador */}
           <Popover open={distribuidoraPopoverOpen} onOpenChange={setDistribuidoraPopoverOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -761,74 +776,89 @@ export function PlannerView() {
                 size="sm"
                 role="combobox"
                 aria-expanded={distribuidoraPopoverOpen}
-                className="h-7 max-w-[270px] justify-between gap-1.5 border-primary/40 bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 hover:text-primary transition-colors shadow-none"
-                title={activeDist ? `${activeDist.nombre}` : 'Todas las distribuidoras'}
+                className="h-7 max-w-[290px] justify-between gap-1.5 border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/30 px-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors shadow-none cursor-pointer"
+                title={activeDist ? (activeDist as { name?: string; nombre?: string }).name ?? (activeDist as { name?: string; nombre?: string }).nombre : 'Todos los centros de distribución'}
               >
                 <div className="flex items-center gap-1.5 truncate">
-                  <Building2 size={13} className="shrink-0 text-primary" />
-                  <span className="truncate">{activeDist ? activeDist.nombre : 'Todas las distribuidoras'}</span>
+                  <Building2 size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span className="truncate">
+                    {activeDist ? ((activeDist as { name?: string; nombre?: string }).name ?? (activeDist as { name?: string; nombre?: string }).nombre) : 'Todos los Centros'}
+                  </span>
                 </div>
                 <ChevronsUpDown size={12} className="shrink-0 opacity-60 ml-0.5" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[320px] p-0 shadow-2xl border-border" align="start">
+            <PopoverContent className="w-[340px] p-0 shadow-2xl border-border" align="start">
               <Command>
-                <CommandInput placeholder="Buscar distribuidora o ciudad…" className="h-9 text-xs" />
+                <CommandInput placeholder="Buscar centro de distribución o ciudad…" className="h-9 text-xs" />
                 <CommandList className="max-h-72">
                   <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
-                    No se encontraron distribuidoras.
+                    No se encontraron centros de distribución.
                   </CommandEmpty>
-                  <CommandGroup heading="Distribuidora a Planificar">
+                  <CommandGroup heading="Centro de Distribución a Planificar">
                     <CommandItem
-                      value="todas las distribuidoras general"
+                      value="todos los centros de distribucion general"
                       onSelect={() => {
                         setActiveDistribuidoraId(null)
                         setDistribuidoraPopoverOpen(false)
                         pedirEncuadre('todo')
-                        toast.info('Planificando sin filtro de distribuidora (todas las zonas)')
+                        toast.info('Planificando sin filtro de centro (todos los territorios y zonas)')
                       }}
                       className="flex items-center justify-between text-xs py-2 cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
                         <Warehouse size={14} className="text-muted-foreground" />
-                        <span className="font-medium">Todas las Distribuidoras</span>
+                        <span className="font-medium">Todos los Centros de Distribución</span>
                       </div>
-                      {activeDistribuidoraId === null && <Check size={14} className="text-primary font-bold" />}
+                      {activeDistribuidoraId === null && <Check size={14} className="text-emerald-600 font-bold" />}
                     </CommandItem>
-                    {DISTRIBUIDORAS.map((dist) => {
+                    {distribuidorasVivas.map((dist) => {
                       const isSelected = activeDistribuidoraId === dist.id
                       const ciudadNombre = Object.values(CIUDAD_META).find((c) => c.cityId === dist.cityId)?.label ?? 'Santa Cruz'
                       const trucksCount = CAMIONES.filter((c) => distribuidoraIdDeCamion(c) === dist.id && c.estado === 'disponible').length
-                      const ordersCount = PEDIDOS.filter((p) => distribuidoraIdDe(p) === dist.id).length
+                      const ordersCount = PEDIDOS.filter((p) => resolveDistribuidoraIdDePedido(p) === dist.id).length
+                      const tienePoligono = zonasDistribucion.some(
+                        (z) => z.distributorId === dist.id && z.deletedAt === null && z.isActive && z.polygonGeoJson,
+                      )
 
                       return (
                         <CommandItem
                           key={dist.id}
-                          value={`${dist.nombre} ${ciudadNombre}`}
+                          value={`${dist.name} ${ciudadNombre}`}
                           onSelect={() => {
                             setActiveDistribuidoraId(dist.id)
                             setDistribuidoraPopoverOpen(false)
                             pedirEncuadre('todo')
-                            toast.success(`Distribuidora: ${dist.nombre}`, {
-                              description: `${trucksCount} camiones en flota · ${ordersCount} pedidos en territorio`,
+                            toast.success(`Centro: ${dist.name}`, {
+                              description: `${ordersCount} puntos de entrega ${tienePoligono ? '· Polígono activo' : '· Sin polígono'} · ${trucksCount} camiones`,
                             })
                           }}
                           className="flex items-center justify-between text-xs py-2 cursor-pointer"
                         >
                           <div className="flex flex-col min-w-0 pr-2">
                             <div className="flex items-center gap-1.5 truncate">
-                              <Building2 size={13} className={cn("shrink-0", isSelected ? "text-primary font-bold" : "text-muted-foreground")} />
-                              <span className={cn("truncate font-medium", isSelected && "text-primary font-bold")}>{dist.nombre}</span>
+                              <Building2
+                                size={13}
+                                className={cn('shrink-0', isSelected ? 'text-emerald-600 font-bold' : 'text-muted-foreground')}
+                              />
+                              <span className={cn('truncate font-medium', isSelected && 'text-emerald-700 dark:text-emerald-300 font-bold')}>
+                                {dist.name}
+                              </span>
+                              {tienePoligono && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold shrink-0">
+                                  Polígono
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5 pl-4">
                               <span>{ciudadNombre}</span>
                               <span>•</span>
-                              <span>{trucksCount} camiones</span>
+                              <span className="font-semibold text-foreground">{ordersCount} puntos</span>
                               <span>•</span>
-                              <span>{ordersCount} pedidos</span>
+                              <span>{trucksCount} camiones</span>
                             </div>
                           </div>
-                          {isSelected && <Check size={14} className="text-primary font-bold shrink-0" />}
+                          {isSelected && <Check size={14} className="text-emerald-600 font-bold shrink-0" />}
                         </CommandItem>
                       )
                     })}

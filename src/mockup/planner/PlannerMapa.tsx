@@ -11,15 +11,19 @@
 // sola y vale para todos los marcadores a la vez, el depósito incluido: lejos, vista de conjunto —
 // formas compactas y chicas—; cerca, vista de detalle.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Warehouse } from 'lucide-react'
+import { Building2, Warehouse } from 'lucide-react'
 import type { Polyline as CapaPolyline } from 'leaflet'
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { InvalidateOnResize } from '../map/InvalidateOnResize'
 import { SUBDOMINIOS, TILES } from '../map/tiles'
 import { SelectionLayer } from '../map/SelectionLayer'
 import { MercadosLayer } from '../map/mercados/MercadosLayer'
 import { ZonasLayer } from '../zonas/ZonasLayer'
 import { useZonesStore } from '../zones-store'
+import { useDistribucionStore, puntosDeZona } from '../distribucion/distribucion-store'
+import { areaKm2, formatearArea } from '../map/geo/medidas'
+import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
+import { useDispatchPlanStore } from '../dispatch-plan-store'
 import { PlanningRestrictionsLayer } from '../restricciones/PlanningRestrictionsLayer'
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
@@ -280,6 +284,34 @@ function pinDeposito(comoGota: boolean) {
   )
 }
 
+function pinCentroDistribucion(nombre: string, activo: boolean, comoGota: boolean) {
+  const lado = activo ? (comoGota ? 40 : 28) : (comoGota ? 32 : 22)
+  return reactIcon(
+    <div
+      style={{
+        width: lado,
+        height: lado,
+        borderRadius: 10,
+        background: activo ? '#059669' : '#1e293b',
+        border: activo ? '2.5px solid #ffffff' : '2px solid #ffffff',
+        boxSizing: 'border-box',
+        boxShadow: activo
+          ? '0 0 0 3px rgba(16, 185, 129, 0.45), 0 4px 10px rgba(0,0,0,0.45)'
+          : '0 2px 6px rgba(0,0,0,0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffff',
+        cursor: 'pointer',
+      }}
+      title={nombre}
+    >
+      <Warehouse size={comoGota ? (activo ? 20 : 16) : (activo ? 14 : 11)} strokeWidth={2.2} />
+    </div>,
+    lado,
+  )
+}
+
 /**
  * Cámara del mapa. Un solo lugar mueve la vista, y lo hace cuando alguien lo PIDE (`encuadreToken`),
  * nunca como efecto colateral de que cambió una lista: un mapa que se reencuadra solo mientras estás
@@ -290,12 +322,14 @@ function pinDeposito(comoGota: boolean) {
  */
 function Camara({
   paradas,
+  puntosAdicionales,
   foco,
   margenIzq,
   margenDer,
   margenAbajo,
 }: {
   paradas: Parada[]
+  puntosAdicionales?: [number, number][]
   foco: Parada | null
   margenIzq: number
   margenDer: number
@@ -318,6 +352,9 @@ function Camara({
   const focoRef = useRef(foco)
   focoRef.current = foco
 
+  const puntosExtrasRef = useRef(puntosAdicionales ?? [])
+  puntosExtrasRef.current = puntosAdicionales ?? []
+
   // Por ref, como todo lo que lee el efecto: el encuadre es un evento y no puede volar de nuevo solo
   // porque cambió la ruta elegida en el panel.
   const paradasRef = useRef(paradas)
@@ -338,7 +375,11 @@ function Camara({
         ? [[focoRef.current.lat, focoRef.current.lng] as [number, number]]
         : objetivo === 'ruta' && rutaFocoRef.current
           ? [...deRuta(), [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
-          : [...puntos.current, [DEPOSITO.lat, DEPOSITO.lng] as [number, number]]
+          : [
+              ...puntos.current,
+              ...puntosExtrasRef.current,
+              [DEPOSITO.lat, DEPOSITO.lng] as [number, number],
+            ]
     encuadrar(map, destino, {
       ...margenes.current,
       zoomMax: objetivo === 'foco' ? 16 : 14,
@@ -349,12 +390,16 @@ function Camara({
   }, [token])
 
   useEffect(() => {
-    const hayParadas = paradas.length > 0
+    const hayParadas = paradas.length > 0 || puntosExtrasRef.current.length > 0
     if (hayParadas && !teniaParadas.current) {
-      encuadrar(map, [...puntos.current, [DEPOSITO.lat, DEPOSITO.lng]], {
-        ...margenes.current,
-        zoomMax: 14,
-      })
+      encuadrar(
+        map,
+        [...puntos.current, ...puntosExtrasRef.current, [DEPOSITO.lat, DEPOSITO.lng]],
+        {
+          ...margenes.current,
+          zoomMax: 14,
+        },
+      )
     }
     teniaParadas.current = hayParadas
   }, [map, paradas.length])
@@ -412,6 +457,7 @@ export function PlannerMapa({
   const verMercados = usePlannerStore((s) => s.verMercados)
   const verZonas = usePlannerStore((s) => s.verZonas)
   const verRestricciones = usePlannerStore((s) => s.verRestricciones)
+  const verCentrosDistribucion = usePlannerStore((s) => s.verCentrosDistribucion)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const rutasOcultas = usePlannerStore((s) => s.rutasOcultas)
   const optimizado = usePlannerStore((s) => s.optimizado)
@@ -431,6 +477,52 @@ export function PlannerMapa({
   const abrirMenuParada = usePlannerStore((s) => s.abrirMenuParada)
   const alternarSeleccion = usePlannerStore((s) => s.alternarSeleccion)
   const pedirEncuadre = usePlannerStore((s) => s.pedirEncuadre)
+
+  const activeDistribuidoraId = useDispatchPlanStore((s) => s.activeDistribuidoraId)
+  const zonasDistribucionTodas = useDistribucionStore((s) => s.zonas)
+  const distribuidorasTodas = useDistribuidorasStore((s) => s.distribuidoras)
+
+  const zonasCD = useMemo(() => {
+    if (!verCentrosDistribucion) return []
+    return zonasDistribucionTodas
+      .filter((z) => z.deletedAt === null && z.isActive && z.polygonGeoJson)
+      .map((z) => {
+        const pts = puntosDeZona(z)
+        const dist = distribuidorasTodas.find((d) => d.id === z.distributorId)
+        const esDirecta = activeDistribuidoraId !== null && activeDistribuidoraId === z.distributorId
+        const esSeleccionada = activeDistribuidoraId === null || activeDistribuidoraId === z.distributorId
+        return {
+          zona: z,
+          puntos: pts,
+          dist,
+          esDirecta,
+          esSeleccionada,
+        }
+      })
+      .filter((item) => item.puntos.length >= 3)
+  }, [activeDistribuidoraId, distribuidorasTodas, verCentrosDistribucion, zonasDistribucionTodas])
+
+  const depositosCD = useMemo(() => {
+    if (!verCentrosDistribucion) return []
+    return distribuidorasTodas
+      .filter((d) => d.deletedAt === null && d.isActive && d.latitude && d.longitude)
+      .filter((d) => activeDistribuidoraId === null || activeDistribuidoraId === d.id)
+  }, [activeDistribuidoraId, distribuidorasTodas, verCentrosDistribucion])
+
+  const puntosAdicionalesEncuadre = useMemo(() => {
+    const pts: [number, number][] = []
+    if (activeDistribuidoraId !== null) {
+      const directas = zonasCD.filter((z) => z.esDirecta)
+      for (const d of directas) {
+        pts.push(...d.puntos)
+      }
+      const dep = distribuidorasTodas.find((d) => d.id === activeDistribuidoraId)
+      if (dep) {
+        pts.push([dep.latitude, dep.longitude])
+      }
+    }
+    return pts
+  }, [activeDistribuidoraId, distribuidorasTodas, zonasCD])
 
   /**
    * ¿Está sostenida la tecla Shift?
@@ -651,11 +743,57 @@ export function PlannerMapa({
       <ZoomWatch onZoom={setZoom} />
       <Camara
         paradas={paradas}
+        puntosAdicionales={puntosAdicionalesEncuadre}
         foco={foco}
         margenIzq={margenIzq}
         margenDer={margenDer}
         margenAbajo={margenAbajo}
       />
+
+      {/* ── Polígonos de Centros de Distribución (distribution_zones) ── */}
+      {zonasCD.map(({ zona, puntos: pts, dist, esDirecta, esSeleccionada }) => (
+        <Polygon
+          key={`cd-zona-${zona.id}`}
+          positions={pts}
+          pathOptions={{
+            color: esDirecta ? '#059669' : esSeleccionada ? '#10b981' : '#94a3b8',
+            weight: esDirecta ? 3 : esSeleccionada ? 2 : 1.5,
+            fillColor: esDirecta ? '#059669' : esSeleccionada ? '#10b981' : '#94a3b8',
+            fillOpacity: esDirecta ? 0.18 : esSeleccionada ? 0.12 : 0.04,
+            dashArray: esDirecta ? undefined : '5, 5',
+          }}
+        >
+          <Tooltip sticky direction="top" className="text-xs font-semibold">
+            <div className="flex flex-col gap-0.5 p-0.5">
+              <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                {dist?.name ?? `Centro #${zona.distributorId}`}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {pts.length} vértices · {formatearArea(areaKm2(pts))}
+              </span>
+            </div>
+          </Tooltip>
+        </Polygon>
+      ))}
+
+      {/* ── Marcadores de Origen / Depósito de Centro de Distribución ── */}
+      {depositosCD.map((dep) => {
+        const activo = activeDistribuidoraId === dep.id
+        return (
+          <Marker
+            key={`deposito-cd-${dep.id}`}
+            position={[dep.latitude, dep.longitude]}
+            icon={pinCentroDistribucion(dep.name, activo, comoGota)}
+          >
+            <Tooltip direction="top" offset={[0, -18]} className="text-xs font-bold">
+              <div className="flex flex-col items-center">
+                <span className="font-bold text-emerald-900 dark:text-emerald-200">{dep.name}</span>
+                <span className="text-[10px] font-normal text-muted-foreground">Centro de Distribución (Origen)</span>
+              </div>
+            </Tooltip>
+          </Marker>
+        )
+      })}
 
       {/* Zonas de reparto. De FONDO por defecto —grises, apagadas y NO interactivas—, porque un polígono
           con `interactive: true` se come el click antes de que llegue al marcador de una parada, y acá
@@ -851,13 +989,9 @@ export function PlannerMapa({
         )
       })}
 
-      {/* De acá sale todo: sin el almacén el mapa no explica de dónde arrancan las rutas. Se puede
-          apagar desde Capas porque cae justo en el centro de la ciudad y a veces tapa paradas. */}
-      {verDeposito && (
+      {/* Fallback de almacén si no hay centros de distribución cargados */}
+      {verDeposito && depositosCD.length === 0 && (
         <Marker position={[DEPOSITO.lat, DEPOSITO.lng]} icon={pinDeposito(comoGota)}>
-          {/* El offset sigue al tamaño del ícono: el marcador ancla en su CENTRO, así que la etiqueta
-              tiene que subir su radio para no quedar encima. Fijo en -20 dejaba un hueco cuando el
-              depósito se achica a zoom lejano. */}
           <Tooltip direction="top" offset={[0, comoGota ? -20 : -13]}>
             <span className="font-medium">{DEPOSITO.nombre}</span> — almacén de salida
           </Tooltip>

@@ -34,7 +34,7 @@ import {
 import type { LatLngTuple } from '../map/geo/polyline'
 import { useDistribuidorasStore } from './distribuidoras-store'
 
-const STORAGE_KEY = 'mockup-zonas-distribucion-v2'
+const STORAGE_KEY = 'mockups-web:centros-distribucion-v3'
 const LOCAL_USER = 'mockup'
 
 /** Espejo de la fila `distribution_zones`. Sin `name` ni `city_id`: ver el encabezado. */
@@ -60,50 +60,9 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-/** Semilla inicial de zonas de distribución para que la pantalla abra con polígonos listos para interactuar. */
+/** Semilla inicial vacía para que el mapa arranque completamente limpio. */
 function semillaZonas(): ZonaDistribucion[] {
-  const creado = nowIso()
-  const p1 = latLngAPoligono([
-    [-17.725, -63.225],
-    [-17.725, -63.135],
-    [-17.778, -63.135],
-    [-17.778, -63.225],
-  ])
-  const p2 = latLngAPoligono([
-    [-17.785, -63.225],
-    [-17.785, -63.135],
-    [-17.835, -63.135],
-    [-17.835, -63.225],
-  ])
-
-  const iniciales: ZonaDistribucion[] = []
-  if (p1) {
-    iniciales.push({
-      id: 1,
-      distributorId: 501,
-      polygonGeoJson: p1,
-      createdBy: LOCAL_USER,
-      updatedBy: LOCAL_USER,
-      createdAt: creado,
-      updatedAt: creado,
-      deletedAt: null,
-      isActive: true,
-    })
-  }
-  if (p2) {
-    iniciales.push({
-      id: 2,
-      distributorId: 502,
-      polygonGeoJson: p2,
-      createdBy: LOCAL_USER,
-      updatedBy: LOCAL_USER,
-      createdAt: creado,
-      updatedAt: creado,
-      deletedAt: null,
-      isActive: true,
-    })
-  }
-  return iniciales
+  return []
 }
 
 function readStored(): ZonaDistribucion[] {
@@ -115,7 +74,7 @@ function readStored(): ZonaDistribucion[] {
       return inicial
     }
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as ZonaDistribucion[]) : semillaZonas()
+    return Array.isArray(parsed) ? (parsed as ZonaDistribucion[]) : semillaZonas()
   } catch {
     return semillaZonas()
   }

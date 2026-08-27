@@ -82,7 +82,7 @@ export function DistribucionListaPanel({
             <span className="truncate">Centros</span>
           </div>
           <div className="truncate text-xs font-bold tabular-nums text-foreground mt-0.5">
-            {totalEnCiudad} distrib.
+            {totalEnCiudad} centros
           </div>
         </div>
 
@@ -115,7 +115,7 @@ export function DistribucionListaPanel({
           onClick={onNueva}
         >
           <Sparkles size={13} />
-          <span>Nueva Zona de Distribución (SAP)</span>
+          <span>Nuevo Centro de Distribución (SAP)</span>
         </Button>
 
         <div className="relative">
@@ -123,7 +123,7 @@ export function DistribucionListaPanel({
           <Input
             value={texto}
             onChange={(event) => onTexto(event.target.value)}
-            placeholder="Buscar distribuidora o centro…"
+            placeholder="Buscar centro de distribución…"
             className="h-7.5 pl-8 text-xs bg-background"
           />
         </div>
@@ -140,7 +140,7 @@ export function DistribucionListaPanel({
                 : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground',
             )}
           >
-            Todas ({distribuidoras.length})
+            Todos ({distribuidoras.length})
           </button>
           <button
             type="button"
@@ -152,7 +152,7 @@ export function DistribucionListaPanel({
                 : 'bg-muted/40 hover:bg-muted/80 text-emerald-700 dark:text-emerald-400',
             )}
           >
-            Activas ({activas.length})
+            Activos ({activas.length})
           </button>
           <button
             type="button"
@@ -176,30 +176,30 @@ export function DistribucionListaPanel({
                 : 'bg-muted/40 hover:bg-muted/80 text-slate-600 dark:text-slate-400',
             )}
           >
-            Sin ({sinZona.length})
+            Sin zona ({sinZona.length})
           </button>
         </div>
       </div>
 
-      {/* ── Aviso de Una Sola Distribuidora ──────────────────────────────────── */}
+      {/* ── Aviso de Un Solo Centro ──────────────────────────────────── */}
       {totalEnCiudad === 1 && (
         <p className="flex shrink-0 items-start gap-1.5 border-b border-border bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-2 text-[11px] leading-snug text-emerald-900 dark:text-emerald-200">
           <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <span>
-            Una sola distribuidora en esta ciudad: todos los pedidos van a ella por descarte.
+            Un solo centro de distribución en esta ciudad: todos los pedidos van a él por descarte.
           </span>
         </p>
       )}
 
-      {/* ── Lista de Distribuidoras y Zonas con Switch Directo ───────────────── */}
+      {/* ── Lista de Centros y Zonas con Switch Directo ───────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto p-2 space-y-1.5">
         {itemsFiltrados.length === 0 ? (
           <div className="py-10 text-center space-y-1.5">
             <Building2 size={24} className="mx-auto text-muted-foreground/40" />
             <p className="text-xs text-muted-foreground">
               {texto
-                ? 'Ninguna distribuidora coincide con la búsqueda.'
-                : 'No hay distribuidoras en esta categoría.'}
+                ? 'Ningún centro de distribución coincide con la búsqueda.'
+                : 'No hay centros de distribución en esta categoría.'}
             </p>
           </div>
         ) : (

@@ -56,6 +56,8 @@ export function CapasMapa({
   const setVerZonas = usePlannerStore((s) => s.setVerZonas)
   const verRestricciones = usePlannerStore((s) => s.verRestricciones)
   const setVerRestricciones = usePlannerStore((s) => s.setVerRestricciones)
+  const verCentrosDistribucion = usePlannerStore((s) => s.verCentrosDistribucion)
+  const setVerCentrosDistribucion = usePlannerStore((s) => s.setVerCentrosDistribucion)
   const verEtiquetas = usePlannerStore((s) => s.verEtiquetas)
   const setVerEtiquetas = usePlannerStore((s) => s.setVerEtiquetas)
   const verTrazos = usePlannerStore((s) => s.verTrazos)
@@ -168,6 +170,13 @@ export function CapasMapa({
           {/* Las zonas van PRIMERAS de las capas de fondo: son el perímetro dentro del cual todo lo
               demás cae, así que prenderlas cambia cómo se lee el resto y no solo suma dibujo. Salen
               del mismo dato maestro que la pantalla de Zonas — lo que se dibujó allá se ve acá. */}
+          <DropdownMenuCheckboxItem
+            checked={verCentrosDistribucion}
+            onCheckedChange={setVerCentrosDistribucion}
+            className="text-xs font-medium"
+          >
+            Centros de distribución (Polígonos)
+          </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={verZonas}
             onCheckedChange={setVerZonas}

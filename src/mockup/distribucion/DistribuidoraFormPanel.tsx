@@ -79,7 +79,7 @@ export function DistribuidoraFormPanel({
           id="distribuidora-nombre"
           value={draft.name}
           onChange={(e) => onDraft({ ...draft, name: e.target.value })}
-          placeholder="Ej. Distribuidora Discruz"
+          placeholder="Ej. Centro de Distribución Discruz"
           maxLength={50}
           className="h-8 text-xs"
           // `autoFocus` solo en el alta: editando, el foco tiene que quedar en el mapa, que es lo que se
