@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Stamp } from 'lucide-react'
+import { Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -37,9 +37,7 @@ import { HistorialRevisionesView } from './views/HistorialRevisionesView'
 import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
 import { CierreLogisticoView } from './views/CierreLogisticoView'
 import {
-  DevolucionAprobarScreen,
   DevolucionDetalleScreen,
-  DevolucionesAprobacionesScreen,
   DevolucionesListaScreen,
   DevolucionFormScreen,
 } from './devoluciones/rutas'
@@ -310,16 +308,8 @@ export const routes: MockRoute[] = [
     separatorBefore: true,
   },
   {
-    id: 'devoluciones-aprobaciones',
-    path: '/devoluciones/aprobaciones',
-    label: 'Aprobaciones',
-    icon: Stamp,
-    component: DevolucionesAprobacionesScreen,
-    order: 5,
-    group: MODULOS.devoluciones,
-  },
-  {
-    // Alta. Se llega por el botón del listado, no por el sidebar: es una ACCIÓN.
+    // Alta. No hay enlace desde el listado — la crea Sales desde su propio flujo,
+    // consumiendo el mismo servicio. Queda ruteada por si se navega directo.
     id: 'devolucion-nueva',
     path: '/devoluciones/nueva',
     label: 'Nueva devolución',
@@ -341,14 +331,6 @@ export const routes: MockRoute[] = [
     path: '/devoluciones/:id/editar',
     label: 'Editar devolución',
     component: DevolucionFormScreen,
-    order: 5,
-    showInSidebar: false,
-  },
-  {
-    id: 'devolucion-aprobar',
-    path: '/devoluciones/:id/aprobar',
-    label: 'Aprobar devolución',
-    component: DevolucionAprobarScreen,
     order: 5,
     showInSidebar: false,
   },
