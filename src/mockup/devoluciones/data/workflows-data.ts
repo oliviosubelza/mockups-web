@@ -15,9 +15,10 @@ import type {
  * imports this file — importing it back would be a cycle.
  */
 const APPROVER_ROLE_LABELS: Record<Role, string> = {
-  administrador: "Administrador",
-  supervisor: "Supervisor",
-  gerente: "Gerente",
+  analista_cx: "Analista de experiencia al cliente",
+  gerente_cx: "Gerencia de Experiencia de atención al cliente",
+  gerente_comercial: "Gerente comercial",
+  gerente_general: "Gerente general",
   vendedor: "Vendedor",
   vendedor_agencia: "Vendedor de agencia",
 };
@@ -62,6 +63,8 @@ export const APPROVER_EMPLOYEES: ApproverEmployee[] = [
   // Sits on the credit committee as well as running commercial administration,
   // which is what gives the manager role a queue of returns to answer.
   { code: 94, name: "Rocío Justiniano Áñez", area: "Créditos y cobranzas" },
+  // Gerencia general: el techo de la escalera, la única que siempre cierra.
+  { code: 99, name: "Mario Peredo Salvatierra", area: "Gerencia general" },
 ];
 
 export const approverByCode = (code: number): ApproverEmployee | undefined =>
@@ -126,14 +129,15 @@ function roleLevel(
 }
 
 /**
- * The single devolución flow: three desks, each activated by a band of amounts.
+ * The single devolución flow: four desks, each activated by a band of amounts.
  *
  * The thresholds mirror `sale.refund_level_thresholds` as the database seeds it
- * — 0, 500 and 2.000 — and every level decides items, so a desk that cuts the
- * claim under its own ceiling is the last one to see it. The supervisor is the
+ * — 0, 500, 2.000 y 5.000 — and every level decides items, so a desk that cuts
+ * the claim under its own ceiling is the last one to see it. The analista is the
  * only one who can hand the document back to the seller; above that a refusal
- * closes it, because a return that keeps bouncing between three desks and the
- * field never gets paid.
+ * closes it, because a return that keeps bouncing between four desks and the
+ * field never gets paid. Gerencia general is the top of the ladder: nothing sits
+ * above it, so it always closes whatever reaches it.
  *
  * Each desk is a role, not a list of people — whoever the profile menu in the top bar
  * (`src/mockup/PerfilMenu.tsx`) is switched to can act on a level simply by being who they
@@ -143,7 +147,7 @@ function roleLevel(
 const returnLevels = (): WorkflowLevel[] => [
   roleLevel({
     order: 1,
-    name: "Supervisor",
+    name: "Analista de Experiencia al Cliente",
     approvalPolicy: "ANY",
     requiredApprovals: 1,
     onReject: "RETURN_INITIATOR",
@@ -152,29 +156,40 @@ const returnLevels = (): WorkflowLevel[] => [
     // Zero and not one cent more: the first level has to catch every amount, or
     // a small devolución would activate no desk at all.
     activationMinAmount: 0,
-    approverRole: "supervisor",
+    approverRole: "analista_cx",
   }),
   roleLevel({
     order: 2,
-    name: "Jefe de Ventas",
+    name: "Gerencia de Experiencia al Cliente",
     approvalPolicy: "ANY",
     requiredApprovals: 1,
     onReject: "TERMINATE",
     allowReturn: true,
     slaHours: null,
     activationMinAmount: 500,
-    approverRole: "administrador",
+    approverRole: "gerente_cx",
   }),
   roleLevel({
     order: 3,
-    name: "Gerencia",
+    name: "Gerente Comercial",
     approvalPolicy: "ANY",
     requiredApprovals: 1,
     onReject: "TERMINATE",
     allowReturn: false,
     slaHours: 48,
     activationMinAmount: 2000,
-    approverRole: "gerente",
+    approverRole: "gerente_comercial",
+  }),
+  roleLevel({
+    order: 4,
+    name: "Gerente General",
+    approvalPolicy: "ANY",
+    requiredApprovals: 1,
+    onReject: "TERMINATE",
+    allowReturn: false,
+    slaHours: 72,
+    activationMinAmount: 5000,
+    approverRole: "gerente_general",
   }),
 ];
 

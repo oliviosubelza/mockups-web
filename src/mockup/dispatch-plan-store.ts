@@ -111,6 +111,23 @@ interface DispatchPlanState {
    * sobrevive a que la ruta se rearme; guardando por ruta, se perdía sola.
    */
   retornosPorCamion: Record<string, number>
+  /**
+   * De qué centro SALE cada camión, por `camionId`. Sin entrada = sale del suyo.
+   *
+   * ═══ POR QUÉ SE PUEDE MOVER SI LA FLOTA ES DE UN CENTRO ═══
+   *
+   * `distribuidoraIdDeCamion` dice a qué centro PERTENECE el camión, y ese es el default correcto.
+   * Pero un camión se presta: el centro de al lado no da abasto un día y manda una unidad a cargar
+   * allá. Lo que decide de qué galpón sale la mercadería es el plan, no el maestro de flota.
+   *
+   * OJO, NO ES SIMÉTRICO CON LA LLEGADA. La salida es una restricción DURA del reparto: una ruta solo
+   * puede llevar paradas de su centro de salida (ver `mismoCentro` en `planner-model`). Cambiarla deja
+   * fuera de lugar las paradas que ya tenía de otro centro, y por eso quien la cambia tiene que
+   * soltarlas — lo hace `PlannerView`. La llegada no toca el reparto: es dónde duerme el camión.
+   *
+   * Por `camionId` y no por id de ruta, misma razón que `retornosPorCamion`.
+   */
+  salidasPorCamion: Record<string, number>
   activeCanales: CanalId[]
   // Filtros de NARROWING (Ciudad/Distribuidora/Mercado/Zona/Vendedor): a diferencia del canal (obligatorio), si un
   // array queda vacío no filtra — pasan todos los pedidos en esa dimensión. Ciudad es el más amplio.
@@ -134,6 +151,8 @@ interface DispatchPlanState {
   setActiveDistribuidoraIds: (ids: number[]) => void
   /** `null` devuelve el camión a su propio centro, que es el default. */
   setRetornoCamion: (camionId: string, distribuidoraId: number | null) => void
+  /** `null` lo hace salir de su propio centro, que es el default. */
+  setSalidaCamion: (camionId: string, distribuidoraId: number | null) => void
   toggleTruck: (id: string) => void
   setSelectedTrucks: (ids: string[]) => void
   /**
@@ -187,6 +206,7 @@ const INITIAL_STATE = {
   selectedTruckIds: [] as string[],
   activeDistribuidoraIds: [] as number[],
   retornosPorCamion: {} as Record<string, number>,
+  salidasPorCamion: {} as Record<string, number>,
   activeCanales: [] as CanalId[],
   activeCiudades: [] as CiudadId[],
   activeDistribuidoras: [] as string[],
@@ -226,6 +246,18 @@ export const useDispatchPlanStore = create<DispatchPlanState>((set) => ({
       if (distribuidoraId === null) delete next[camionId]
       else next[camionId] = distribuidoraId
       return { retornosPorCamion: next }
+    }),
+
+  setSalidaCamion: (camionId, distribuidoraId) =>
+    set((state) => {
+      const actual = state.salidasPorCamion[camionId] ?? null
+      if (actual === distribuidoraId) return state
+      const next = { ...state.salidasPorCamion }
+      // Mismo criterio que el retorno: `null` BORRA, para que "sin entrada" y "el suyo" sean un solo
+      // estado.
+      if (distribuidoraId === null) delete next[camionId]
+      else next[camionId] = distribuidoraId
+      return { salidasPorCamion: next }
     }),
 
   toggleTruck: (id) =>

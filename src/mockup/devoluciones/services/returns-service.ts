@@ -3,9 +3,11 @@ import type {
   ReturnLine,
   ReturnSettlement,
   ReturnStatus,
+  ReturnWorkflowState,
   ReturnableInvoice,
   ReturnableProduct,
   WorkflowDefinition,
+  WorkflowInstance,
   WorkflowVersion,
 } from "../types";
 import { SEED_CLIENTS, SEED_RETURNS } from "../data/seed";
@@ -25,6 +27,7 @@ import {
   reopenLinesBlockedReason,
   sourcesBlockedReason,
   statusOf,
+  workflowStateOf,
   type ItemDecisionInput,
 } from "../lib/return-workflow";
 import {
@@ -48,6 +51,8 @@ export interface ListReturnsParams {
   search?: string;
   sellerCode?: number | "all";
   status?: ReturnStatus | "all";
+  distributorName?: string | "all";
+  workflowState?: ReturnWorkflowState | "all";
   /**
    * Narrow to returns waiting on this employee's signature.
    *
@@ -87,6 +92,8 @@ function filterReturns({
   search = "",
   sellerCode = "all",
   status = "all",
+  distributorName = "all",
+  workflowState = "all",
   awaitingEmployeeCode,
 }: ListReturnsParams): Return[] {
   const q = search.trim().toLowerCase();
@@ -96,6 +103,8 @@ function filterReturns({
     if (to && dateKey > to) return false;
     if (sellerCode !== "all" && ret.sellerCode !== sellerCode) return false;
     if (status !== "all" && ret.status !== status) return false;
+    if (distributorName !== "all" && ret.distributorName !== distributorName) return false;
+    if (workflowState !== "all" && workflowStateOf(ret) !== workflowState) return false;
     if (q && !ret.clientName.toLowerCase().includes(q)) return false;
     if (awaitingEmployeeCode !== undefined) {
       // Waiting on this person specifically: assigned to the open level and not
@@ -251,7 +260,7 @@ function claimedFor(clientId: string, excludeReturnId?: number): Map<string, num
   const claimed = new Map<string, number>();
   for (const ret of RETURNS) {
     if (ret.clientId !== clientId) continue;
-    if (ret.status === "REJECTED" || ret.status === "ANNULLED") continue;
+    if (ret.status === "CERRADO" || ret.status === "ANULADA") continue;
     if (excludeReturnId !== undefined && ret.id === excludeReturnId) continue;
     for (const line of ret.lines) {
       claimed.set(line.productId, (claimed.get(line.productId) ?? 0) + lineMinUnits(line));
@@ -405,7 +414,7 @@ export const returnsService = {
       subtotal,
       ice,
       total,
-      status: "IN_APPROVAL",
+      status: "PROCESANDO",
       // Nothing is settled at registration: the goods have not been judged yet.
       settlement: null,
       workflow,
@@ -414,6 +423,7 @@ export const returnsService = {
       approvedTotal: null,
       rejectedTotal: null,
       editCount: 0,
+      originReturnId: null,
     };
 
     RETURNS = [ret, ...RETURNS];
@@ -491,7 +501,7 @@ export const returnsService = {
       subtotal,
       ice,
       total,
-      status: "IN_APPROVAL",
+      status: "PROCESANDO",
       // A correction sends it back through the desks, so whatever it was going
       // to be settled as is no longer decided.
       settlement: null,
@@ -557,6 +567,104 @@ export const returnsService = {
       );
     }
 
+    // A SELECCIÓN PARCIAL — algunos ítems tildados, otros no — no recorta la devolución en el
+    // lugar: los excluidos se parten en una nota disociada nueva, que queda EN_EDICIÓN esperando
+    // al vendedor, mientras la devolución original sigue subiendo de nivel solo con lo aprobado.
+    // Aprobación total o rechazo total (todo tildado, o nada) no dividen nada — siguen el camino
+    // de siempre, más abajo.
+    const approvedLines = lines.filter((l) => l.itemStatus === "APPROVED");
+    const excludedLines = lines.filter((l) => l.itemStatus === "REJECTED");
+    const isPartial = decided && approvedLines.length > 0 && excludedLines.length > 0;
+
+    if (isPartial) {
+      const keptLines = approvedLines;
+      const before = amountsOf(current.lines).approved;
+      const outcome = approveCurrentLevel(
+        instance,
+        actor,
+        comment.trim() || null,
+        at,
+        relevantAmountOf(keptLines),
+      );
+      const amounts = amountsOf(keptLines);
+      const actions = outcome.instance.actions.map((action, index) =>
+        index === outcome.instance.actions.length - 1
+          ? { ...action, amountBefore: before || current.total, amountAfter: amounts.approved }
+          : action,
+      );
+      const workflow = { ...outcome.instance, actions };
+      const keptTotals = totalsOf(keptLines);
+      const updated: Return = {
+        ...current,
+        lines: keptLines,
+        ...keptTotals,
+        workflow,
+        status: statusOf({
+          workflow,
+          lines: keptLines,
+          editCount: current.editCount,
+          originReturnId: current.originReturnId,
+        }),
+        settlement: outcome.finished ? settlementFor(id) : current.settlement,
+        approvedTotal: outcome.finished ? amounts.approved : null,
+        rejectedTotal: outcome.finished ? amounts.rejected : null,
+      };
+
+      // La nota disociada: documento nuevo, con su propio id, apuntando al original por
+      // `originReturnId`. Los ítems excluidos vuelven a PENDING — no están "rechazados", están
+      // esperando que el vendedor los corrija y reenvíe.
+      const disociadaId = Math.max(0, ...RETURNS.map((r) => r.id)) + 1;
+      const disociadaLines = clearItemDecisions(cloneLines(excludedLines));
+      const disociadaTotals = totalsOf(disociadaLines);
+      const route = returnRoute();
+      let disociadaWorkflow: WorkflowInstance | null = null;
+      if (route) {
+        const started = startInstance({
+          id: uid("wfi"),
+          definition: route.definition,
+          version: route.version,
+          targetCode: "RETURN",
+          targetId: disociadaId,
+          initiatedByName: actor.employeeName,
+          amount: disociadaTotals.total,
+          relevantValue: disociadaTotals.total,
+          at,
+        });
+        disociadaWorkflow = rejectCurrentLevel(
+          started,
+          actor,
+          "RETURN_INITIATOR",
+          "Ítems excluidos en la selección de nivel 1",
+          `Proviene de la nota #${current.id}${comment.trim() ? ` - ${comment.trim()}` : ""}`,
+          at,
+        ).instance;
+      }
+      const disociada: Return = {
+        ...current,
+        id: disociadaId,
+        originReturnId: current.id,
+        lines: disociadaLines,
+        ...disociadaTotals,
+        justification: "",
+        workflow: disociadaWorkflow,
+        pastWorkflows: [],
+        pastLineSnapshots: [],
+        approvedTotal: null,
+        rejectedTotal: null,
+        editCount: 0,
+        settlement: null,
+        status: statusOf({
+          workflow: disociadaWorkflow,
+          lines: disociadaLines,
+          editCount: 0,
+          originReturnId: current.id,
+        }),
+      };
+
+      RETURNS = [disociada, ...RETURNS.map((r) => (r.id === id ? updated : r))];
+      return delay(updated, 500);
+    }
+
     const before = amountsOf(current.lines).approved;
     const outcome = approveCurrentLevel(
       instance,
@@ -585,7 +693,12 @@ export const returnsService = {
       ...current,
       lines,
       workflow,
-      status: statusOf({ workflow, lines }),
+      status: statusOf({
+        workflow,
+        lines,
+        editCount: current.editCount,
+        originReturnId: current.originReturnId,
+      }),
       // The settlement is known the moment the last desk signs and not before,
       // which is why nothing writes it earlier. Derived from the return's own id
       // rather than drawn at random so the row does not change its "Tipo de
@@ -640,7 +753,12 @@ export const returnsService = {
     const updated: Return = {
       ...current,
       workflow: outcome.instance,
-      status: statusOf({ workflow: outcome.instance, lines: current.lines }),
+      status: statusOf({
+        workflow: outcome.instance,
+        lines: current.lines,
+        editCount: current.editCount,
+        originReturnId: current.originReturnId,
+      }),
     };
 
     RETURNS = RETURNS.map((r) => (r.id === id ? updated : r));

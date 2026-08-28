@@ -11,6 +11,7 @@
 // sola y vale para todos los marcadores a la vez, el depósito incluido: lejos, vista de conjunto —
 // formas compactas y chicas—; cerca, vista de detalle.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { Building2, Warehouse } from 'lucide-react'
 import type { Polyline as CapaPolyline } from 'leaflet'
@@ -29,6 +30,7 @@ import { PlanningRestrictionsLayer } from '../restricciones/PlanningRestrictions
 import { useCityIdsDelMapa, useMercadosMapa } from '../map/mercados/use-mercados-mapa'
 import { encuadrar } from '../map/encuadrar'
 import { useRutasPorCalles } from '../map/use-rutas-calles'
+import { OSRM_ES_DEMO } from '../services/routing-osrm'
 import { oscurecer } from '../map/color'
 import { reactIcon } from '../map/div-icon'
 import { CANAL_META, DEPOSITO, cityIdDe, type Parada } from '../mock-data'
@@ -699,7 +701,42 @@ export function PlannerMapa({
     () => trazos.map((t) => ({ id: t.ruta.id, puntos: t.path })),
     [trazos],
   )
-  const { porRuta: porCalles, cargando: ruteando } = useRutasPorCalles(tramos, optimizado && verTrazos)
+  const {
+    porRuta: porCalles,
+    cargando: ruteando,
+    fallidos: sinRuteo,
+    reintentar: reintentarRuteo,
+  } = useRutasPorCalles(tramos, optimizado && verTrazos)
+
+  /**
+   * Avisa UNA vez por tanda que el ruteo falló.
+   *
+   * El botón ámbar de la barra es el aviso permanente —está mientras el problema esté— pero llega
+   * tarde para el caso que importa: el que acaba de apretar Optimizar está mirando el mapa dibujarse,
+   * no la esquina de las herramientas. El toast lo alcanza ahí, y el botón queda para después.
+   *
+   * `ref` y no estado: se compara contra la tanda anterior para no repetir el aviso en cada render, y
+   * cambiar esto no tiene por qué redibujar el mapa. Vuelve a cero cuando no falla nada, así un
+   * reintento exitoso deja el terreno limpio para el próximo fallo de verdad.
+   */
+  const avisadas = useRef(0)
+  useEffect(() => {
+    if (sinRuteo.length === 0) {
+      avisadas.current = 0
+      return
+    }
+    if (sinRuteo.length <= avisadas.current) return
+    avisadas.current = sinRuteo.length
+    const una = sinRuteo.length === 1
+    toast.warning(
+      `${sinRuteo.length} ruta${una ? '' : 's'} sin recorrido por calles`,
+      {
+        description: OSRM_ES_DEMO
+          ? `Se ${una ? 'dibuja' : 'dibujan'} en línea recta: el servidor público de ruteo no contestó a tiempo. Reintentá desde el botón ámbar de las herramientas.`
+          : `Se ${una ? 'dibuja' : 'dibujan'} en línea recta: el servidor de ruteo no contestó. Reintentá desde el botón ámbar de las herramientas.`,
+      },
+    )
+  }, [sinRuteo])
 
   /**
    * Las rutas que el mapa dibuja AHORA. Una ruta NO SE DIBUJA hasta tener su geometría definitiva, y esa
@@ -1183,6 +1220,11 @@ export function PlannerMapa({
         // una sola pregunta del usuario —"¿ya está o le falta?"— y dos spinners a 30 px uno del otro
         // obligarían a aprender cuál es cuál para responderla.
         cargandoCapas={cargandoMercados || ruteando}
+        // El aviso de "esto no es el camino real" va acá y no en el spinner: son estados distintos —
+        // "falta" y "no va a llegar"— y meterlos en el mismo indicador haría que esperar y fallar se
+        // vean igual.
+        rutasSinRuteo={sinRuteo.length}
+        onReintentarRuteo={reintentarRuteo}
       />
     </MapContainer>
   )

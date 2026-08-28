@@ -38,7 +38,12 @@ export const seesOwnDocumentsOnly = (role: Role) => OWN_DOCUMENTS_ONLY_ROLES.inc
  * lo sigue decidiendo el nivel (`decisionBlockedReason`); esto solo decide si las superficies de
  * aprobación existen para el rol.
  */
-export const RETURN_APPROVER_ROLES: Role[] = ["administrador", "supervisor", "gerente"];
+export const RETURN_APPROVER_ROLES: Role[] = [
+  "analista_cx",
+  "gerente_cx",
+  "gerente_comercial",
+  "gerente_general",
+];
 export const canApproveReturns = (role: Role) => RETURN_APPROVER_ROLES.includes(role);
 
 /**
@@ -47,7 +52,7 @@ export const canApproveReturns = (role: Role) => RETURN_APPROVER_ROLES.includes(
  *
  * Deliberadamente más angosto que "quién puede aprobar": un aprobador decide UN documento, y quien
  * edita la escalera decide cómo se van a decidir TODOS de ahí en adelante. Son poderes distintos y
- * el segundo lo tiene solo el administrador.
+ * el segundo lo tiene solo la gerencia general.
  */
-export const WORKFLOW_ADMIN_ROLES: Role[] = ["administrador"];
+export const WORKFLOW_ADMIN_ROLES: Role[] = ["gerente_general"];
 export const canManageWorkflows = (role: Role) => WORKFLOW_ADMIN_ROLES.includes(role);

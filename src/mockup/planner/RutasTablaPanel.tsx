@@ -44,6 +44,7 @@ import { cn } from '@/lib/utils'
 import { MAX_CLIENTES_POR_CAMION, type Parada } from '../mock-data'
 import { resumenAccesorios, totalAccesorios } from '../accesorios'
 import { TEXTO_OCUPACION, cargaDeRuta, type CargaRuta, type RutaPlan } from './planner-model'
+import { CentroSelect } from './CentroSelect'
 import { usePlannerStore } from './planner-store'
 import { useDistribuidorasStore } from '../distribucion/distribuidoras-store'
 
@@ -121,11 +122,14 @@ interface FilaRuta {
   /**
    * De dónde sale y a dónde vuelve el camión. Iguales salvo que el plan haya movido la llegada.
    *
-   * Se guardan los NOMBRES y no los ids porque esta fila es plana y la tabla solo los muestra; quien
-   * decide la llegada es `elegirLlegadas` en el modelo.
+   * Se guardan los nombres Y los ids: los nombres para leer y ordenar, los ids porque son el valor de
+   * los dos selects de la celda. Las dos se eligen A MANO — ver `cambiarSalida` en `PlannerView`.
    */
   salida: string
   llegada: string
+  /** Los ids son los que el select escribe y lee; los nombres, lo que se ordena y se lee. */
+  salidaId: number
+  llegadaId: number
   /** `true` cuando vuelve a un centro DISTINTO del que salió. Es lo único que hay que destacar. */
   retornaEnOtro: boolean
   oculta: boolean
@@ -229,6 +233,10 @@ function AccionFila({
 export function RutasTablaPanel({
   rutas,
   paradasAsignadas,
+  centrosSalida,
+  centrosLlegada,
+  onSalida,
+  onLlegada,
   alto,
   onAlto,
   plegado,
@@ -238,6 +246,12 @@ export function RutasTablaPanel({
   rutas: RutaPlan[]
   /** Todas las paradas con su asignación aplicada. La carga de cada ruta se calcula acá con `cargaDeRuta`. */
   paradasAsignadas: Parada[]
+  /** Centros elegibles como SALIDA. Los arma `PlannerView`: son los del plan, no todos. */
+  centrosSalida: { id: number; nombre: string }[]
+  /** Centros elegibles como LLEGADA: toda la ciudad, no solo los que el plan trajo. */
+  centrosLlegada: { id: number; nombre: string }[]
+  onSalida: (rutaId: string, centroId: number) => void
+  onLlegada: (rutaId: string, centroId: number) => void
   /**
    * Alto actual del panel en px (lo maneja PlannerView).
    *
@@ -296,6 +310,8 @@ export function RutasTablaPanel({
           bandeoResumen: resumenAccesorios(items),
           salida,
           llegada,
+          salidaId: ruta.salidaId,
+          llegadaId: ruta.llegadaId,
           retornaEnOtro: ruta.salidaId !== ruta.llegadaId,
           oculta: rutasOcultas.includes(ruta.id),
         }
@@ -344,21 +360,40 @@ export function RutasTablaPanel({
         {
           id: 'retorno',
           header: 'Sale / vuelve',
-          size: 190,
+          size: 250,
           enableSorting: false,
-          cell: (fila) =>
-            // Cuando sale y vuelve al mismo centro se escribe UNA vez: «Discruz → Discruz» hace leer
-            // dos veces lo mismo para descubrir que no pasó nada. La flecha aparece solo cuando hay
-            // algo que contar, que es el caso nuevo.
-            fila.retornaEnOtro ? (
-              <span className="flex min-w-0 items-center gap-1 text-xs">
-                <span className="truncate">{fila.salida}</span>
-                <ArrowRight size={11} className="shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium text-foreground">{fila.llegada}</span>
-              </span>
-            ) : (
-              <span className="truncate text-xs text-muted-foreground">{fila.salida}</span>
-            ),
+          // DOS SELECTS Y NO TEXTO. Esto era una celda de lectura y la decisión no tenía dónde
+          // tomarse: la salida salía del maestro de flota y la llegada la calculaba el optimizador.
+          // Las dos son decisiones operativas —dónde carga, dónde duerme— y se toman ACÁ, mirando la
+          // ocupación de cada ruta en la misma fila, que es el dato con el que se deciden.
+          cell: (fila) => (
+            <div className="flex min-w-0 items-center gap-1">
+              <CentroSelect
+                valor={fila.salidaId}
+                nombre={fila.salida}
+                opciones={centrosSalida}
+                onElegir={(id) => onSalida(fila.id, id)}
+                titulo={`${fila.nombre}: de dónde sale`}
+              />
+              <ArrowRight
+                size={11}
+                className={cn(
+                  'shrink-0',
+                  // Gris cuando abre y cierra en el mismo centro: ahí la flecha es solo la unión de
+                  // dos controles. Se marca cuando dice algo, que es el caso nuevo.
+                  fila.retornaEnOtro ? 'text-foreground' : 'text-muted-foreground/50',
+                )}
+              />
+              <CentroSelect
+                valor={fila.llegadaId}
+                nombre={fila.llegada}
+                opciones={centrosLlegada}
+                onElegir={(id) => onLlegada(fila.id, id)}
+                titulo={`${fila.nombre}: a dónde vuelve`}
+                destacado={fila.retornaEnOtro}
+              />
+            </div>
+          ),
         },
         {
           id: 'camion',
@@ -517,7 +552,16 @@ export function RutasTablaPanel({
       ]),
     // `rutaFoco` entra en las deps porque la celda "Ruta" dibuja la barra de la elegida: sin él, las
     // columnas quedan memoizadas con el foco viejo y la barra nunca se mueve de la primera fila.
-    [pedirEncuadre, rutaFoco, setRutaFoco, toggleRutaVisible],
+    [
+      pedirEncuadre,
+      rutaFoco,
+      setRutaFoco,
+      toggleRutaVisible,
+      centrosSalida,
+      centrosLlegada,
+      onSalida,
+      onLlegada,
+    ],
   )
 
   const sinAsignar = useMemo(() => paradasAsignadas.filter((p) => !p.rutaId), [paradasAsignadas])

@@ -62,7 +62,7 @@ export function useApproveReturn() {
       toast.success(
         next
           ? `Aprobada, pasa a ${next.name}`
-          : ret.status === "PARTIALLY_APPROVED"
+          : ret.approvedTotal !== null && ret.approvedTotal < ret.total
             ? "Devolución aprobada parcialmente"
             : "Devolución aprobada",
         { description: `Código ${ret.id}` },
@@ -84,7 +84,7 @@ export function useRejectReturn() {
     onSuccess: (ret) => {
       qc.invalidateQueries({ queryKey: queryKeys.returns });
       toast.success(
-        ret.status === "RETURNED" ? "Devuelta al vendedor para corregir" : "Devolución rechazada",
+        ret.status === "REVERTIDO" ? "Devuelta al vendedor para corregir" : "Devolución rechazada",
         { description: `Código ${ret.id}` },
       );
     },

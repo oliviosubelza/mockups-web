@@ -11,7 +11,7 @@
 //   · Cámara  → a dónde mira el mapa (acercar, alejar, encuadrar todo).
 //   · Capas   → qué se dibuja encima (menú propio).
 //   · Paneles → qué flotantes se ven sobre el mapa (menú propio, estilo menú Ver de VSCode).
-import { Hand, Lasso, Maximize2, Minus, MousePointerClick, Plus, SquareDashed } from 'lucide-react'
+import { Hand, Lasso, Maximize2, Minus, MousePointerClick, Plus, RouteOff, SquareDashed } from 'lucide-react'
 import { useMap } from 'react-leaflet'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -62,11 +62,16 @@ export function PlannerHerramientas({
   rutas,
   onEncuadrar,
   cargandoCapas,
+  rutasSinRuteo,
+  onReintentarRuteo,
 }: {
   rutas: RutaPlan[]
   onEncuadrar: () => void
   /** Hay datos que el mapa DIBUJA viajando por red: mercados, recorridos por calles, o los dos. */
   cargandoCapas: boolean
+  /** Cuántas rutas quedaron dibujadas con el trazo RECTO porque el ruteador no contestó. */
+  rutasSinRuteo: number
+  onReintentarRuteo: () => void
 }) {
   const map = useMap()
   const herramienta = usePlannerStore((s) => s.herramienta)
@@ -76,6 +81,35 @@ export function PlannerHerramientas({
     // `z-[1000]` supera los panes internos de Leaflet (400-700) y queda contenido por el `isolate` del
     // contenedor, así que no compite con los popovers de la app (que se portalizan con z-50).
     <div className="absolute bottom-3 right-3 z-[1000] flex flex-col gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-lg backdrop-blur-sm">
+      {/* ── EL RUTEO POR CALLES FALLÓ ───────────────────────────────────────────────────────────
+          ARRIBA DE TODO Y EN ÁMBAR, en una columna de íconos grises que no llaman la atención — que es
+          justo lo que hace falta acá. El resto de esta barra son controles: cosas que se usan cuando se
+          las busca. Esto es lo contrario, un aviso que tiene que encontrarte a vos.
+
+          POR QUÉ EXISTE. Cuando el ruteador no contesta, el mapa dibuja el recorrido como segmentos
+          rectos de parada a parada. Eso está bien —el reparto y el orden de visita se siguen leyendo—
+          pero se ve EXACTAMENTE IGUAL que un recorrido real, así que sin este botón la pantalla afirma
+          en silencio que el camión va a manejar en línea recta cruzando manzanas y el cuarto anillo. El
+          fallback estaba; lo que faltaba era decirlo.
+
+          Y ES EL BOTÓN DE REINTENTAR, no un cartel: el fallo típico es un servidor público lento o un
+          corte de red, o sea justo la clase de cosa que se arregla preguntando de nuevo. Un aviso que
+          no trae la acción obliga a reoptimizar el plan entero para volver a pedir lo mismo. */}
+      {rutasSinRuteo > 0 && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-md bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 hover:text-amber-700 dark:text-amber-400"
+            onClick={onReintentarRuteo}
+            title={`${rutasSinRuteo} ruta${rutasSinRuteo !== 1 ? 's' : ''} sin recorrido por calles: se ${rutasSinRuteo !== 1 ? 'dibujan' : 'dibuja'} en línea recta porque el ruteador no contestó. Clic para reintentar.`}
+            aria-label={`Reintentar el ruteo por calles de ${rutasSinRuteo} ruta(s)`}
+          >
+            <RouteOff className="size-3.5" />
+          </Button>
+          <span className="mx-1 h-px bg-border" aria-hidden />
+        </>
+      )}
       {PUNTEROS.map(({ id, etiqueta, tecla, icon: Icon }) => (
         <Tool
           key={id}

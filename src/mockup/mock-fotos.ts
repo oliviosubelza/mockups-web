@@ -115,8 +115,17 @@ export type EvidenciaFoto = 'mercaderia' | 'lugar'
  * y el lugar se leen como el mismo sitio.
  */
 export function fotoDeIncidencia(retrata: EvidenciaFoto, puntoEntregaId: string, canal: CanalId): string {
-  if (retrata === 'mercaderia') return urlUnsplash(FOTO_PAQUETE, PARAMS_EVIDENCIA)
+  if (retrata === 'mercaderia') return fotoDeMercaderia()
   return fotosDePunto(puntoEntregaId, canal)[0]
+}
+
+/**
+ * La foto de mercadería sola, para cualquier pantalla que necesite evidencia de un PRODUCTO y no
+ * tenga un punto de entrega ni un canal a mano (ej. devoluciones). Mismo id verificado que usa
+ * `fotoDeIncidencia`, sin los parámetros que solo tienen sentido para una entrega.
+ */
+export function fotoDeMercaderia(): string {
+  return urlUnsplash(FOTO_PAQUETE, PARAMS_EVIDENCIA)
 }
 
 /**

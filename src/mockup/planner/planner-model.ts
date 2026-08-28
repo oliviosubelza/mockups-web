@@ -26,9 +26,15 @@ export interface RutaPlan {
   color: string
   camion: Camion
   /**
-   * De qué CENTRO sale el camión. Es su distribuidora, la que le carga la mercadería.
+   * De qué CENTRO sale el camión: el galpón que le carga la mercadería.
    *
-   * Sale de `distribuidoraIdDeCamion`: la flota pertenece a un centro y eso no lo decide el plan.
+   * El default es `distribuidoraIdDeCamion` —la flota pertenece a un centro—, pero el plan la puede
+   * mover: un camión prestado al centro de al lado carga allá, y quien decide eso es quien planifica,
+   * no el maestro de flota.
+   *
+   * NO ES DECORATIVA: es una restricción DURA del reparto. Una ruta solo puede llevar paradas de su
+   * centro de salida (ver `mismoCentro` en `optimizar`), porque esa mercadería está en ESE galpón.
+   * Moverla invalida las paradas que la ruta ya tenía de otro centro.
    */
   salidaId: number
   /**
@@ -127,10 +133,13 @@ export function construirRutas(
   nombres: Record<string, string> = {},
   /** Llegadas decididas por el plan, por id de ruta. Sin entrada, el camión vuelve a su propio centro. */
   llegadas: Record<string, number> = {},
+  /** Salidas decididas por el plan, por id de ruta. Sin entrada, el camión sale del centro al que pertenece. */
+  salidas: Record<string, number> = {},
 ): RutaPlan[] {
   return camiones.map((camion, i) => {
     const id = rutaIdDeCamion(camion.id)
-    const salidaId = distribuidoraIdDeCamion(camion)
+    // El maestro de flota es el DEFAULT, no la última palabra: si el plan movió la salida, manda el plan.
+    const salidaId = salidas[id] ?? distribuidoraIdDeCamion(camion)
     return {
       id,
       nombre: nombres[id] ?? `Ruta ${i + 1}`,

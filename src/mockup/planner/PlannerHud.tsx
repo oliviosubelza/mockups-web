@@ -12,7 +12,7 @@
 // acción, es la etiqueta de las otras dos —contra qué día se optimiza y para qué día se generan las
 // rutas—, y desde que el mapa filtra las restricciones por vigencia es también la única explicación de
 // por qué una restricción temporal está o no está dibujada. Ver el bloque donde se muestra.
-import { CalendarDays, Loader2 } from 'lucide-react'
+import { CalendarDays, Loader2, Warehouse } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { momentoDelPlan } from '../restricciones/momento'
@@ -45,6 +45,9 @@ export function PlannerHud({
   hayDeficit,
   optimizado,
   optimizando,
+  centrosDelPlan,
+  configurados,
+  onSalidas,
   onOptimizar,
   onGenerar,
 }: {
@@ -56,6 +59,15 @@ export function PlannerHud({
   hayDeficit: boolean
   optimizado: boolean
   optimizando: boolean
+  /**
+   * Cuántos centros trajo el plan. Con UNO, el botón de salidas y llegadas no se dibuja: sale del
+   * único que hay y vuelve al único que hay, así que sus dos listas tendrían una sola opción — un
+   * control así promete una decisión que no existe.
+   */
+  centrosDelPlan: number
+  /** Cuántas rutas tienen salida o llegada puesta a mano. Es el contador del botón. */
+  configurados: number
+  onSalidas: () => void
   onOptimizar: () => void
   onGenerar: () => void
 }) {
@@ -109,18 +121,53 @@ export function PlannerHud({
           de negocio, no una preferencia: planificar es una actividad de víspera. El razonamiento largo,
           con lo que rompería ofrecer un calendario, está en `fechaDelPlanNuevo` (`planes-store.ts`).
           Darle forma de botón acá invitaría a buscarle el desplegable que no tiene. */}
-      {/* SE ESCONDE EN PANTALLAS ANGOSTAS (`hidden 2xl:flex`). Es lo único de esta barra que no se
-          clickea, así que es lo primero que puede irse cuando el detalle de una parada le come 320 px
-          de ancho a la franja. Antes la barra entera tenía `shrink-0` y en vez de achicarse se
-          desbordaba encima de la columna izquierda y del detalle. El dato sigue en el `title`. */}
+      {/* PRIMERO EN IRSE cuando falta ancho: es lo único de esta barra que no se clickea.
+          `@min-[1180px]` Y NO `2xl`: el que le come 320 px a la franja es el detalle de la parada, no
+          el monitor — en una pantalla grande ningún breakpoint de viewport se entera, y la fecha
+          seguía ocupando su lugar mientras los botones se apretaban. Ver la nota del `@container` en
+          `PlannerView`. El dato sigue en el `title`. */}
       <span
-        className="mr-0.5 hidden shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-muted-foreground 2xl:flex"
+        className="mr-0.5 hidden shrink-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-muted-foreground @min-[1180px]:flex"
         title="Día operativo del plan: las rutas y las restricciones de circulación se calculan para esta fecha"
       >
         <CalendarDays size={13} className="shrink-0" />
         Reparto:{' '}
         <span className="font-medium text-foreground">{fechaLegible(momentoDelPlan().fecha)}</span>
       </span>
+      {/* ── SALIDAS Y LLEGADAS, ANTES DE OPTIMIZAR ──────────────────────────────────────────────
+          Va a la IZQUIERDA de «Optimizar» porque la barra se lee como el flujo: la fecha del reparto,
+          de dónde sale cada camión, repartir, generar. Este dato se decide antes por una razón
+          concreta y no por prolijidad: los recorridos se secuencian DESDE la salida y el último tramo
+          cuelga de la llegada, así que fijarlos después obliga a reoptimizar para que sirvan.
+
+          NO SE DIBUJA CON UN SOLO CENTRO (ver `centrosDelPlan`), que es el caso de la mayoría de los
+          planes: la barra no gana un botón inerte por una función que ese plan no tiene. */}
+      {centrosDelPlan > 1 && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1.5 px-2.5 text-xs"
+          onClick={onSalidas}
+          disabled={camionesElegidos === 0}
+          title={
+            camionesElegidos === 0
+              ? 'Elegí al menos un camión'
+              : 'De qué centro carga cada camión y en cuál termina el día'
+          }
+        >
+          <Warehouse size={12} />
+          {/* El contador NO se va con la etiqueta: es el que dice que alguien ya configuró algo, y
+              un depósito sin número no distingue «no lo toqué» de «lo dejé en el default». */}
+          <span className="hidden @min-[880px]:inline">Salidas</span>
+          {/* El contador es lo que evita tener que ABRIR el diálogo para saber si alguien ya
+              configuró algo. Sin él, el estado del plan depende de acordarse. */}
+          {configurados > 0 && (
+            <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-medium tabular-nums text-primary">
+              {configurados}
+            </span>
+          )}
+        </Button>
+      )}
       <Button
         size="sm"
         variant="outline"

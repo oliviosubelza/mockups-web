@@ -1,8 +1,63 @@
 import { create } from 'zustand'
 import { ORDENES_TRANSPORTE, type EstadoOrden, type OrdenTransporte, type Parada } from './mock-data'
 
-const STORAGE_KEY = 'mockups-web:transport-orders-v5'
+// v6: el seed cambió (ver `cloneSeed`). La versión de la clave es lo ÚNICO que hace que un navegador
+// con el estado viejo guardado vea el arreglo — sin subirla, `readPersisted` devuelve el `v5` de siempre
+// y la corrección no llega a nadie que ya haya abierto la app.
+const STORAGE_KEY = 'mockups-web:transport-orders-v6'
+
+/**
+ * Camiones con los que arranca la CONFIRMACIÓN: pocos, porque las órdenes se crean confirmando un
+ * plan y arrancar con la flota entera confirmada haría que esa pantalla no tuviera nada que hacer.
+ */
 const DEFAULT_CONFIRMATION_TRUCKS = 3
+
+/**
+ * Camiones con los que arranca el MONITOREO EN VIVO, y por qué esto tuvo que existir.
+ *
+ * ═══ EL SÍNTOMA ═══
+ *
+ * «Monitoreo en Vivo» abría con la lista VACÍA. No era intermitente ni dependía del navegador: era así
+ * siempre, porque el dataset tiene semilla fija.
+ *
+ * ═══ LA CAUSA ═══
+ *
+ * El seed tomaba los tres PRIMEROS camiones del dataset y nada más. Esos tres dan cinco órdenes:
+ *
+ *   ot1-ot3  5534-QAZ  pendiente / cargando   SIN TRIPULACIÓN
+ *   ot4      1202-HJK  cargando
+ *   ot5      2809-NBV  pendiente
+ *
+ * Y `esOrdenMonitoreable` pide `despachada` o `procesado` **con chofer**. Cero de cinco. Peor: el
+ * primer camión es justamente el que el generador deja sin tripulación A PROPÓSITO, para retratar el
+ * caso «sin asignar» — así que uno de los tres nunca iba a servir.
+ *
+ * Mientras tanto el dataset completo tiene **14 órdenes monitoreables en 12 camiones**. El seed las
+ * tiraba todas.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON SUBIR `DEFAULT_CONFIRMATION_TRUCKS` ═══
+ *
+ * Porque son dos preguntas distintas y una no contesta la otra. La confirmación quiere POCOS camiones
+ * (si no, no queda nada que confirmar); el monitoreo quiere camiones DESPACHADOS. Subir el número de
+ * la confirmación hasta que por casualidad entre un despachado ata una pantalla al azar de la otra: el
+ * día que el generador reordene las rutas, el monitoreo se vacía de nuevo y nadie va a saber por qué.
+ *
+ * Así que el seed pide las dos cosas por su nombre y las une.
+ *
+ * ═══ Y NO SON LOS PRIMEROS QUE APAREZCAN ═══
+ *
+ * La primera versión tomaba los tres primeros monitoreables y el resultado fue un viaje de UNA parada:
+ * un camión que sale, entrega una vez y termina. Ahí no hay nada que monitorear — el progreso va de
+ * 0/1 a 1/1 y la pantalla no llega a mostrar su propio mecanismo. Se eligen los de MÁS PARADAS, que es
+ * lo que esta pantalla existe para mirar.
+ */
+const DEFAULT_MONITORING_TRUCKS = 3
+
+/**
+ * Mínimo de paradas para que un viaje sirva de material de monitoreo. Por debajo de esto la
+ * simulación en vivo se termina antes de que alguien alcance a mirarla.
+ */
+const MIN_PARADAS_MONITOREO = 5
 
 export type TransportOrderEventType =
   | 'DRIVER_ASSIGNED'
@@ -44,12 +99,36 @@ interface TransportOrdersState extends PersistedTransportOrders {
 }
 
 const cloneSeed = (): OrdenTransporte[] => {
-  const defaultPlates = new Set(
-    Array.from(new Set(ORDENES_TRANSPORTE.map((order) => order.camion))).slice(
-      0,
-      DEFAULT_CONFIRMATION_TRUCKS,
+  const placasDe = (ordenes: OrdenTransporte[], cuantas: number) =>
+    Array.from(new Set(ordenes.map((order) => order.camion))).slice(0, cuantas)
+
+  const defaultPlates = new Set([
+    // Los primeros del dataset: es lo que había, y es lo que la confirmación necesita.
+    ...placasDe(ORDENES_TRANSPORTE, DEFAULT_CONFIRMATION_TRUCKS),
+    // Y los que de verdad dan material para monitorear: despachados, con chofer y con recorrido largo.
+    //
+    // La condición de "monitoreable" está escrita acá y no importada de `monitoreo-data` a propósito:
+    // importarla ataría el store del listado de OT al módulo del monitoreo por un predicado de tres
+    // términos, y este archivo no sabe nada de monitoreo. Si algún día cambia, el
+    // `esOrdenMonitoreable` de `monitoreo-data` es el que manda y esto es su espejo.
+    //
+    // El orden es por CANTIDAD DE PARADAS, descendente. `paradaIds` alcanza y no hace falta resolver
+    // las paradas: son los puntos del viaje, que es exactamente lo que se quiere maximizar. El
+    // desempate por código deja el resultado estable — el dataset tiene semilla fija, así que si el
+    // criterio no fuera total, dos corridas iguales podrían sembrar camiones distintos.
+    ...placasDe(
+      ORDENES_TRANSPORTE.filter(
+        (order) =>
+          order.chofer !== '' &&
+          (order.estado === 'despachada' || order.estado === 'procesado') &&
+          order.paradaIds.length >= MIN_PARADAS_MONITOREO,
+      ).sort((a, b) =>
+        b.paradaIds.length - a.paradaIds.length || a.codigo.localeCompare(b.codigo),
+      ),
+      DEFAULT_MONITORING_TRUCKS,
     ),
-  )
+  ])
+
   return ORDENES_TRANSPORTE
     .filter((order) => defaultPlates.has(order.camion))
     .map((order) => ({

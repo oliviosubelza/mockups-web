@@ -16,14 +16,15 @@ import type { Role } from "../types";
  * store depends on `data/seed.ts` (for `SEED_SELLERS`), and `data/seed.ts` calls into
  * `startInstance` to build the seeded returns — reaching back into the session store from
  * here would close that into an import cycle. A real directory has no such constraint; this
- * roster is the mock absorbing the accident instead of the design. Keep the three codes
+ * roster is the mock absorbing the accident instead of the design. Keep the four codes
  * below in sync with `USERS` by hand.
  */
 const ROLE_ROSTER: Record<Role, { code: number; name: string }[]> = {
-  supervisor: [{ code: 57, name: "Sergio Peña Montero" }],
-  administrador: [{ code: 72, name: "Daniel Durán Melgar" }],
-  gerente: [{ code: 94, name: "Rocío Justiniano Áñez" }],
-  // Neither role ever signs an approval — see `RETURN_APPROVER_ROLES`.
+  analista_cx: [{ code: 57, name: "Sergio Peña Montero" }],
+  gerente_cx: [{ code: 72, name: "Daniel Durán Melgar" }],
+  gerente_comercial: [{ code: 94, name: "Rocío Justiniano Áñez" }],
+  gerente_general: [{ code: 99, name: "Mario Peredo Salvatierra" }],
+  // Ningún rol de venta firma jamás una aprobación — ver `RETURN_APPROVER_ROLES`.
   vendedor: [],
   vendedor_agencia: [],
 };

@@ -1,4 +1,5 @@
 import type {
+  Client,
   Order,
   OrderBonification,
   OrderIncentives,
@@ -15,6 +16,7 @@ import {
   SEED_ORDERS,
   SEED_SELLERS,
 } from "../data/seed";
+import { CHANNELS } from "../data/channels";
 import { getProduct } from "../data/products";
 import { clientNit } from "../lib/client-billing";
 import { toDateKey } from "../lib/frequency";
@@ -215,11 +217,25 @@ export interface DeliveryPoint {
   lng: number;
 }
 
-/** Order-time client data: who to invoice, where to deliver, who to ask for. */
+/**
+ * Order-time client data: who to invoice, where to deliver, who to ask for.
+ *
+ * `address`/`phone`/`clientType`/`sector`/`channelName`/`ticketPromedio` are plain fields already on
+ * `Client` — exposed here rather than read again from `SEED_CLIENTS` by every screen that wants them,
+ * so the return detail view and the order form agree on where a client's data comes from.
+ */
 export interface OrderClientDetails {
   nit: string;
   razonSocial: string;
   contact: string;
+  address: string;
+  phone: string;
+  clientType: Client["clientType"];
+  sector: string;
+  /** Resolved against `CHANNELS` — the id alone means nothing on a screen. */
+  channelName: string;
+  /** Average monthly purchase (Bs.), `Client.ticketPromedio`. */
+  ticketPromedio: number;
   deliveryPoints: DeliveryPoint[];
 }
 
@@ -370,6 +386,12 @@ export const ordersService = {
         nit: clientNit(client.code),
         razonSocial: client.name,
         contact: client.ownerName,
+        address: client.address,
+        phone: client.phone,
+        clientType: client.clientType,
+        sector: client.sector,
+        channelName: CHANNELS.find((c) => c.id === client.channelId)?.name ?? "—",
+        ticketPromedio: client.ticketPromedio,
         deliveryPoints: DELIVERY_SUFFIXES.map((suffix, i) => ({
           id: `${client.id}-dp-${i + 1}`,
           code: String(Number(client.code.replace(/\D/g, "") || 0) + i),

@@ -25,8 +25,36 @@
 // Google pero con 6 decimales de precisión en vez de 5. `decodePolyline` ya lo soportaba.
 import { decodePolyline, type LatLngTuple } from '../map/geo/polyline'
 
-/** Base del endpoint. Vive acá para que nadie la escriba de nuevo como string suelto. */
-export const OSRM_DRIVING_URL = 'https://router.project-osrm.org/route/v1/driving'
+/**
+ * El servidor de DEMOSTRACIÓN público. Es el default y está bien que lo sea —la app arranca y rutea sin
+ * configurar nada— pero no es a lo que hay que apuntar en producción.
+ */
+const OSRM_DEMO_URL = 'https://router.project-osrm.org/route/v1/driving'
+
+/**
+ * Base del endpoint. Vive acá para que nadie la escriba de nuevo como string suelto.
+ *
+ * ═══ CÓMO APUNTAR A UN OSRM PROPIO ═══
+ *
+ * `VITE_OSRM_URL` en el `.env`, con la ruta completa hasta el perfil:
+ *
+ *     VITE_OSRM_URL=http://localhost:5000/route/v1/driving
+ *
+ * Se incluye el `/route/v1/driving` y no solo el host a propósito: el perfil (`driving`, `car`, el que
+ * se haya compilado) es parte de cómo se levantó ESE servidor, y adivinarlo desde acá sería inventar
+ * una convención que el contenedor no tiene por qué respetar. Ver `docs/osrm-propio.md` para levantarlo.
+ *
+ * El resto del archivo no cambia: la respuesta de un OSRM propio es la misma que la del demo, porque es
+ * el mismo software.
+ */
+export const OSRM_DRIVING_URL = import.meta.env.VITE_OSRM_URL?.trim() || OSRM_DEMO_URL
+
+/**
+ * `true` mientras se esté usando el servidor público. Lo consume la pantalla para explicar un fallo:
+ * "no se pudo rutear" con un servidor propio y con el demo son dos problemas distintos, y el consejo
+ * también.
+ */
+export const OSRM_ES_DEMO = OSRM_DRIVING_URL === OSRM_DEMO_URL
 
 /**
  * `full` y NO `simplified`.
@@ -51,8 +79,22 @@ const OVERVIEW = 'full'
 /** Precisión de `polyline6`. Con la de Google (5) el recorrido sale desplazado y diez veces más chico. */
 const PRECISION_OSRM = 6
 
-/** Corte de la espera. Sin esto una ruta que nunca contesta deja el trazo recto sin decir por qué. */
-const TIMEOUT_MS = 12_000
+/**
+ * Corte de la espera. Sin esto una ruta que nunca contesta deja el trazo recto sin decir por qué.
+ *
+ * SUBIÓ DE 12 s A 45 s, contra una medición. El demo público, en agosto de 2026: **9,1 s una consulta de
+ * DOS coordenadas** (la primera, en frío) y **~7,3 s cada una cuando van tres en paralelo**. Con el corte
+ * en 12 s eso deja un margen de tres segundos, así que cualquier hipo devolvía `null` y el mapa entero
+ * caía a trazos rectos — que es exactamente cómo se reportó.
+ *
+ * ESPERAR NO ES EL PROBLEMA. Mientras espera, el mapa no dibuja la ruta (ver `dibujables` en
+ * `PlannerMapa`): no hay ninguna forma incorrecta a la vista, hay un spinner. Cortar antes de tiempo sí
+ * es un problema, porque deja la recta puesta como si fuera el recorrido bueno. Entre tardar y mentir,
+ * tardar.
+ *
+ * El día que esto apunte a un OSRM propio el número sobra: en local un ruteo urbano son milisegundos.
+ */
+const TIMEOUT_MS = 45_000
 
 export interface RutaPorCalles {
   /** Vértices del recorrido, listos para Leaflet ([lat, lng]). */

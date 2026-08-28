@@ -17,10 +17,11 @@ export type LatLng = [number, number];
 
 /** System roles. The signed-in user's role gates features across the app. */
 /**
- * `gerente` exists because the returns flow needs a second, higher approver: a
- * return above the threshold is approved by the supervisor and only then
- * *decided* by the manager. Without a role of its own that step would have no
- * owner, and "the admin does everything" is not an approval flow.
+ * Four approval desks, ordered by how far a devolución has to climb before it
+ * needs them: `analista_cx` is the first desk every claim reaches, `gerente_cx`
+ * is who signs above them, `gerente_comercial` above that, and `gerente_general`
+ * is the top of the ladder — the desk that closes whatever the three below it
+ * did not settle.
  *
  * `vendedor_agencia` sells over the counter at the branch. It is a separate role
  * and not a flag on `vendedor` because almost everything the app grants a seller
@@ -29,7 +30,13 @@ export type LatLng = [number, number];
  * role would mean every one of those screens carrying an exception; the split
  * puts the difference in one place.
  */
-export type Role = "administrador" | "supervisor" | "gerente" | "vendedor" | "vendedor_agencia";
+export type Role =
+  | "analista_cx"
+  | "gerente_cx"
+  | "gerente_comercial"
+  | "gerente_general"
+  | "vendedor"
+  | "vendedor_agencia";
 
 /** A signed-in user (mocked). Supervisors carry the sales channel they oversee. */
 export interface User {
@@ -1541,45 +1548,87 @@ export const ALL_RETURN_REASONS: ReturnReason[] = [
 ];
 
 /**
- * What a return is, for the business.
+ * What a return is, for the business — the logistics/document axis, never the
+ * approval axis. Where the paper currently sits inside the ladder is a
+ * different question, answered by `ReturnWorkflowState` below; a list column
+ * asks both side by side rather than folding "En aprobación · 1 de 2 firmas"
+ * into one pill.
  *
- * Deliberately not the same axis as the workflow's own status: this says what
- * the document *is* — a draft, a claim under review, something partly granted —
- * while the workflow says where the paper currently sits. Screens keep them in
- * separate components for the same reason, because "En aprobación" and
- * "Créditos, 1 de 2 firmas" answer two different questions.
- *
- * `PARTIALLY_APPROVED` is the state the whole item-decision machinery exists
- * for: some products come back and are paid, others are refused, and the amount
- * the return is finally worth is neither what was asked nor zero.
+ * Derived off the approval running over the return (`statusOf` in
+ * `lib/return-workflow.ts`) exactly like the axis it replaces was: two fields
+ * saying the same thing in two places is how they end up disagreeing.
  */
 export type ReturnStatus =
-  | "DRAFT"
-  | "IN_APPROVAL"
-  | "RETURNED"
-  | "APPROVED"
-  | "PARTIALLY_APPROVED"
-  | "REJECTED"
-  | "ANNULLED";
+  | "ABIERTO"
+  | "PROCESANDO"
+  | "PROCESADO"
+  | "CERRADO"
+  | "ANULADA"
+  | "DEVOLUCION_DEMORADA"
+  | "PROCESO_ELECTRONICO"
+  | "DISOCIADO"
+  | "REVERTIDO"
+  | "EDITADO";
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
-  DRAFT: "BORRADOR",
-  IN_APPROVAL: "EN APROBACIÓN",
-  RETURNED: "DEVUELTA",
-  APPROVED: "APROBADA",
-  PARTIALLY_APPROVED: "APROBACIÓN PARCIAL",
-  REJECTED: "RECHAZADA",
-  ANNULLED: "ANULADA",
+  ABIERTO: "ABIERTO",
+  PROCESANDO: "PROCESANDO",
+  PROCESADO: "PROCESADO",
+  CERRADO: "CERRADO",
+  ANULADA: "ANULADA",
+  DEVOLUCION_DEMORADA: "DEVOLUCIÓN DEMORADA",
+  PROCESO_ELECTRONICO: "PROCESO ELECTRÓNICO",
+  DISOCIADO: "DISOCIADO",
+  REVERTIDO: "REVERTIDO",
+  EDITADO: "EDITADO",
 };
 
 export const ALL_RETURN_STATUSES: ReturnStatus[] = [
-  "DRAFT",
-  "IN_APPROVAL",
-  "RETURNED",
-  "APPROVED",
-  "PARTIALLY_APPROVED",
-  "REJECTED",
-  "ANNULLED",
+  "ABIERTO",
+  "PROCESADO",
+  "CERRADO",
+  "PROCESANDO",
+  "ANULADA",
+  "DEVOLUCION_DEMORADA",
+  "PROCESO_ELECTRONICO",
+  "DISOCIADO",
+  "REVERTIDO",
+  "EDITADO",
+];
+
+/**
+ * Where the paper sits inside the approval ladder — the workflow axis.
+ * `ESPERANDO_LVLn` covers a claim still climbing, keyed by the level it is
+ * waiting on; the other three are terminal or hand-back states, whatever level
+ * it stopped on.
+ */
+export type ReturnWorkflowState =
+  | "ESPERANDO_LVL1"
+  | "ESPERANDO_LVL2"
+  | "ESPERANDO_LVL3"
+  | "ESPERANDO_LVL4"
+  | "RECHAZADA"
+  | "APROBADA"
+  | "EN_EDICION";
+
+export const RETURN_WORKFLOW_STATE_LABELS: Record<ReturnWorkflowState, string> = {
+  ESPERANDO_LVL1: "Esperando aprobación nivel 1",
+  ESPERANDO_LVL2: "Esperando aprobación nivel 2",
+  ESPERANDO_LVL3: "Esperando aprobación nivel 3",
+  ESPERANDO_LVL4: "Esperando aprobación nivel 4",
+  RECHAZADA: "Rechazada",
+  APROBADA: "Aprobada",
+  EN_EDICION: "En edición",
+};
+
+export const ALL_RETURN_WORKFLOW_STATES: ReturnWorkflowState[] = [
+  "ESPERANDO_LVL1",
+  "ESPERANDO_LVL2",
+  "ESPERANDO_LVL3",
+  "ESPERANDO_LVL4",
+  "RECHAZADA",
+  "APROBADA",
+  "EN_EDICION",
 ];
 
 /**
@@ -1816,6 +1865,16 @@ export interface Return {
   rejectedTotal: number | null;
   /** How many times it has been corrected. Only one edit is ever allowed. */
   editCount: number;
+  /**
+   * Nota disociada: la devolución de la que salieron estos ítems, cuando esta es una nota
+   * disociada — `null` en cualquier otra devolución.
+   *
+   * Nace cuando el nivel 1 aprueba solo una parte de una devolución: los ítems que dejó afuera
+   * se parten en un documento nuevo, con su propio `id`, que queda `EN_EDICION` esperando al
+   * vendedor mientras el original sigue subiendo de nivel solo con lo aprobado. El `id` de acá
+   * es lo que la nota disociada muestra como «Nota Origen #».
+   */
+  originReturnId: number | null;
 }
 
 // ---------------------------------------------------------------------------

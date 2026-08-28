@@ -4,10 +4,11 @@ import type {
   ReturnItemStatus,
   ReturnLine,
   ReturnStatus,
+  ReturnWorkflowState,
   WorkflowInstanceLevel,
 } from "../types";
 import { lineMinUnits, round2 } from "./order-math";
-import { awaitsDecisionFrom, currentLevelOf, isClosed } from "./workflow";
+import { awaitsDecisionFrom, currentLevelOf, isClosed, isOverdue } from "./workflow";
 
 /**
  * What a return does with the levels a workflow moves it through.
@@ -166,26 +167,56 @@ export function itemCountsOf(lines: ReturnLine[]) {
 // ---- Status ------------------------------------------------------------------
 
 /**
- * What the return *is*, read off the approval running over it.
+ * What the return *is*, read off the approval running over it — the
+ * logistics/document axis (`ReturnStatus`), never which desk it is waiting on
+ * (that is `workflowStateOf` below).
  *
  * Derived rather than stored, for the same reason the old flow derived its desk
  * from the status: two fields saying the same thing is how they end up
- * disagreeing. The one judgement call is the difference between `APPROVED` and
- * `PARTIALLY_APPROVED` — a flow that ended with every item granted in full is
- * an approval, and anything less is partial even when nobody rejected a whole
- * product, because the client is getting back less than they claimed.
+ * disagreeing. `PROCESADO` covers both a full grant and a partial one — which
+ * of the two it was lives on `approvedTotal`/`total`, not on this axis, exactly
+ * like the workflow's own status never said it either. `EDITADO` marks a claim
+ * that already went through one correction and is now settled; `REVERTIDO` one
+ * a desk handed back without ending it; `DEVOLUCION_DEMORADA` one still
+ * climbing past its SLA; `DISOCIADO` a nota disociada, waiting on the seller —
+ * the same `RETURNED` workflow status as `REVERTIDO`, told apart only by
+ * `originReturnId`: one is a whole return handed back, the other is the split
+ * that a partial approval carved out of one.
  */
-export function statusOf(ret: Pick<Return, "workflow" | "lines">): ReturnStatus {
+export function statusOf(
+  ret: Pick<Return, "workflow" | "lines" | "editCount" | "originReturnId">,
+): ReturnStatus {
   const instance = ret.workflow;
-  if (!instance) return "DRAFT";
-  if (instance.status === "CANCELLED") return "ANNULLED";
-  if (instance.status === "REJECTED") return "REJECTED";
-  if (instance.status === "RETURNED") return "RETURNED";
-  if (instance.status !== "APPROVED") return "IN_APPROVAL";
+  if (!instance) return "ABIERTO";
+  if (instance.status === "CANCELLED") return "ANULADA";
+  if (instance.status === "REJECTED") return "CERRADO";
+  if (instance.status === "RETURNED") return ret.originReturnId !== null ? "DISOCIADO" : "REVERTIDO";
+  if (instance.status === "APPROVED") return ret.editCount > 0 ? "EDITADO" : "PROCESADO";
 
-  const { approved, claimed } = amountsOf(ret.lines);
-  if (approved <= 0) return "REJECTED";
-  return approved < claimed ? "PARTIALLY_APPROVED" : "APPROVED";
+  const level = currentLevelOf(instance);
+  return level && isOverdue(level) ? "DEVOLUCION_DEMORADA" : "PROCESANDO";
+}
+
+/**
+ * Where the paper sits inside the ladder, or `null` while it has no running
+ * workflow at all — the axis `Estado Workflow` filters on.
+ *
+ * Unlike `statusOf`, this never looks at money: it only reads the instance's
+ * own status and, while still climbing, the level it is parked on.
+ */
+export function workflowStateOf(ret: Pick<Return, "workflow">): ReturnWorkflowState | null {
+  const instance = ret.workflow;
+  if (!instance) return null;
+  if (instance.status === "APPROVED") return "APROBADA";
+  if (instance.status === "REJECTED" || instance.status === "CANCELLED") return "RECHAZADA";
+  if (instance.status === "RETURNED") return "EN_EDICION";
+
+  const level = currentLevelOf(instance);
+  const order = level?.order ?? instance.currentLevelOrder ?? 1;
+  if (order >= 4) return "ESPERANDO_LVL4";
+  if (order === 3) return "ESPERANDO_LVL3";
+  if (order === 2) return "ESPERANDO_LVL2";
+  return "ESPERANDO_LVL1";
 }
 
 /** Whether the return has stopped moving. */
@@ -210,9 +241,9 @@ export function decisionBlockedReason(ret: Return, employeeCode: number): string
   const level = pendingLevelOf(ret);
   if (!level) {
     const status = statusOf(ret);
-    if (status === "RETURNED") return "La devolución volvió al vendedor para corrección.";
-    if (status === "REJECTED") return "La devolución ya fue rechazada.";
-    if (status === "ANNULLED") return "La devolución fue anulada.";
+    if (status === "REVERTIDO") return "La devolución volvió al vendedor para corrección.";
+    if (status === "CERRADO") return "La devolución ya fue rechazada.";
+    if (status === "ANULADA") return "La devolución fue anulada.";
     return "La devolución ya fue resuelta.";
   }
   const assigned = level.assignees.some((a) => a.employeeCode === employeeCode);
@@ -234,16 +265,18 @@ export const canDecide = (ret: Return, employeeCode: number): boolean =>
  */
 export function editBlockedReason(ret: Return): string | null {
   const status = statusOf(ret);
-  // Only a return a desk actually sent back is reopenable. `IN_APPROVAL` is
-  // being decided right now — editing under an approver's feet is not a
-  // correction, it is a race — and the rest are already settled one way or the
-  // other, which a correction cannot undo.
-  if (status !== "RETURNED" && status !== "REJECTED") {
-    if (status === "APPROVED" || status === "PARTIALLY_APPROVED") {
+  // Only a return a desk actually sent back is reopenable. `PROCESANDO`/
+  // `DEVOLUCION_DEMORADA` are being decided right now — editing under an
+  // approver's feet is not a correction, it is a race — and the rest are
+  // already settled one way or the other, which a correction cannot undo.
+  if (status !== "REVERTIDO" && status !== "CERRADO") {
+    if (status === "PROCESADO" || status === "EDITADO") {
       return "La devolución ya fue aprobada.";
     }
-    if (status === "ANNULLED") return "La devolución fue anulada.";
-    if (status === "IN_APPROVAL") return "La devolución está siendo evaluada: no se puede editar mientras tanto.";
+    if (status === "ANULADA") return "La devolución fue anulada.";
+    if (status === "PROCESANDO" || status === "DEVOLUCION_DEMORADA") {
+      return "La devolución está siendo evaluada: no se puede editar mientras tanto.";
+    }
     return "La devolución todavía no fue enviada a aprobación.";
   }
   if (ret.editCount >= MAX_RETURN_EDITS) {

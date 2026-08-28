@@ -47,7 +47,12 @@ export function AlertasPanel({
         }
       >
         {hay ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-        {hay ? alertas.length : 'Sin avisos'}
+        {/* «Sin avisos» pierde su texto cuando la franja se angosta —el tilde verde ya dice que no hay
+            nada que mirar y el `title` lo escribe— pero el NÚMERO de avisos no se va nunca: un
+            triángulo ámbar sin cifra obliga a abrir el popover para saber si es uno o son doce.
+            La variante es de CONTENEDOR: quien decide el ancho es la franja de la barra, no la
+            pantalla. Ver la nota del `@container` en `PlannerView`. */}
+        {hay ? alertas.length : <span className="hidden @min-[780px]:inline">Sin avisos</span>}
       </PopoverTrigger>
 
       <PopoverContent align="center" className="w-80 p-0">

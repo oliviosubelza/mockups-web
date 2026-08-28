@@ -40,32 +40,41 @@ const AGENCY_SESSION_AGENCY_ID = 'ag_banzer'
  */
 export const USERS: User[] = [
   {
-    id: 'u_admin',
-    name: 'Daniel Durán Melgar',
-    email: 'danielduran@grupovenado.com',
-    role: 'administrador',
-    distributor: OPERATING_DISTRIBUTOR,
-    sellerCode: 5001,
-    employeeCode: 72,
-  },
-  {
-    id: 'u_supervisor',
+    id: 'u_analista_cx',
     name: 'Sergio Peña Montero',
     email: 'sergiopena@grupovenado.com',
-    role: 'supervisor',
+    role: 'analista_cx',
     channelName: 'TRADICIONAL',
     distributor: OPERATING_DISTRIBUTOR,
     sellerCode: 5002,
     employeeCode: 57,
   },
   {
-    id: 'u_gerente',
+    id: 'u_gerente_cx',
+    name: 'Daniel Durán Melgar',
+    email: 'danielduran@grupovenado.com',
+    role: 'gerente_cx',
+    distributor: OPERATING_DISTRIBUTOR,
+    sellerCode: 5001,
+    employeeCode: 72,
+  },
+  {
+    id: 'u_gerente_comercial',
     name: 'Rocío Justiniano Áñez',
     email: 'rociojustiniano@grupovenado.com',
-    role: 'gerente',
+    role: 'gerente_comercial',
     distributor: OPERATING_DISTRIBUTOR,
     sellerCode: 5004,
     employeeCode: 94,
+  },
+  {
+    id: 'u_gerente_general',
+    name: 'Mario Peredo Salvatierra',
+    email: 'mariperedo@grupovenado.com',
+    role: 'gerente_general',
+    distributor: OPERATING_DISTRIBUTOR,
+    sellerCode: 5005,
+    employeeCode: 99,
   },
   // Sin identidad de aprobador a propósito: un vendedor REGISTRA devoluciones y no las firma nunca,
   // así que su bandeja de aprobación queda vacía en vez de prestada de otro rol.
@@ -128,9 +137,10 @@ export function initialsOf(name: string) {
 
 /** Cómo se escribe cada rol en pantalla. */
 export const ROLE_LABELS: Record<Role, string> = {
-  administrador: 'Administrador',
-  supervisor: 'Supervisor',
-  gerente: 'Gerente',
+  analista_cx: 'Analista de experiencia al cliente',
+  gerente_cx: 'Gerencia de Experiencia de atención al cliente',
+  gerente_comercial: 'Gerente comercial',
+  gerente_general: 'Gerente general',
   vendedor: 'Vendedor',
   vendedor_agencia: 'Vendedor de agencia',
 }

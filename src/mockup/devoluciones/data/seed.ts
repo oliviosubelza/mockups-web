@@ -37,7 +37,8 @@ import {
 import { CHANNELS, SUBCANALES, getSubcanalesByChannel } from "./channels";
 import { PRODUCTS, getProduct } from "./products";
 import { ALL_BLOCKS, BLOCK_GROUPS } from "./blocks-data";
-import { OPERATING_DISTRIBUTOR } from "./distributors-data";
+import { RETURN_DISTRIBUTOR_NAMES } from "./distributors-data";
+import { fotoDeMercaderia } from "../../mock-fotos";
 // The seed answers to the same per-reason rules the form does, so seeded lines are
 // lines the form could have produced.
 import { isHidden, rulesFor } from "../features/returns/lib/return-reason-rules";
@@ -1956,10 +1957,11 @@ function buildReturnLines(target: number, returnId: number): ReturnLine[] {
         ...(isHidden(rules.lot) ? { batchNumber: "" } : {}),
       })),
       notes: pick(RETURN_LINE_NOTES),
-      // The placeholder URL the rest of the seed uses; the field renders a tile
-      // for it. Between one and three, because that is what a seller sends: the
+      // A real, verified photo (`fotoDeMercaderia`, same id Monitoreo uses for incidencias de
+      // mercadería) rather than the literal "url" placeholder — so the evidence dialog has
+      // something to actually show. Between one and three, because that is what a seller sends: the
       // failure, usually the batch stamp, sometimes a second angle.
-      photos: Array.from({ length: 1 + Math.floor(rand() * 3) }, () => "url"),
+      photos: Array.from({ length: 1 + Math.floor(rand() * 3) }, () => fotoDeMercaderia()),
       itemStatus: "PENDING" as const,
       approvedMinUnits: null,
       rejectReason: null,
@@ -2100,7 +2102,7 @@ function buildReturns(): Return[] {
     > = {
       id,
       createdAt: createdAt.toISOString(),
-      distributorName: OPERATING_DISTRIBUTOR,
+      distributorName: RETURN_DISTRIBUTOR_NAMES[index % RETURN_DISTRIBUTOR_NAMES.length],
       clientId: client.id,
       clientName: client.name,
       clientOwnerName: client.ownerName,
@@ -2113,6 +2115,9 @@ function buildReturns(): Return[] {
       ice: iceTotalOf(lines),
       total,
       editCount: 0,
+      // Seeded returns are never notas disociadas — the split only happens live, on a partial
+      // level-1 approval (`returnsService.approve`).
+      originReturnId: null,
     };
 
     if (!definition || !version || ladder.length === 0) {
@@ -2120,7 +2125,7 @@ function buildReturns(): Return[] {
       // data, but the seed must not invent a flow the configuration does not have.
       return {
         ...base,
-        status: "DRAFT",
+        status: "ABIERTO",
         settlement: null,
         workflow: null,
         pastWorkflows: [],
@@ -2349,7 +2354,7 @@ function buildReturns(): Return[] {
       ice: iceTotalOf(currentLines),
       total: currentTotal,
       editCount,
-      status: statusOf({ workflow: instance, lines: currentLines }),
+      status: statusOf({ workflow: instance, lines: currentLines, editCount, originReturnId: null }),
       // How it is settled is only known once it is: a claim still crossing desks
       // has no answer yet, and a rejected one never gets one. The swap is the
       // common case — a credit note is what is issued when there is no stock to

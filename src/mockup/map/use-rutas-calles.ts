@@ -4,7 +4,7 @@
 // de Leaflet. Acá adentro vive lo único que el ruteo agrega de complejidad —cuándo pedir, cuándo NO
 // volver a pedir, y qué mostrar mientras no llegó— que es justo lo que no puede vivir dentro de un
 // `useMemo` del mapa.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchRutaPorCalles } from '../services/routing-osrm'
 import type { LatLngTuple } from './geo/polyline'
 
@@ -27,6 +27,13 @@ export interface EstadoRutasCalles {
    * alcance a pedirlo. Quien dibuja lo usa para NO trazar una ruta que todavía no tiene su forma final.
    */
   cargando: boolean
+  /**
+   * Ids de los tramos que se pidieron y NO se pudieron rutear. Quien dibuja los tiene con trazo recto y
+   * tiene que decirlo: ver la nota de `fallidos` en el hook.
+   */
+  fallidos: string[]
+  /** Vuelve a pedir solo los fallidos. Lo que ya está ruteado no se vuelve a pedir. */
+  reintentar: () => void
 }
 
 /**
@@ -52,10 +59,20 @@ const firmaDe = (tramo: TramoARutear) =>
 const TOPE_CACHE = 60
 
 /**
- * Cuántos ruteos van a la vez. Tres es el punto donde la espera deja de leerse como un fallo sin que el
- * mapa dispare las seis peticiones juntas contra un servidor de demostración ajeno.
+ * Cuántos ruteos van a la vez.
+ *
+ * BAJÓ DE TRES A DOS, y es un cambio contra la medición, no contra la intuición. Cuando esto se escribió
+ * un ruteo tardaba ~0,7 s y tres en paralelo era "educado". Medido de nuevo en agosto de 2026 contra el
+ * demo público: una ruta de 22 paradas tarda **3,6 s sola y ~7,3 s cuando van tres juntas**. O sea que
+ * el paralelismo no estaba ganando tiempo, estaba repartiendo el mismo cuello de botella en tres — y
+ * empujando cada pedido contra el corte de la espera.
+ *
+ * Dos es el compromiso: sigue solapando la latencia de red y deja a cada pedido con margen de sobra
+ * antes del timeout. Que el mapa tarde más en completarse NO es el problema que este hook resuelve —
+ * mientras espera no dibuja nada incorrecto—; el problema es que un pedido se corte, porque ahí la
+ * recta se queda para siempre.
  */
-const CONCURRENCIA = 3
+const CONCURRENCIA = 2
 
 /**
  * Recorridos por calles de los tramos dados.
@@ -78,6 +95,12 @@ export function useRutasPorCalles(tramos: TramoARutear[], activo = true): Estado
   // Contador de versión: el caché vive en un ref (no queremos re-render por escribirlo) pero la lista
   // derivada sí tiene que recalcularse cuando entra un recorrido nuevo.
   const [version, setVersion] = useState(0)
+  /**
+   * Contador de REINTENTOS, y está separado de `version` por una razón concreta: `version` NO es
+   * dependencia del efecto (si lo fuera, cada respuesta que entra al caché lo volvería a disparar).
+   * Reintentar tiene que volver a correr el efecto, así que necesita su propia dependencia.
+   */
+  const [intento, setIntento] = useState(0)
 
   const firmas = useMemo(() => tramos.map(firmaDe), [tramos])
   // Clave PRIMITIVA: `tramos` llega como array nuevo en cada render del mapa (zoom, selección, hover) y
@@ -125,7 +148,7 @@ export function useRutasPorCalles(tramos: TramoARutear[], activo = true): Estado
       vivo = false
       ctrl.abort()
     }
-  }, [clave, activo])
+  }, [clave, activo, intento])
 
   /**
    * `cargando` se DERIVA del caché en el render, no vive en un `useState`.
@@ -159,5 +182,42 @@ export function useRutasPorCalles(tramos: TramoARutear[], activo = true): Estado
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave, version])
 
-  return { porRuta, cargando }
+  /**
+   * Los tramos que YA se preguntaron y no se pudieron rutear: en el caché quedaron como recorrido vacío.
+   *
+   * ES LO QUE FALTABA. El fallo estaba manejado —el mapa cae al trazo recto y el plan se sigue leyendo—
+   * pero era INVISIBLE: una recta dibujada por un servidor caído se ve exactamente igual que un
+   * recorrido bueno, y quien mira la pantalla no tiene forma de saber que lo que está viendo no es el
+   * camino que el camión va a hacer. Un fallback silencioso no es un fallback, es un dato falso.
+   */
+  const fallidos = useMemo(() => {
+    const out: string[] = []
+    tramos.forEach((tramo, i) => {
+      const path = cache.current.get(firmas[i])
+      if (path && path.length < 2) out.push(tramo.id)
+    })
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clave, version])
+
+  /**
+   * Vuelve a pedir SOLO lo que falló.
+   *
+   * Borra del caché las firmas fallidas —que es lo que las hacía "ya preguntamos, no hay"— y empuja
+   * `intento`, que es lo que vuelve a disparar el efecto. Lo que sí se ruteó no se toca: reintentar
+   * después de un corte de red no tiene por qué costar de nuevo las rutas que sí salieron.
+   */
+  const reintentar = useCallback(() => {
+    let hubo = false
+    for (const [firma, path] of cache.current) {
+      if (path.length >= 2) continue
+      cache.current.delete(firma)
+      hubo = true
+    }
+    if (!hubo) return
+    setIntento((n) => n + 1)
+    setVersion((v) => v + 1)
+  }, [])
+
+  return { porRuta, cargando, fallidos, reintentar }
 }

@@ -4,33 +4,47 @@
 // documento eran dos pantallas para el mismo papel: cada decisión empezaba navegando afuera de la
 // cosa que se estaba decidiendo. `canDecide` es la única bifurcación que tiene esta página.
 //
+// LA INFO DE ARRIBA VA EN PANELES LADO A LADO (Cliente / Devolución / En curso), no apilados — ver
+// `InfoCard`/`InfoField` en `../components/info-grid`. Sin badges ni color: el estado es texto, una
+// sola vez. Los campos que el sistema legacy muestra y este mockup no modela (deuda del cliente,
+// grupo de cliente, cargo de quien registró, centro de costo por producto) quedan fuera: no hay
+// datos reales detrás para mostrarlos.
+//
+// PESTAÑAS EN VEZ DE TABLA+ACORDEÓN. Productos (donde se decide) e Historial (el trail completo,
+// incluidas las devoluciones que cruzan un nivel dos veces porque las revirtieron y se volvieron a
+// aprobar — `WorkflowTimeline` ya agrupa esto por ronda) son las dos preguntas que se hacen sobre una
+// devolución, y cada una se lee mejor sin competir por el mismo espacio. El panel de decisión
+// (Aprobar/Rechazar) queda FUERA de las pestañas: rechazar no depende de qué pestaña esté abierta.
+//
 // SE FUERON LAS TARJETAS DE «PROGRESO DEL WORKFLOW». Eran una fila de cards —una por nivel— arriba
-// de los ítems, y repetían, en media pantalla, lo que la franja de datos dice en una línea y el
+// de los ítems, y repetían, en media pantalla, lo que la franja "en curso" dice en una línea y el
 // histórico cuenta completo. Lo único que no estaba en ningún otro lado era el plazo del nivel
 // abierto: eso quedó, como un badge en la franja.
-//
-// LO QUE MUESTRA, EN EL ORDEN EN QUE SE PREGUNTA:
-//   1. Quién y cuánto — la franja de datos, con el nivel abierto y su plazo.
-//   2. Qué volvió — la tabla de ítems, que es donde se decide.
-//   3. Qué pasó hasta acá — el histórico, cerrado, porque es la pregunta que se hace después.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 // `useRouteParams` y no `useParams`: el shell de este mockup renderiza la pantalla a mano, fuera de
 // un <Route element>, así que `useParams()` devolvería {} y la página se quedaría sin su id.
 import { useRouteParams } from "@/core/routing/active-route";
-import { ArrowLeft, Check, ChevronDown, Coins, PackageX, X } from "lucide-react";
-import type { ReturnLine } from "../../../types";
-import { RETURN_SETTLEMENT_LABELS } from "../../../types";
+import { ArrowLeft, Check, PackageX, X } from "lucide-react";
+import type { ReturnLine, WorkflowInstanceLevel } from "../../../types";
+import {
+  CLIENT_TYPE_LABELS,
+  RETURN_SETTLEMENT_LABELS,
+  RETURN_STATUS_LABELS,
+  RETURN_WORKFLOW_STATE_LABELS,
+} from "../../../types";
 import type { ItemDecisionInput } from "../../../lib/return-workflow";
 import {
   canDecide,
   decisionBlockedReason,
   itemDecisionBlockedReason,
   pendingLevelOf,
+  workflowStateOf,
 } from "../../../lib/return-workflow";
 import {
   amountBandLabel,
   ceilingOf,
+  hoursToDeadline,
   levelPositionOf,
   progressLevelsOf,
   signaturesMissing,
@@ -40,25 +54,28 @@ import { useApproveReturn, useReturn, useRejectReturn } from "../../../hooks/use
 import { useOrderClientDetails } from "../../../hooks/use-orders";
 import { seesOwnDocumentsOnly, canApproveReturns, useCurrentUser } from "../../../stores/session-store";
 import { EmptyState } from "../../../components/common/empty-state";
-import { SlaBadge } from "../../../components/common/sla-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { bs, formatDay } from "../../../lib/format";
-import { ReturnStatusBadge } from "../components/return-status-badge";
 import { ReturnItemsTable, type ItemDraft } from "../components/return-items-table";
 import { DecisionImpactDialog } from "../components/decision-impact-dialog";
 import { ReturnTimeline } from "../components/return-timeline";
+import { InfoCard, InfoField } from "../components/info-grid";
 
-/** Un par `etiqueta — valor` de la franja de datos. */
-function Dato({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <span className="flex items-baseline gap-1.5 whitespace-nowrap text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
-    </span>
-  );
+/** El plazo del nivel, en texto llano — sin badge, sin color salvo vencida. */
+function plazoTexto(level: WorkflowInstanceLevel): string | null {
+  const hours = hoursToDeadline(level);
+  if (hours === null) return null;
+  const late = hours < 0;
+  const abs = Math.abs(hours);
+  if (abs < 1) {
+    const min = Math.max(1, Math.round(abs * 60));
+    return late ? `Vencida hace ${min} min` : `Vence en ${min} min`;
+  }
+  const h = Math.round(abs);
+  return late ? `Vencida hace ${h} h` : `Vence en ${h} h`;
 }
 
 /**
@@ -89,9 +106,8 @@ export function ReturnViewPage() {
   const reject = useRejectReturn();
 
   const [drafts, setDrafts] = useState<Map<string, ItemDraft>>(new Map());
-  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [confirmando, setConfirmando] = useState<"aprobado" | "rechazado" | null>(null);
-  const [historicoAbierto, setHistoricoAbierto] = useState(false);
+  const [tab, setTab] = useState<"productos" | "historial">("productos");
 
   const puedeFirmar = canApproveReturns(user.role) && !!user.employeeCode;
   const decidiendo = !!ret && puedeFirmar && canDecide(ret, user.employeeCode as number);
@@ -189,23 +205,6 @@ export function ReturnViewPage() {
       return next;
     });
 
-  const aplicarASeleccion = (status: "APPROVED" | "REJECTED") => {
-    setDrafts((current) => {
-      const next = new Map(current);
-      for (const productId of seleccionados) {
-        const line = ret.lines.find((l) => l.productId === productId);
-        const held = next.get(productId);
-        if (!line || !held) continue;
-        next.set(productId, {
-          ...held,
-          status,
-          approvedMinUnits: status === "APPROVED" ? lineMinUnits(line) : 0,
-        });
-      }
-      return next;
-    });
-  };
-
   const enviarDecision = (comment: string) => {
     if (!user.employeeCode) return;
     const actor = { employeeCode: user.employeeCode, employeeName: user.name };
@@ -236,6 +235,7 @@ export function ReturnViewPage() {
       ? level.assignees.length
       : level.requiredApprovals
     : 0;
+  const workflowState = workflowStateOf(ret);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -246,7 +246,6 @@ export function ReturnViewPage() {
           Devolución <span className="font-mono font-medium text-foreground">{ret.id}</span> ·{" "}
           {ret.clientName}
         </span>
-        <ReturnStatusBadge status={ret.status} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => navigate("/devoluciones")}>
             <ArrowLeft className="h-4 w-4" /> Volver
@@ -254,144 +253,141 @@ export function ReturnViewPage() {
         </div>
       </div>
 
-      {/* ── Franja de datos: lo que hace falta para decidir, y nada más. ── */}
-      <Card>
-        <CardContent className="space-y-2 p-3">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
-            <Dato label="Cliente" value={ret.clientName} />
-            <Dato label="Vendedor" value={ret.sellerName} />
-            <Dato label="Distribuidora" value={ret.distributorName} />
-            <Dato label="Total" value={bs(ret.total)} />
-            {ret.approvedTotal !== null && (
-              <Dato
-                label="Aprobado"
+      {/* ── Panel de datos: paneles lado a lado, uno por categoría, en vez de apilados — así el alto
+             total es el del panel más alto, no la suma de los tres. ── */}
+      <div className="flex flex-wrap gap-3">
+        <InfoCard title="Cliente">
+          <InfoField label="Distribuidora" value={ret.distributorName} />
+          <InfoField label="Cliente" value={ret.clientName} />
+          <InfoField label="Propietario" value={ret.clientOwnerName} />
+          <InfoField label="Teléfono" value={details?.phone} />
+          <InfoField label="Tipo de Cliente" value={details && CLIENT_TYPE_LABELS[details.clientType]} />
+          <InfoField label="Canal de Venta" value={details?.channelName} />
+          <InfoField label="Sector" value={details?.sector} />
+          <InfoField label="NIT" value={details?.nit} />
+          <InfoField label="Monto Prom. Mensual" value={details && bs(details.ticketPromedio)} />
+          <InfoField label="Dirección" value={details?.address} full />
+        </InfoCard>
+
+        <InfoCard title="Devolución">
+          <InfoField label="Fecha" value={formatDay(ret.createdAt.slice(0, 10))} />
+          {ret.originReturnId !== null && (
+            <InfoField
+              label="Nota Origen #"
+              value={
+                <button
+                  type="button"
+                  className="font-mono text-primary underline-offset-2 hover:underline"
+                  onClick={() => navigate(`/devoluciones/${ret.originReturnId}`)}
+                >
+                  {ret.originReturnId}
+                </button>
+              }
+            />
+          )}
+          <InfoField label="Registrado Por" value={ret.sellerName} />
+          <InfoField label="Repone" value={formatDay(ret.replacementDate)} />
+          <InfoField label="Total" value={bs(ret.total)} />
+          <InfoField label="Aprobado" value={ret.approvedTotal !== null ? bs(ret.approvedTotal) : null} />
+          <InfoField
+            label="Tipo de devolución"
+            value={ret.settlement && RETURN_SETTLEMENT_LABELS[ret.settlement]}
+          />
+          <InfoField label="Correcciones" value={ret.editCount === 0 ? "Ninguna" : "1 de 1 usada"} />
+          <InfoField label="Estado" value={RETURN_STATUS_LABELS[ret.status]} />
+          <InfoField
+            label="Estado Workflow"
+            value={workflowState && RETURN_WORKFLOW_STATE_LABELS[workflowState]}
+          />
+          <InfoField label="Justificación" value={ret.justification} full />
+        </InfoCard>
+
+        {/* ── "En curso": dónde está parada. Es información operativa —cambia con el reloj— y por eso
+               es su propio panel y no un dato fijo del documento. ── */}
+        {level && posicion && (
+          <InfoCard title="En curso">
+            <InfoField
+              label="Nivel"
+              value={
+                <>
+                  {posicion.position} de {posicion.total} · {level.name}
+                </>
+              }
+            />
+            <InfoField label="Banda de monto" value={banda} />
+            {level.approvalPolicy !== "ANY" && (
+              <InfoField
+                label="Firmas"
                 value={
-                  <span className="text-emerald-700 dark:text-emerald-400">{bs(ret.approvedTotal)}</span>
+                  <>
+                    {level.approvalsReceived} de {pedidas}
+                    {faltanFirmas > 0 && ` · falta${faltanFirmas === 1 ? "" : "n"} ${faltanFirmas}`}
+                  </>
                 }
               />
             )}
-            <Dato label="Repone" value={formatDay(ret.replacementDate)} />
-          </div>
-
-          <Separator />
-
-          {/* Dónde está parada, en una línea: es lo que las tarjetas de progreso decían en media
-              pantalla. Nivel, banda de monto, firmas y plazo — la escalera completa está en el
-              histórico, que es donde se pregunta por ella. */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            {level && posicion ? (
-              <>
-                <Dato
-                  label="Nivel"
-                  value={
-                    <>
-                      <span className="tabular-nums">
-                        {posicion.position} de {posicion.total}
-                      </span>{" "}
-                      · {level.name}
-                    </>
-                  }
-                />
-                {banda && (
-                  <span className="inline-flex items-center gap-1 text-xs tabular-nums text-violet-600 dark:text-violet-400">
-                    <Coins className="h-3 w-3" /> {banda}
-                  </span>
-                )}
-                {level.approvalPolicy !== "ANY" && (
-                  <Dato
-                    label="Firmas"
-                    value={
-                      <span className="tabular-nums">
-                        {level.approvalsReceived} de {pedidas}
-                        {faltanFirmas > 0 && ` · falta${faltanFirmas === 1 ? "" : "n"} ${faltanFirmas}`}
-                      </span>
-                    }
-                  />
-                )}
-                <SlaBadge level={level} />
-                {level.assignees.length > 0 && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {level.assignees
+            <InfoField label="Plazo" value={plazoTexto(level)} />
+            <InfoField
+              label="Asignados"
+              value={
+                level.assignees.length > 0
+                  ? level.assignees
                       .map((a) => (a.hasActed ? `${a.employeeName} ✓` : a.employeeName))
-                      .join(" · ")}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                {ret.workflow ? "Devolución cerrada: ya no espera firmas." : "Todavía no fue enviada a aprobación."}
-              </span>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
-            <Dato
-              label="Tipo"
-              value={ret.settlement ? RETURN_SETTLEMENT_LABELS[ret.settlement] : "Sin definir"}
+                      .join(" · ")
+                  : null
+              }
+              full
             />
-            <Dato label="Correcciones" value={ret.editCount === 0 ? "Ninguna" : "1 de 1 usada"} />
-            <Dato label="Razón social" value={details?.razonSocial ?? "—"} />
-            <Dato label="NIT" value={details?.nit ?? "—"} />
-            <Dato label="Titular" value={ret.clientOwnerName} />
-          </div>
-
-          <p className="text-sm text-muted-foreground">{ret.justification || "Sin justificación."}</p>
-        </CardContent>
-      </Card>
-
-      {/* ── Ítems: la misma tabla, con o sin las columnas que se escriben. ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <PackageX className="h-4 w-4 text-muted-foreground" />
-          {ret.lines.length} {ret.lines.length === 1 ? "producto" : "productos"}
-        </h2>
-        {decidiendo ? (
-          <span className="text-xs text-muted-foreground">
-            Podés recortar cantidades y rechazar productos. Escribir 0 rechaza la línea.
-          </span>
-        ) : (
-          puedeFirmar &&
-          ret.workflow && (
-            <span className="text-xs text-muted-foreground">
-              {decisionBlockedReason(ret, user.employeeCode as number)}
-            </span>
-          )
-        )}
-        {decidiendo && (
-          <div className="ml-auto flex shrink-0 flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={seleccionados.size === 0}
-              onClick={() => aplicarASeleccion("APPROVED")}
-            >
-              <Check className="h-3.5 w-3.5" /> Aprobar selección
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:bg-destructive/10"
-              disabled={seleccionados.size === 0}
-              onClick={() => aplicarASeleccion("REJECTED")}
-            >
-              <X className="h-3.5 w-3.5" /> Rechazar selección
-            </Button>
-          </div>
+          </InfoCard>
         )}
       </div>
 
-      <ReturnItemsTable
-        lines={ret.lines}
-        decidiendo={decidiendo}
-        drafts={drafts}
-        seleccionados={seleccionados}
-        onDraftChange={patchDraft}
-        onSelectionChange={setSeleccionados}
-      />
+      {/* ── Productos / Historial. ── */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "productos" | "historial")} className="min-h-0 flex-1">
+        <TabsList>
+          <TabsTrigger value="productos">Productos</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
+        </TabsList>
 
-      {/* ── La decisión. Va abajo de los ítems porque es lo que se hace DESPUÉS de leerlos. ── */}
+        <TabsContent value="productos" className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <PackageX className="h-4 w-4 text-muted-foreground" />
+              {ret.lines.length} {ret.lines.length === 1 ? "producto" : "productos"}
+            </h2>
+            {decidiendo ? (
+              <span className="text-xs text-muted-foreground">
+                Tildá los productos que se aprueban. El resto queda rechazado.
+              </span>
+            ) : (
+              puedeFirmar &&
+              ret.workflow && (
+                <span className="text-xs text-muted-foreground">
+                  {decisionBlockedReason(ret, user.employeeCode as number)}
+                </span>
+              )
+            )}
+          </div>
+
+          <ReturnItemsTable
+            lines={ret.lines}
+            clientId={ret.clientId}
+            decidiendo={decidiendo}
+            drafts={drafts}
+            onDraftChange={patchDraft}
+          />
+        </TabsContent>
+
+        <TabsContent value="historial">
+          {ret.workflow ? (
+            <ReturnTimeline ret={ret} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Todavía no fue enviada a aprobación.</p>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ── La decisión. Fija fuera de las pestañas: rechazar no depende de estar mirando Productos. ── */}
       {decidiendo && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3">
@@ -419,30 +415,6 @@ export function ReturnViewPage() {
             </div>
             {bloqueoConfirmar && <p className="w-full text-xs text-destructive">{bloqueoConfirmar}</p>}
           </CardContent>
-        </Card>
-      )}
-
-      {/* ── Histórico: el trail de `RefundWorkflowAction` con las decisiones por ítem colgadas.
-             Cerrado por defecto: es la pregunta que se hace después de decidir, no antes. ── */}
-      {ret.workflow && (
-        <Card className="py-0">
-          <button
-            type="button"
-            onClick={() => setHistoricoAbierto((v) => !v)}
-            className="flex w-full cursor-pointer items-center justify-between px-3 py-2.5 text-sm font-medium"
-          >
-            Histórico
-            <ChevronDown
-              className={`h-4 w-4 text-muted-foreground transition-transform ${
-                historicoAbierto ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-          {historicoAbierto && (
-            <div className="border-t p-3">
-              <ReturnTimeline ret={ret} />
-            </div>
-          )}
         </Card>
       )}
 

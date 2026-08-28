@@ -61,6 +61,7 @@ import {
   PEDIDOS,
   ciudadDe,
   cityIdDe,
+  distribuidoraIdDeCamion,
   tripulacionDeCamion,
   type CiudadId,
   type PlanCamion,
@@ -84,6 +85,7 @@ import { PlannerHud } from './PlannerHud'
 import { METRICAS_ALTO_PX, PlannerMetricas } from './PlannerMetricas'
 import { PlannerMapa } from './PlannerMapa'
 import { RutasPanel } from './RutasPanel'
+import { SalidasDialog, centrosConfigurados } from './SalidasDialog'
 import {
   aplicarAsignaciones,
   cargaDeRuta,
@@ -178,6 +180,9 @@ export function PlannerView() {
   const activeDistribuidoraIds = useDispatchPlanStore(useShallow((s) => s.activeDistribuidoraIds))
   const setActiveDistribuidoraIds = useDispatchPlanStore((s) => s.setActiveDistribuidoraIds)
   const retornosPorCamion = useDispatchPlanStore(useShallow((s) => s.retornosPorCamion))
+  const setRetornoCamion = useDispatchPlanStore((s) => s.setRetornoCamion)
+  const salidasPorCamion = useDispatchPlanStore(useShallow((s) => s.salidasPorCamion))
+  const setSalidaCamion = useDispatchPlanStore((s) => s.setSalidaCamion)
   const setSelectedTrucks = useDispatchPlanStore((s) => s.setSelectedTrucks)
   const toggleTruck = useDispatchPlanStore((s) => s.toggleTruck)
   const setOrdersIncluded = useDispatchPlanStore((s) => s.setOrdersIncluded)
@@ -325,6 +330,27 @@ export function PlannerView() {
   const columnaSiguienteTop = COLUMNA_TOP_PX + alcanceAlto + 6
 
   /**
+   * Alto útil de la pantalla. Lo necesita la tabla del pie para saber si su borde de arriba llega a
+   * chocar con la columna izquierda — ver `tablaChocaColumna`.
+   *
+   * MEDIDO y no `window.innerHeight`: esta vista vive dentro del shell (barra superior, sidebar), así
+   * que el alto de la ventana no es el alto del mapa. Mismo `ResizeObserver` que el de la tarjeta de
+   * alcance, por el mismo motivo: el DOM sabe la respuesta y a mano se desincroniza a la primera.
+   */
+  const vistaRef = useRef<HTMLDivElement | null>(null)
+  const [altoVista, setAltoVista] = useState(0)
+  useEffect(() => {
+    const nodo = vistaRef.current
+    if (!nodo) return
+    const observador = new ResizeObserver(([entrada]) => {
+      const alto = Math.round(entrada.contentRect.height)
+      setAltoVista((actual) => (actual === alto ? actual : alto))
+    })
+    observador.observe(nodo)
+    return () => observador.disconnect()
+  }, [])
+
+  /**
    * DÓNDE ESTÁ CADA CENTRO, por id. Es lo que `optimizar` usa para abrir y cerrar cada recorrido.
    *
    * ES UN MAPA Y YA NO UN PUNTO desde que el plan puede tener dos centros: cada ruta sale del depósito
@@ -339,6 +365,37 @@ export function PlannerView() {
     for (const d of distribuidorasVivas) out.set(d.id, [d.latitude, d.longitude])
     return out
   }, [distribuidorasVivas])
+
+  /**
+   * Los centros que la tabla de rutas ofrece para SALIR y para LLEGAR. Dos listas y no una:
+   *
+   * SALIR está acotado a los centros DEL PLAN. La salida ata las paradas (ver `cambiarSalida`): elegir
+   * un centro que el plan no trajo deja la ruta sin ninguna parada que le sirva — un select que ofrece
+   * opciones que vacían la fila no es una opción, es una trampa.
+   *
+   * LLEGAR abre a toda la ciudad. Cerrar en un depósito que no se está planificando es justamente el
+   * caso: el camión terminó cerca de ese galpón y duerme ahí, aunque hoy no se le arme ninguna ruta.
+   *
+   * A las de salir se les suman las salidas YA elegidas, aunque hayan quedado fuera del alcance: si no,
+   * el centro que la fila muestra no estaría en su propia lista.
+   */
+  const [verSalidas, setVerSalidas] = useState(false)
+
+  const centrosSalida = useMemo(() => {
+    // Se lee de los CAMIONES y no de `rutas` porque las rutas se derivan más abajo: es el mismo dato
+    // (`salidas[id] ?? el del camión`, ver `construirRutas`) sin invertir el orden de declaración.
+    const ids = new Set(activeDistribuidoraIds)
+    for (const camion of camiones) {
+      ids.add(salidasPorCamion[camion.id] ?? distribuidoraIdDeCamion(camion))
+    }
+    return distribuidorasVivas
+      .filter((d) => ids.has(d.id))
+      .map((d) => ({ id: d.id, nombre: d.name }))
+  }, [distribuidorasVivas, activeDistribuidoraIds, camiones, salidasPorCamion])
+  const centrosLlegada = useMemo(
+    () => centrosDelAlcance.map((d) => ({ id: d.id, nombre: d.name })),
+    [centrosDelAlcance],
+  )
 
   /** Tilda o destilda un centro del alcance. Multi: ver el encabezado de `PlannerAlcance`. */
   const elegirCentro = (id: number) => {
@@ -424,9 +481,17 @@ export function PlannerView() {
     }
     return out
   }, [retornosPorCamion])
+  /** Ídem con las salidas: el store las guarda por camión y `construirRutas` las quiere por ruta. */
+  const salidasPorRuta = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const [camionId, centroId] of Object.entries(salidasPorCamion)) {
+      out[rutaIdDeCamion(camionId)] = centroId
+    }
+    return out
+  }, [salidasPorCamion])
   const rutas = useMemo(
-    () => construirRutas(camiones, nombresRuta, llegadasPorRuta),
-    [camiones, nombresRuta, llegadasPorRuta],
+    () => construirRutas(camiones, nombresRuta, llegadasPorRuta, salidasPorRuta),
+    [camiones, nombresRuta, llegadasPorRuta, salidasPorRuta],
   )
   const paradas = useMemo(
     () => aplicarAsignaciones(paradasBase, asignaciones, rutas),
@@ -489,6 +554,44 @@ export function PlannerView() {
   const altoTabla = rutasPlegado ? RUTAS_TABLA_PLEGADO_PX : altoRutas
   /** Lo que la tabla le tapa al mapa por abajo. Es el mismo contrato que los márgenes laterales. */
   const margenAbajo = tablaVisible ? altoTabla + MARGEN_PX : 0
+
+  /**
+   * ¿La tabla del pie choca con la columna izquierda?
+   *
+   * ═══ EL PROBLEMA ═══
+   *
+   * La tabla se corría a la derecha si el dock O las métricas estaban encendidos, y eso mezclaba dos
+   * cosas distintas. Las tres tarjetas de la columna NO ocupan lo mismo:
+   *
+   *   · ALCANCE y MÉTRICAS son tarjetas cortas ANCLADAS ARRIBA. Terminan a 300-400 px del techo.
+   *   · El DOCK es `bottom-3`: llega hasta abajo, siempre, y por eso siempre está en el camino.
+   *
+   * O sea que cerrar el dock y dejar las métricas prendidas dejaba a la tabla angosta por una tarjeta
+   * que está 400 px más arriba y que la tabla no toca nunca. Se pierde media pantalla de ancho —justo
+   * en el panel cuya única función es COMPARAR filas, que es lo que pide ancho— para no pisar algo que
+   * no está ahí.
+   *
+   * ═══ LA REGLA ═══
+   *
+   * Lo que decide no es "hay algo en la columna" sino "hay algo A ESTA ALTURA". Se compara el borde de
+   * arriba de la tabla contra el borde de abajo de lo último que hay en la columna. Con el dock
+   * abierto no hace falta cuenta: llega hasta el piso.
+   *
+   * Y la cuenta importa de verdad: la tabla llega a 520 px de alto y en un portátil de 768 px una
+   * tabla estirada SÍ alcanza a las métricas. Corrértela solo cuando el dock está abierto habría
+   * cambiado un panel angosto de más por una tarjeta pisada.
+   */
+  const tablaChocaColumna = useMemo(() => {
+    if (dockAbierto) return true
+    // Sin medida todavía (primer render): se asume que choca. Equivocarse hacia el lado angosto es un
+    // panel más chico por un frame; hacia el otro lado es la tabla dibujada encima de la columna.
+    if (altoVista === 0) return true
+    const columnaFondo = verMetricas
+      ? columnaSiguienteTop + METRICAS_ALTO_PX
+      : COLUMNA_TOP_PX + alcanceAlto
+    const tablaTop = altoVista - MARGEN_PX - altoTabla
+    return tablaTop < columnaFondo + 6
+  }, [alcanceAlto, altoTabla, altoVista, columnaSiguienteTop, dockAbierto, verMetricas])
 
   const enfocar = useCallback(
     (id: string) => {
@@ -668,6 +771,78 @@ export function PlannerView() {
    * redibuja en el mismo frame, y meter una espera de 900 ms convertiría un gesto directo en un
    * trámite.
    */
+  /**
+   * Mueve el CENTRO DE SALIDA de una ruta y suelta lo que esa mudanza invalida.
+   *
+   * ═══ POR QUÉ ACÁ HAY QUE TOCAR LAS ASIGNACIONES Y EN LA LLEGADA NO ═══
+   *
+   * La salida es una restricción dura del reparto: una ruta solo lleva paradas de su centro, porque
+   * esa mercadería está en ESE galpón (ver `mismoCentro` en `optimizar`). Cambiarla y dejar las
+   * paradas donde estaban armaría un plan que el propio optimizador declara imposible: un camión
+   * cargando en Norte y entregando pedidos que están en el depósito de Discruz. Las que ya no
+   * corresponden vuelven a «sin asignar», que es un estado que la pantalla sabe mostrar y avisar; las
+   * del centro nuevo —y las que no tienen centro resuelto— se quedan.
+   *
+   * El resecuenciado va con las rutas RECALCULADAS y no con `rutas`: el orden de visita se arma desde
+   * el depósito de salida, y `rutas` todavía tiene el viejo (el store recién se escribió y el render
+   * que lo refleja no ocurrió).
+   */
+  const cambiarSalida = (rutaId: string, centroId: number) => {
+    const ruta = rutas.find((r) => r.id === rutaId)
+    if (!ruta || ruta.salidaId === centroId) return
+
+    // Volver al centro del camión BORRA la decisión en vez de guardarla: "sin entrada" y "el suyo"
+    // tienen que ser el mismo estado.
+    const propio = distribuidoraIdDeCamion(ruta.camion)
+    setSalidaCamion(ruta.camion.id, centroId === propio ? null : centroId)
+
+    const rutasNuevas = construirRutas(camiones, nombresRuta, llegadasPorRuta, {
+      ...salidasPorRuta,
+      [rutaId]: centroId,
+    })
+    const siguiente = { ...asignaciones }
+    let sueltas = 0
+    for (const parada of paradasBase) {
+      if (asignaciones[parada.id]?.rutaId !== rutaId) continue
+      // `null` = parada sin centro resuelto. El reparto tampoco la restringe, así que no se suelta.
+      if (parada.distribuidoraId == null || parada.distribuidoraId === centroId) continue
+      siguiente[parada.id] = { rutaId: null, secuencia: 0 }
+      sueltas++
+    }
+    setAsignaciones(resecuenciar(paradasBase, siguiente, [rutaId], rutasNuevas, depositosPorId))
+
+    const nombreCentro = distribuidorasVivas.find((d) => d.id === centroId)?.name ?? `Centro ${centroId}`
+    toast.success(
+      `${ruta.nombre} sale de ${nombreCentro}`,
+      sueltas > 0
+        ? { description: `${sueltas} parada(s) de otro centro quedaron sin asignar.` }
+        : undefined,
+    )
+  }
+
+  /**
+   * Mueve el CENTRO DE LLEGADA de una ruta.
+   *
+   * No toca el reparto —qué paradas lleva no depende de dónde duerme el camión—, pero sí el ORDEN: el
+   * último tramo cuelga de la llegada, así que la secuencia se recalcula con el depósito nuevo. Sin
+   * toast: el cambio se ve en la misma celda donde se hizo y en el trazo del mapa.
+   */
+  const cambiarLlegada = (rutaId: string, centroId: number) => {
+    const ruta = rutas.find((r) => r.id === rutaId)
+    if (!ruta || ruta.llegadaId === centroId) return
+    // El default es CERRAR DONDE ABRIÓ: elegir la salida borra la decisión en vez de fijarla, así el
+    // día que la salida se mueva la llegada la sigue sola.
+    setRetornoCamion(ruta.camion.id, centroId === ruta.salidaId ? null : centroId)
+
+    const rutasNuevas = construirRutas(
+      camiones,
+      nombresRuta,
+      { ...llegadasPorRuta, [rutaId]: centroId },
+      salidasPorRuta,
+    )
+    setAsignaciones(resecuenciar(paradasBase, asignaciones, [rutaId], rutasNuevas, depositosPorId))
+  }
+
   const reordenar = (rutaId: string, ordenIds: string[]) => {
     setAsignaciones(reordenarRuta(asignaciones, rutaId, ordenIds))
   }
@@ -813,7 +988,10 @@ export function PlannerView() {
     // `border-0` además de `rounded-none`: la ruta pide `fullBleed`, así que este borde caería JUSTO
     // encima del `border-b` de la topbar y del borde del sidebar — dos líneas de 1 px pegadas que se
     // leen como una sola gruesa y mal alineada.
-    <Card className="relative h-full min-h-0 gap-0 overflow-hidden rounded-none border-0 p-0">
+    <Card
+      ref={vistaRef}
+      className="relative h-full min-h-0 gap-0 overflow-hidden rounded-none border-0 p-0"
+    >
       {/* `isolate` NO es decorativo: CONTIENE la escalera de z-index de Leaflet, que internamente
           llega a 1000. Sin esto esos valores compiten en el contexto de apilado RAÍZ y, como los
           overlays de la app se portalizan al body con z-50 (selects, popovers), el mapa les ganaba y
@@ -943,8 +1121,24 @@ export function PlannerView() {
 
           `pointer-events-none` en el contenedor y `auto` en la tarjeta: la franja no captura los clicks
           del mapa que quedan a sus costados. */}
+      {/* ── @container, Y NO BREAKPOINTS DE PANTALLA ────────────────────────────────────────────
+          Este `div` es la FRANJA que le queda a la barra, y su ancho no lo decide el monitor: lo
+          deciden el `paddingLeft` de la columna izquierda y el `paddingRight` del detalle de la parada
+          —320 px que aparecen y desaparecen mientras se trabaja—. Por eso la barra se veía apretada
+          justo al abrir el detalle: en un monitor grande NINGÚN breakpoint de viewport se dispara, así
+          que la barra seguía pidiendo su ancho completo dentro de una franja 344 px más chica y
+          terminaba con los controles pegados uno al otro o scrolleando por dentro.
+
+          Con `@container` acá y variantes `@min-[…]` adentro, cada etiqueta desaparece cuando la FRANJA
+          se queda sin lugar, que es la pregunta correcta. Las consultas de contenedor miden la caja de
+          CONTENIDO, o sea ya con los dos paddings descontados: es exactamente el ancho utilizable.
+
+          El orden en que se van las cosas es del dato más prescindible al menos: la fecha del reparto
+          (que no es un control), los nombres de los paneles (el ícono y el número quedan), las
+          etiquetas de las acciones secundarias, «Sin avisos» y por último «Volver». Nada se ESCONDE:
+          todo lo que pierde su texto conserva su `title`. */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center transition-[padding] duration-300 ease-out"
+        className="@container pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center transition-[padding] duration-300 ease-out"
         style={{ paddingLeft: margenIzq, paddingRight: margenDer }}
       >
         {/* `min-w-0` + `overflow-x-auto` y NO `shrink-0`: la franja que le queda a esta barra se
@@ -961,7 +1155,7 @@ export function PlannerView() {
             title="Volver a la lista de planificaciones"
           >
             <ChevronLeft size={14} />
-            <span className="hidden sm:inline">Volver</span>
+            <span className="hidden @min-[700px]:inline">Volver</span>
           </Button>
 
           <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
@@ -982,7 +1176,9 @@ export function PlannerView() {
                 )}
               >
                 <Icon size={14} />
-                {label}
+                {/* El NOMBRE se va antes que el número: sin «Puntos» el ícono todavía dice de qué es,
+                    sin el 61 la pastilla no dice nada. */}
+                <span className="hidden @min-[1000px]:inline">{label}</span>
                 {/* El conteo va como texto al lado del nombre, no como pastilla flotante: acá hay
                     ancho, y una pastilla encima del ícono era un parche del botón cuadrado de 28 px. */}
                 {conteoPanel[id] > 0 && (
@@ -1023,7 +1219,7 @@ export function PlannerView() {
                   }
                 >
                   <Plus size={14} />
-                  Nueva ruta
+                  <span className="hidden @min-[880px]:inline">Nueva ruta</span>
                 </Button>
               )}
               <PlannerHud
@@ -1033,6 +1229,9 @@ export function PlannerView() {
                 hayDeficit={hayDeficit}
                 optimizado={optimizado}
                 optimizando={optimizando}
+                centrosDelPlan={activeDistribuidoraIds.length}
+                configurados={centrosConfigurados(rutas)}
+                onSalidas={() => setVerSalidas(true)}
                 onOptimizar={optimizar}
                 onGenerar={generar}
               />
@@ -1087,11 +1286,15 @@ export function PlannerView() {
           lateral: remontar la tabla en cada apertura perdería el scroll y el alto se vería saltar. */}
       {tablaRutas && (
         <div
-          className={cn(FLOTANTE, DESLIZA, 'bottom-3')}
+          // `transition-[transform,left]` y no solo `transform`: el borde izquierdo se MUEVE cuando se
+          // cierra el dock, y sin transición la tabla pega un salto de 306 px en un frame. Es el mismo
+          // criterio que el `transition-[padding]` de la barra de arriba y el `transition-[transform,top]`
+          // del dock: los flotantes de esta pantalla se acomodan entre ellos, y acomodarse se ve.
+          className={cn(FLOTANTE, DESLIZA, 'bottom-3 transition-[transform,left]')}
           style={{
             // Los bordes salen de las mismas medidas que los márgenes de la cámara, y no de un valor
             // propio: si se separan, la tabla y el encuadre dejan de hablar de la misma pantalla.
-            left: MARGEN_PX + (dockAbierto || verMetricas ? PANEL_PX + 6 : 0),
+            left: MARGEN_PX + (tablaChocaColumna ? PANEL_PX + 6 : 0),
             // Fijo, y NO reactivo al detalle de la parada: lo único que descuenta es la barra de
             // herramientas del mapa, que está anclada en la misma esquina y quedaría tapada justo
             // cuando se está marcando en el mapa. El detalle no entra en esta cuenta porque el que se
@@ -1105,6 +1308,10 @@ export function PlannerView() {
           <RutasTablaPanel
             rutas={rutas}
             paradasAsignadas={paradas}
+            centrosSalida={centrosSalida}
+            centrosLlegada={centrosLlegada}
+            onSalida={cambiarSalida}
+            onLlegada={cambiarLlegada}
             alto={altoRutas}
             onAlto={setAltoRutas}
             plegado={rutasPlegado}
@@ -1268,6 +1475,16 @@ export function PlannerView() {
       )}
 
       <AtajosDialog abierto={atajosAbiertos} onCerrar={() => setAtajosAbiertos(false)} />
+
+      <SalidasDialog
+        abierto={verSalidas}
+        rutas={rutas}
+        centrosSalida={centrosSalida}
+        centrosLlegada={centrosLlegada}
+        onSalida={cambiarSalida}
+        onLlegada={cambiarLlegada}
+        onCerrar={() => setVerSalidas(false)}
+      />
 
       <NuevaRutaDialog
         abierto={nuevaRutaAbierta}

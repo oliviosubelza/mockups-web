@@ -95,3 +95,15 @@ export const SANTA_CRUZ_DISTRIBUTORS: Distributor[] = [
     polygon: areaAround(COTOCA_CENTER, 0.026, 0.032),
   },
 ];
+
+/**
+ * Distributor names a devolución may be registered under, for the
+ * `Distribuidora` filter and the seed. The operating one first (the login's
+ * own, and the most common case), then the mapped operating areas — same
+ * names as `SANTA_CRUZ_DISTRIBUTORS`, reused rather than duplicated so the
+ * filter and the areas layer never drift apart.
+ */
+export const RETURN_DISTRIBUTOR_NAMES: string[] = [
+  OPERATING_DISTRIBUTOR,
+  ...SANTA_CRUZ_DISTRIBUTORS.map((d) => d.name),
+];

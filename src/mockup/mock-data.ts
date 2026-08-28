@@ -1405,20 +1405,80 @@ function construirParadas(pedidos: Pedido[]): Parada[] {
   const objetivoKg = capKg.map((kg, i) => (excede[i] ? kg * FACTOR_EXCEDE : kg * ratioResto))
   let actual = 0
 
+  /**
+   * A qué CIUDAD reparte cada camión. **Se decide ANTES de repartir, y ese es todo el punto.**
+   *
+   * ═══ EL PROBLEMA ═══
+   *
+   * La curva de Hilbert agrupa por vecindad, pero el reparto NO la respetaba: cuando el camión de
+   * turno se quedaba sin cupo, la parada iba al PRIMERO con lugar recorriendo la lista en círculo. Y
+   * un camión llenado a medias al principio de la curva —en Montero— seguía teniendo cupo trescientas
+   * paradas después, cuando la curva ya iba por La Guardia. Se la llevaba igual.
+   *
+   * Estaba en el dataset y se veía: una orden con paradas en Montero, La Guardia y Warnes, **69,9 km
+   * entre las dos más lejanas**. En el monitoreo, un camión que cruza el departamento entre entrega y
+   * entrega; en el planificador, una ruta que ninguna persona armaría. La contigüidad que la curva
+   * conseguía la deshacía el bucle de abajo.
+   *
+   * ═══ POR QUÉ NO ALCANZA CON "EL CAMIÓN SE ATA A LA PRIMERA CIUDAD QUE LE TOQUE" ═══
+   *
+   * Fue el primer intento y dejó **227 de 525 paradas sin camión** (contra ~5% que el mockup quiere a
+   * propósito). El motivo: la curva recorre las ciudades en orden espacial, así que las primeras se
+   * quedaban con TODA la flota y las últimas no encontraban un solo camión libre. Atar por orden de
+   * llegada reparte los camiones según por dónde empieza la curva, que no tiene nada que ver con
+   * dónde está el trabajo.
+   *
+   * ═══ LA REGLA ═══
+   *
+   * Cada camión va a la ciudad con más demanda TODAVÍA SIN CUBRIR, y se le descuenta su cupo. Es un
+   * reparto goloso, determinista y proporcional al peso real de cada ciudad — no a cuántas ciudades
+   * hay ni a en qué orden aparecen.
+   *
+   * Un camión reparte en UNA ciudad no es una restricción inventada para el mockup: es la única
+   * lectura posible de un reparto diario, y es la misma regla que el planificador ya aplica por centro
+   * de distribución (`mismoCentro` en `planner-model`).
+   */
+  const faltaPorCiudad = new Map<CiudadId, number>()
+  for (const parada of porCercania) {
+    const c = ciudadDe(parada.pedidos[0])
+    faltaPorCiudad.set(c, (faltaPorCiudad.get(c) ?? 0) + parada.pesoTotal)
+  }
+  const ciudadDeCamion: CiudadId[] = enRuteo.map((_, i) => {
+    let elegida = CIUDAD_IDS[0]
+    let mayor = -Infinity
+    // Recorrido explícito y no un `sort`: el orden de inserción del Map es el de la curva, así que un
+    // empate se resuelve siempre igual. Con `sort` sobre un array reconstruido, no.
+    for (const [ciudad, falta] of faltaPorCiudad) {
+      if (falta > mayor) {
+        mayor = falta
+        elegida = ciudad
+      }
+    }
+    faltaPorCiudad.set(elegida, mayor - objetivoKg[i])
+    return elegida
+  })
+
   porCercania.forEach((parada) => {
     // ~5% queda sin asignar a propósito: es el estado "todavía sin camión" que el mockup retrata.
     // El sorteo se hace UNA vez por parada, igual que antes, para no correr la semilla del dataset.
     if (rand.chance(0.05)) return
-    // Primer camión, desde el actual, donde la parada entra dentro de su cupo.
+    // Todas las paradas de un punto de entrega son del mismo lugar, así que la ciudad sale del primer
+    // pedido — igual que el dueño en `construirParadas` del planificador.
+    const ciudad = ciudadDe(parada.pedidos[0])
+    // Primer camión, desde el actual, que sea de esta ciudad (o todavía no sea de ninguna) y donde la
+    // parada entre dentro de su cupo.
     let idx = -1
     for (let k = 0; k < enRuteo.length; k++) {
       const i = (actual + k) % enRuteo.length
+      if (ciudadDeCamion[i] !== ciudad) continue
       if (objetivoKg[i] >= parada.pesoTotal) {
         idx = i
         break
       }
     }
-    // No entra en ninguno: queda sin camión en vez de pasarse del cupo.
+    // No entra en ninguno: queda sin camión en vez de pasarse del cupo o de cruzar de ciudad. Suma a
+    // las ~5% sorteadas arriba, y es el mismo estado "todavía sin camión" que la pantalla ya sabe
+    // mostrar — no un hueco nuevo.
     if (idx === -1) return
     objetivoKg[idx] -= parada.pesoTotal
     actual = idx
