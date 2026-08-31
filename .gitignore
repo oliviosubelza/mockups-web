@@ -13,7 +13,7 @@ format.json
 .pdf
 ./analisis
 !db_script.sql
-cierre
+
 
 # Documentación contractual de restricciones de planificación
 !docs/restricciones-planificacion/analisis/
