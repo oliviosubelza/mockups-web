@@ -1,0 +1,33 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 4: PUT /api/v1/distributors/:id (Actualizar Datos y Coordenadas del Depósito)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distributors DB" as DistDB
+
+User -> Web: Mueve el depósito en el mapa / Modifica nombre y pulsa "Guardar Cambios"
+Web -> Gateway: PUT /api/v1/distributors/501\n{ name, latitude, longitude }
+Gateway -> Service: updateDistributor(id, updateDto, executorId)
+
+Service -> DistDB: findActiveById(id)
+DistDB --> Service: existingDistributor (o null)
+
+alt Centro no encontrado
+    Service --> Gateway: 404 Not Found (Centro no encontrado)
+    Gateway --> Web: 404 Not Found
+    Web --> User: Muestra notificación de error
+else Centro encontrado
+    Service -> Service: validateCoordinates(latitude, longitude)
+    Service -> DistDB: updateDistributorRecord(id, updateDto, executorId)
+    DistDB --> Service: updatedRecord (id, name, lat, lng, updatedAt)
+
+    Service -> Service: buildUpdateResponse(updatedRecord)
+    Service --> Gateway: updateResponse
+    Gateway --> Web: 200 OK (Centro actualizado)
+    Web --> User: Actualiza posición del depósito en el mapa y panel de detalle
+end
+@enduml

@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert } from 'lucide-react'
+import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -118,6 +118,10 @@ function HistorialOrdenesScreen() {
 
 function HistorialRevisionesScreen() {
   return <MonitoreoEHistorialOTView initialTab="AUDIT" />
+}
+
+function AnaliticaTurnoScreen() {
+  return <MonitoreoEHistorialOTView initialTab="ANALYTICS" />
 }
 
 function CierreLogisticoScreen() {
@@ -560,6 +564,16 @@ export const routes: MockRoute[] = [
     icon: ClipboardCheck,
     component: HistorialRevisionesScreen,
     order: 5,
+    showInSidebar: false,
+  },
+  {
+    // Módulo Unificado: Analítica y Reportes del Turno (redirecciona a Tab 4 del Hub)
+    id: 'analitica-turno',
+    path: '/reportes/analitica-turno',
+    label: 'Analítica del Turno',
+    icon: BarChart3,
+    component: AnaliticaTurnoScreen,
+    order: 6,
     showInSidebar: false,
   },
   {

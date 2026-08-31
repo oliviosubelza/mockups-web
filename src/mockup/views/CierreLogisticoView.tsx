@@ -47,6 +47,8 @@ import {
   Info,
   Maximize2,
   ArrowRight,
+  ArrowLeft,
+  Edit3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -71,6 +73,9 @@ import {
   CIERRES_ORDENES_TRANSPORTE,
   type CierreOrdenTransporte,
 } from '../cierre-logistico-data'
+import { CierreCobranzaInPlaceEditor } from '../cierre/CierreCobranzaInPlaceEditor'
+import { OrdenesFinalizadasListView } from '../cierre/OrdenesFinalizadasListView'
+import { RegistroCierreOTView } from '../cierre/RegistroCierreOTView'
 import {
   exportarCierreAlmacenIndividualAExcel,
   exportarCierreCobranzasIndividualAExcel,
@@ -83,13 +88,14 @@ import {
 } from '../utils/imprimir-cierre-pdf'
 
 export function CierreLogisticoView() {
-  // ── ESTADOS DE FILTROS EN CASCADA ──
-  const [searchTerm, setSearchTerm] = useState('')
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
-  const [selectedDriver, setSelectedDriver] = useState<string>('ALL')
-  const [selectedUser, setSelectedUser] = useState<string>('ALL')
-  const [selectedTruck, setSelectedTruck] = useState<string>('ALL')
-  const [selectedOrderCode, setSelectedOrderCode] = useState<string>('ALL')
+  // ── ESTADO DE VISTA PRINCIPAL (LISTA vs REGISTRO vs CONSOLIDADOS) ──
+  const [currentViewMode, setCurrentViewMode] = useState<
+    'LISTA_ORDENES' | 'REGISTRO_CIERRE' | 'CIERRES_CONSOLIDADOS'
+  >('LISTA_ORDENES')
+
+  // ── ESTADO REACTIVO MUTABLE DE CIERRES ──
+  const [cierresData, setCierresData] = useState<CierreOrdenTransporte[]>(CIERRES_ORDENES_TRANSPORTE)
+  const [isEditingCobranza, setIsEditingCobranza] = useState(false)
 
   // ── ESTADO DE SELECCIÓN DE CIERRE ACTIVO ──
   const [selectedId, setSelectedId] = useState<string>(CIERRES_ORDENES_TRANSPORTE[0].id)
@@ -97,21 +103,6 @@ export function CierreLogisticoView() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const [showCobranzaModal, setShowCobranzaModal] = useState(false)
-
-  // ── ESTADOS DE POPOVERS Y BUSCADORES INTERNOS ──
-  const [datePopoverOpen, setDatePopoverOpen] = useState(false)
-
-  const [driverPopoverOpen, setDriverPopoverOpen] = useState(false)
-  const [driverSearchQuery, setDriverSearchQuery] = useState('')
-
-  const [userPopoverOpen, setUserPopoverOpen] = useState(false)
-  const [userSearchQuery, setUserSearchQuery] = useState('')
-
-  const [truckPopoverOpen, setTruckPopoverOpen] = useState(false)
-  const [truckSearchQuery, setTruckSearchQuery] = useState('')
-
-  const [orderPopoverOpen, setOrderPopoverOpen] = useState(false)
-  const [orderSearchQuery, setOrderSearchQuery] = useState('')
 
   // ── ESTADOS PARA TABLA DE PRODUCTOS EN MODAL (BUSCADOR Y FILTROS RÁPIDOS) ──
   const [productTableSearch, setProductTableSearch] = useState('')
@@ -125,342 +116,11 @@ export function CierreLogisticoView() {
 
   const printRef = useRef<HTMLDivElement>(null)
 
-  // Helper para verificar coincidencia con el rango de fechas
-  const matchesDateRange = (c: CierreOrdenTransporte, range: DateRange | undefined) => {
-    if (!range?.from) return true
-    const orderDate = parseISO(c.dateIso)
-    if (isBefore(orderDate, startOfDay(range.from))) return false
-    if (range.to && isAfter(orderDate, endOfDay(range.to))) return false
-    return true
-  }
-
-  // ── ETIQUETA AMIGABLE DEL RANGO DE FECHAS SELECCIONADO ──
-  const dateRangeLabel = useMemo(() => {
-    if (!dateRange?.from) return 'Todas las fechas'
-    if (!dateRange.to || isSameDay(dateRange.from, dateRange.to)) {
-      return format(dateRange.from, 'dd/MM/yyyy')
-    }
-    return `${format(dateRange.from, 'dd/MM/yyyy')} - ${format(dateRange.to, 'dd/MM/yyyy')}`
-  }, [dateRange])
-
-  // ── 2. LISTA DE CHOFERES EN CASCADA (Nivel 2: Filtrado por Rango de Fecha) ──
-  const driversList = useMemo(() => {
-    const pool = CIERRES_ORDENES_TRANSPORTE.filter((c) => matchesDateRange(c, dateRange))
-    const map = new Map<string, { name: string; empresa: string; ci: string; count: number }>()
-    pool.forEach((c) => {
-      const existing = map.get(c.driverName)
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(c.driverName, {
-          name: c.driverName,
-          empresa: c.driverEmpresa,
-          ci: c.driverCi,
-          count: 1,
-        })
-      }
-    })
-    return Array.from(map.values())
-  }, [dateRange])
-
-  const filteredDriversList = useMemo(() => {
-    if (!driverSearchQuery.trim()) return driversList
-    const q = driverSearchQuery.toLowerCase()
-    return driversList.filter(
-      (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.empresa.toLowerCase().includes(q) ||
-        d.ci.toLowerCase().includes(q)
-    )
-  }, [driversList, driverSearchQuery])
-
-  // ── 3. LISTA DE USUARIOS EN CASCADA (Nivel 3: Filtrado por Fecha + Chofer) ──
-  const usersList = useMemo(() => {
-    const pool = CIERRES_ORDENES_TRANSPORTE.filter((c) => {
-      if (!matchesDateRange(c, dateRange)) return false
-      if (selectedDriver !== 'ALL' && c.driverName !== selectedDriver) return false
-      return true
-    })
-    const map = new Map<string, { username: string; count: number; cargo: string }>()
-    pool.forEach((c) => {
-      const user = c.almacen.usuarioLiquidador
-      const cargo = c.almacen.firmas.almacen.cargo
-      const existing = map.get(user)
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(user, {
-          username: user,
-          cargo: cargo || 'Liquidador Almacén',
-          count: 1,
-        })
-      }
-    })
-    return Array.from(map.values())
-  }, [dateRange, selectedDriver])
-
-  const filteredUsersList = useMemo(() => {
-    if (!userSearchQuery.trim()) return usersList
-    const q = userSearchQuery.toLowerCase()
-    return usersList.filter(
-      (u) => u.username.toLowerCase().includes(q) || u.cargo.toLowerCase().includes(q)
-    )
-  }, [usersList, userSearchQuery])
-
-  // ── 4. LISTA DE CAMIONES EN CASCADA (Nivel 4: Filtrado por Fecha + Chofer + Usuario) ──
-  const trucksList = useMemo(() => {
-    const pool = CIERRES_ORDENES_TRANSPORTE.filter((c) => {
-      if (!matchesDateRange(c, dateRange)) return false
-      if (selectedDriver !== 'ALL' && c.driverName !== selectedDriver) return false
-      if (selectedUser !== 'ALL' && c.almacen.usuarioLiquidador !== selectedUser) return false
-      return true
-    })
-    const map = new Map<string, { plate: string; truckType: string; isCold: boolean; count: number }>()
-    pool.forEach((c) => {
-      const existing = map.get(c.truckPlate)
-      if (existing) {
-        existing.count += 1
-      } else {
-        map.set(c.truckPlate, {
-          plate: c.truckPlate,
-          truckType: c.truckType,
-          isCold:
-            c.truckType.toLowerCase().includes('frio') ||
-            c.truckType.toLowerCase().includes('frío'),
-          count: 1,
-        })
-      }
-    })
-    return Array.from(map.values())
-  }, [dateRange, selectedDriver, selectedUser])
-
-  const filteredTrucksList = useMemo(() => {
-    if (!truckSearchQuery.trim()) return trucksList
-    const q = truckSearchQuery.toLowerCase()
-    return trucksList.filter(
-      (t) => t.plate.toLowerCase().includes(q) || t.truckType.toLowerCase().includes(q)
-    )
-  }, [trucksList, truckSearchQuery])
-
-  // ── 5. LISTA DE DESPACHOS EN CASCADA (Nivel 5: Directamente asociados al Chofer/Fecha/Usuario/Camión) ──
-  const ordersList = useMemo(() => {
-    const pool = CIERRES_ORDENES_TRANSPORTE.filter((c) => {
-      if (!matchesDateRange(c, dateRange)) return false
-      if (selectedDriver !== 'ALL' && c.driverName !== selectedDriver) return false
-      if (selectedUser !== 'ALL' && c.almacen.usuarioLiquidador !== selectedUser) return false
-      if (selectedTruck !== 'ALL' && c.truckPlate !== selectedTruck) return false
-      return true
-    })
-    return pool.map((c) => ({
-      id: c.id,
-      orderCode: c.orderCode,
-      driverName: c.driverName,
-      dateFormatted: c.dateFormatted,
-      statusLabel: c.statusLabel,
-      status: c.status,
-      routeName: c.routeName,
-    }))
-  }, [dateRange, selectedDriver, selectedUser, selectedTruck])
-
-  const filteredOrdersList = useMemo(() => {
-    if (!orderSearchQuery.trim()) return ordersList
-    const q = orderSearchQuery.toLowerCase()
-    return ordersList.filter(
-      (o) =>
-        o.orderCode.toLowerCase().includes(q) ||
-        o.driverName.toLowerCase().includes(q) ||
-        o.routeName.toLowerCase().includes(q)
-    )
-  }, [ordersList, orderSearchQuery])
-
-  // ── HANDLERS DE SELECCIÓN EN CASCADA ──
-  const handleDateRangeChange = (range: DateRange | undefined) => {
-    setDateRange(range)
-    if (range?.from) {
-      const validDrivers = CIERRES_ORDENES_TRANSPORTE.filter((c) =>
-        matchesDateRange(c, range)
-      ).map((c) => c.driverName)
-
-      if (selectedDriver !== 'ALL' && !validDrivers.includes(selectedDriver)) {
-        setSelectedDriver('ALL')
-        setSelectedUser('ALL')
-        setSelectedTruck('ALL')
-        setSelectedOrderCode('ALL')
-      }
-    }
-  }
-
-  const handleDriverChange = (driverName: string) => {
-    setSelectedDriver(driverName)
-    setDriverPopoverOpen(false)
-    if (driverName !== 'ALL') {
-      const pool = CIERRES_ORDENES_TRANSPORTE.filter(
-        (c) => matchesDateRange(c, dateRange) && c.driverName === driverName
-      )
-      const validUsers = pool.map((c) => c.almacen.usuarioLiquidador)
-      const validTrucks = pool.map((c) => c.truckPlate)
-      const validOrders = pool.map((c) => c.orderCode)
-
-      if (selectedUser !== 'ALL' && !validUsers.includes(selectedUser)) setSelectedUser('ALL')
-      if (selectedTruck !== 'ALL' && !validTrucks.includes(selectedTruck)) setSelectedTruck('ALL')
-      if (selectedOrderCode !== 'ALL' && !validOrders.includes(selectedOrderCode)) {
-        setSelectedOrderCode('ALL')
-      }
-    }
-  }
-
-  const handleUserChange = (user: string) => {
-    setSelectedUser(user)
-    setUserPopoverOpen(false)
-    if (user !== 'ALL') {
-      const pool = CIERRES_ORDENES_TRANSPORTE.filter(
-        (c) =>
-          matchesDateRange(c, dateRange) &&
-          (selectedDriver === 'ALL' || c.driverName === selectedDriver) &&
-          c.almacen.usuarioLiquidador === user
-      )
-      const validTrucks = pool.map((c) => c.truckPlate)
-      const validOrders = pool.map((c) => c.orderCode)
-      if (selectedTruck !== 'ALL' && !validTrucks.includes(selectedTruck)) setSelectedTruck('ALL')
-      if (selectedOrderCode !== 'ALL' && !validOrders.includes(selectedOrderCode))
-        setSelectedOrderCode('ALL')
-    }
-  }
-
-  const handleTruckChange = (truck: string) => {
-    setSelectedTruck(truck)
-    setTruckPopoverOpen(false)
-    if (truck !== 'ALL') {
-      const pool = CIERRES_ORDENES_TRANSPORTE.filter(
-        (c) =>
-          matchesDateRange(c, dateRange) &&
-          (selectedDriver === 'ALL' || c.driverName === selectedDriver) &&
-          (selectedUser === 'ALL' || c.almacen.usuarioLiquidador === selectedUser) &&
-          c.truckPlate === truck
-      )
-      const validOrders = pool.map((c) => c.orderCode)
-      if (selectedOrderCode !== 'ALL' && !validOrders.includes(selectedOrderCode))
-        setSelectedOrderCode('ALL')
-    }
-  }
-
-  const handleOrderChange = (orderCode: string, orderId?: string) => {
-    setSelectedOrderCode(orderCode)
-    setOrderPopoverOpen(false)
-    if (orderId) {
-      setSelectedId(orderId)
-    } else if (orderCode !== 'ALL') {
-      const found = CIERRES_ORDENES_TRANSPORTE.find((c) => c.orderCode === orderCode)
-      if (found) setSelectedId(found.id)
-    }
-  }
-
-  // ── FILTRADO MULTICRITERIO DE CIERRES ──
-  const filteredCierres = useMemo(() => {
-    return CIERRES_ORDENES_TRANSPORTE.filter((c) => {
-      // 1. Filtro de búsqueda libre de texto
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase()
-        const matchCode = c.orderCode.toLowerCase().includes(query)
-        const matchDriver =
-          c.driverName.toLowerCase().includes(query) ||
-          c.driverEmpresa.toLowerCase().includes(query)
-        const matchTruck =
-          c.truckPlate.toLowerCase().includes(query) ||
-          c.truckType.toLowerCase().includes(query)
-        const matchUser = c.almacen.usuarioLiquidador.toLowerCase().includes(query)
-        const matchSupervisor = c.supervisorName.toLowerCase().includes(query)
-        const matchRoute = c.routeName.toLowerCase().includes(query)
-        const matchProduct = c.almacen.items.some(
-          (it) =>
-            it.producto.toLowerCase().includes(query) ||
-            it.codigo.toLowerCase().includes(query)
-        )
-        if (
-          !matchCode &&
-          !matchDriver &&
-          !matchTruck &&
-          !matchUser &&
-          !matchSupervisor &&
-          !matchRoute &&
-          !matchProduct
-        ) {
-          return false
-        }
-      }
-
-      // 2. Filtro de Rango de Fecha
-      if (!matchesDateRange(c, dateRange)) {
-        return false
-      }
-
-      // 3. Filtro de Chofer
-      if (selectedDriver !== 'ALL' && c.driverName !== selectedDriver) {
-        return false
-      }
-
-      // 4. Filtro de Usuario
-      if (selectedUser !== 'ALL' && c.almacen.usuarioLiquidador !== selectedUser) {
-        return false
-      }
-
-      // 5. Filtro de Placa / Camión
-      if (selectedTruck !== 'ALL' && c.truckPlate !== selectedTruck) {
-        return false
-      }
-
-      // 6. Filtro de N° Despacho
-      if (selectedOrderCode !== 'ALL' && c.orderCode !== selectedOrderCode) {
-        return false
-      }
-
-      return true
-    })
-  }, [
-    searchTerm,
-    dateRange,
-    selectedDriver,
-    selectedUser,
-    selectedTruck,
-    selectedOrderCode,
-  ])
-
   // Cierre seleccionado activo
   const selectedCierre = useMemo(() => {
-    if (filteredCierres.length === 0) return null
-    const found = filteredCierres.find((c) => c.id === selectedId)
-    return found || filteredCierres[0]
-  }, [filteredCierres, selectedId])
-
-  // Total de filtros activos
-  const activeFiltersCount = useMemo(() => {
-    let count = 0
-    if (searchTerm.trim()) count++
-    if (dateRange?.from) count++
-    if (selectedDriver !== 'ALL') count++
-    if (selectedUser !== 'ALL') count++
-    if (selectedTruck !== 'ALL') count++
-    if (selectedOrderCode !== 'ALL') count++
-    return count
-  }, [
-    searchTerm,
-    dateRange,
-    selectedDriver,
-    selectedUser,
-    selectedTruck,
-    selectedOrderCode,
-  ])
-
-  // Limpiar todos los filtros
-  const handleResetFilters = () => {
-    setSearchTerm('')
-    setDateRange(undefined)
-    setSelectedDriver('ALL')
-    setSelectedUser('ALL')
-    setSelectedTruck('ALL')
-    setSelectedOrderCode('ALL')
-    toast.info('Filtros restablecidos')
-  }
+    const found = cierresData.find((c) => c.id === selectedId)
+    return found || cierresData[0]
+  }, [cierresData, selectedId])
 
   const handlePrint = () => {
     if (!selectedCierre) {
@@ -493,12 +153,6 @@ export function CierreLogisticoView() {
       toast.success('Libro de Cierre Consolidado (.xls - 2 Hojas) descargado')
     }
   }
-
-  // Objetos para labels en inputs
-  const selectedDriverObj = driversList.find((d) => d.name === selectedDriver)
-  const selectedUserObj = usersList.find((u) => u.username === selectedUser)
-  const selectedTruckObj = trucksList.find((t) => t.plate === selectedTruck)
-  const selectedOrderObj = ordersList.find((o) => o.orderCode === selectedOrderCode)
 
   const alm = selectedCierre?.almacen
   const cob = selectedCierre?.cobranza
@@ -651,83 +305,125 @@ export function CierreLogisticoView() {
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* 1. VISTA INTERACTIVA WEB DEL MOCKUP (Compacta y sin scroll innecesario) */}
+      {/* 1. VISTA INTERACTIVA WEB DEL MOCKUP                                    */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      <div className="print:hidden flex flex-col gap-3.5 p-3 md:p-4 lg:p-5 max-w-[1600px] mx-auto min-h-screen">
-        {/* CABECERA PRINCIPAL CON TÍTULOS Y ACCIONES */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm shadow-indigo-600/20">
-                <Truck className="h-4 w-4" />
-              </div>
-              <div>
-                <h1 className="text-lg md:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                  Cierre Logístico y Rendición de Ruta
-                </h1>
-                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                  Distribuidora DISCRUZ
-                </span>
-              </div>
-              <Badge
-                variant="outline"
-                className="ml-2 border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 font-semibold text-[11px] py-0 px-2"
-              >
-                100% Cuadrado (Bs 0.00)
-              </Badge>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Liquidación física de carga en almacén y conciliación financiera de cobranzas
-            </p>
-          </div>
-
-          {/* BOTONES DINÁMICOS DE IMPRESIÓN Y EXPORTACIÓN SEGÚN PESTAÑA ACTIVA */}
-          <div className="flex items-center gap-2 relative">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              className="cursor-pointer border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-xs text-xs font-semibold h-8 px-2.5"
-              title={`Descargar documento PDF oficial para el tab ${
-                activeTab === 'almacen' ? 'Almacén' : activeTab === 'cobranza' ? 'Cobranzas' : 'Consolidado'
-              }`}
-            >
-              <Download className="mr-1.5 h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>
-                {activeTab === 'almacen' && 'Descargar PDF (Almacén)'}
-                {activeTab === 'cobranza' && 'Descargar PDF (Cobranzas)'}
-                {activeTab === 'balance' && 'Descargar PDF (Consolidado)'}
-              </span>
-            </Button>
-
-            {/* BOTÓN EXCEL SPLIT: CLICK DIRECTO EXPORTA EL TAB ACTUAL, FLECHA ABRE MENÚ CON TODOS */}
-            <div className="flex items-center rounded-md shadow-xs">
+      {currentViewMode === 'LISTA_ORDENES' ? (
+        <div className="print:hidden p-3 md:p-4 lg:p-5 max-w-[1600px] mx-auto min-h-screen">
+          <OrdenesFinalizadasListView
+            cierres={cierresData}
+            onSelectCierre={(id) => {
+              setSelectedId(id)
+              setCurrentViewMode('REGISTRO_CIERRE')
+            }}
+            onRegistrarCierre={(id) => {
+              setSelectedId(id)
+              setCurrentViewMode('REGISTRO_CIERRE')
+            }}
+            onVerCierre={(id) => {
+              setSelectedId(id)
+              setIsEditingCobranza(false)
+              setCurrentViewMode('CIERRES_CONSOLIDADOS')
+            }}
+          />
+        </div>
+      ) : currentViewMode === 'REGISTRO_CIERRE' && selectedCierre ? (
+        <div className="print:hidden p-3 md:p-4 lg:p-5 max-w-[1600px] mx-auto min-h-screen">
+          <RegistroCierreOTView
+            key={selectedCierre.id}
+            cierre={selectedCierre}
+            onVolver={() => setCurrentViewMode('LISTA_ORDENES')}
+            onGuardarCierre={(cierreActualizado) => {
+              setCierresData((prev) =>
+                prev.map((c) => (c.id === cierreActualizado.id ? cierreActualizado : c))
+              )
+              setCurrentViewMode('LISTA_ORDENES')
+            }}
+          />
+        </div>
+      ) : (
+        <div className="print:hidden flex flex-col gap-3.5 p-3 md:p-4 lg:p-5 max-w-[1600px] mx-auto min-h-screen">
+          {/* CABECERA PRINCIPAL CON TÍTULOS Y ACCIONES */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
+            <div className="flex items-center gap-3">
               <Button
-                size="sm"
-                onClick={handleExportExcelDirect}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer rounded-r-none text-xs font-semibold px-2.5 h-8 shadow-xs"
-                disabled={!selectedCierre}
-                title={`Exportar a Excel (.xls) datos del tab ${
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  setIsEditingCobranza(false)
+                  setCurrentViewMode('LISTA_ORDENES')
+                }}
+                className="h-9 w-9 rounded-xl border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shrink-0 shadow-2xs"
+                title="Volver a órdenes"
+              >
+                <ArrowLeft className="h-4.5 w-4.5" />
+              </Button>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base md:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Detalle de Cierre OT #{selectedCierre?.orderCode}
+                  </h1>
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 font-semibold text-[11px] py-0 px-2"
+                  >
+                    {selectedCierre ? selectedCierre.statusLabel : 'Liquidado Conforme'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Visualización y acta del cierre físico de almacén y conciliación de cobranzas
+                </p>
+              </div>
+            </div>
+
+            {/* BOTONES DINÁMICOS DE IMPRESIÓN Y EXPORTACIÓN SEGÚN PESTAÑA ACTIVA */}
+            <div className="flex items-center gap-2 relative">
+
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handlePrint}
+                className="cursor-pointer border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-xs text-xs font-semibold h-9 px-3 rounded-xl"
+                title={`Descargar documento PDF oficial para el tab ${
                   activeTab === 'almacen' ? 'Almacén' : activeTab === 'cobranza' ? 'Cobranzas' : 'Consolidado'
                 }`}
               >
-                <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                <Download className="mr-1.5 h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                 <span>
-                  {activeTab === 'almacen' && 'Excel (Almacén)'}
-                  {activeTab === 'cobranza' && 'Excel (Cobranzas)'}
-                  {activeTab === 'balance' && 'Excel (Consolidado)'}
+                  {activeTab === 'almacen' && 'Descargar PDF (Almacén)'}
+                  {activeTab === 'cobranza' && 'Descargar PDF (Cobranzas)'}
+                  {activeTab === 'balance' && 'Descargar PDF (Consolidado)'}
                 </span>
               </Button>
-              <Button
-                size="sm"
-                onClick={() => setShowExportMenu(!showExportMenu)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer rounded-l-none border-l border-emerald-500/60 px-1.5 h-8 shadow-xs"
-                disabled={!selectedCierre}
-                title="Más formatos y hojas de exportación Excel"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+
+              {/* BOTÓN EXCEL SPLIT: CLICK DIRECTO EXPORTA EL TAB ACTUAL, FLECHA ABRE MENÚ CON TODOS */}
+              <div className="flex items-center rounded-xl shadow-xs">
+                <Button
+                  size="default"
+                  onClick={handleExportExcelDirect}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer rounded-r-none rounded-l-xl text-xs font-semibold px-3 h-9 shadow-xs"
+                  disabled={!selectedCierre}
+                  title={`Exportar a Excel (.xls) datos del tab ${
+                    activeTab === 'almacen' ? 'Almacén' : activeTab === 'cobranza' ? 'Cobranzas' : 'Consolidado'
+                  }`}
+                >
+                  <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+                  <span>
+                    {activeTab === 'almacen' && 'Excel (Almacén)'}
+                    {activeTab === 'cobranza' && 'Excel (Cobranzas)'}
+                    {activeTab === 'balance' && 'Excel (Consolidado)'}
+                  </span>
+                </Button>
+                <Button
+                  size="default"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer rounded-l-none rounded-r-xl border-l border-emerald-500/60 px-2 h-9 shadow-xs"
+                  disabled={!selectedCierre}
+                  title="Más formatos y hojas de exportación Excel"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
 
             {showExportMenu && selectedCierre && (
               <div
@@ -786,557 +482,20 @@ export function CierreLogisticoView() {
           </div>
         </div>
 
-        {/* ── PANEL DE FILTROS DE BÚSQUEDA Y SELECCIÓN (COMPACTO) ── */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 space-y-2.5">
-          {/* Cabecera del Panel de Filtros */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-100 dark:border-slate-800/80 pb-2">
+        {/* ── TARJETA COMPACTA DE DATOS OPERATIVOS DEL DESPACHO SELECCIONADO ── */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <Filter className="h-3.5 w-3.5 text-indigo-600" />
-              <h2 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                Filtros de Búsqueda de Cierre Logístico (Ver Cierre)
-              </h2>
-            </div>
-            <span className="text-[11px] text-slate-400">
-              Filtros en cascada: Rango de Fecha → Chofer → Usuario → Placa → N° Despacho
-            </span>
-          </div>
-
-          {/* GRILLA DE LOS 5 CAMPOS DE FILTRADO CON SELECTS Y BUSCADORES EN CASCADA */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-            {/* 1. FILTRO: RANGO DE FECHAS (Sin Chips, Limpio y Estándar) */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>Rango de Fechas</span>
-                {dateRange?.from && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
-              </label>
-              <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs text-slate-800 shadow-xs hover:bg-slate-100/80 focus-visible:outline-none cursor-pointer text-left dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
-                        dateRange?.from
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700 font-semibold dark:border-indigo-500/70 dark:bg-indigo-950/40 dark:text-indigo-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <CalendarIcon size={13} className="shrink-0 text-slate-400" />
-                        <span className="truncate">{dateRangeLabel}</span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {dateRange?.from && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDateRangeChange(undefined)
-                            }}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Quitar filtro de fecha"
-                          >
-                            <X size={12} />
-                          </span>
-                        )}
-                        <ChevronDown size={12} className="opacity-50" />
-                      </div>
-                    </button>
-                  }
-                />
-                <PopoverContent className="w-auto p-0 border-slate-200 dark:border-slate-800" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={(range) => handleDateRangeChange(range)}
-                    defaultMonth={dateRange?.from || new Date(2026, 1)}
-                    numberOfMonths={1}
-                    locale={es}
-                    className="rounded-md"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* 2. FILTRO: CHOFER* (Nivel 2 de Cascada) */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>Chofer*</span>
-                {selectedDriver !== 'ALL' && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
-              </label>
-              <Popover open={driverPopoverOpen} onOpenChange={setDriverPopoverOpen}>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs text-slate-800 shadow-xs hover:bg-slate-100/80 focus-visible:outline-none cursor-pointer text-left dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
-                        selectedDriver !== 'ALL'
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700 font-semibold dark:border-indigo-500/70 dark:bg-indigo-950/40 dark:text-indigo-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <User size={13} className="shrink-0 text-slate-400" />
-                        <span className="truncate">
-                          {selectedDriverObj
-                            ? `${selectedDriverObj.name} - ${selectedDriverObj.empresa}`
-                            : 'Todos los choferes'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {selectedDriver !== 'ALL' && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDriverChange('ALL')
-                            }}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Quitar filtro de chofer"
-                          >
-                            <X size={12} />
-                          </span>
-                        )}
-                        <ChevronDown size={12} className="opacity-50" />
-                      </div>
-                    </button>
-                  }
-                />
-                <PopoverContent className="w-80 p-0 border-slate-200 dark:border-slate-800" align="start">
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="relative">
-                      <Search
-                        size={13}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <Input
-                        placeholder="Buscar chofer o empresa..."
-                        value={driverSearchQuery}
-                        onChange={(e) => setDriverSearchQuery(e.target.value)}
-                        className="h-8 pl-8 text-xs bg-slate-50 dark:bg-slate-900"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleDriverChange('ALL')}
-                      className={cn(
-                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                        selectedDriver === 'ALL' &&
-                          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                      )}
-                    >
-                      <span>Todos los choferes ({driversList.length})</span>
-                      {selectedDriver === 'ALL' && <Check size={14} />}
-                    </button>
-                    {filteredDriversList.map((d) => (
-                      <button
-                        key={d.name}
-                        type="button"
-                        onClick={() => handleDriverChange(d.name)}
-                        className={cn(
-                          'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                          selectedDriver === d.name &&
-                            'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                        )}
-                      >
-                        <div className="truncate">
-                          <span className="font-medium text-slate-900 dark:text-slate-100 block">
-                            {d.name}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
-                            Empresa: {d.empresa} • CI: {d.ci}
-                          </span>
-                        </div>
-                        {selectedDriver === d.name && <Check size={14} className="shrink-0 ml-2" />}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* 3. FILTRO: USUARIO* (Nivel 3 de Cascada) */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>Usuario*</span>
-                {selectedUser !== 'ALL' && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
-              </label>
-              <Popover open={userPopoverOpen} onOpenChange={setUserPopoverOpen}>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs text-slate-800 shadow-xs hover:bg-slate-100/80 focus-visible:outline-none cursor-pointer text-left dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
-                        selectedUser !== 'ALL'
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700 font-semibold dark:border-indigo-500/70 dark:bg-indigo-950/40 dark:text-indigo-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Building2 size={13} className="shrink-0 text-slate-400" />
-                        <span className="truncate font-mono">
-                          {selectedUserObj ? selectedUserObj.username : 'Todos los usuarios'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {selectedUser !== 'ALL' && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleUserChange('ALL')
-                            }}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Quitar filtro de usuario"
-                          >
-                            <X size={12} />
-                          </span>
-                        )}
-                        <ChevronDown size={12} className="opacity-50" />
-                      </div>
-                    </button>
-                  }
-                />
-                <PopoverContent className="w-72 p-0 border-slate-200 dark:border-slate-800" align="start">
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="relative">
-                      <Search
-                        size={13}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <Input
-                        placeholder="Buscar usuario..."
-                        value={userSearchQuery}
-                        onChange={(e) => setUserSearchQuery(e.target.value)}
-                        className="h-8 pl-8 text-xs bg-slate-50 dark:bg-slate-900"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleUserChange('ALL')}
-                      className={cn(
-                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                        selectedUser === 'ALL' &&
-                          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                      )}
-                    >
-                      <span>Todos los usuarios ({usersList.length})</span>
-                      {selectedUser === 'ALL' && <Check size={14} />}
-                    </button>
-                    {filteredUsersList.map((u) => (
-                      <button
-                        key={u.username}
-                        type="button"
-                        onClick={() => handleUserChange(u.username)}
-                        className={cn(
-                          'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                          selectedUser === u.username &&
-                            'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                        )}
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100 block">
-                            {u.username}
-                          </span>
-                          <span className="text-[11px] text-slate-400">{u.cargo}</span>
-                        </div>
-                        {selectedUser === u.username && <Check size={14} className="shrink-0 ml-2" />}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* 4. FILTRO: PLACA* (Nivel 4 de Cascada) */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>Placa Camión*</span>
-                {selectedTruck !== 'ALL' && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
-              </label>
-              <Popover open={truckPopoverOpen} onOpenChange={setTruckPopoverOpen}>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs text-slate-800 shadow-xs hover:bg-slate-100/80 focus-visible:outline-none cursor-pointer text-left dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
-                        selectedTruck !== 'ALL'
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700 font-semibold dark:border-indigo-500/70 dark:bg-indigo-950/40 dark:text-indigo-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Truck size={13} className="shrink-0 text-slate-400" />
-                        <span className="truncate font-mono font-bold">
-                          {selectedTruckObj
-                            ? `${selectedTruckObj.plate} (${selectedTruckObj.truckType})`
-                            : 'Todas las placas'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {selectedTruck !== 'ALL' && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleTruckChange('ALL')
-                            }}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Quitar filtro de placa"
-                          >
-                            <X size={12} />
-                          </span>
-                        )}
-                        <ChevronDown size={12} className="opacity-50" />
-                      </div>
-                    </button>
-                  }
-                />
-                <PopoverContent className="w-72 p-0 border-slate-200 dark:border-slate-800" align="start">
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="relative">
-                      <Search
-                        size={13}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <Input
-                        placeholder="Buscar placa..."
-                        value={truckSearchQuery}
-                        onChange={(e) => setTruckSearchQuery(e.target.value)}
-                        className="h-8 pl-8 text-xs bg-slate-50 dark:bg-slate-900"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleTruckChange('ALL')}
-                      className={cn(
-                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                        selectedTruck === 'ALL' &&
-                          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                      )}
-                    >
-                      <span>Todas las placas ({trucksList.length})</span>
-                      {selectedTruck === 'ALL' && <Check size={14} />}
-                    </button>
-                    {filteredTrucksList.map((t) => (
-                      <button
-                        key={t.plate}
-                        type="button"
-                        onClick={() => handleTruckChange(t.plate)}
-                        className={cn(
-                          'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                          selectedTruck === t.plate &&
-                            'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                        )}
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100 block">
-                            {t.plate}
-                          </span>
-                          <span className="text-[11px] text-slate-400">{t.truckType}</span>
-                        </div>
-                        {selectedTruck === t.plate && <Check size={14} className="shrink-0 ml-2" />}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* 5. FILTRO: N° DESPACHO* (Nivel 5 de Cascada) */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>N° Despacho / OT*</span>
-                {selectedOrderCode !== 'ALL' && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
-              </label>
-              <Popover open={orderPopoverOpen} onOpenChange={setOrderPopoverOpen}>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-slate-50/50 px-2.5 text-xs text-slate-800 shadow-xs hover:bg-slate-100/80 focus-visible:outline-none cursor-pointer text-left dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
-                        selectedOrderCode !== 'ALL'
-                          ? 'border-indigo-500 bg-indigo-50/40 text-indigo-700 font-semibold dark:border-indigo-500/70 dark:bg-indigo-950/40 dark:text-indigo-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Hash size={13} className="shrink-0 text-slate-400" />
-                        <span className="truncate font-mono font-bold">
-                          {selectedOrderObj ? selectedOrderObj.orderCode : 'Todos los despachos'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {selectedOrderCode !== 'ALL' && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleOrderChange('ALL')
-                            }}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            title="Quitar filtro de orden"
-                          >
-                            <X size={12} />
-                          </span>
-                        )}
-                        <ChevronDown size={12} className="opacity-50" />
-                      </div>
-                    </button>
-                  }
-                />
-                <PopoverContent className="w-80 p-0 border-slate-200 dark:border-slate-800" align="start">
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="relative">
-                      <Search
-                        size={13}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <Input
-                        placeholder="Buscar por código OT o ruta..."
-                        value={orderSearchQuery}
-                        onChange={(e) => setOrderSearchQuery(e.target.value)}
-                        className="h-8 pl-8 text-xs bg-slate-50 dark:bg-slate-900"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto p-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleOrderChange('ALL')}
-                      className={cn(
-                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                        selectedOrderCode === 'ALL' &&
-                          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                      )}
-                    >
-                      <span>Todos los despachos ({ordersList.length})</span>
-                      {selectedOrderCode === 'ALL' && <Check size={14} />}
-                    </button>
-                    {filteredOrdersList.map((o) => (
-                      <button
-                        key={o.id}
-                        type="button"
-                        onClick={() => handleOrderChange(o.orderCode, o.id)}
-                        className={cn(
-                          'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-left cursor-pointer',
-                          (selectedOrderCode === o.orderCode || selectedId === o.id) &&
-                            'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                        )}
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100 block">
-                            {o.orderCode}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
-                            {o.driverName} • {o.routeName}
-                          </span>
-                        </div>
-                        {(selectedOrderCode === o.orderCode || selectedId === o.id) && (
-                          <Check size={14} className="shrink-0 ml-2" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          {/* BARRA INFERIOR DE BÚSQUEDA GENERAL Y RESET DE FILTROS */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-            <div className="relative flex-1 max-w-md">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <Input
-                placeholder="Búsqueda rápida (código, chofer, ruta, producto)..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-7.5 pl-8 pr-7 text-xs bg-slate-50/50 dark:bg-slate-900/50"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">
-                {filteredCierres.length}{' '}
-                {filteredCierres.length === 1 ? 'despacho encontrado' : 'despachos encontrados'}
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Despacho Activo:
               </span>
-              {activeFiltersCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetFilters}
-                  className="h-7.5 px-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 cursor-pointer"
-                >
-                  <RotateCcw className="mr-1 h-3 w-3" />
-                  Limpiar Filtros ({activeFiltersCount})
-                </Button>
-              )}
+              <span className="text-xs font-bold font-mono text-indigo-700 dark:text-indigo-400">
+                {selectedCierre.orderCode}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                • {selectedCierre.routeName}
+              </span>
             </div>
-          </div>
-        </div>
-
-        {/* ── MENSAJE SI NO HAY RESULTADOS CON LOS FILTROS SELECCIONADOS ── */}
-        {!selectedCierre ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-xs dark:border-slate-800 dark:bg-slate-900">
-            <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
-            <h3 className="mt-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-              No se encontraron cierres logísticos con los filtros aplicados
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Intenta cambiar la fecha, chofer, usuario o placa en el panel superior, o presiona "Limpiar Filtros".
-            </p>
-            <Button
-              onClick={handleResetFilters}
-              size="sm"
-              className="mt-3 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer text-xs h-8"
-            >
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Restablecer Filtros
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* ── TARJETA COMPACTA DE DATOS OPERATIVOS DEL DESPACHO SELECCIONADO ── */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/60">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Despacho Activo:
-                  </span>
-                  <span className="text-xs font-bold font-mono text-indigo-700 dark:text-indigo-400">
-                    {selectedCierre.orderCode}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    • {selectedCierre.routeName}
-                  </span>
-                </div>
 
                 <Badge
                   variant="outline"
@@ -1611,40 +770,68 @@ export function CierreLogisticoView() {
               {/* TAB 2: CIERRE LOGÍSTICO COBRANZAS (Distribución Ejecutiva)   */}
               {/* ───────────────────────────────────────────────────────────── */}
               <TabsContent value="cobranza" className="mt-2.5 space-y-2.5">
-                {/* 1. TARJETA PRINCIPAL: DISTRIBUCIÓN PORCENTUAL + BOTÓN 'Ver detalle de cobranza' */}
-                <div className="rounded-xl border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 shadow-xs space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
-                        <Banknote className="h-3.5 w-3.5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                            Distribución Porcentual del Medio de Pago
-                          </h3>
-                          <Badge variant="outline" className="text-[9px] font-mono border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 py-0 px-1">
-                            100% Cuadrado (Bs 0.00 Dif.)
-                          </Badge>
+                {isEditingCobranza && selectedCierre ? (
+                  <CierreCobranzaInPlaceEditor
+                    cierre={selectedCierre}
+                    onSave={(updatedCob, newStatus, statusLabel) => {
+                      setCierresData((prev) =>
+                        prev.map((c) => {
+                          if (c.id === selectedCierre.id) {
+                            return {
+                              ...c,
+                              status: newStatus,
+                              statusLabel: statusLabel,
+                              cobranza: updatedCob,
+                            }
+                          }
+                          return c
+                        })
+                      )
+                      setIsEditingCobranza(false)
+                      toast.success(
+                        `Liquidación de cobranzas para OT #${selectedCierre.orderCode} guardada exitosamente`
+                      )
+                    }}
+                    onCancel={() => setIsEditingCobranza(false)}
+                  />
+                ) : (
+                  <>
+                    {/* 1. TARJETA PRINCIPAL: DISTRIBUCIÓN PORCENTUAL + BOTONES DE ACCIÓN */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900 shadow-xs space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
+                            <Banknote className="h-3.5 w-3.5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                Distribución Porcentual del Medio de Pago
+                              </h3>
+                              <Badge variant="outline" className="text-[9px] font-mono border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 py-0 px-1">
+                                {selectedCierre ? selectedCierre.statusLabel : '100% Cuadrado'}
+                              </Badge>
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 font-mono">
+                              Total a Rendir: <strong className="text-slate-800 dark:text-slate-200 font-bold">Bs {cob.resumenCobranzas.totalARendir.toFixed(2)}</strong> • OT: <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedCierre?.orderCode}</span>
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-[10.5px] text-slate-500 font-mono">
-                          Total a Rendir: <strong className="text-slate-800 dark:text-slate-200 font-bold">Bs {cob.resumenCobranzas.totalARendir.toFixed(2)}</strong> • OT: <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedCierre.orderCode}</span>
-                        </p>
-                      </div>
-                    </div>
 
-                    {/* BOTÓN PRINCIPAL 'Ver detalle de cobranza' */}
-                    <Button
-                      onClick={() => {
-                        setCobranzaFilterStatus('ALL')
-                        setShowCobranzaModal(true)
-                      }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer text-xs font-bold shadow-sm shadow-emerald-600/20 h-7.5 px-3 rounded-lg flex items-center gap-1.5 self-start sm:self-auto shrink-0 transition-all hover:scale-[1.02]"
-                    >
-                      <Maximize2 className="h-3 w-3" />
-                      <span>Ver detalle de cobranza</span>
-                    </Button>
-                  </div>
+                        {/* BOTONES DE ACCIÓN */}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => {
+                              setCobranzaFilterStatus('ALL')
+                              setShowCobranzaModal(true)
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer text-xs font-bold shadow-sm shadow-emerald-600/20 h-8 px-3.5 rounded-xl flex items-center gap-1.5 self-start sm:self-auto shrink-0 transition-all hover:scale-[1.02]"
+                          >
+                            <Maximize2 className="h-3.5 w-3.5" />
+                            <span>Ver desglose de cobranzas</span>
+                          </Button>
+                        </div>
+                      </div>
 
                   {/* Barra de progreso multi-color proporcional */}
                   <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
@@ -2046,7 +1233,9 @@ export function CierreLogisticoView() {
                     </button>
                   </div>
                 </div>
-              </TabsContent>
+              </>
+            )}
+          </TabsContent>
 
               {/* ───────────────────────────────────────────────────────────── */}
               {/* TAB 3: BALANCE CONSOLIDADO (Compacto)                         */}
@@ -2114,9 +1303,8 @@ export function CierreLogisticoView() {
                 </div>
               </TabsContent>
             </Tabs>
-          </>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* MODAL: TABLA COMPLETA DE CONCILIACIÓN FÍSICA (14 COLUMNAS)             */}

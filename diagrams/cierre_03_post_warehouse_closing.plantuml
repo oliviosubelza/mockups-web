@@ -1,0 +1,62 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 3: POST /api/v1/logistics/closings/warehouse/:transportOrderId (Registro de Cierre Físico de Almacén)
+
+actor "Encargado de Rampa y Chofer" as User
+participant "App Web / Móvil" as App
+participant "Gateway Controller" as Gateway
+participant "Warehouse Closing Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "transport_orders DB" as OrdersDB
+participant "warehouse_closings DB\n(transport_order_warehouse_closings)" as WhClosingDB
+participant "sales_items DB\n(transport_order_sales_items)" as SalesItemsDB
+participant "truck_inventories DB" as InvDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+User -> App: Revisa conteo físico de retorno en rampa y plasma firmas de chofer y almacenero
+App -> Gateway: POST /api/v1/logistics/closings/warehouse/525420010\n(WarehouseClosingPayloadDto)
+Gateway -> Service: registerWarehouseClosing(transportOrderId: 525420010, payload, executorId)
+
+Service -> OrdersDB: 1. findOrderById(525420010)
+OrdersDB --> Service: order (status: 'IN_DELIVERY' o 'RETURNED_TO_RAMP')
+
+Service -> TX: 2. startTransaction()
+activate TX
+
+Service -> WhClosingDB: 3. upsertWarehouseClosing(payloadData)
+note right of WhClosingDB
+  Registra liquidación física en almacén:
+  - total_dispatch_qty, total_invoiced_qty, total_returned_qty
+  - total_dispatch_amount, total_invoiced_amount, total_returned_amount
+  - driver_signature_svg, warehouse_signature_svg
+  - status = 'CLOSED'
+end note
+WhClosingDB --> Service: savedClosingId
+
+Service -> SalesItemsDB: 4. bulkUpdateSalesItemsReturns(payload.items)
+note right of SalesItemsDB
+  Actualiza por cada producto:
+  - returned_qty = item.returnedQty
+  - shortage_qty = item.shortageQty
+  - surplus_qty = item.surplusQty
+  - status = 'RECONCILED'
+end note
+SalesItemsDB --> Service: ok
+
+Service -> InvDB: 5. updateTruckInventoriesStatus(525420010, 'UNLOADED_AND_CLOSED')
+InvDB --> Service: ok
+
+Service -> OrdersDB: 6. updateOrderStatus(525420010, 'WAREHOUSE_CLOSED')
+OrdersDB --> Service: ok
+
+Service -> HistoryDB: 7. insertOrderHistory(525420010, 'WAREHOUSE_CLOSED', 'Cierre físico en almacén completado')
+HistoryDB --> Service: ok
+
+Service -> TX: 8. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 201 Created (WarehouseClosingResponse)
+Gateway --> App: 201 Created JSON { closingId, status: 'CLOSED', transportOrderId: 525420010 }
+App --> User: Notificación de éxito y habilitación de liquidación de cobranzas
+@enduml

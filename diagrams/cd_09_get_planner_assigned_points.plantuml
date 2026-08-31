@@ -1,0 +1,43 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 9: GET /api/v1/distributors/:id/coverage-orders (Asignación Territorial Point-in-Polygon)
+
+actor "Planificador" as User
+participant "App Web (Planner)" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distribution_zones DB" as ZoneDB
+participant "Orders & Trucks DB" as OrdersDB
+
+User -> Web: Selecciona Centro de Distribución en la barra superior
+Web -> Gateway: GET /api/v1/distributors/501/coverage-orders?channels=MAYORISTA,COBERTURA
+Gateway -> Service: getAssignedOrdersForPlanner(distributorId, channels)
+
+Service -> ZoneDB: findActiveZoneByDistributor(distributorId)
+ZoneDB --> Service: zone (polygonGeoJson, areaKm2)
+
+alt Centro con polígono delimitado activo
+    Service -> OrdersDB: findOrdersInsidePolygon(polygonGeoJson, channels)
+    OrdersDB --> Service: insideOrdersList[]
+else Centro sin polígono (Fallback Geográfico)
+    Service -> OrdersDB: findOrdersByDistributorFallback(distributorId, channels)
+    OrdersDB --> Service: insideOrdersList[]
+end
+
+Service -> OrdersDB: findAvailableTrucks(distributorId)
+OrdersDB --> Service: availableTrucksList[]
+
+Service -> Service: groupOrdersIntoDeliveryPoints(insideOrdersList, availableTrucksList)
+note right of Service
+  Lógica en Memoria:
+  - Agrupa pedidos por 'deliveryPointId' (Gotas/Paradas)
+  - Suma peso total (kg) y volumen (m³)
+  - Calcula capacidad disponible vs requerida
+end note
+
+Service -> Service: buildCoverageOrdersResponse()
+Service --> Gateway: coverageOrdersResponse
+Gateway --> Web: 200 OK (Puntos de entrega asignados + Polígono + Flota)
+Web --> User: Dibuja polígono esmeralda, ancla depósito de origen y filtra puntos en el mapa
+@enduml

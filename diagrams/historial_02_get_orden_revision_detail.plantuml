@@ -1,0 +1,46 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 2: GET /api/v1/supervisor/reports/transport-orders/:orderId/revision-detail
+
+actor "Supervisor / Auditor" as Auditor
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Revision Detail Service" as Service
+participant "transport_orders DB" as OrdersDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "session_items DB\n(transport_order_count_session_items)" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+participant "products DB\n(products / Catalog)" as CatalogDB
+
+Auditor -> Web: Selecciona una Orden de Transporte (ej: OT-100451)
+Web -> Gateway: GET /api/v1/supervisor/reports/transport-orders/100451/revision-detail
+Gateway -> Service: getOrderRevisionDetail(orderId: 100451)
+
+Service -> OrdersDB: 1. findOrderHeaderWithTruckAndRoute(100451)
+OrdersDB --> Service: orderHeader (OT, Chofer, Camión, Ruta, Distribuidor)
+
+Service -> SessionDB: 2. findCountSessionsByOrderId(100451)
+SessionDB --> Service: countSessions[] (DRIVER_INITIAL, SUPERVISOR_DISCREPANCY, SUPERVISOR_SEMAPHORE)
+
+Service -> SessionItemsDB: 3. findSessionItemsBySessionIds([101, 102, 103])
+SessionItemsDB --> Service: sessionItems[] (Conteo, cajas, unidades, diferencias por sesión)
+
+Service -> InvDB: 4. findOfficialTruckInventories(100451)
+InvDB --> Service: truckInventories[] (loaded_qty, variance_qty, status, supervisor_id)
+
+Service -> CatalogDB: 5. findProductsCatalog(productIds)
+CatalogDB --> Service: productsCatalog[] (SKU, descripción, categoría, cadena de frío)
+
+Service -> Service: 6. buildMultiSessionComparisonMatrix(orderHeader, countSessions, sessionItems, truckInventories, catalog)
+note right of Service
+  Lógica en Memoria:
+  - Timeline de 4 Hitos: Conteo Chofer -> Revisión Sup -> Auditoría Semáforo -> Oficial
+  - Matriz Comparativa: Esperado vs Chofer vs Supervisor vs Semáforo vs Final
+  - Balance de Carga y Firmas Digitales SVG
+end note
+
+Service --> Gateway: 200 OK (OrderRevisionDetailResponse)
+Gateway --> Web: 200 OK JSON
+Web --> Auditor: Renderiza Línea de Tiempo de Sesiones y Matriz Comparativa
+@enduml

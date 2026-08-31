@@ -1,0 +1,32 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 7: DELETE /api/v1/distributors/:id/zone (Eliminar Polígono Delimitador)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distribution_zones DB" as ZoneDB
+
+User -> Web: Clic en "Eliminar polígono" en panel de detalle
+Web -> Gateway: DELETE /api/v1/distributors/501/zone
+Gateway -> Service: deleteDistributionZone(distributorId, executorId)
+
+Service -> ZoneDB: findActiveZoneByDistributor(distributorId)
+ZoneDB --> Service: zoneRecord (o null)
+
+alt Zona no encontrada
+    Service --> Gateway: 404 Not Found (Zona no encontrada)
+    Gateway --> Web: 404 Not Found
+    Web --> User: Muestra notificación de error
+else Zona encontrada
+    Service -> ZoneDB: softDeleteZone(distributorId, executorId)
+    ZoneDB --> Service: ok
+
+    Service -> Service: buildDeleteZoneResponse()
+    Service --> Gateway: 200 OK (Polígono eliminado)
+    Gateway --> Web: 200 OK
+    Web --> User: Remueve polígono del mapa; el centro pasa a "Sin polígono"
+end
+@enduml

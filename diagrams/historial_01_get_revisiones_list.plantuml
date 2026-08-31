@@ -1,0 +1,43 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 1: GET /api/v1/supervisor/reports/transport-orders/revision-history
+
+actor "Supervisor / Auditor" as User
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Revision History Service" as Service
+participant "transport_orders DB" as OrdersDB
+participant "routes & trucks DB" as RouteTruckDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "truck_inventories DB" as InvDB
+
+User -> Web: Aplica filtros en cabecera (Fecha, Camión, Chofer, Supervisor, Ruta, Estado)
+Web -> Gateway: GET /api/v1/supervisor/reports/transport-orders/revision-history\n?startDate=2026-08-20&endDate=2026-08-25\n&truckPlate=2890-UIP&driverId=1024&supervisorId=98&status=WITH_DISCREPANCIES
+Gateway -> Service: getRevisionHistoryList(filterDto)
+
+Service -> OrdersDB: 1. findOrdersByDateAndFilters(filterDto)
+OrdersDB --> Service: ordersList[] (ej. IDs: [100451, 100452])
+
+Service -> RouteTruckDB: 2. findRoutesAndTrucks(orderIds)
+RouteTruckDB --> Service: routesAndTrucksInfo[] (Chofer, Empresa, Placa, Tipo Camión)
+
+Service -> SessionDB: 3. findCountSessionsByOrders(orderIds)
+SessionDB --> Service: countSessions[] (DRIVER_INITIAL, SUPERVISOR_DISCREPANCY, SUPERVISOR_SEMAPHORE)
+
+Service -> InvDB: 4. findInventorySummaries(orderIds)
+InvDB --> Service: inventorySummaries[] (total_products, expected_qty, loaded_qty, net_variance)
+
+Service -> Service: 5. computeGlobalPeriodKpis(ordersList, countSessions, inventorySummaries)
+note right of Service
+  Lógica en Memoria:
+  - Total OTs despachadas en período
+  - % Match Inicial Chofer (sin diferencias)
+  - Total Revisiones de Supervisor
+  - Total Auditorías Semáforo ejecutadas
+end note
+
+Service --> Gateway: 200 OK (PaginatedOrdersWithMetricsResponse)
+Gateway --> Web: 200 OK JSON
+Web --> User: Renderiza listado agrupado por fecha y tarjetas KPIs superiores
+@enduml

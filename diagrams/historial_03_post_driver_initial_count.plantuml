@@ -1,0 +1,71 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 3: POST /api/v1/driver/transport-orders/:orderId/count-sessions/initial
+
+actor "Chofer" as Driver
+participant "App Móvil Chofer" as App
+participant "Gateway Controller" as Gateway
+participant "Driver Count Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "transport_orders DB" as OrdersDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "session_items DB\n(transport_order_count_session_items)" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+Driver -> App: Abre carga en rampa, cuenta físicamente productos y plasma firma
+App -> Gateway: POST /api/v1/driver/transport-orders/100451/count-sessions/initial\n(DriverCountPayloadDto)
+Gateway -> Service: processDriverInitialCount(orderId: 100451, payload, driverId)
+
+Service -> TX: 1. startTransaction()
+activate TX
+
+Service -> SessionDB: 2. insertCountSession(orderId, 'DRIVER_INITIAL', driverId)
+note right of SessionDB
+  Registra sesión:
+  - session_type = 'DRIVER_INITIAL'
+  - status = 'COMPLETED'
+  - executor_role = 'DRIVER'
+  - executor_id = driverId
+  - completed_at = NOW()
+end note
+SessionDB --> Service: newSessionId: 101
+
+Service -> SessionItemsDB: 3. insertCountSessionItems(101, payload.items)
+note right of SessionItemsDB
+  Registra por cada producto:
+  - counted_qty = (cajas * factor) + unidades
+  - variance_qty = counted_qty - expected_qty
+  - item_status = (variance == 0 ? 'MATCH' : 'MISMATCH')
+end note
+SessionItemsDB --> Service: ok
+
+alt Todas las variance_qty == 0 (100% MATCH - Sin diferencias)
+  Service -> InvDB: 4a. updateTruckInventoriesStatus(100451, 'MATCH')
+  InvDB --> Service: ok
+
+  Service -> OrdersDB: 4b. updateOrderStatus(100451, 'CHECKED_OK')
+  OrdersDB --> Service: ok
+
+  Service -> HistoryDB: 4c. insertOrderHistory(100451, 'CHECKED_START', 'Conteo chofer 100% conforme')
+  HistoryDB --> Service: ok
+
+else Existe al menos una variance_qty != 0 (MISMATCH - Descuadre)
+  Service -> InvDB: 4d. updateTruckInventoriesStatus(100451, 'MISMATCH')
+  InvDB --> Service: ok
+
+  Service -> OrdersDB: 4e. updateOrderStatus(100451, 'DISCREPANCY')
+  OrdersDB --> Service: ok
+
+  Service -> HistoryDB: 4f. insertOrderHistory(100451, 'DIF O REVISION END', 'Conteo con diferencias; derivado a supervisor')
+  HistoryDB --> Service: ok
+end
+
+Service -> TX: 5. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (DriverCountResult: { status: 'MATCH' | 'DISCREPANCY', sessionId: 101 })
+Gateway --> App: 200 OK
+App --> Driver: Muestra confirmación de conteo enviado y firma registrada
+@enduml

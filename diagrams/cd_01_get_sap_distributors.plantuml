@@ -1,0 +1,35 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 1: GET /api/v1/sap/distributors (Consulta de Centros SAP Disponibles)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "SAP Connector" as SAP
+participant "distributors DB" as DistDB
+
+User -> Web: Clic en "+ Nuevo Centro de Distribución"
+Web -> Gateway: GET /api/v1/sap/distributors?cityId=1
+Gateway -> Service: getAvailableSapDistributors(cityId)
+
+Service -> SAP: fetchPlantsByCity(cityId)
+SAP --> Service: sapPlants[] (codeSap, name, plantType, capacityPlts, lat, lng)
+
+Service -> DistDB: findActiveDistributorsByCity(cityId)
+DistDB --> Service: registeredDistributors[]
+
+Service -> Service: matchAndEnrichStatus(sapPlants, registeredDistributors)
+note right of Service
+  Lógica en Memoria:
+  - Cruza plantas SAP con registros locales
+  - Marca 'isRegistered' (Disponible vs Registrado)
+  - Limita a máx 5 centros por ciudad
+end note
+
+Service -> Service: buildSapDistributorsResponse()
+Service --> Gateway: sapDistributorsResponse
+Gateway --> Web: 200 OK (Catálogo SAP estructurado)
+Web --> User: Renderiza tabla modal con centros disponibles
+@enduml

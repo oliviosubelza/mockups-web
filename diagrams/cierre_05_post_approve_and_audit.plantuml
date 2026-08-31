@@ -1,0 +1,58 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 5: POST /api/v1/logistics/closings/:transportOrderId/approve (Aprobación y Cierre Definitivo de OT)
+
+actor "Jefe de Administración / Auditor Financiero" as Admin
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Closing Audit Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "transport_orders DB" as OrdersDB
+participant "warehouse_closings DB\n(transport_order_warehouse_closings)" as WhClosingDB
+participant "collection_closings DB\n(transport_order_collection_closings)" as CollClosingDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+Admin -> Web: Revisa concordancia operativa-financiera en Tab 3 (Balance) y aprueba cierre
+Web -> Gateway: POST /api/v1/logistics/closings/525420010/approve\n(ApproveClosingPayloadDto)
+Gateway -> Service: approveLogisticsClosing(transportOrderId: 525420010, payload, adminId)
+
+Service -> OrdersDB: 1. findOrderById(525420010)
+OrdersDB --> Service: orderRecord
+
+Service -> WhClosingDB: 2. findWarehouseClosingByOrderId(525420010)
+WhClosingDB --> Service: whClosing (status: 'CLOSED', invoiced: 19088.10 Bs)
+
+Service -> CollClosingDB: 3. findCollectionClosingByOrderId(525420010)
+CollClosingDB --> Service: collClosing (status: 'LIQUIDATED', rendered: 19088.10 Bs)
+
+Service -> Service: 4. validateClosingIntegrityAndParity(whClosing, collClosing)
+note right of Service
+  Verificación en Memoria:
+  - whClosing.status == 'CLOSED' && collClosing.status == 'LIQUIDATED'
+  - whClosing.total_invoiced_amount == collClosing.total_to_render
+  - Balance 100% Cuadrado (Diferencia = Bs 0.00)
+end note
+
+Service -> TX: 5. startTransaction()
+activate TX
+
+Service -> WhClosingDB: 6. updateWarehouseClosingStatus(525420010, 'AUDITED', adminUser)
+WhClosingDB --> Service: ok
+
+Service -> CollClosingDB: 7. updateCollectionClosingStatus(525420010, 'AUDITED', adminSignatureSvg, adminUser)
+CollClosingDB --> Service: ok
+
+Service -> OrdersDB: 8. updateOrderFinalClosed(525420010, 'CLOSED', completedDate: NOW())
+OrdersDB --> Service: ok
+
+Service -> HistoryDB: 9. insertOrderHistory(525420010, 'CLOSED', 'Aprobación y Cierre Definitivo por Administración')
+HistoryDB --> Service: ok
+
+Service -> TX: 10. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (ApproveClosingResponse)
+Gateway --> Web: 200 OK JSON { transportOrderId: 525420010, status: 'CLOSED' }
+Web --> Admin: Muestra estado "Cerrado y Auditado" y bloquea modificaciones
+@enduml

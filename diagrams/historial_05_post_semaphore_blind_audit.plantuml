@@ -1,0 +1,90 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 5: POST /api/v1/supervisor/count-sessions/semaphore (Auditoría Semáforo en Patio)
+
+actor "Auditor de Patio" as Auditor
+participant "App Móvil" as App
+participant "Gateway Controller" as Gateway
+participant "Semaphore Service" as Service
+participant "transport_orders DB" as OrdersDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "session_items DB\n(transport_order_count_session_items)" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+== Fase 1: Muestreo Sorpresa e Inicio de Sesión Ciega ==
+
+Auditor -> App: Selecciona camión en patio para "Auditoría Semáforo"
+App -> Gateway: POST /api/v1/supervisor/transport-orders/100451/count-sessions/semaphore
+Gateway -> Service: startSemaphoreSession(orderId: 100451, auditorId)
+
+Service -> OrdersDB: 1. findOrderStatus(100451)
+OrdersDB --> Service: orderStatus (DRIVER_INITIAL COMPLETED)
+
+Service -> InvDB: 2. findOfficialLoadedInventories(100451)
+InvDB --> Service: officialInventory[]
+
+Service -> SessionDB: 3. insertCountSession(100451, 'SUPERVISOR_SEMAPHORE', 'IN_PROGRESS', auditorId)
+SessionDB --> Service: newSessionId: 301
+
+Service -> SessionItemsDB: 4. createBlindItemsSnapshot(301, officialInventory)
+note right of SessionItemsDB
+  Snapshot ciego:
+  - expected_qty = loaded_qty oficial
+  - item_status = 'PENDING'
+  - counted_qty = NULL
+end note
+SessionItemsDB --> Service: ok
+
+Service -> HistoryDB: 5. insertOrderHistory(100451, 'REV SEMAFORO', 'Inicio de auditoría semáforo en patio')
+HistoryDB --> Service: ok
+
+Service --> Gateway: 201 Created (sessionId: 301)
+Gateway --> App: 201 Created
+App --> Auditor: Muestra Manifiesto Ciego (sin cantidades esperadas)
+
+== Fase 2: Registro de Conteo Producto por Producto ==
+
+Auditor -> App: Cuenta producto (ej. 7 cajas + 9 unidades)
+App -> Gateway: POST /api/v1/supervisor/count-sessions/301/items/5001/count\n{ countedBoxes: 7, countedUnits: 9 }
+Gateway -> Service: recordItemCount(sessionId: 301, itemId: 5001, payload)
+
+Service -> SessionItemsDB: 6. updateCountedAndVariance(5001, calculatedUnits)
+note right of SessionItemsDB
+  Calcula:
+  - counted_qty = (cajas * factor) + unidades
+  - variance_qty = counted_qty - expected_qty
+  - item_status = (variance == 0 ? 'MATCH' : 'MISMATCH')
+end note
+SessionItemsDB --> Service: ok
+
+Service --> Gateway: 200 OK (itemResult: MATCH, variance: 0)
+Gateway --> App: 200 OK
+
+== Fase 3: Cierre y Certificación de Auditoría ==
+
+Auditor -> App: Pulsa "Cerrar Auditoría Semáforo"
+App -> Gateway: POST /api/v1/supervisor/count-sessions/301/close\n{ notes: "Muestra 100% conforme" }
+Gateway -> Service: closeSemaphoreSession(sessionId: 301, payload)
+
+Service -> SessionItemsDB: 7. updatePendingItemsToSkipped(301)
+SessionItemsDB --> Service: ok
+
+Service -> SessionDB: 8. updateSessionStatus(301, 'COMPLETED', completedAt=NOW())
+SessionDB --> Service: ok
+
+Service -> HistoryDB: 9. insertOrderHistory(100451, 'REV SEMAFORO', 'Auditoría semáforo completada')
+HistoryDB --> Service: ok
+
+note over InvDB, OrdersDB
+  REGLAS CLAVE DE AUDITORÍA SEMÁFORO:
+  1. truck_inventories NO se modifica.
+  2. transport_orders.status NO cambia.
+  3. No bloquea la salida del camión a ruta.
+end note
+
+Service --> Gateway: 200 OK (SemaphoreSummary: { audited: 3, skipped: 19, result: 'CONFORME' })
+Gateway --> App: 200 OK
+App --> Auditor: Muestra resumen de conformidad de patio
+@enduml

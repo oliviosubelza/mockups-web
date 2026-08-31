@@ -1,0 +1,32 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 8: PATCH /api/v1/distributors/:id/zone/status (Activar / Desactivar Cobertura)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distribution_zones DB" as ZoneDB
+
+User -> Web: Clic en "Desactivar" / "Activar" cobertura
+Web -> Gateway: PATCH /api/v1/distributors/501/zone/status\n{ isActive: false }
+Gateway -> Service: toggleZoneStatus(distributorId, isActive, executorId)
+
+Service -> ZoneDB: findActiveZoneByDistributor(distributorId)
+ZoneDB --> Service: zoneRecord (o null)
+
+alt Zona no encontrada
+    Service --> Gateway: 404 Not Found (Zona no encontrada)
+    Gateway --> Web: 404 Not Found
+    Web --> User: Muestra notificación de error
+else Zona encontrada
+    Service -> ZoneDB: updateZoneActiveStatus(distributorId, isActive, executorId)
+    ZoneDB --> Service: updatedZone (id, distributorId, isActive, updatedAt)
+
+    Service -> Service: buildToggleZoneResponse(updatedZone)
+    Service --> Gateway: 200 OK (Estado actualizado)
+    Gateway --> Web: 200 OK
+    Web --> User: Actualiza botón a "Activar" y atenúa polígono en el mapa
+end
+@enduml

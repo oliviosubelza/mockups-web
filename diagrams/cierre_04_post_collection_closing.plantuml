@@ -1,0 +1,60 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 4: POST /api/v1/logistics/closings/collections/:transportOrderId (Registro de Liquidación y Arqueo de Caja)
+
+actor "Cajera Central / Liquidador y Chofer" as User
+participant "App Web / Móvil" as App
+participant "Gateway Controller" as Gateway
+participant "Collection Closing Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "transport_orders DB" as OrdersDB
+participant "collection_closings DB\n(transport_order_collection_closings)" as CollClosingDB
+participant "payment_references DB\n(delivery_payment_references)" as PaymentsDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+User -> App: Realiza arqueo físico de efectivo, valida transferencias/QR/créditos y plasma firmas
+App -> Gateway: POST /api/v1/logistics/closings/collections/525420010\n(CollectionClosingPayloadDto)
+Gateway -> Service: registerCollectionClosing(transportOrderId: 525420010, payload, executorId)
+
+Service -> OrdersDB: 1. findOrderById(525420010)
+OrdersDB --> Service: order (status: 'WAREHOUSE_CLOSED' o 'IN_LIQUIDATION')
+
+Service -> Service: 2. validateCashierParityBalance(payload)
+note right of Service
+  Validación Matemática en Memoria:
+  - (efectivo + transferencias + QR + cheques) + créditos + cobrador
+    == total_invoiced_amount (19088.10 Bs)
+  - Diferencia = Bs 0.00 (Cuadre Exacto)
+end note
+
+Service -> TX: 3. startTransaction()
+activate TX
+
+Service -> CollClosingDB: 4. upsertCollectionClosing(payloadData)
+note right of CollClosingDB
+  Registra liquidación financiera de caja:
+  - cash_amount, transfer_amount, qr_amount, check_amount
+  - driver_collected_amount, credit_amount, total_to_render
+  - cash_bob_breakdown (JSONB con cortes), deposit_vouchers (JSONB)
+  - 4 Firmas: Chofer, Supervisor, Cajero, Administrador
+  - status = 'LIQUIDATED'
+end note
+CollClosingDB --> Service: savedClosingId
+
+Service -> PaymentsDB: 5. updatePaymentReferencesStatus(525420010, 'CONCILIATED_IN_CASHIER')
+PaymentsDB --> Service: ok
+
+Service -> OrdersDB: 6. updateOrderStatus(525420010, 'LIQUIDATED')
+OrdersDB --> Service: ok
+
+Service -> HistoryDB: 7. insertOrderHistory(525420010, 'LIQUIDATED', 'Liquidación financiera de caja y arqueo conforme')
+HistoryDB --> Service: ok
+
+Service -> TX: 8. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 201 Created (CollectionClosingResponse)
+Gateway --> App: 201 Created JSON { closingId, status: 'LIQUIDATED', transportOrderId: 525420010 }
+App --> User: Notificación de éxito: Cierre Financiero Cuadrado y Acta Oficial Lista
+@enduml

@@ -1,0 +1,68 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 4: POST /api/v1/supervisor/discrepancies/orders/:orderId/review (Revisión Parcial o Total)
+
+actor "Supervisor" as Supervisor
+participant "App Móvil / Web" as App
+participant "Gateway Controller" as Gateway
+participant "Supervisor Review Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "transport_orders DB" as OrdersDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "session_items DB\n(transport_order_count_session_items)" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+participant "order_histories DB\n(transport_order_histories)" as HistoryDB
+
+Supervisor -> App: Selecciona modo de revisión: "PARTIAL" (solo observados) o "FULL" (total)
+Supervisor -> App: Ingresa cantidades verificadas, dictamen de merma y plasma firma
+App -> Gateway: POST /api/v1/supervisor/discrepancies/orders/100451/review\n(SupervisorReviewPayloadDto)
+Gateway -> Service: processSupervisorDiscrepancyReview(orderId: 100451, payload, supervisorId)
+
+Service -> TX: 1. startTransaction()
+activate TX
+
+Service -> SessionDB: 2. insertCountSession(orderId, 'SUPERVISOR_DISCREPANCY', supervisorId)
+note right of SessionDB
+  Registra sesión:
+  - session_type = 'SUPERVISOR_DISCREPANCY'
+  - status = 'COMPLETED'
+  - executor_role = 'SUPERVISOR'
+  - executor_id = supervisorId
+  - completed_at = NOW()
+end note
+SessionDB --> Service: newSessionId: 201
+
+Service -> SessionItemsDB: 3. insertCountSessionItems(201, payload.items)
+note right of SessionItemsDB
+  Registra por cada producto revisado:
+  - counted_qty = item.authorizedQty
+  - variance_qty = item.varianceQty
+  - item_status = 'APPROVED'
+  - observation = item.observation
+end note
+SessionItemsDB --> Service: ok
+
+Service -> InvDB: 4. updateTruckInventoriesOfficial(100451, payload.items, supervisorId)
+note right of InvDB
+  Consolida inventario de camión:
+  - loaded_qty = item.authorizedQty
+  - variance_qty = item.varianceQty
+  - status = 'APPROVED'
+  - verified_supervisor_id = supervisorId
+end note
+InvDB --> Service: ok
+
+Service -> OrdersDB: 5. updateOrderStatus(100451, 'CHECKED_OK')
+OrdersDB --> Service: ok
+
+Service -> HistoryDB: 6. insertOrderHistory(100451, 'VALIDATE SUP', 'Revisión supervisor completada y carga aprobada')
+HistoryDB --> Service: ok
+
+Service -> TX: 7. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (SupervisorReviewResult: { status: 'APPROVED', sessionId: 201 })
+Gateway --> App: 200 OK
+App --> Supervisor: Notificación de Éxito • Carga Consolidada y Lista para Salida
+@enduml

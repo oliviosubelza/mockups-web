@@ -1,0 +1,41 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 1: GET /api/v1/logistics/closings (Filtros en Cascada y Lista de Cierres)
+
+actor "Liquidador / Supervisor / Cajero" as User
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Logistics Closing Service" as Service
+participant "transport_orders DB" as OrdersDB
+participant "routes & trucks DB" as RouteTruckDB
+participant "warehouse_closings DB\n(transport_order_warehouse_closings)" as WhClosingDB
+participant "collection_closings DB\n(transport_order_collection_closings)" as CollClosingDB
+
+User -> Web: Selecciona filtros en cascada (Fecha -> Chofer -> Usuario -> Placa -> N° OT)
+Web -> Gateway: GET /api/v1/logistics/closings\n?closingDate=2026-02-15&driverId=1024&warehouseUser=CARLOS.ROJAS01\n&truckPlate=4284 IYB&orderCode=525420010&status=LIQUIDATED
+Gateway -> Service: getLogisticsClosingsList(filterDto)
+
+Service -> OrdersDB: 1. findTransportOrdersByFilters(filterDto)
+OrdersDB --> Service: ordersList[] (ej. IDs: [525420010, 525420002])
+
+Service -> RouteTruckDB: 2. findRoutesAndTrucks(routeIds, truckIds)
+RouteTruckDB --> Service: routesAndTrucksInfo[] (Chofer, Empresa, Placa, Tipo Camión)
+
+Service -> WhClosingDB: 3. findWarehouseClosings(orderIds)
+WhClosingDB --> Service: warehouseClosings[] (status, total_dispatch_qty, total_returned_qty, amounts in BOB)
+
+Service -> CollClosingDB: 4. findCollectionClosings(orderIds)
+CollClosingDB --> Service: collectionClosings[] (status, cash_amount, total_to_render, driver_collected)
+
+Service -> Service: 5. computeKpisAndCascadeOptions(orders, whClosings, collClosings)
+note right of Service
+  Lógica en Memoria:
+  - KPIs: Total OTs, Cerradas Almacén, Cuadradas Caja, Total Montos (Bs)
+  - Cascada: Fechas -> Choferes asociados -> Usuarios -> Placas -> OTs
+end note
+
+Service --> Gateway: closingsListResponse
+Gateway --> Web: 200 OK (Listado de Cierres + KPIs + Opciones Cascada)
+Web --> User: Renderiza panel de filtros en cascada, KPIs superiores y tabla de OTs
+@enduml

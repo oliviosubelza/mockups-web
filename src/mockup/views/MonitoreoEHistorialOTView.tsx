@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   Activity,
+  BarChart3,
   ClipboardCheck,
   FileClock,
   Radio,
@@ -13,11 +14,12 @@ import { cn } from '@/lib/utils'
 import { MonitoreoView } from '../monitoreo/MonitoreoView'
 import { HistorialOrdenesTransporteView } from './HistorialOrdenesTransporteView'
 import { HistorialRevisionesView } from './HistorialRevisionesView'
+import { AnaliticaTurnoView } from './AnaliticaTurnoView'
 import { useFlotaViva } from '../monitoreo/use-flota-viva'
 import { HISTORIAL_ORDENES_TRANSPORTE } from '../historial-orders-data'
 import { HISTORIAL_REVISIONES_DATA } from '../historial-revisiones-data'
 
-export type MasterTab = 'LIVE' | 'HISTORY' | 'AUDIT'
+export type MasterTab = 'LIVE' | 'HISTORY' | 'AUDIT' | 'ANALYTICS'
 
 interface MonitoreoEHistorialOTViewProps {
   initialTab?: MasterTab
@@ -30,7 +32,7 @@ export function MonitoreoEHistorialOTView({ initialTab }: MonitoreoEHistorialOTV
   const resolveTabFromUrl = (): MasterTab => {
     if (initialTab) return initialTab
     const tabParam = searchParams.get('tab')?.toUpperCase()
-    if (tabParam === 'LIVE' || tabParam === 'HISTORY' || tabParam === 'AUDIT') {
+    if (tabParam === 'LIVE' || tabParam === 'HISTORY' || tabParam === 'AUDIT' || tabParam === 'ANALYTICS') {
       return tabParam as MasterTab
     }
     return 'LIVE'
@@ -41,7 +43,7 @@ export function MonitoreoEHistorialOTView({ initialTab }: MonitoreoEHistorialOTV
   // Sincronizar estado cuando cambie el query param
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab')?.toUpperCase()
-    if (tabFromUrl === 'LIVE' || tabFromUrl === 'HISTORY' || tabFromUrl === 'AUDIT') {
+    if (tabFromUrl === 'LIVE' || tabFromUrl === 'HISTORY' || tabFromUrl === 'AUDIT' || tabFromUrl === 'ANALYTICS') {
       setActiveTab(tabFromUrl as MasterTab)
     }
   }, [searchParams])
@@ -163,6 +165,34 @@ export function MonitoreoEHistorialOTView({ initialTab }: MonitoreoEHistorialOTV
                 {revisionesCount} auditadas
               </Badge>
             </button>
+
+            {/* ── TAB 4: ANALÍTICA Y REPORTES DEL TURNO ── */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'ANALYTICS'}
+              onClick={() => handleTabChange('ANALYTICS')}
+              className={cn(
+                'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer border',
+                activeTab === 'ANALYTICS'
+                  ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-xs dark:border-purple-500 dark:bg-purple-950/50 dark:text-purple-200'
+                  : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+              )}
+            >
+              <BarChart3 className={cn('size-3.5', activeTab === 'ANALYTICS' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400')} />
+              <span>Analítica del Turno</span>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  'text-[10px] py-0 px-1.5 font-bold',
+                  activeTab === 'ANALYTICS'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                )}
+              >
+                4 Gráficos
+              </Badge>
+            </button>
           </div>
 
           {/* Breve descripción contextual del lente activo */}
@@ -176,6 +206,9 @@ export function MonitoreoEHistorialOTView({ initialTab }: MonitoreoEHistorialOTV
             {activeTab === 'AUDIT' && (
               <span>🛡️ Conciliación de inventario inicial y actas de rampa</span>
             )}
+            {activeTab === 'ANALYTICS' && (
+              <span>📊 Ritmo de entregas, efectividad de choferes y recaudación</span>
+            )}
           </div>
         </div>
       </div>
@@ -185,6 +218,7 @@ export function MonitoreoEHistorialOTView({ initialTab }: MonitoreoEHistorialOTV
         {activeTab === 'LIVE' && <MonitoreoView />}
         {activeTab === 'HISTORY' && <HistorialOrdenesTransporteView />}
         {activeTab === 'AUDIT' && <HistorialRevisionesView />}
+        {activeTab === 'ANALYTICS' && <AnaliticaTurnoView />}
       </div>
     </div>
   )

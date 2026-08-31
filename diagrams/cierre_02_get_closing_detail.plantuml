@@ -1,0 +1,46 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 2: GET /api/v1/logistics/closings/:transportOrderId (Detalle 1 a 1 de Cierre de OT)
+
+actor "Liquidador / Auditor / Administrador" as User
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Closing Detail Service" as Service
+participant "transport_orders DB" as OrdersDB
+participant "warehouse_closings DB\n(transport_order_warehouse_closings)" as WhClosingDB
+participant "sales_items & products DB\n(transport_order_sales_items / products)" as SalesItemsDB
+participant "collection_closings DB\n(transport_order_collection_closings)" as CollClosingDB
+participant "payment_references DB\n(delivery_payment_references)" as PaymentsDB
+
+User -> Web: Selecciona una Orden de Transporte (ej: 525420010)
+Web -> Gateway: GET /api/v1/logistics/closings/525420010
+Gateway -> Service: getClosingDetail(transportOrderId: 525420010)
+
+Service -> OrdersDB: 1. findOrderHeaderWithTruckAndRoute(525420010)
+OrdersDB --> Service: orderHeader (OT, Chofer, CI, Empresa, Placa, Tipo Camión, Ruta)
+
+Service -> WhClosingDB: 2. findWarehouseClosingByOrderId(525420010)
+WhClosingDB --> Service: whClosing (status, total_dispatch_qty, total_returned_qty, driver & wh signatures)
+
+Service -> SalesItemsDB: 3. findProductReconciliationItems(525420010)
+SalesItemsDB --> Service: productItems[] (50 SKUs: Despacho, Facturado, Bonif, Devuelto, Faltante, Sobrante, Valores en Bs)
+
+Service -> CollClosingDB: 4. findCollectionClosingByOrderId(525420010)
+CollClosingDB --> Service: collClosing (status, cash_amount, total_to_render, cash_bob_breakdown, 4 signatures)
+
+Service -> PaymentsDB: 5. findPaymentReferencesAndCredits(525420010)
+PaymentsDB --> Service: paymentRefs[] (Transferencias bancarias, Cobros QR, Cheques, Créditos autorizados, Devoluciones)
+
+Service -> Service: 6. buildClosingDetailResponse(orderHeader, whClosing, productItems, collClosing, paymentRefs)
+note right of Service
+  Lógica en Memoria:
+  - Estructura Tab 1 (Almacén): Banners (Bs / unidades) + Tabla 14 Cols + Firmas
+  - Estructura Tab 2 (Cobranzas): 3 Cajas + Arqueo Cortes + Transf/QR/Créditos + 4 Firmas
+  - Estructura Tab 3 (Balance): Matriz de Concordancia Operativa-Financiera (Diferencia = Bs 0.00)
+end note
+
+Service --> Gateway: closingDetailResponse
+Gateway --> Web: 200 OK (Detalle 1 a 1 de Cierre)
+Web --> User: Renderiza Ficha Operativa y contenido de las 3 pestañas
+@enduml

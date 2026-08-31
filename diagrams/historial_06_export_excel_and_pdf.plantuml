@@ -1,0 +1,73 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Historial 6: GET /api/v1/supervisor/reports/transport-orders/:orderId/export (Exportación Excel y Acta Oficial PDF)
+
+actor "Supervisor / Auditor" as User
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Revision Export Service" as Service
+participant "Excel / PDF Generator" as Generator
+participant "transport_orders DB" as OrdersDB
+participant "count_sessions DB\n(transport_order_count_sessions)" as SessionDB
+participant "session_items DB\n(transport_order_count_session_items)" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+
+== Flujo A: Exportar Matriz Comparativa a Excel / CSV ==
+
+User -> Web: Clic en "Exportar Matriz Excel"
+Web -> Gateway: GET /api/v1/supervisor/reports/transport-orders/100451/export-excel
+Gateway -> Service: generateOrderExcelReport(orderId: 100451)
+
+Service -> OrdersDB: 1. findOrderHeader(100451)
+OrdersDB --> Service: orderHeader
+
+Service -> SessionDB: 2. findSessionsByOrderId(100451)
+SessionDB --> Service: sessions[]
+
+Service -> SessionItemsDB: 3. findSessionItems(sessionIds)
+SessionItemsDB --> Service: sessionItems[]
+
+Service -> InvDB: 4. findTruckInventories(100451)
+InvDB --> Service: truckInventories[]
+
+Service -> Generator: 5. buildCsvContent(orderHeader, sessions, sessionItems, truckInventories)
+note right of Generator
+  Genera CSV UTF-8 BOM:
+  - Metadatos: OT, Fecha, Camión, Chofer, Supervisor
+  - Matriz: Producto, Factor, Esperado, Conteo Chofer,
+    Revisión Sup, Semáforo, Carga Final Oficial
+end note
+Generator --> Service: csvBuffer / stream
+
+Service --> Gateway: 200 OK (Content-Type: text/csv; filename="Acta_Liquidacion_100451.csv")
+Gateway --> Web: File Download Stream
+Web --> User: Descarga automática del archivo .csv en el navegador
+
+== Flujo B: Descargar Acta Oficial en PDF ==
+
+User -> Web: Clic en "Descargar PDF" (en pestaña Liquidación)
+Web -> Gateway: GET /api/v1/supervisor/reports/transport-orders/100451/acta-pdf
+Gateway -> Service: generateOfficialActaPdf(orderId: 100451)
+
+Service -> OrdersDB: 6. findOrderHeader(100451)
+OrdersDB --> Service: orderHeader
+
+Service -> InvDB: 7. findOfficialInventoryWithSignatures(100451)
+InvDB --> Service: officialInventoryWithSignatures
+
+Service -> Generator: 8. renderPdfWithVectorSignatures(orderHeader, officialInventoryWithSignatures)
+note right of Generator
+  Genera documento PDF vectorizado:
+  - Encabezado oficial Grupo Venado
+  - Datos de transporte y vehículo
+  - Tabla de productos conciliados
+  - Firmas digitales SVG renderizadas
+  - Sello oficial de rampa
+end note
+Generator --> Service: pdfBuffer
+
+Service --> Gateway: 200 OK (Content-Type: application/pdf; filename="Acta_Despacho_100451.pdf")
+Gateway --> Web: PDF Binary Stream
+Web --> User: Abre visor PDF o descarga el documento legal
+@enduml

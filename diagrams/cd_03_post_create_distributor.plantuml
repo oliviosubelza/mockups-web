@@ -1,0 +1,33 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 3: POST /api/v1/distributors (Creación / Importación de Centro)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distributors DB" as DistDB
+
+User -> Web: Selecciona centro en tabla SAP y pulsa "Importar"
+Web -> Gateway: POST /api/v1/distributors\n{ name, cityId, latitude, longitude, codeSap }
+Gateway -> Service: createDistributor(createDto, executorId)
+
+Service -> Service: validatePayload(createDto)
+Service -> DistDB: findByNameAndCity(name, cityId)
+DistDB --> Service: existingRecord (o null)
+
+alt Centro ya registrado previamente
+    Service --> Gateway: 409 Conflict (Centro ya existe)
+    Gateway --> Web: 409 Conflict
+    Web --> User: Muestra notificación de centro duplicado
+else Centro nuevo y válido
+    Service -> DistDB: insertDistributor(createDto, executorId)
+    DistDB --> Service: newDistributorRecord (id, name, lat, lng, cityId)
+
+    Service -> Service: buildCreateDistributorResponse(newDistributorRecord)
+    Service --> Gateway: createDistributorResponse
+    Gateway --> Web: 201 Created (Datos del nuevo centro)
+    Web --> User: Cierra modal, dibuja marcador de depósito y activa trazado de zona
+end
+@enduml

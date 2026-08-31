@@ -1,0 +1,70 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama 3: POST /.../discrepancies/drivers/:driverId/consolidate
+
+actor "Supervisor" as Supervisor
+participant "App Móvil" as App
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "Transaction DB\n(QueryRunner)" as TX
+participant "transport_order_\ncount_sessions DB" as SessionDB
+participant "transport_order_count_\nsession_items DB" as SessionItemsDB
+participant "truck_inventories DB" as InvDB
+
+Supervisor -> App: Tap en "Consolidar Diferencias"
+note left of App
+  El FE envía el array con los 
+  conteos finales (unidad mínima) 
+  aprobados por el supervisor.
+end note
+
+App -> Gateway: POST /.../drivers/12/consolidate
+Gateway -> Service: consolidateDriverDiscrepancies(driverId, payload, executorId)
+
+Service -> Service: 1. groupByTransportOrder(payload.items)
+note right of Service
+  Agrupa los ítems por 'transportOrderId'
+  ya que la tabla de sesiones exige 
+  registrar por OT, no por chofer.
+end note
+
+Service -> TX: 2. startTransaction()
+activate TX
+
+loop Por cada transportOrderId afectado
+    Service -> SessionDB: 3. insertCountSession(orderId, executorId)
+    note right of SessionDB
+      INSERT INTO transport_order_count_sessions:
+      - session_type = 'SUPERVISOR_DISCREPANCY'
+      - status = 'COMPLETED'
+      - executor_role = 'SUPERVISOR'
+    end note
+    SessionDB --> Service: newSessionId
+
+    Service -> SessionItemsDB: 4. insertCountSessionItems(newSessionId, items)
+    note right of SessionItemsDB
+      INSERT masivo para auditoría:
+      - counted_qty = finalCountedUnits
+      - variance_qty = (counted - expected)
+    end note
+    SessionItemsDB --> Service: ok
+end
+
+Service -> InvDB: 5. bulkUpdateInventories(allProcessedItems)
+note right of InvDB
+  Masivo UPDATE en truck_inventories:
+  - loaded_qty = finalCountedUnits
+  - variance_qty = (counted - expected)
+  - verified_supervisor_id = executorId
+  - status = 'APPROVED'
+end note
+InvDB --> Service: ok
+
+Service -> TX: 6. commitTransaction()
+deactivate TX
+
+Service --> Gateway: consolidationSuccessResponse
+Gateway --> App: 200 OK (Consolidation Success)
+App --> Supervisor: Redirige a Pantalla de Éxito o Lista
+@enduml

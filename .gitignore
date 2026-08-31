@@ -9,7 +9,6 @@ dist
 *.puml
 format.json
 *.zip
-diagrams
 .env
 .pdf
 ./analisis

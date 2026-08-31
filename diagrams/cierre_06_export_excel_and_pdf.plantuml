@@ -1,0 +1,81 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Cierre 6: GET /api/v1/logistics/closings/:transportOrderId/export (Exportación Excel y Descarga de Acta Oficial PDF)
+
+actor "Usuario / Auditor / Jefe de Logística" as User
+participant "App Web (Frontend)" as Web
+participant "Gateway Controller" as Gateway
+participant "Closing Export Service" as Service
+participant "Excel / PDF Engine\n(Spreadsheet & PDFKit)" as Engine
+participant "transport_orders DB" as OrdersDB
+participant "warehouse_closings DB\n(transport_order_warehouse_closings)" as WhClosingDB
+participant "sales_items & products DB\n(transport_order_sales_items / products)" as SalesItemsDB
+participant "collection_closings DB\n(transport_order_collection_closings)" as CollClosingDB
+participant "payment_references DB\n(delivery_payment_references)" as PaymentsDB
+
+== Flujo A: Exportar a Excel (.xls / Libro Completo o por Tab) ==
+
+User -> Web: Clic en "Descargar Excel (Almacén / Cobranzas / Consolidado)"
+Web -> Gateway: GET /api/v1/logistics/closings/525420010/export-excel?tab=almacen|cobranza|consolidado
+Gateway -> Service: exportClosingToExcel(transportOrderId: 525420010, tab: 'almacen')
+
+Service -> OrdersDB: 1. findOrderHeader(525420010)
+OrdersDB --> Service: orderHeader
+
+Service -> WhClosingDB: 2. findWarehouseClosing(525420010)
+WhClosingDB --> Service: whClosing
+
+Service -> SalesItemsDB: 3. findSalesItemsWithProducts(525420010)
+SalesItemsDB --> Service: salesItems[] (50 SKUs con cantidades y precios en Bs)
+
+Service -> CollClosingDB: 4. findCollectionClosing(525420010)
+CollClosingDB --> Service: collClosing
+
+Service -> PaymentsDB: 5. findPaymentReferences(525420010)
+PaymentsDB --> Service: paymentRefs[]
+
+Service -> Engine: 6. generateXmlSpreadsheet(orderHeader, whClosing, salesItems, collClosing, paymentRefs, tab)
+note right of Engine
+  Genera libro Excel con formato financiero en Bs:
+  - Tab 'almacen': Hoja 14 columnas con fórmulas =SUM(...)
+  - Tab 'cobranza': Hoja con arqueo y conciliación
+  - Tab 'consolidado': Libro Completo con 2 Hojas enlazadas
+end note
+Engine --> Service: excelBinaryStream
+
+Service --> Gateway: 200 OK (Content-Type: application/vnd.ms-excel; filename="Cierre_Logistico_525420010_Almacen.xls")
+Gateway --> Web: File Download Stream (.xls)
+Web --> User: Descarga automática de la hoja de cálculo en el navegador
+
+== Flujo B: Descargar Acta Oficial en PDF (Multi-Página Vectorizado) ==
+
+User -> Web: Clic en "Descargar PDF (Almacén / Cobranzas / Consolidado)"
+Web -> Gateway: GET /api/v1/logistics/closings/525420010/export-pdf?tab=cobranza
+Gateway -> Service: generateClosingOfficialPdf(transportOrderId: 525420010, tab: 'cobranza')
+
+Service -> OrdersDB: 7. findOrderHeader(525420010)
+OrdersDB --> Service: orderHeader
+
+Service -> WhClosingDB: 8. findWarehouseClosingWithSignatures(525420010)
+WhClosingDB --> Service: whClosingWithSignatures
+
+Service -> CollClosingDB: 9. findCollectionClosingWithSignatures(525420010)
+CollClosingDB --> Service: collClosingWithSignatures
+
+Service -> Engine: 10. renderVectorizedOfficialPdf(orderHeader, whClosingWithSignatures, collClosingWithSignatures, tab)
+note right of Engine
+  Genera documento PDF vectorizado:
+  - Encabezado: "Distribuidora DISCRUZ"
+  - Título oficial: "ACTA DE CIERRE DE COBRANZAS" (o ALMACÉN)
+  - Formato Horizontal (Landscape) multi-página
+  - thead repetible en cabecera de cada página
+  - Tablas financieras en 2 columnas sin cortes
+  - 4 Cajas de firma amplias con espacio para firma física / sello
+end note
+Engine --> Service: pdfBinaryStream
+
+Service --> Gateway: 200 OK (Content-Type: application/pdf; filename="Acta_Cierre_525420010_Cobranzas.pdf")
+Gateway --> Web: PDF Binary Stream
+Web --> User: Abre visor de impresión o descarga el documento legal PDF
+@enduml

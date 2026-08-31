@@ -1,13 +1,12 @@
 // Dataset estructurado para el Cierre Logístico de Almacén y Cierre Logístico de Cobranzas.
-// Mapea exactamente los formatos de las 3 imágenes reales de Grupo Venado:
-// - image.png (Cierre Logístico Almacén)
-// - cierre_logistico_cobranza1.png y cierre_logistico_cobranza2.png (Cierre Logístico Cobranzas)
-// Relación 1 a 1 con transport_orders.
+// Mapea los formatos reales de Grupo Venado:
+// - Cierre Logístico Almacén (Liquidación física con 30-50 SKUs por orden)
+// - Cierre Logístico Cobranzas (Arqueo monetario, depósitos, medios digitales y balance)
 
 export interface CierreAlmacenItem {
   codigo: string
   producto: string
-  um: string // BOT, DOY, CAJ, POM, etc.
+  um: string // BOT, DOY, CAJ, POM, SOB, PAQ, etc.
   cantidadDespacho: number
   cantidadFacturado: number
   cantidadBonificacion: number
@@ -55,14 +54,17 @@ export interface CreditoItem {
   clienteNombre: string
   factura: string
   monto: number
-  estado: string // "Credito/Facturado/Entregado"
+  estado: string
 }
 
 export interface DepositoEfectivoItem {
   banco: string
-  voucher: string
+  numeroComprobante?: string
+  voucher?: string
   monto: number
-  estado: string // "Contado/Facturado/Cobrado - Efectivo"
+  hora?: string
+  cuenta?: string
+  estado?: string
 }
 
 export interface CorteMonedaItem {
@@ -79,7 +81,7 @@ export interface TransferenciaItem {
   clienteCodigo: string
   clienteNombre: string
   monto: number
-  estado: string // "Contado/Facturado/Cobrado - Transferencia"
+  estado: string
 }
 
 export interface PagoQrItem {
@@ -88,7 +90,7 @@ export interface PagoQrItem {
   clienteCodigo: string
   clienteNombre: string
   monto: number
-  estado: string // "Contado/Facturado/Cobrado - QR"
+  estado: string
 }
 
 export interface ChequeItem {
@@ -97,7 +99,7 @@ export interface ChequeItem {
   clienteCodigo: string
   clienteNombre: string
   monto: number
-  estado: string // "Contado/Facturado/Cobrado - Cheque"
+  estado: string
 }
 
 export interface CobranzaCobradorItem {
@@ -105,7 +107,7 @@ export interface CobranzaCobradorItem {
   clienteNombre: string
   factura: string
   monto: number
-  estado: string // "Contado/Facturado/Entregado - Sin Cobrar"
+  estado: string
 }
 
 export interface DevolucionItem {
@@ -114,7 +116,7 @@ export interface DevolucionItem {
   factura: string
   monto: number
   motivo?: string
-  estado: string // "Visitado o Facturado/Sin Entregar - Sin Cobrar"
+  estado: string
 }
 
 export interface CierreCobranzaInfo {
@@ -129,30 +131,34 @@ export interface CierreCobranzaInfo {
 
   // Resumen Financiero
   resumenFinanciero: {
-    importeFacturado: number     // Bs 1.118,74
-    importeBonificado: number   // Bs 92,81
-    importeEntregado: number    // Bs 1.211,55 (Facturado + Bonificado)
-    importeDevuelto: number     // Bs 41,15
-    valorDespacho: number       // Bs 1.252,70
+    importeFacturado: number
+    importeBonificado: number
+    importeEntregado: number
+    importeDevuelto: number
+    valorDespacho: number
   }
 
   // Resumen Medios de Pago
   resumenCobranzas: {
-    efectivo: number            // Bs 400,00
-    transferencia: number       // Bs 300,00
-    qr: number                  // Bs 252,70
-    cheque: number              // Bs 0,00
-    cobranzaChofer: number      // Bs 952,70 (Efectivo + Transf + QR + Cheque)
-    credito: number             // Bs 166,04
-    cobranzaCobrador: number    // Bs 0,00
-    totalARendir: number        // Bs 1.118,74 (Cobranza Chofer + Crédito + Cobrador)
+    efectivo: number
+    transferencia: number
+    qr: number
+    cheque: number
+    cobranzaChofer: number
+    credito: number
+    cobranzaCobrador: number
+    totalARendir: number
   }
 
   // Estadísticas de Pedidos
   pedidos: {
-    despacho: number            // 30
-    facturado: number           // 28
-    devuelto: number            // 2
+    total?: number
+    despacho?: number
+    facturado: number
+    bonificado?: number
+    devuelto?: number
+    anulado?: number
+    noEntregado?: number
   }
 
   // Desgloses Detallados
@@ -164,6 +170,7 @@ export interface CierreCobranzaInfo {
   cheques: ChequeItem[]
   cobranzaCobrador: CobranzaCobradorItem[]
   devolucionesNoCobradas: DevolucionItem[]
+  observaciones?: string
 
   // Firmas de los 4 roles
   firmas: {
@@ -196,7 +203,206 @@ export interface CierreOrdenTransporte {
   cobranza: CierreCobranzaInfo
 }
 
-// ── DATASET REAL BASADO EXACTAMENTE EN LAS IMÁGENES DE GRUPO VENADO ──
+// ── CATÁLOGO MAESTRO DE PRODUCTOS GRUPO VENADO (55 SKUs) ──
+const CATALOGO_VENADO = [
+  { codigo: '600192', producto: 'B. REFRESCANTE CHICHA CAMBA DE 2 L NP', um: 'BOT', precio: 12.0 },
+  { codigo: '600190', producto: 'B. REFRESCANTE MOCOCHINCHI DE 2 L NP', um: 'BOT', precio: 12.0 },
+  { codigo: '600115', producto: 'REFRESCO FRUSSION DURAZNO 3 L', um: 'BOT', precio: 12.0 },
+  { codigo: '600116', producto: 'REFRESCO FRUSSION MANZANA 3 L', um: 'BOT', precio: 12.0 },
+  { codigo: '600117', producto: 'REFRESCO FRUSSION CITRUS 3 L', um: 'BOT', precio: 12.0 },
+  { codigo: '600207', producto: 'RAPTOR ANALCOHOLICO DE 350 ML', um: 'BOT', precio: 3.8 },
+  { codigo: '600208', producto: 'RAPTOR ENERGY DRINK 500 ML', um: 'LATA', precio: 6.5 },
+  { codigo: '600204', producto: 'BEBIDA DE LA GRANJA NARANJA 300ML', um: 'BOT', precio: 5.0 },
+  { codigo: '600205', producto: 'BEBIDA DE LA GRANJA NARANJA 2000 ML', um: 'BOT', precio: 18.5 },
+  { codigo: '600206', producto: 'BEBIDA DE LA GRANJA MANZANA 2000 ML', um: 'BOT', precio: 18.5 },
+  { codigo: 'KRI-MAY-100', producto: 'Mayonesa Kris Doypack 100g', um: 'DOY', precio: 3.5 },
+  { codigo: 'KRI-MAY-250', producto: 'Mayonesa Kris Doypack 250g', um: 'DOY', precio: 7.0 },
+  { codigo: 'KRI-MAY-500', producto: 'Mayonesa Kris Doypack 500g', um: 'DOY', precio: 12.0 },
+  { codigo: 'KRI-MAY-1000', producto: 'Mayonesa Kris Doypack 1000g', um: 'DOY', precio: 21.5 },
+  { codigo: 'KRI-MAY-POM', producto: 'Mayonesa Kris Pomo 400g', um: 'POM', precio: 13.5 },
+  { codigo: 'KRI-KET-100', producto: 'Kétchup Kris Doypack 100g', um: 'DOY', precio: 3.2 },
+  { codigo: 'KRI-KET-250', producto: 'Kétchup Kris Doypack 250g', um: 'DOY', precio: 6.5 },
+  { codigo: 'KRI-KET-500', producto: 'Kétchup Kris Doypack 500g', um: 'DOY', precio: 11.5 },
+  { codigo: 'KRI-KET-1000', producto: 'Kétchup Kris Doypack 1000g', um: 'DOY', precio: 20.0 },
+  { codigo: 'KRI-MOS-100', producto: 'Mostaza Kris Doypack 100g', um: 'DOY', precio: 3.0 },
+  { codigo: 'KRI-MOS-250', producto: 'Mostaza Kris Pomo 250g', um: 'POM', precio: 6.0 },
+  { codigo: 'KRI-MOS-500', producto: 'Mostaza Kris Doypack 500g', um: 'DOY', precio: 10.5 },
+  { codigo: 'KRI-GOLF-250', producto: 'Salsa Golf Kris Doypack 250g', um: 'DOY', precio: 8.0 },
+  { codigo: 'KRI-GOLF-500', producto: 'Salsa Golf Kris Doypack 500g', um: 'DOY', precio: 14.0 },
+  { codigo: 'KRI-SOJ-150', producto: 'Salsa de Soya Kris 150ml', um: 'BOT', precio: 4.5 },
+  { codigo: 'KRI-SOJ-500', producto: 'Salsa de Soya Kris 500ml', um: 'BOT', precio: 9.0 },
+  { codigo: 'KRI-ING-150', producto: 'Salsa Inglesa Kris 150ml', um: 'BOT', precio: 5.5 },
+  { codigo: 'KRI-VIN-BLA', producto: 'Vinagre Blanco Kris 500ml', um: 'BOT', precio: 4.0 },
+  { codigo: 'KRI-VIN-TIN', producto: 'Vinagre Tinto Kris 500ml', um: 'BOT', precio: 4.0 },
+  { codigo: 'KRI-GEL-FRU', producto: 'Gelatina Kris Frutilla 85g', um: 'SOB', precio: 2.8 },
+  { codigo: 'KRI-GEL-LIM', producto: 'Gelatina Kris Limón 85g', um: 'SOB', precio: 2.8 },
+  { codigo: 'KRI-GEL-NAR', producto: 'Gelatina Kris Naranja 85g', um: 'SOB', precio: 2.8 },
+  { codigo: 'KRI-GEL-PI', producto: 'Gelatina Kris Piña 85g', um: 'SOB', precio: 2.8 },
+  { codigo: 'KRI-GEL-UVA', producto: 'Gelatina Kris Uva 85g', um: 'SOB', precio: 2.8 },
+  { codigo: 'KRI-PUD-CHO', producto: 'Pudín Kris Chocolate 100g', um: 'SOB', precio: 3.5 },
+  { codigo: 'KRI-PUD-VAI', producto: 'Pudín Kris Vainilla 100g', um: 'SOB', precio: 3.5 },
+  { codigo: 'KRI-FLA-CAR', producto: 'Flan Kris Caramelo 100g', um: 'SOB', precio: 3.5 },
+  { codigo: 'FID-COR-400', producto: 'Fideos Coronilla Tallarín 400g', um: 'PAQ', precio: 4.2 },
+  { codigo: 'FID-COR-ESP', producto: 'Fideos Coronilla Espagueti 400g', um: 'PAQ', precio: 4.2 },
+  { codigo: 'FID-COR-COD', producto: 'Fideos Coronilla Codito 400g', um: 'PAQ', precio: 4.2 },
+  { codigo: 'FID-COR-PLU', producto: 'Fideos Coronilla Plumita 400g', um: 'PAQ', precio: 4.2 },
+  { codigo: 'CER-CHO-300', producto: 'Cereal Kris Choco Flakes 300g', um: 'CAJ', precio: 14.5 },
+  { codigo: 'CER-MAI-300', producto: 'Cereal Kris Corn Flakes 300g', um: 'CAJ', precio: 13.5 },
+  { codigo: 'CER-AZU-300', producto: 'Cereal Kris Azucarado 300g', um: 'CAJ', precio: 14.0 },
+  { codigo: 'AVN-KRI-500', producto: 'Avena Kris Instantánea 500g', um: 'BOL', precio: 8.5 },
+  { codigo: 'TE-BRIST-100', producto: 'Té Bristol Clásico 100 saquitos', um: 'CAJ', precio: 16.0 },
+  { codigo: 'TE-BRIST-CAN', producto: 'Té Bristol Canela y Clavo 50s', um: 'CAJ', precio: 10.0 },
+  { codigo: 'MAT-YER-500', producto: 'Mate de Hierbas 50s', um: 'CAJ', precio: 11.0 },
+  { codigo: 'DET-LIMP-1K', producto: 'Limpiador Multiuso Líquido 1L', um: 'BOT', precio: 12.0 },
+  { codigo: 'JAB-LIQ-500', producto: 'Jabón Líquido Antibacterial 500ml', um: 'BOT', precio: 13.0 },
+  { codigo: 'ACE-VEG-900', producto: 'Aceite Vegetal Fino 900ml', um: 'BOT', precio: 12.5 },
+  { codigo: 'HAR-TRG-1K', producto: 'Harina de Trigo Especial 1kg', um: 'BOL', precio: 7.0 },
+  { codigo: 'LECH-CON-395', producto: 'Leche Condensada Kris 395g', um: 'LATA', precio: 11.0 },
+  { codigo: 'DUL-LEC-400', producto: 'Dulce de Leche Kris 400g', um: 'POT', precio: 13.5 },
+  { codigo: 'SAL-PAR-500', producto: 'Sal Parrillera Kris 500g', um: 'BOL', precio: 5.0 },
+]
+
+// Función auxiliar para construir items de almacén con 30 a 50 productos
+function generarItemsAlmacen(
+  cantidadItems: number,
+  seed: number,
+  conDevoluciones: boolean,
+  conFaltantes: boolean
+): CierreAlmacenItem[] {
+  const items: CierreAlmacenItem[] = []
+  const count = Math.min(CATALOGO_VENADO.length, Math.max(30, cantidadItems))
+
+  for (let i = 0; i < count; i++) {
+    const prod = CATALOGO_VENADO[i]
+    // Cantidades pseudo-aleatorias basadas en el seed y el índice
+    const baseCant = 15 + ((seed * 7 + i * 13) % 45) // 15 a 60 unidades
+    const bono = i % 4 === 0 ? Math.max(1, Math.floor(baseCant * 0.05)) : 0
+    let dev = 0
+    let falt = 0
+
+    if (conDevoluciones && (i === 2 || i === 8 || i === 15 || i === 24)) {
+      dev = ((seed + i) % 3) + 1 // 1 a 3 unidades
+    }
+    if (conFaltantes && (i === 5 || i === 19)) {
+      falt = 1 + (seed % 2) // 1 o 2 unidades
+    }
+
+    const cantFact = Math.max(0, baseCant - bono - dev - falt)
+    const factTotal = cantFact + bono
+    const vDespacho = parseFloat((baseCant * prod.precio).toFixed(2))
+    const vFacturado = parseFloat((cantFact * prod.precio).toFixed(2))
+    const vBono = parseFloat((bono * prod.precio).toFixed(2))
+    const vDev = parseFloat((dev * prod.precio).toFixed(2))
+
+    items.push({
+      codigo: prod.codigo,
+      producto: prod.producto,
+      um: prod.um,
+      cantidadDespacho: baseCant,
+      cantidadFacturado: cantFact,
+      cantidadBonificacion: bono,
+      facturadoTotal: factTotal,
+      cantidadDevuelto: dev,
+      cantidadFaltante: falt,
+      cantidadSobrante: 0,
+      valorDespacho: vDespacho,
+      valorFacturado: vFacturado,
+      valorBonificacion: vBono,
+      valorDevuelto: vDev,
+    })
+  }
+
+  return items
+}
+
+function calcularTotalesAlmacen(items: CierreAlmacenItem[]) {
+  return items.reduce(
+    (acc, it) => ({
+      totalCantidadDespacho: acc.totalCantidadDespacho + it.cantidadDespacho,
+      totalCantidadFacturado: acc.totalCantidadFacturado + it.cantidadFacturado,
+      totalCantidadBonificacion: acc.totalCantidadBonificacion + it.cantidadBonificacion,
+      totalFacturadoTotal: acc.totalFacturadoTotal + it.facturadoTotal,
+      totalCantidadDevuelto: acc.totalCantidadDevuelto + it.cantidadDevuelto,
+      totalCantidadFaltante: acc.totalCantidadFaltante + it.cantidadFaltante,
+      totalCantidadSobrante: acc.totalCantidadSobrante + it.cantidadSobrante,
+      totalValorDespacho: parseFloat((acc.totalValorDespacho + it.valorDespacho).toFixed(2)),
+      totalValorFacturado: parseFloat((acc.totalValorFacturado + it.valorFacturado).toFixed(2)),
+      totalValorBonificacion: parseFloat((acc.totalValorBonificacion + it.valorBonificacion).toFixed(2)),
+      totalValorDevuelto: parseFloat((acc.totalValorDevuelto + it.valorDevuelto).toFixed(2)),
+    }),
+    {
+      totalCantidadDespacho: 0,
+      totalCantidadFacturado: 0,
+      totalCantidadBonificacion: 0,
+      totalFacturadoTotal: 0,
+      totalCantidadDevuelto: 0,
+      totalCantidadFaltante: 0,
+      totalCantidadSobrante: 0,
+      totalValorDespacho: 0,
+      totalValorFacturado: 0,
+      totalValorBonificacion: 0,
+      totalValorDevuelto: 0,
+    }
+  )
+}
+
+function generarCortesBsParaMonto(montoTotal: number): CorteMonedaItem[] {
+  let remCents = Math.round(montoTotal * 100)
+  const denominaciones = [
+    { den: '200 Bs', valCents: 20000, val: 200, tipo: 'BILLETE' as const },
+    { den: '100 Bs', valCents: 10000, val: 100, tipo: 'BILLETE' as const },
+    { den: '50 Bs', valCents: 5000, val: 50, tipo: 'BILLETE' as const },
+    { den: '20 Bs', valCents: 2000, val: 20, tipo: 'BILLETE' as const },
+    { den: '10 Bs', valCents: 1000, val: 10, tipo: 'BILLETE' as const },
+    { den: '5 Bs', valCents: 500, val: 5, tipo: 'MONEDA' as const },
+    { den: '2 Bs', valCents: 200, val: 2, tipo: 'MONEDA' as const },
+    { den: '1 Bs', valCents: 100, val: 1, tipo: 'MONEDA' as const },
+    { den: '0.50 Bs', valCents: 50, val: 0.5, tipo: 'MONEDA' as const },
+    { den: '0.20 Bs', valCents: 20, val: 0.2, tipo: 'MONEDA' as const },
+    { den: '0.10 Bs', valCents: 10, val: 0.1, tipo: 'MONEDA' as const },
+  ]
+
+  return denominaciones.map((d) => {
+    let cant = 0
+    if (remCents >= d.valCents) {
+      cant = Math.floor(remCents / d.valCents)
+      remCents = remCents % d.valCents
+    }
+    return {
+      denominacion: d.den,
+      valorUnitario: d.val,
+      tipo: d.tipo,
+      cantidad: cant,
+      monto: parseFloat(((cant * d.valCents) / 100).toFixed(2)),
+    }
+  })
+}
+
+// ── CONSTRUCCIÓN DE LAS 8 ÓRDENES CON 30 A 50 PRODUCTOS CADA UNA ──
+
+const itemsOT1 = generarItemsAlmacen(42, 101, true, false) // 42 SKUs
+const totalesOT1 = calcularTotalesAlmacen(itemsOT1)
+
+const itemsOT2 = generarItemsAlmacen(36, 202, true, false) // 36 SKUs
+const totalesOT2 = calcularTotalesAlmacen(itemsOT2)
+
+const itemsOT3 = generarItemsAlmacen(50, 303, true, false) // 50 SKUs
+const totalesOT3 = calcularTotalesAlmacen(itemsOT3)
+
+const itemsOT4 = generarItemsAlmacen(48, 404, true, false) // 48 SKUs
+const totalesOT4 = calcularTotalesAlmacen(itemsOT4)
+
+const itemsOT5 = generarItemsAlmacen(35, 505, false, false) // 35 SKUs
+const totalesOT5 = calcularTotalesAlmacen(itemsOT5)
+
+const itemsOT6 = generarItemsAlmacen(40, 606, true, false) // 40 SKUs
+const totalesOT6 = calcularTotalesAlmacen(itemsOT6)
+
+const itemsOT7 = generarItemsAlmacen(32, 707, false, false) // 32 SKUs
+const totalesOT7 = calcularTotalesAlmacen(itemsOT7)
+
+const itemsOT8 = generarItemsAlmacen(45, 808, true, false) // 45 SKUs
+const totalesOT8 = calcularTotalesAlmacen(itemsOT8)
 
 export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
   {
@@ -217,7 +423,6 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
     status: 'LIQUIDATED',
     statusLabel: 'Liquidado Conforme',
 
-    // ── 1. CIERRE ALMACÉN (image.png) ──
     almacen: {
       fecha: '2026-02-12',
       fechaFormatted: '12/2/2026',
@@ -227,124 +432,14 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       placaCamion: '4284 IYB HINO FRIO',
       tipoCamion: 'HINO FRIO',
       numeroDespacho: '525420002',
-      items: [
-        {
-          codigo: '600192',
-          producto: 'B. REFRESCANTE CHICHA CAMBA DE 2 L NP',
-          um: 'BOT',
-          cantidadDespacho: 10,
-          cantidadFacturado: 8,
-          cantidadBonificacion: 1,
-          facturadoTotal: 9,
-          cantidadDevuelto: 1,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 120.0,
-          valorFacturado: 96.0,
-          valorBonificacion: 12.0,
-          valorDevuelto: 12.0,
-        },
-        {
-          codigo: '600190',
-          producto: 'B. REFRESCANTE MOCOCHINCHI DE 2 L NP',
-          um: 'BOT',
-          cantidadDespacho: 8,
-          cantidadFacturado: 8,
-          cantidadBonificacion: 0,
-          facturadoTotal: 8,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 96.0,
-          valorFacturado: 96.0,
-          valorBonificacion: 0.0,
-          valorDevuelto: 0.0,
-        },
-        {
-          codigo: '600115',
-          producto: 'REFRESCO FRUSSION DURAZNO 3 L',
-          um: 'BOT',
-          cantidadDespacho: 7,
-          cantidadFacturado: 6,
-          cantidadBonificacion: 1,
-          facturadoTotal: 7,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 84.0,
-          valorFacturado: 72.0,
-          valorBonificacion: 12.0,
-          valorDevuelto: 0.0,
-        },
-        {
-          codigo: '600207',
-          producto: 'RAPTOR ANALCOHOLICO DE 350 ML',
-          um: 'BOT',
-          cantidadDespacho: 140,
-          cantidadFacturado: 128,
-          cantidadBonificacion: 7,
-          facturadoTotal: 135,
-          cantidadDevuelto: 5,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 536.2,
-          valorFacturado: 490.2,
-          valorBonificacion: 26.8,
-          valorDevuelto: 19.2,
-        },
-        {
-          codigo: '600204',
-          producto: 'BEBIDA DE LA GRANJA NARANJA 300ML',
-          um: 'BOT',
-          cantidadDespacho: 13,
-          cantidadFacturado: 10,
-          cantidadBonificacion: 1,
-          facturadoTotal: 11,
-          cantidadDevuelto: 2,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 65.0,
-          valorFacturado: 50.0,
-          valorBonificacion: 5.0,
-          valorDevuelto: 10.0,
-        },
-        {
-          codigo: '600205',
-          producto: 'BEBIDA DE LA GRANJA NARANJA 2000 ML',
-          um: 'BOT',
-          cantidadDespacho: 19,
-          cantidadFacturado: 17,
-          cantidadBonificacion: 2,
-          facturadoTotal: 19,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 351.5,
-          valorFacturado: 314.5,
-          valorBonificacion: 37.0,
-          valorDevuelto: 0.0,
-        },
-      ],
-      totales: {
-        totalCantidadDespacho: 197,
-        totalCantidadFacturado: 177,
-        totalCantidadBonificacion: 12,
-        totalFacturadoTotal: 189,
-        totalCantidadDevuelto: 8,
-        totalCantidadFaltante: 0,
-        totalCantidadSobrante: 0,
-        totalValorDespacho: 1252.7,
-        totalValorFacturado: 1118.7,
-        totalValorBonificacion: 92.8,
-        totalValorDevuelto: 41.2,
-      },
+      items: itemsOT1,
+      totales: totalesOT1,
       firmas: {
-        chofer: { firmado: true, nombre: 'VÍCTOR HUGO CONDORI', ci: '5429180 LP' },
-        almacen: { firmado: true, nombre: 'CARLOS ROJAS T.', cargo: 'Encargado de Rampa y Almacén' },
+        chofer: { firmado: true, nombre: 'VÍCTOR HUGO CONDORI PAREDES', ci: '5429180 LP' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
       },
     },
 
-    // ── 2. CIERRE COBRANZAS (cierre_logistico_cobranza1.png y 2.png) ──
     cobranza: {
       fecha: '2026-02-12',
       fechaFormatted: '12/2/2026',
@@ -354,186 +449,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       placaCamion: '4284 IYB HINO FRIO',
       tipoCamion: 'HINO FRIO',
       numeroDespacho: '525420002',
-
       resumenFinanciero: {
-        importeFacturado: 1118.74,
-        importeBonificado: 92.81,
-        importeEntregado: 1211.55,
-        importeDevuelto: 41.15,
-        valorDespacho: 1252.7,
+        importeFacturado: totalesOT1.totalValorFacturado,
+        importeBonificado: totalesOT1.totalValorBonificacion,
+        importeEntregado: totalesOT1.totalValorFacturado + totalesOT1.totalValorBonificacion,
+        importeDevuelto: totalesOT1.totalValorDevuelto,
+        valorDespacho: totalesOT1.totalValorDespacho,
       },
-
       resumenCobranzas: {
-        efectivo: 400.0,
+        efectivo: totalesOT1.totalValorFacturado - 1400.0,
         transferencia: 300.0,
-        qr: 252.7,
-        cheque: 0.0,
-        cobranzaChofer: 952.7,
-        credito: 166.04,
+        qr: 250.0,
+        cheque: 400.0,
+        cobranzaChofer: totalesOT1.totalValorFacturado,
+        credito: 0.0,
         cobranzaCobrador: 0.0,
-        totalARendir: 1118.74,
+        totalARendir: totalesOT1.totalValorFacturado,
       },
-
-      pedidos: {
-        despacho: 30,
-        facturado: 28,
-        devuelto: 2,
-      },
-
-      creditos: [
-        {
-          clienteCodigo: '1338183',
-          clienteNombre: 'Abarrotes Doña María - Mutualista',
-          factura: 'F-88291',
-          monto: 100.0,
-          estado: 'Credito/Facturado/Entregado',
-        },
-        {
-          clienteCodigo: '1093764',
-          clienteNombre: 'Comercial El Carmen',
-          factura: 'F-88295',
-          monto: 66.04,
-          estado: 'Credito/Facturado/Entregado',
-        },
-      ],
-
+      pedidos: { total: 32, facturado: 30, bonificado: 5, anulado: 0, noEntregado: 2 },
+      creditos: [],
       depositosEfectivo: [
-        {
-          banco: 'BISA',
-          voucher: '1234',
-          monto: 0.0, // Referencial en plantilla
-          estado: 'Contado/Facturado/Cobrado - Efectivo',
-        },
+        { banco: 'Banco BCP', numeroComprobante: 'DEP-99410', monto: 450.0, hora: '15:30', cuenta: 'Cta. Cte. Central' },
       ],
-
-      cortesBs: [
-        { denominacion: 'Bs 0,10', valorUnitario: 0.1, tipo: 'MONEDA', cantidad: 0, monto: 0.0 },
-        { denominacion: 'Bs 0,20', valorUnitario: 0.2, tipo: 'MONEDA', cantidad: 0, monto: 0.0 },
-        { denominacion: 'Bs 0,50', valorUnitario: 0.5, tipo: 'MONEDA', cantidad: 0, monto: 0.0 },
-        { denominacion: 'Bs 1,00', valorUnitario: 1.0, tipo: 'MONEDA', cantidad: 0, monto: 0.0 },
-        { denominacion: 'Bs 2,00', valorUnitario: 2.0, tipo: 'MONEDA', cantidad: 5, monto: 10.0 },
-        { denominacion: 'Bs 5,00', valorUnitario: 5.0, tipo: 'MONEDA', cantidad: 8, monto: 40.0 },
-        { denominacion: 'Bs 10,00', valorUnitario: 10.0, tipo: 'BILLETE', cantidad: 5, monto: 50.0 },
-        { denominacion: 'Bs 20,00', valorUnitario: 20.0, tipo: 'BILLETE', cantidad: 5, monto: 100.0 },
-        { denominacion: 'Bs 50,00', valorUnitario: 50.0, tipo: 'BILLETE', cantidad: 2, monto: 100.0 },
-        { denominacion: 'Bs 100,00', valorUnitario: 100.0, tipo: 'BILLETE', cantidad: 1, monto: 100.0 },
-        { denominacion: 'Bs 200,00', valorUnitario: 200.0, tipo: 'BILLETE', cantidad: 0, monto: 0.0 },
-      ],
-
+      cortesBs: generarCortesBsParaMonto(totalesOT1.totalValorFacturado - 1400.0),
       transferencias: [
-        {
-          transaccion: '991000901',
-          banco: 'BCP',
-          clienteCodigo: '1020301',
-          clienteNombre: 'Minimarket Los Pinos',
-          monto: 50.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
-        {
-          transaccion: '991000902',
-          banco: 'GANADERO',
-          clienteCodigo: '1020310',
-          clienteNombre: 'Tienda San Silvestre',
-          monto: 50.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
-        {
-          transaccion: '991000905',
-          banco: 'GANADERO',
-          clienteCodigo: '1020200',
-          clienteNombre: 'Snack El Buen Sabor',
-          monto: 100.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
-        {
-          transaccion: '991000920',
-          banco: 'BCP',
-          clienteCodigo: '1020198',
-          clienteNombre: 'Comercializadora Oriental',
-          monto: 100.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
+        { transaccion: 'TR-102948', banco: 'Banco BCP', clienteCodigo: '10101', clienteNombre: 'Hipermaxi Norte', monto: 300.0, estado: 'Conciliado' },
       ],
-
       pagosQr: [
-        {
-          transaccion: '991000901',
-          banco: 'BISA',
-          clienteCodigo: '1020301',
-          clienteNombre: 'Pulpería La Salle',
-          monto: 52.7,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-        {
-          transaccion: '991000902',
-          banco: 'BISA',
-          clienteCodigo: '1020310',
-          clienteNombre: 'Almacén 3 Pasos',
-          monto: 50.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-        {
-          transaccion: '991000905',
-          banco: 'BISA',
-          clienteCodigo: '1020200',
-          clienteNombre: 'Micromercado Florida',
-          monto: 20.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-        {
-          transaccion: '991000920',
-          banco: 'BISA',
-          clienteCodigo: '1020102',
-          clienteNombre: 'Kiosco Central',
-          monto: 30.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-        {
-          transaccion: '991000910',
-          banco: 'BISA',
-          clienteCodigo: '1020191',
-          clienteNombre: 'Licorería San Martín',
-          monto: 50.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-        {
-          transaccion: '991000915',
-          banco: 'BISA',
-          clienteCodigo: '1020155',
-          clienteNombre: 'Supermercado Familiar',
-          monto: 50.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
+        { transaccion: 'QR-990182', banco: 'BISA', clienteCodigo: '10102', clienteNombre: 'Supermercado Fidalga', monto: 250.0, estado: 'Validado' },
       ],
-
-      cheques: [],
-
+      cheques: [
+        { banco: 'Banco Mercantil', nroCheque: 'CHQ-001928', clienteCodigo: '10105', clienteNombre: 'Distribuidora San Martín', monto: 400.0, estado: 'Al Día' },
+      ],
       cobranzaCobrador: [],
-
-      devolucionesNoCobradas: [
-        {
-          clienteCodigo: '1020301',
-          clienteNombre: 'Tienda La Cholita',
-          factura: '123',
-          monto: 26.2,
-          motivo: 'Local cerrado en segundo intento',
-          estado: 'Visitado o Facturado/Sin Entregar - Sin Cobrar',
-        },
-        {
-          clienteCodigo: '1020310',
-          clienteNombre: 'Comedor Doña Rosa',
-          factura: '-',
-          monto: 20.0,
-          motivo: 'Rechazo parcial por falta de liquidez',
-          estado: 'Visitado o Facturado/Sin Entregar - Sin Cobrar',
-        },
-      ],
-
+      devolucionesNoCobradas: [],
       firmas: {
-        chofer: { firmado: true, nombre: 'VÍCTOR HUGO CONDORI', cargo: 'Chofer Repartidor (IVSA)' },
-        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor de Rampa y Rutas' },
-        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central de Liquidación' },
-        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe de Administración y Finanzas' },
+        chofer: { firmado: true, nombre: 'VÍCTOR HUGO CONDORI', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor de Rampa' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe Admin' },
       },
     },
   },
@@ -564,72 +518,11 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       placaCamion: '5120 GHT HINO 500',
       tipoCamion: 'HINO 500',
       numeroDespacho: 'ORD-2026-0819',
-      items: [
-        {
-          codigo: 'KRI-MAY-500',
-          producto: 'Mayonesa Kris Doypack 500g',
-          um: 'DOY',
-          cantidadDespacho: 192,
-          cantidadFacturado: 180,
-          cantidadBonificacion: 12,
-          facturadoTotal: 192,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 2304.0,
-          valorFacturado: 2160.0,
-          valorBonificacion: 144.0,
-          valorDevuelto: 0.0,
-        },
-        {
-          codigo: 'KRI-KET-500',
-          producto: 'Ketchup Kris Doypack 500g',
-          um: 'DOY',
-          cantidadDespacho: 149,
-          cantidadFacturado: 140,
-          cantidadBonificacion: 5,
-          facturadoTotal: 145,
-          cantidadDevuelto: 4,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 1788.0,
-          valorFacturado: 1680.0,
-          valorBonificacion: 60.0,
-          valorDevuelto: 48.0,
-        },
-        {
-          codigo: 'KRI-MOS-250',
-          producto: 'Mostaza Kris Pomo 250g',
-          um: 'POM',
-          cantidadDespacho: 7,
-          cantidadFacturado: 7,
-          cantidadBonificacion: 0,
-          facturadoTotal: 7,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 70.0,
-          valorFacturado: 70.0,
-          valorBonificacion: 0.0,
-          valorDevuelto: 0.0,
-        },
-      ],
-      totales: {
-        totalCantidadDespacho: 348,
-        totalCantidadFacturado: 327,
-        totalCantidadBonificacion: 17,
-        totalFacturadoTotal: 344,
-        totalCantidadDevuelto: 4,
-        totalCantidadFaltante: 0,
-        totalCantidadSobrante: 0,
-        totalValorDespacho: 4162.0,
-        totalValorFacturado: 3910.0,
-        totalValorBonificacion: 204.0,
-        totalValorDevuelto: 48.0,
-      },
+      items: itemsOT2,
+      totales: totalesOT2,
       firmas: {
         chofer: { firmado: true, nombre: 'GONZALO MAMANI RAMOS', ci: '6192834 SC' },
-        almacen: { firmado: true, nombre: 'DENISSE MAMANI', cargo: 'Encargada de Rampa y Almacén' },
+        almacen: { firmado: true, nombre: 'DENISSE.MAMANI04', cargo: 'Liquidador Almacén' },
       },
     },
 
@@ -643,228 +536,44 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       tipoCamion: 'HINO 500',
       numeroDespacho: 'ORD-2026-0819',
       resumenFinanciero: {
-        importeFacturado: 3910.0,
-        importeBonificado: 204.0,
-        importeEntregado: 4114.0,
-        importeDevuelto: 48.0,
-        valorDespacho: 4162.0,
+        importeFacturado: totalesOT2.totalValorFacturado,
+        importeBonificado: totalesOT2.totalValorBonificacion,
+        importeEntregado: totalesOT2.totalValorFacturado + totalesOT2.totalValorBonificacion,
+        importeDevuelto: totalesOT2.totalValorDevuelto,
+        valorDespacho: totalesOT2.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: 1800.0,
-        transferencia: 1200.0,
-        qr: 610.0,
-        cheque: 0.0,
-        cobranzaChofer: 3610.0,
-        credito: 300.0,
-        cobranzaCobrador: 0.0,
-        totalARendir: 3910.0,
-      },
-      pedidos: {
-        despacho: 35,
-        facturado: 34,
-        devuelto: 1,
-      },
-      creditos: [
-        {
-          clienteCodigo: '1102948',
-          clienteNombre: 'Supermercado Belén - Santos Dumont',
-          factura: 'F-90124',
-          monto: 300.0,
-          estado: 'Credito/Facturado/Entregado',
-        },
-      ],
-      depositosEfectivo: [],
-      cortesBs: [
-        { denominacion: 'Bs 10,00', valorUnitario: 10.0, tipo: 'BILLETE', cantidad: 20, monto: 200.0 },
-        { denominacion: 'Bs 20,00', valorUnitario: 20.0, tipo: 'BILLETE', cantidad: 30, monto: 600.0 },
-        { denominacion: 'Bs 50,00', valorUnitario: 50.0, tipo: 'BILLETE', cantidad: 10, monto: 500.0 },
-        { denominacion: 'Bs 100,00', valorUnitario: 100.0, tipo: 'BILLETE', cantidad: 5, monto: 500.0 },
-      ],
-      transferencias: [
-        {
-          transaccion: '992000101',
-          banco: 'BCP',
-          clienteCodigo: '1020444',
-          clienteNombre: 'Distribuciones Santa Ana',
-          monto: 1200.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
-      ],
-      pagosQr: [
-        {
-          transaccion: '992000102',
-          banco: 'BISA',
-          clienteCodigo: '1020555',
-          clienteNombre: 'Tienda La Amistad',
-          monto: 610.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
-      ],
-      cheques: [],
-      cobranzaCobrador: [],
-      devolucionesNoCobradas: [
-        {
-          clienteCodigo: '1020666',
-          clienteNombre: 'Kiosco El Trébol',
-          factura: 'F-90130',
-          monto: 48.0,
-          motivo: 'Envase con fisura leve reportado en cliente',
-          estado: 'Visitado o Facturado/Sin Entregar - Sin Cobrar',
-        },
-      ],
-      firmas: {
-        chofer: { firmado: true, nombre: 'GONZALO MAMANI RAMOS', cargo: 'Chofer Repartidor' },
-        supervisor: { firmado: true, nombre: 'Ing. Marco Antonio Vaca', cargo: 'Supervisor de Rampa y Rutas' },
-        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central de Liquidación' },
-        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe de Administración y Finanzas' },
-      },
-    },
-  },
-  {
-    id: 'cierre-525420005',
-    transportOrderId: 525420005,
-    orderCode: '525420005',
-    dateFormatted: '12/02/2026',
-    dateIso: '2026-02-12',
-    routeName: 'Ruta 108 - Villa 1ro de Mayo y Plan 3000',
-    distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
-    truckPlate: '3819 XDF',
-    truckCode: 'CAM-08',
-    truckType: 'HINO 300 3.5 Tn',
-    driverName: 'MAURICIO VARGAS PEÑARANDA',
-    driverEmpresa: 'IVSA',
-    driverCi: '7201948 CB',
-    supervisorName: 'Ing. Roberto Flores T.',
-    status: 'LIQUIDATED',
-    statusLabel: 'Liquidado Conforme',
-
-    almacen: {
-      fecha: '2026-02-12',
-      fechaFormatted: '12/2/2026',
-      choferNombre: 'MAURICIO VARGAS PEÑARANDA',
-      choferEmpresa: 'IVSA',
-      usuarioLiquidador: 'SILVIA.GUTIERREZ03',
-      placaCamion: '3819 XDF HINO 300',
-      tipoCamion: 'HINO 300',
-      numeroDespacho: '525420005',
-      items: [
-        {
-          codigo: '600192',
-          producto: 'B. REFRESCANTE CHICHA CAMBA DE 2 L NP',
-          um: 'BOT',
-          cantidadDespacho: 25,
-          cantidadFacturado: 23,
-          cantidadBonificacion: 2,
-          facturadoTotal: 25,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 300.0,
-          valorFacturado: 276.0,
-          valorBonificacion: 24.0,
-          valorDevuelto: 0.0,
-        },
-        {
-          codigo: 'KRI-MAY-500',
-          producto: 'Mayonesa Kris Doypack 500g',
-          um: 'DOY',
-          cantidadDespacho: 50,
-          cantidadFacturado: 48,
-          cantidadBonificacion: 2,
-          facturadoTotal: 50,
-          cantidadDevuelto: 0,
-          cantidadFaltante: 0,
-          cantidadSobrante: 0,
-          valorDespacho: 600.0,
-          valorFacturado: 576.0,
-          valorBonificacion: 24.0,
-          valorDevuelto: 0.0,
-        },
-      ],
-      totales: {
-        totalCantidadDespacho: 75,
-        totalCantidadFacturado: 71,
-        totalCantidadBonificacion: 4,
-        totalFacturadoTotal: 75,
-        totalCantidadDevuelto: 0,
-        totalCantidadFaltante: 0,
-        totalCantidadSobrante: 0,
-        totalValorDespacho: 900.0,
-        totalValorFacturado: 852.0,
-        totalValorBonificacion: 48.0,
-        totalValorDevuelto: 0.0,
-      },
-      firmas: {
-        chofer: { firmado: true, nombre: 'MAURICIO VARGAS PEÑARANDA', ci: '7201948 CB' },
-        almacen: { firmado: true, nombre: 'SILVIA GUTIÉRREZ', cargo: 'Supervisora Liquidadora Rampa' },
-      },
-    },
-
-    cobranza: {
-      fecha: '2026-02-12',
-      fechaFormatted: '12/2/2026',
-      choferNombre: 'MAURICIO VARGAS PEÑARANDA',
-      choferEmpresa: 'IVSA',
-      usuarioLiquidador: 'SILVIA.GUTIERREZ03',
-      placaCamion: '3819 XDF HINO 300',
-      tipoCamion: 'HINO 300',
-      numeroDespacho: '525420005',
-      resumenFinanciero: {
-        importeFacturado: 852.0,
-        importeBonificado: 48.0,
-        importeEntregado: 900.0,
-        importeDevuelto: 0.0,
-        valorDespacho: 900.0,
-      },
-      resumenCobranzas: {
-        efectivo: 500.0,
-        transferencia: 252.0,
-        qr: 100.0,
-        cheque: 0.0,
-        cobranzaChofer: 852.0,
+        efectivo: totalesOT2.totalValorFacturado - 1750.0,
+        transferencia: 500.0,
+        qr: 300.0,
+        cheque: 350.0,
+        cobranzaChofer: totalesOT2.totalValorFacturado,
         credito: 0.0,
         cobranzaCobrador: 0.0,
-        totalARendir: 852.0,
+        totalARendir: totalesOT2.totalValorFacturado,
       },
-      pedidos: {
-        despacho: 18,
-        facturado: 18,
-        devuelto: 0,
-      },
+      pedidos: { total: 28, facturado: 27, bonificado: 4, anulado: 0, noEntregado: 1 },
       creditos: [],
-      depositosEfectivo: [],
-      cortesBs: [
-        { denominacion: 'Bs 50,00', valorUnitario: 50.0, tipo: 'BILLETE', cantidad: 6, monto: 300.0 },
-        { denominacion: 'Bs 100,00', valorUnitario: 100.0, tipo: 'BILLETE', cantidad: 2, monto: 200.0 },
+      depositosEfectivo: [
+        { banco: 'Banco Ganadero', numeroComprobante: 'DEP-77312', monto: 600.0, hora: '14:20', cuenta: 'Cta. Cte. Central' },
       ],
+      cortesBs: generarCortesBsParaMonto(totalesOT2.totalValorFacturado - 1750.0),
       transferencias: [
-        {
-          transaccion: '993000501',
-          banco: 'BCP',
-          clienteCodigo: '1030999',
-          clienteNombre: 'Supermercado Plan 3000',
-          monto: 252.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
+        { transaccion: 'TR-440192', banco: 'Banco BCP', clienteCodigo: '10201', clienteNombre: 'Agencia Santos Dumont', monto: 500.0, estado: 'Conciliado' },
       ],
       pagosQr: [
-        {
-          transaccion: '993000502',
-          banco: 'BISA',
-          clienteCodigo: '1030888',
-          clienteNombre: 'Minimarket El Carmen',
-          monto: 100.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
+        { transaccion: 'QR-110294', banco: 'BISA', clienteCodigo: '10202', clienteNombre: 'Comercial La Pascana', monto: 300.0, estado: 'Validado' },
       ],
-      cheques: [],
+      cheques: [
+        { banco: 'Banco Unión', nroCheque: 'CHQ-883190', clienteCodigo: '10208', clienteNombre: 'Abarrotes Santos Dumont', monto: 350.0, estado: 'Al Día' },
+      ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
       firmas: {
-        chofer: { firmado: true, nombre: 'MAURICIO VARGAS PEÑARANDA', cargo: 'Chofer Repartidor' },
-        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor de Rampa' },
-        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central de Liquidación' },
-        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe de Administración y Finanzas' },
+        chofer: { firmado: true, nombre: 'GONZALO MAMANI RAMOS', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Marco Antonio Vaca', cargo: 'Supervisor' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe Admin' },
       },
     },
   },
@@ -874,7 +583,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
     orderCode: '525420010',
     dateFormatted: '15/02/2026',
     dateIso: '2026-02-15',
-    routeName: 'Ruta 103 - Abasto y Los Pozos (Carga Completa 50 SKUs)',
+    routeName: 'Ruta 106 - Equipetrol y Sirari',
     distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
     truckPlate: '4284 IYB',
     truckCode: 'CAM-04',
@@ -884,7 +593,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
     driverCi: '4193820 SC',
     supervisorName: 'Ing. Roberto Flores T.',
     status: 'LIQUIDATED',
-    statusLabel: 'Liquidado Conforme (50 Productos)',
+    statusLabel: 'Liquidado Conforme',
 
     almacen: {
       fecha: '2026-02-15',
@@ -895,74 +604,11 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       placaCamion: '4284 IYB HINO FRIO',
       tipoCamion: 'HINO FRIO',
       numeroDespacho: '525420010',
-      items: [
-        { codigo: '600192', producto: 'B. REFRESCANTE CHICHA CAMBA DE 2 L NP', um: 'BOT', cantidadDespacho: 30, cantidadFacturado: 26, cantidadBonificacion: 2, facturadoTotal: 28, cantidadDevuelto: 2, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 360.0, valorFacturado: 312.0, valorBonificacion: 24.0, valorDevuelto: 24.0 },
-        { codigo: '600190', producto: 'B. REFRESCANTE MOCOCHINCHI DE 2 L NP', um: 'BOT', cantidadDespacho: 25, cantidadFacturado: 23, cantidadBonificacion: 2, facturadoTotal: 25, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 300.0, valorFacturado: 276.0, valorBonificacion: 24.0, valorDevuelto: 0.0 },
-        { codigo: '600115', producto: 'REFRESCO FRUSSION DURAZNO 3 L', um: 'BOT', cantidadDespacho: 20, cantidadFacturado: 18, cantidadBonificacion: 2, facturadoTotal: 20, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 240.0, valorFacturado: 216.0, valorBonificacion: 24.0, valorDevuelto: 0.0 },
-        { codigo: '600116', producto: 'REFRESCO FRUSSION MANZANA 3 L', um: 'BOT', cantidadDespacho: 20, cantidadFacturado: 17, cantidadBonificacion: 2, facturadoTotal: 19, cantidadDevuelto: 1, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 240.0, valorFacturado: 204.0, valorBonificacion: 24.0, valorDevuelto: 12.0 },
-        { codigo: '600117', producto: 'REFRESCO FRUSSION CITRUS 3 L', um: 'BOT', cantidadDespacho: 15, cantidadFacturado: 14, cantidadBonificacion: 1, facturadoTotal: 15, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 180.0, valorFacturado: 168.0, valorBonificacion: 12.0, valorDevuelto: 0.0 },
-        { codigo: '600207', producto: 'RAPTOR ANALCOHOLICO DE 350 ML', um: 'BOT', cantidadDespacho: 120, cantidadFacturado: 110, cantidadBonificacion: 6, facturadoTotal: 116, cantidadDevuelto: 4, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 459.6, valorFacturado: 421.3, valorBonificacion: 22.98, valorDevuelto: 15.32 },
-        { codigo: '600208', producto: 'RAPTOR ENERGY DRINK 500 ML', um: 'LATA', cantidadDespacho: 60, cantidadFacturado: 55, cantidadBonificacion: 5, facturadoTotal: 60, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 390.0, valorFacturado: 357.5, valorBonificacion: 32.5, valorDevuelto: 0.0 },
-        { codigo: '600204', producto: 'BEBIDA DE LA GRANJA NARANJA 300ML', um: 'BOT', cantidadDespacho: 40, cantidadFacturado: 36, cantidadBonificacion: 4, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 200.0, valorFacturado: 180.0, valorBonificacion: 20.0, valorDevuelto: 0.0 },
-        { codigo: '600205', producto: 'BEBIDA DE LA GRANJA NARANJA 2000 ML', um: 'BOT', cantidadDespacho: 25, cantidadFacturado: 22, cantidadBonificacion: 2, facturadoTotal: 24, cantidadDevuelto: 1, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 462.5, valorFacturado: 407.0, valorBonificacion: 37.0, valorDevuelto: 18.5 },
-        { codigo: '600206', producto: 'BEBIDA DE LA GRANJA MANZANA 2000 ML', um: 'BOT', cantidadDespacho: 25, cantidadFacturado: 24, cantidadBonificacion: 1, facturadoTotal: 25, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 462.5, valorFacturado: 444.0, valorBonificacion: 18.5, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MAY-100', producto: 'Mayonesa Kris Doypack 100g', um: 'DOY', cantidadDespacho: 150, cantidadFacturado: 140, cantidadBonificacion: 10, facturadoTotal: 150, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 525.0, valorFacturado: 490.0, valorBonificacion: 35.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MAY-250', producto: 'Mayonesa Kris Doypack 250g', um: 'DOY', cantidadDespacho: 120, cantidadFacturado: 110, cantidadBonificacion: 8, facturadoTotal: 118, cantidadDevuelto: 2, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 840.0, valorFacturado: 770.0, valorBonificacion: 56.0, valorDevuelto: 14.0 },
-        { codigo: 'KRI-MAY-500', producto: 'Mayonesa Kris Doypack 500g', um: 'DOY', cantidadDespacho: 80, cantidadFacturado: 72, cantidadBonificacion: 5, facturadoTotal: 77, cantidadDevuelto: 3, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 960.0, valorFacturado: 864.0, valorBonificacion: 60.0, valorDevuelto: 36.0 },
-        { codigo: 'KRI-MAY-1000', producto: 'Mayonesa Kris Doypack 1000g', um: 'DOY', cantidadDespacho: 40, cantidadFacturado: 38, cantidadBonificacion: 2, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 860.0, valorFacturado: 817.0, valorBonificacion: 43.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MAY-POM', producto: 'Mayonesa Kris Pomo 400g', um: 'POM', cantidadDespacho: 30, cantidadFacturado: 28, cantidadBonificacion: 2, facturadoTotal: 30, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 405.0, valorFacturado: 378.0, valorBonificacion: 27.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-KET-100', producto: 'Kétchup Kris Doypack 100g', um: 'DOY', cantidadDespacho: 120, cantidadFacturado: 112, cantidadBonificacion: 8, facturadoTotal: 120, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 384.0, valorFacturado: 358.4, valorBonificacion: 25.6, valorDevuelto: 0.0 },
-        { codigo: 'KRI-KET-250', producto: 'Kétchup Kris Doypack 250g', um: 'DOY', cantidadDespacho: 90, cantidadFacturado: 84, cantidadBonificacion: 6, facturadoTotal: 90, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 585.0, valorFacturado: 546.0, valorBonificacion: 39.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-KET-500', producto: 'Kétchup Kris Doypack 500g', um: 'DOY', cantidadDespacho: 70, cantidadFacturado: 64, cantidadBonificacion: 4, facturadoTotal: 68, cantidadDevuelto: 2, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 805.0, valorFacturado: 736.0, valorBonificacion: 46.0, valorDevuelto: 23.0 },
-        { codigo: 'KRI-KET-1000', producto: 'Kétchup Kris Doypack 1000g', um: 'DOY', cantidadDespacho: 30, cantidadFacturado: 29, cantidadBonificacion: 1, facturadoTotal: 30, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 600.0, valorFacturado: 580.0, valorBonificacion: 20.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MOS-100', producto: 'Mostaza Kris Doypack 100g', um: 'DOY', cantidadDespacho: 80, cantidadFacturado: 75, cantidadBonificacion: 5, facturadoTotal: 80, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 240.0, valorFacturado: 225.0, valorBonificacion: 15.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MOS-250', producto: 'Mostaza Kris Pomo 250g', um: 'POM', cantidadDespacho: 60, cantidadFacturado: 56, cantidadBonificacion: 4, facturadoTotal: 60, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 360.0, valorFacturado: 336.0, valorBonificacion: 24.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-MOS-500', producto: 'Mostaza Kris Doypack 500g', um: 'DOY', cantidadDespacho: 40, cantidadFacturado: 38, cantidadBonificacion: 2, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 420.0, valorFacturado: 399.0, valorBonificacion: 21.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GOLF-250', producto: 'Salsa Golf Kris Doypack 250g', um: 'DOY', cantidadDespacho: 50, cantidadFacturado: 46, cantidadBonificacion: 4, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 400.0, valorFacturado: 368.0, valorBonificacion: 32.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GOLF-500', producto: 'Salsa Golf Kris Doypack 500g', um: 'DOY', cantidadDespacho: 35, cantidadFacturado: 32, cantidadBonificacion: 2, facturadoTotal: 34, cantidadDevuelto: 1, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 490.0, valorFacturado: 448.0, valorBonificacion: 28.0, valorDevuelto: 14.0 },
-        { codigo: 'KRI-SOJ-150', producto: 'Salsa de Soya Kris 150ml', um: 'BOT', cantidadDespacho: 60, cantidadFacturado: 56, cantidadBonificacion: 4, facturadoTotal: 60, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 270.0, valorFacturado: 252.0, valorBonificacion: 18.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-SOJ-500', producto: 'Salsa de Soya Kris 500ml', um: 'BOT', cantidadDespacho: 40, cantidadFacturado: 38, cantidadBonificacion: 2, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 360.0, valorFacturado: 342.0, valorBonificacion: 18.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-ING-150', producto: 'Salsa Inglesa Kris 150ml', um: 'BOT', cantidadDespacho: 30, cantidadFacturado: 28, cantidadBonificacion: 2, facturadoTotal: 30, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 165.0, valorFacturado: 154.0, valorBonificacion: 11.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-VIN-BLA', producto: 'Vinagre Blanco Kris 500ml', um: 'BOT', cantidadDespacho: 50, cantidadFacturado: 47, cantidadBonificacion: 3, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 200.0, valorFacturado: 188.0, valorBonificacion: 12.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-VIN-TIN', producto: 'Vinagre Tinto Kris 500ml', um: 'BOT', cantidadDespacho: 30, cantidadFacturado: 28, cantidadBonificacion: 2, facturadoTotal: 30, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 120.0, valorFacturado: 112.0, valorBonificacion: 8.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GEL-FRU', producto: 'Gelatina Kris Frutilla 85g', um: 'SOB', cantidadDespacho: 100, cantidadFacturado: 92, cantidadBonificacion: 8, facturadoTotal: 100, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 280.0, valorFacturado: 257.6, valorBonificacion: 22.4, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GEL-LIM', producto: 'Gelatina Kris Limón 85g', um: 'SOB', cantidadDespacho: 80, cantidadFacturado: 74, cantidadBonificacion: 6, facturadoTotal: 80, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 224.0, valorFacturado: 207.2, valorBonificacion: 16.8, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GEL-NAR', producto: 'Gelatina Kris Naranja 85g', um: 'SOB', cantidadDespacho: 80, cantidadFacturado: 75, cantidadBonificacion: 5, facturadoTotal: 80, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 224.0, valorFacturado: 210.0, valorBonificacion: 14.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GEL-PI', producto: 'Gelatina Kris Piña 85g', um: 'SOB', cantidadDespacho: 70, cantidadFacturado: 65, cantidadBonificacion: 5, facturadoTotal: 70, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 196.0, valorFacturado: 182.0, valorBonificacion: 14.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-GEL-UVA', producto: 'Gelatina Kris Uva 85g', um: 'SOB', cantidadDespacho: 60, cantidadFacturado: 56, cantidadBonificacion: 4, facturadoTotal: 60, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 168.0, valorFacturado: 156.8, valorBonificacion: 11.2, valorDevuelto: 0.0 },
-        { codigo: 'KRI-PUD-CHO', producto: 'Pudín Kris Chocolate 100g', um: 'SOB', cantidadDespacho: 50, cantidadFacturado: 46, cantidadBonificacion: 4, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 175.0, valorFacturado: 161.0, valorBonificacion: 14.0, valorDevuelto: 0.0 },
-        { codigo: 'KRI-PUD-VAI', producto: 'Pudín Kris Vainilla 100g', um: 'SOB', cantidadDespacho: 40, cantidadFacturado: 37, cantidadBonificacion: 3, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 140.0, valorFacturado: 129.5, valorBonificacion: 10.5, valorDevuelto: 0.0 },
-        { codigo: 'KRI-FLA-CAR', producto: 'Flan Kris Caramelo 100g', um: 'SOB', cantidadDespacho: 50, cantidadFacturado: 46, cantidadBonificacion: 4, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 175.0, valorFacturado: 161.0, valorBonificacion: 14.0, valorDevuelto: 0.0 },
-        { codigo: 'FID-COR-400', producto: 'Fideos Coronilla Tallarín 400g', um: 'PAQ', cantidadDespacho: 120, cantidadFacturado: 112, cantidadBonificacion: 8, facturadoTotal: 120, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 504.0, valorFacturado: 470.4, valorBonificacion: 33.6, valorDevuelto: 0.0 },
-        { codigo: 'FID-COR-ESP', producto: 'Fideos Coronilla Espagueti 400g', um: 'PAQ', cantidadDespacho: 120, cantidadFacturado: 110, cantidadBonificacion: 8, facturadoTotal: 118, cantidadDevuelto: 2, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 504.0, valorFacturado: 462.0, valorBonificacion: 33.6, valorDevuelto: 8.4 },
-        { codigo: 'FID-COR-COD', producto: 'Fideos Coronilla Codito 400g', um: 'PAQ', cantidadDespacho: 90, cantidadFacturado: 84, cantidadBonificacion: 6, facturadoTotal: 90, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 378.0, valorFacturado: 352.8, valorBonificacion: 25.2, valorDevuelto: 0.0 },
-        { codigo: 'FID-COR-PLU', producto: 'Fideos Coronilla Plumita 400g', um: 'PAQ', cantidadDespacho: 80, cantidadFacturado: 74, cantidadBonificacion: 6, facturadoTotal: 80, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 336.0, valorFacturado: 310.8, valorBonificacion: 25.2, valorDevuelto: 0.0 },
-        { codigo: 'CER-CHO-300', producto: 'Cereal Kris Choco Flakes 300g', um: 'CAJ', cantidadDespacho: 40, cantidadFacturado: 37, cantidadBonificacion: 3, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 580.0, valorFacturado: 536.5, valorBonificacion: 43.5, valorDevuelto: 0.0 },
-        { codigo: 'CER-MAI-300', producto: 'Cereal Kris Corn Flakes 300g', um: 'CAJ', cantidadDespacho: 40, cantidadFacturado: 38, cantidadBonificacion: 2, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 540.0, valorFacturado: 513.0, valorBonificacion: 27.0, valorDevuelto: 0.0 },
-        { codigo: 'CER-AZU-300', producto: 'Cereal Kris Azucarado 300g', um: 'CAJ', cantidadDespacho: 35, cantidadFacturado: 33, cantidadBonificacion: 2, facturadoTotal: 35, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 490.0, valorFacturado: 462.0, valorBonificacion: 28.0, valorDevuelto: 0.0 },
-        { codigo: 'AVN-KRI-500', producto: 'Avena Kris Instantánea 500g', um: 'BOL', cantidadDespacho: 60, cantidadFacturado: 56, cantidadBonificacion: 4, facturadoTotal: 60, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 510.0, valorFacturado: 476.0, valorBonificacion: 34.0, valorDevuelto: 0.0 },
-        { codigo: 'TE-BRIST-100', producto: 'Té Bristol Clásico 100 saquitos', um: 'CAJ', cantidadDespacho: 50, cantidadFacturado: 46, cantidadBonificacion: 4, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 800.0, valorFacturado: 736.0, valorBonificacion: 64.0, valorDevuelto: 0.0 },
-        { codigo: 'TE-BRIST-CAN', producto: 'Té Bristol Canela y Clavo 50s', um: 'CAJ', cantidadDespacho: 40, cantidadFacturado: 38, cantidadBonificacion: 2, facturadoTotal: 40, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 400.0, valorFacturado: 380.0, valorBonificacion: 20.0, valorDevuelto: 0.0 },
-        { codigo: 'MAT-YER-500', producto: 'Mate de Hierbas 50s', um: 'CAJ', cantidadDespacho: 35, cantidadFacturado: 33, cantidadBonificacion: 2, facturadoTotal: 35, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 385.0, valorFacturado: 363.0, valorBonificacion: 22.0, valorDevuelto: 0.0 },
-        { codigo: 'DET-LIMP-1K', producto: 'Limpiador Multiuso Líquido 1L', um: 'BOT', cantidadDespacho: 45, cantidadFacturado: 41, cantidadBonificacion: 3, facturadoTotal: 44, cantidadDevuelto: 1, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 540.0, valorFacturado: 492.0, valorBonificacion: 36.0, valorDevuelto: 12.0 },
-        { codigo: 'JAB-LIQ-500', producto: 'Jabón Líquido Antibacterial 500ml', um: 'BOT', cantidadDespacho: 50, cantidadFacturado: 47, cantidadBonificacion: 3, facturadoTotal: 50, cantidadDevuelto: 0, cantidadFaltante: 0, cantidadSobrante: 0, valorDespacho: 650.0, valorFacturado: 611.0, valorBonificacion: 39.0, valorDevuelto: 0.0 },
-      ],
-      totales: {
-        totalCantidadDespacho: 2985,
-        totalCantidadFacturado: 2783,
-        totalCantidadBonificacion: 184,
-        totalFacturadoTotal: 2967,
-        totalCantidadDevuelto: 18,
-        totalCantidadFaltante: 0,
-        totalCantidadSobrante: 0,
-        totalValorDespacho: 20498.7,
-        totalValorFacturado: 19088.1,
-        totalValorBonificacion: 1280.98,
-        totalValorDevuelto: 129.62,
-      },
+      items: itemsOT3,
+      totales: totalesOT3,
       firmas: {
         chofer: { firmado: true, nombre: 'JAVIER QUISPE COLQUE', ci: '4193820 SC' },
-        almacen: { firmado: true, nombre: 'CARLOS ROJAS T.', cargo: 'Liquidador de Operaciones' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
       },
     },
 
@@ -976,230 +622,479 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       tipoCamion: 'HINO FRIO',
       numeroDespacho: '525420010',
       resumenFinanciero: {
-        importeFacturado: 19088.1,
-        importeBonificado: 1280.98,
-        importeEntregado: 20369.08,
-        importeDevuelto: 129.62,
-        valorDespacho: 20498.7,
+        importeFacturado: totalesOT3.totalValorFacturado,
+        importeBonificado: totalesOT3.totalValorBonificacion,
+        importeEntregado: totalesOT3.totalValorFacturado + totalesOT3.totalValorBonificacion,
+        importeDevuelto: totalesOT3.totalValorDevuelto,
+        valorDespacho: totalesOT3.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: 9500.0,
-        transferencia: 5200.0,
-        qr: 2888.1,
-        cheque: 0.0,
-        cobranzaChofer: 17588.1,
-        credito: 1500.0,
+        efectivo: totalesOT3.totalValorFacturado - 2550.0,
+        transferencia: 700.0,
+        qr: 500.0,
+        cheque: 550.0,
+        cobranzaChofer: totalesOT3.totalValorFacturado,
+        credito: 0.0,
         cobranzaCobrador: 0.0,
-        totalARendir: 19088.1,
+        totalARendir: totalesOT3.totalValorFacturado,
       },
-      pedidos: {
-        despacho: 65,
-        facturado: 62,
-        devuelto: 3,
-      },
-      creditos: [
-        {
-          clienteCodigo: '1102948',
-          clienteNombre: 'Supermercado Fidalga - Equipetrol',
-          factura: 'F-92014',
-          monto: 1500.0,
-          estado: 'Credito/Facturado/Entregado',
-        },
+      pedidos: { total: 45, facturado: 43, bonificado: 8, anulado: 0, noEntregado: 2 },
+      creditos: [],
+      depositosEfectivo: [
+        { banco: 'Banco BCP', numeroComprobante: 'DEP-66201', monto: 800.0, hora: '16:00', cuenta: 'Cta. Cte. Central' },
       ],
-      depositosEfectivo: [],
-      cortesBs: [
-        { denominacion: 'Bs 200,00', valorUnitario: 200.0, tipo: 'BILLETE', cantidad: 30, monto: 6000.0 },
-        { denominacion: 'Bs 100,00', valorUnitario: 100.0, tipo: 'BILLETE', cantidad: 25, monto: 2500.0 },
-        { denominacion: 'Bs 50,00', valorUnitario: 50.0, tipo: 'BILLETE', cantidad: 16, monto: 800.0 },
-        { denominacion: 'Bs 20,00', valorUnitario: 20.0, tipo: 'BILLETE', cantidad: 10, monto: 200.0 },
-      ],
+      cortesBs: generarCortesBsParaMonto(totalesOT3.totalValorFacturado - 2550.0),
       transferencias: [
-        {
-          transaccion: '99300101',
-          banco: 'BCP',
-          clienteCodigo: '1020888',
-          clienteNombre: 'Hipermaxi Los Pozos',
-          monto: 3200.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
-        {
-          transaccion: '99300102',
-          banco: 'BISA',
-          clienteCodigo: '1020999',
-          clienteNombre: 'Comercial La Ramada',
-          monto: 2000.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
+        { transaccion: 'TR-772019', banco: 'Banco Ganadero', clienteCodigo: '10301', clienteNombre: 'Hipermaxi Equipetrol', monto: 700.0, estado: 'Conciliado' },
       ],
       pagosQr: [
-        {
-          transaccion: '99300201',
-          banco: 'BISA',
-          clienteCodigo: '1020777',
-          clienteNombre: 'Minimarket El Carmen',
-          monto: 2888.1,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
+        { transaccion: 'QR-551029', banco: 'BISA', clienteCodigo: '10302', clienteNombre: 'Farmacias Chávez', monto: 500.0, estado: 'Validado' },
       ],
-      cheques: [],
+      cheques: [
+        { banco: 'Banco BISA', nroCheque: 'CHQ-55201', clienteCodigo: '10310', clienteNombre: 'Restaurante Sirari Gourmet', monto: 550.0, estado: 'Al Día' },
+      ],
       cobranzaCobrador: [],
-      devolucionesNoCobradas: [
-        {
-          clienteCodigo: '1020111',
-          clienteNombre: 'Snack Doña Rosa',
-          factura: 'F-92040',
-          monto: 129.62,
-          motivo: 'Falta de espacio en almacén cliente',
-          estado: 'Visitado o Facturado/Sin Entregar - Sin Cobrar',
-        },
-      ],
+      devolucionesNoCobradas: [],
       firmas: {
-        chofer: { firmado: true, nombre: 'JAVIER QUISPE COLQUE', cargo: 'Chofer Repartidor (IVSA)' },
-        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor de Rampa' },
-        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central de Liquidación' },
-        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe de Administración' },
+        chofer: { firmado: true, nombre: 'JAVIER QUISPE COLQUE', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe Admin' },
       },
     },
   },
   {
-    id: 'cierre-ORD-2026-0820',
-    transportOrderId: 1002,
-    orderCode: 'ORD-2026-0820',
-    dateFormatted: '20/08/2026',
-    dateIso: '2026-08-20',
-    routeName: 'Ruta 201 - Zona Industrial y Equipetrol',
+    id: 'cierre-525420012',
+    transportOrderId: 525420012,
+    orderCode: '525420012',
+    dateFormatted: '16/02/2026',
+    dateIso: '2026-02-16',
+    routeName: 'Ruta 107 - La Ramada y Cañoto',
     distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
-    truckPlate: '2940 KLP',
-    truckCode: 'CAM-05',
-    truckType: 'HINO 500 6.5 Tn',
+    truckPlate: '5120 GHT',
+    truckCode: 'CAM-02',
+    truckType: 'HINO 500 5 Tn',
     driverName: 'FERNANDO RÍOS CALLE',
-    driverEmpresa: 'VENADO LOGÍSTICA',
-    driverCi: '3910284 LP',
+    driverEmpresa: 'IVSA',
+    driverCi: '5920193 LP',
     supervisorName: 'Ing. Marco Antonio Vaca',
     status: 'OBSERVED',
-    statusLabel: 'Observado por Cuadre',
+    statusLabel: 'Observado (Faltante)',
 
     almacen: {
-      fecha: '2026-08-20',
-      fechaFormatted: '20/8/2026',
+      fecha: '2026-02-16',
+      fechaFormatted: '16/2/2026',
       choferNombre: 'FERNANDO RÍOS CALLE',
-      choferEmpresa: 'VENADO LOGÍSTICA',
-      usuarioLiquidador: 'RODRIGO.FLORES08',
-      placaCamion: '2940 KLP HINO 500',
+      choferEmpresa: 'IVSA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '5120 GHT HINO 500',
       tipoCamion: 'HINO 500',
-      numeroDespacho: 'ORD-2026-0820',
-      items: [
-        {
-          codigo: 'KRI-MAY-500',
-          producto: 'Mayonesa Kris Doypack 500g',
-          um: 'DOY',
-          cantidadDespacho: 100,
-          cantidadFacturado: 90,
-          cantidadBonificacion: 5,
-          facturadoTotal: 95,
-          cantidadDevuelto: 3,
-          cantidadFaltante: 2,
-          cantidadSobrante: 0,
-          valorDespacho: 1200.0,
-          valorFacturado: 1080.0,
-          valorBonificacion: 60.0,
-          valorDevuelto: 36.0,
-        },
-      ],
-      totales: {
-        totalCantidadDespacho: 100,
-        totalCantidadFacturado: 90,
-        totalCantidadBonificacion: 5,
-        totalFacturadoTotal: 95,
-        totalCantidadDevuelto: 3,
-        totalCantidadFaltante: 2,
-        totalCantidadSobrante: 0,
-        totalValorDespacho: 1200.0,
-        totalValorFacturado: 1080.0,
-        totalValorBonificacion: 60.0,
-        totalValorDevuelto: 36.0,
-      },
+      numeroDespacho: '525420012',
+      items: itemsOT4,
+      totales: totalesOT4,
       firmas: {
-        chofer: { firmado: true, nombre: 'FERNANDO RÍOS CALLE', ci: '3910284 LP' },
-        almacen: { firmado: true, nombre: 'RODRIGO FLORES TAPIA', cargo: 'Supervisor Liquidador Rampa' },
+        chofer: { firmado: true, nombre: 'FERNANDO RÍOS CALLE', ci: '5920193 LP' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
       },
     },
 
     cobranza: {
-      fecha: '2026-08-20',
-      fechaFormatted: '20/8/2026',
+      fecha: '2026-02-16',
+      fechaFormatted: '16/2/2026',
       choferNombre: 'FERNANDO RÍOS CALLE',
-      choferEmpresa: 'VENADO LOGÍSTICA',
-      usuarioLiquidador: 'RODRIGO.FLORES08',
-      placaCamion: '2940 KLP HINO 500',
+      choferEmpresa: 'IVSA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '5120 GHT HINO 500',
       tipoCamion: 'HINO 500',
-      numeroDespacho: 'ORD-2026-0820',
+      numeroDespacho: '525420012',
       resumenFinanciero: {
-        importeFacturado: 1080.0,
-        importeBonificado: 60.0,
-        importeEntregado: 1140.0,
-        importeDevuelto: 36.0,
-        valorDespacho: 1200.0,
+        importeFacturado: totalesOT4.totalValorFacturado,
+        importeBonificado: totalesOT4.totalValorBonificacion,
+        importeEntregado: totalesOT4.totalValorFacturado + totalesOT4.totalValorBonificacion,
+        importeDevuelto: totalesOT4.totalValorDevuelto,
+        valorDespacho: totalesOT4.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: 600.0,
-        transferencia: 380.0,
-        qr: 100.0,
-        cheque: 0.0,
-        cobranzaChofer: 1080.0,
+        efectivo: totalesOT4.totalValorFacturado - 1450.0,
+        transferencia: 350.0,
+        qr: 280.0,
+        cheque: 320.0,
+        cobranzaChofer: totalesOT4.totalValorFacturado,
         credito: 0.0,
         cobranzaCobrador: 0.0,
-        totalARendir: 1080.0,
+        totalARendir: totalesOT4.totalValorFacturado,
       },
-      pedidos: {
-        despacho: 20,
-        facturado: 19,
-        devuelto: 1,
-      },
+      pedidos: { total: 38, facturado: 36, bonificado: 6, anulado: 0, noEntregado: 2 },
       creditos: [],
-      depositosEfectivo: [],
-      cortesBs: [
-        { denominacion: 'Bs 100,00', valorUnitario: 100.0, tipo: 'BILLETE', cantidad: 6, monto: 600.0 },
+      depositosEfectivo: [
+        { banco: 'Banco Unión', numeroComprobante: 'DEP-55190', monto: 500.0, hora: '15:10', cuenta: 'Cta. Cte. Central' },
       ],
+      cortesBs: generarCortesBsParaMonto(totalesOT4.totalValorFacturado - 1450.0),
       transferencias: [
-        {
-          transaccion: '994000101',
-          banco: 'BCP',
-          clienteCodigo: '1040501',
-          clienteNombre: 'Comercial La Florida',
-          monto: 380.0,
-          estado: 'Contado/Facturado/Cobrado - Transferencia',
-        },
+        { transaccion: 'TR-77102', banco: 'Banco Mercantil', clienteCodigo: '10405', clienteNombre: 'Minimarket Los Pinos', monto: 350.0, estado: 'Conciliado' },
       ],
       pagosQr: [
-        {
-          transaccion: '994000102',
-          banco: 'BISA',
-          clienteCodigo: '1040502',
-          clienteNombre: 'Supermercado Central',
-          monto: 100.0,
-          estado: 'Contado/Facturado/Cobrado - QR',
-        },
+        { transaccion: 'QR-880291', banco: 'BISA', clienteCodigo: '10401', clienteNombre: 'Comercial Cañoto', monto: 100.0, estado: 'Validado' },
+        { transaccion: 'QR-880315', banco: 'BCP', clienteCodigo: '10412', clienteNombre: 'Abarrotes Don Pepe', monto: 180.0, estado: 'Validado' },
       ],
-      cheques: [],
+      cheques: [
+        { banco: 'Banco Ganadero', nroCheque: 'CHQ-33190', clienteCodigo: '10420', clienteNombre: 'Super Cañoto Express', monto: 320.0, estado: 'Al Día' },
+      ],
       cobranzaCobrador: [],
-      devolucionesNoCobradas: [
-        {
-          clienteCodigo: '1040503',
-          clienteNombre: 'Abarrotes Don Pepe',
-          factura: 'F-90210',
-          monto: 36.0,
-          motivo: 'Faltante de 2 unidades verificado en rampa',
-          estado: 'Visitado o Facturado/Sin Entregar - Sin Cobrar',
-        },
-      ],
+      devolucionesNoCobradas: [],
       firmas: {
         chofer: { firmado: true, nombre: 'FERNANDO RÍOS CALLE', cargo: 'Chofer Repartidor' },
-        supervisor: { firmado: true, nombre: 'Ing. Marco Antonio Vaca', cargo: 'Supervisor de Rampa y Rutas' },
-        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central de Liquidación' },
-        administrador: { firmado: false, nombre: 'Pendiente Admin', cargo: 'Jefe de Administración' },
+        supervisor: { firmado: true, nombre: 'Ing. Marco Antonio Vaca', cargo: 'Supervisor' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: false, nombre: 'Pendiente Admin', cargo: 'Jefe Admin' },
+      },
+    },
+  },
+  {
+    id: 'cierre-525420015',
+    transportOrderId: 525420015,
+    orderCode: '525420015',
+    dateFormatted: '18/02/2026',
+    dateIso: '2026-02-18',
+    routeName: 'Ruta 108 - Villa 1ro de Mayo y Pampa de la Isla',
+    distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
+    truckPlate: '3120 LKP',
+    truckCode: 'CAM-07',
+    truckType: 'MERCEDES BENZ 8 Tn',
+    driverName: 'CARLOS ALBERTO MEDINA',
+    driverEmpresa: 'TRANS-ORIENTE',
+    driverCi: '7829102 SC',
+    supervisorName: 'Ing. Roberto Flores T.',
+    status: 'CLOSED',
+    statusLabel: 'Pendiente Liquidación',
+
+    almacen: {
+      fecha: '2026-02-18',
+      fechaFormatted: '18/2/2026',
+      choferNombre: 'CARLOS ALBERTO MEDINA',
+      choferEmpresa: 'TRANS-ORIENTE',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '3120 LKP MERCEDES BENZ',
+      tipoCamion: 'MERCEDES BENZ',
+      numeroDespacho: '525420015',
+      items: itemsOT5,
+      totales: totalesOT5,
+      firmas: {
+        chofer: { firmado: true, nombre: 'CARLOS ALBERTO MEDINA', ci: '7829102 SC' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
+      },
+    },
+
+    cobranza: {
+      fecha: '2026-02-18',
+      fechaFormatted: '18/2/2026',
+      choferNombre: 'CARLOS ALBERTO MEDINA',
+      choferEmpresa: 'TRANS-ORIENTE',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '3120 LKP MERCEDES BENZ',
+      tipoCamion: 'MERCEDES BENZ',
+      numeroDespacho: '525420015',
+      resumenFinanciero: {
+        importeFacturado: totalesOT5.totalValorFacturado,
+        importeBonificado: totalesOT5.totalValorBonificacion,
+        importeEntregado: totalesOT5.totalValorFacturado + totalesOT5.totalValorBonificacion,
+        importeDevuelto: totalesOT5.totalValorDevuelto,
+        valorDespacho: totalesOT5.totalValorDespacho,
+      },
+      resumenCobranzas: {
+        efectivo: totalesOT5.totalValorFacturado - 1350.0,
+        transferencia: 400.0,
+        qr: 200.0,
+        cheque: 300.0,
+        cobranzaChofer: totalesOT5.totalValorFacturado,
+        credito: 0.0,
+        cobranzaCobrador: 0.0,
+        totalARendir: totalesOT5.totalValorFacturado,
+      },
+      pedidos: { total: 30, facturado: 30, bonificado: 4, anulado: 0, noEntregado: 0 },
+      creditos: [],
+      depositosEfectivo: [
+        { banco: 'Banco BCP', numeroComprobante: 'DEP-44102', monto: 450.0, hora: '16:40', cuenta: 'Cta. Cte. Central' },
+      ],
+      cortesBs: generarCortesBsParaMonto(totalesOT5.totalValorFacturado - 1350.0),
+      transferencias: [
+        { transaccion: 'TR-88190', banco: 'Banco BCP', clienteCodigo: '108001', clienteNombre: 'Supermercado Central Villa', monto: 400.0, estado: 'Conciliado' },
+      ],
+      pagosQr: [
+        { transaccion: 'QR-55410', banco: 'BISA', clienteCodigo: '108012', clienteNombre: 'Tienda La Esmeralda', monto: 200.0, estado: 'Validado' },
+      ],
+      cheques: [
+        { banco: 'Banco Mercantil', nroCheque: 'CHQ-22019', clienteCodigo: '108030', clienteNombre: 'Comercial Pampa de la Isla', monto: 300.0, estado: 'Al Día' },
+      ],
+      cobranzaCobrador: [],
+      devolucionesNoCobradas: [],
+      firmas: {
+        chofer: { firmado: true, nombre: 'CARLOS ALBERTO MEDINA', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor' },
+        cajero: { firmado: false, nombre: 'Pendiente Caja', cargo: 'Cajero Central' },
+        administrador: { firmado: false, nombre: 'Pendiente Admin', cargo: 'Jefe Admin' },
+      },
+    },
+  },
+  {
+    id: 'cierre-525420018',
+    transportOrderId: 525420018,
+    orderCode: '525420018',
+    dateFormatted: '20/02/2026',
+    dateIso: '2026-02-20',
+    routeName: 'Ruta 110 - Plan 3000 y El Fuerte',
+    distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
+    truckPlate: '4820 TUV',
+    truckCode: 'CAM-09',
+    truckType: 'ISUZU FORWARD 6 Tn',
+    driverName: 'MARCELO QUIROGA SUÁREZ',
+    driverEmpresa: 'IVSA',
+    driverCi: '4820194 SC',
+    supervisorName: 'Ing. Roberto Flores T.',
+    status: 'OBSERVED',
+    statusLabel: 'Observado (Faltante)',
+
+    almacen: {
+      fecha: '2026-02-20',
+      fechaFormatted: '20/2/2026',
+      choferNombre: 'MARCELO QUIROGA SUÁREZ',
+      choferEmpresa: 'IVSA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '4820 TUV ISUZU',
+      tipoCamion: 'ISUZU FORWARD',
+      numeroDespacho: '525420018',
+      items: itemsOT6,
+      totales: totalesOT6,
+      firmas: {
+        chofer: { firmado: true, nombre: 'MARCELO QUIROGA SUÁREZ', ci: '4820194 SC' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
+      },
+    },
+
+    cobranza: {
+      fecha: '2026-02-20',
+      fechaFormatted: '20/2/2026',
+      choferNombre: 'MARCELO QUIROGA SUÁREZ',
+      choferEmpresa: 'IVSA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '4820 TUV ISUZU',
+      tipoCamion: 'ISUZU FORWARD',
+      numeroDespacho: '525420018',
+      resumenFinanciero: {
+        importeFacturado: totalesOT6.totalValorFacturado,
+        importeBonificado: totalesOT6.totalValorBonificacion,
+        importeEntregado: totalesOT6.totalValorFacturado + totalesOT6.totalValorBonificacion,
+        importeDevuelto: totalesOT6.totalValorDevuelto,
+        valorDespacho: totalesOT6.totalValorDespacho,
+      },
+      resumenCobranzas: {
+        efectivo: totalesOT6.totalValorFacturado - 1845.0,
+        transferencia: 800.0,
+        qr: 245.0,
+        cheque: 420.0,
+        cobranzaChofer: totalesOT6.totalValorFacturado,
+        credito: 0.0,
+        cobranzaCobrador: 0.0,
+        totalARendir: totalesOT6.totalValorFacturado,
+      },
+      pedidos: { total: 34, facturado: 33, bonificado: 5, anulado: 0, noEntregado: 1 },
+      creditos: [],
+      depositosEfectivo: [
+        { banco: 'Banco FIE', numeroComprobante: 'DEP-33901', monto: 380.0, hora: '15:50', cuenta: 'Cta. Cte. Central' },
+      ],
+      cortesBs: generarCortesBsParaMonto(totalesOT6.totalValorFacturado - 1845.0),
+      transferencias: [
+        { transaccion: 'TR-66014', banco: 'Banco Ganadero', clienteCodigo: '11002', clienteNombre: 'Supermercado Plan 3000', monto: 520.0, estado: 'Conciliado' },
+        { transaccion: 'TR-66089', banco: 'Banco BCP', clienteCodigo: '11015', clienteNombre: 'Comercial El Fuerte', monto: 280.0, estado: 'Conciliado' },
+      ],
+      pagosQr: [
+        { transaccion: 'QR-44120', banco: 'Banco Unión', clienteCodigo: '11030', clienteNombre: 'Tienda Doña María', monto: 150.0, estado: 'Validado' },
+        { transaccion: 'QR-44195', banco: 'BISA', clienteCodigo: '11042', clienteNombre: 'Snack Central', monto: 95.0, estado: 'Validado' },
+      ],
+      cheques: [
+        { banco: 'Banco Unión', nroCheque: 'CHQ-11029', clienteCodigo: '11050', clienteNombre: 'Distribuidora El Fuerte', monto: 420.0, estado: 'Al Día' },
+      ],
+      cobranzaCobrador: [],
+      devolucionesNoCobradas: [],
+      firmas: {
+        chofer: { firmado: true, nombre: 'MARCELO QUIROGA SUÁREZ', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: false, nombre: 'Pendiente Admin', cargo: 'Jefe Admin' },
+      },
+    },
+  },
+  {
+    id: 'cierre-525420022',
+    transportOrderId: 525420022,
+    orderCode: '525420022',
+    dateFormatted: '22/02/2026',
+    dateIso: '2026-02-22',
+    routeName: 'Ruta 112 - Cotoca y Guapilo',
+    distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
+    truckPlate: '2910 MNB',
+    truckCode: 'CAM-05',
+    truckType: 'HINO 300 4 Tn',
+    driverName: 'EDGAR TITO CONDORI',
+    driverEmpresa: 'VENADO LOGÍSTICA',
+    driverCi: '3920194 LP',
+    supervisorName: 'Ing. Roberto Flores T.',
+    status: 'CLOSED',
+    statusLabel: 'Pendiente Liquidación',
+
+    almacen: {
+      fecha: '2026-02-22',
+      fechaFormatted: '22/2/2026',
+      choferNombre: 'EDGAR TITO CONDORI',
+      choferEmpresa: 'VENADO LOGÍSTICA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '2910 MNB HINO 300',
+      tipoCamion: 'HINO 300',
+      numeroDespacho: '525420022',
+      items: itemsOT7,
+      totales: totalesOT7,
+      firmas: {
+        chofer: { firmado: true, nombre: 'EDGAR TITO CONDORI', ci: '3920194 LP' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
+      },
+    },
+
+    cobranza: {
+      fecha: '2026-02-22',
+      fechaFormatted: '22/2/2026',
+      choferNombre: 'EDGAR TITO CONDORI',
+      choferEmpresa: 'VENADO LOGÍSTICA',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '2910 MNB HINO 300',
+      tipoCamion: 'HINO 300',
+      numeroDespacho: '525420022',
+      resumenFinanciero: {
+        importeFacturado: totalesOT7.totalValorFacturado,
+        importeBonificado: totalesOT7.totalValorBonificacion,
+        importeEntregado: totalesOT7.totalValorFacturado + totalesOT7.totalValorBonificacion,
+        importeDevuelto: totalesOT7.totalValorDevuelto,
+        valorDespacho: totalesOT7.totalValorDespacho,
+      },
+      resumenCobranzas: {
+        efectivo: totalesOT7.totalValorFacturado - 1845.0,
+        transferencia: 650.0,
+        qr: 295.0,
+        cheque: 500.0,
+        cobranzaChofer: totalesOT7.totalValorFacturado,
+        credito: 0.0,
+        cobranzaCobrador: 0.0,
+        totalARendir: totalesOT7.totalValorFacturado,
+      },
+      pedidos: { total: 26, facturado: 26, bonificado: 3, anulado: 0, noEntregado: 0 },
+      creditos: [],
+      depositosEfectivo: [
+        { banco: 'Banco Mercantil', numeroComprobante: 'DEP-22190', monto: 400.0, hora: '16:20', cuenta: 'Cta. Cte. Central' },
+      ],
+      cortesBs: generarCortesBsParaMonto(totalesOT7.totalValorFacturado - 1845.0),
+      transferencias: [
+        { transaccion: 'TR-55012', banco: 'Banco Mercantil', clienteCodigo: '11204', clienteNombre: 'Distribuidora Cotoca', monto: 650.0, estado: 'Conciliado' },
+      ],
+      pagosQr: [
+        { transaccion: 'QR-33104', banco: 'Banco BCP', clienteCodigo: '11218', clienteNombre: 'Micromercado Guapilo', monto: 210.0, estado: 'Validado' },
+        { transaccion: 'QR-33150', banco: 'Banco FIE', clienteCodigo: '11225', clienteNombre: 'Pulpería San José', monto: 85.0, estado: 'Validado' },
+      ],
+      cheques: [
+        { banco: 'Banco BISA', nroCheque: 'CHQ-99102', clienteCodigo: '11240', clienteNombre: 'Supermercado Cotoca', monto: 500.0, estado: 'Al Día' },
+      ],
+      cobranzaCobrador: [],
+      devolucionesNoCobradas: [],
+      firmas: {
+        chofer: { firmado: true, nombre: 'EDGAR TITO CONDORI', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor' },
+        cajero: { firmado: false, nombre: 'Pendiente Caja', cargo: 'Cajero Central' },
+        administrador: { firmado: false, nombre: 'Pendiente Admin', cargo: 'Jefe Admin' },
+      },
+    },
+  },
+  {
+    id: 'cierre-525420025',
+    transportOrderId: 525420025,
+    orderCode: '525420025',
+    dateFormatted: '25/02/2026',
+    dateIso: '2026-02-25',
+    routeName: 'Ruta 115 - Warnes y Parque Industrial',
+    distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
+    truckPlate: '5031 QWE',
+    truckCode: 'CAM-11',
+    truckType: 'VOLVO VM 10 Tn',
+    driverName: 'HERNÁN PACHECO LOAYZA',
+    driverEmpresa: 'TRANS-ORIENTE',
+    driverCi: '5920194 SC',
+    supervisorName: 'Ing. Roberto Flores T.',
+    status: 'LIQUIDATED',
+    statusLabel: 'Liquidado Conforme',
+
+    almacen: {
+      fecha: '2026-02-25',
+      fechaFormatted: '25/2/2026',
+      choferNombre: 'HERNÁN PACHECO LOAYZA',
+      choferEmpresa: 'TRANS-ORIENTE',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '5031 QWE VOLVO',
+      tipoCamion: 'VOLVO VM',
+      numeroDespacho: '525420025',
+      items: itemsOT8,
+      totales: totalesOT8,
+      firmas: {
+        chofer: { firmado: true, nombre: 'HERNÁN PACHECO LOAYZA', ci: '5920194 SC' },
+        almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
+      },
+    },
+
+    cobranza: {
+      fecha: '2026-02-25',
+      fechaFormatted: '25/2/2026',
+      choferNombre: 'HERNÁN PACHECO LOAYZA',
+      choferEmpresa: 'TRANS-ORIENTE',
+      usuarioLiquidador: 'CARLOS.ROJAS01',
+      placaCamion: '5031 QWE VOLVO',
+      tipoCamion: 'VOLVO VM',
+      numeroDespacho: '525420025',
+      resumenFinanciero: {
+        importeFacturado: totalesOT8.totalValorFacturado,
+        importeBonificado: totalesOT8.totalValorBonificacion,
+        importeEntregado: totalesOT8.totalValorFacturado + totalesOT8.totalValorBonificacion,
+        importeDevuelto: totalesOT8.totalValorDevuelto,
+        valorDespacho: totalesOT8.totalValorDespacho,
+      },
+      resumenCobranzas: {
+        efectivo: totalesOT8.totalValorFacturado - 2670.0,
+        transferencia: 1000.0,
+        qr: 320.0,
+        cheque: 600.0,
+        cobranzaChofer: totalesOT8.totalValorFacturado,
+        credito: 0.0,
+        cobranzaCobrador: 0.0,
+        totalARendir: totalesOT8.totalValorFacturado,
+      },
+      pedidos: { total: 36, facturado: 35, bonificado: 6, anulado: 0, noEntregado: 1 },
+      creditos: [],
+      depositosEfectivo: [
+        { banco: 'Banco Ganadero', numeroComprobante: 'DEP-11029', monto: 750.0, hora: '16:05', cuenta: 'Cta. Cte. Central' },
+      ],
+      cortesBs: generarCortesBsParaMonto(totalesOT8.totalValorFacturado - 2670.0),
+      transferencias: [
+        { transaccion: 'TR-99201', banco: 'Banco Ganadero', clienteCodigo: '115001', clienteNombre: 'Hipermaxi Warnes', monto: 1000.0, estado: 'Conciliado' },
+      ],
+      pagosQr: [
+        { transaccion: 'QR-77210', banco: 'BISA', clienteCodigo: '115022', clienteNombre: 'Tienda La Fama Warnes', monto: 320.0, estado: 'Validado' },
+      ],
+      cheques: [
+        { banco: 'Banco Mercantil', nroCheque: 'CHQ-77102', clienteCodigo: '115035', clienteNombre: 'Comercial Parque Industrial', monto: 600.0, estado: 'Al Día' },
+      ],
+      cobranzaCobrador: [],
+      devolucionesNoCobradas: [],
+      firmas: {
+        chofer: { firmado: true, nombre: 'HERNÁN PACHECO LOAYZA', cargo: 'Chofer Repartidor' },
+        supervisor: { firmado: true, nombre: 'Ing. Roberto Flores T.', cargo: 'Supervisor' },
+        cajero: { firmado: true, nombre: 'Lic. Laura Mendoza', cargo: 'Cajera Central' },
+        administrador: { firmado: true, nombre: 'Lic. Sergio Daza', cargo: 'Jefe Admin' },
       },
     },
   },
 ]
-

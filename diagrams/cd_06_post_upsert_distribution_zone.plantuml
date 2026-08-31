@@ -1,0 +1,51 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 6: POST /api/v1/distributors/:id/zone (Trazado y Validación Espacial de Polígono)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distributors DB" as DistDB
+participant "distribution_zones DB" as ZoneDB
+
+User -> Web: Dibuja polígono en el mapa y pulsa "Guardar Polígono"
+Web -> Gateway: POST /api/v1/distributors/501/zone\n{ polygonGeoJson }
+Gateway -> Service: upsertDistributionZone(distributorId, polygonGeoJson, executorId)
+
+Service -> DistDB: findActiveById(distributorId)
+DistDB --> Service: distributor (id: 501, cityId: 1)
+
+alt Centro no encontrado
+    Service --> Gateway: 404 Not Found (Centro no encontrado)
+    Gateway --> Web: 404 Not Found
+else Centro existe
+    Service -> Service: validatePolygonStructure(polygonGeoJson)
+    Service -> ZoneDB: validateGeometryAndArea(polygonGeoJson)
+    ZoneDB --> Service: { isValid: true, areaKm2: 48.25 }
+
+    alt Geometría no válida (aristas cruzadas / auto-intersección)
+        Service --> Gateway: 422 Unprocessable Entity (Polígono inválido)
+        Gateway --> Web: 422 Unprocessable Entity
+        Web --> User: Muestra advertencia sobre corrección de aristas
+    else Geometría válida
+        Service -> ZoneDB: checkOverlapWithNeighbors(cityId, distributorId, polygonGeoJson)
+        ZoneDB --> Service: overlappingZones[]
+
+        alt Existe solapamiento con otro centro vecino
+            Service --> Gateway: 409 Conflict (Solapamiento detectado)
+            Gateway --> Web: 409 Conflict
+            Web --> User: Resalta en rojo área de solapamiento
+        else Sin solapamiento (Válido)
+            Service -> ZoneDB: upsertZone(distributorId, polygonGeoJson, cityId, executorId)
+            ZoneDB --> Service: savedZone (id, distributorId, polygonGeoJson, areaKm2, updatedAt)
+
+            Service -> Service: buildUpsertZoneResponse(savedZone)
+            Service --> Gateway: upsertZoneResponse
+            Gateway --> Web: 200 OK (Polígono verificado y guardado)
+            Web --> User: Muestra badge "Polígono verificado" y sale de modo trazado
+        end
+    end
+end
+@enduml

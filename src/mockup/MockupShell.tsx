@@ -151,7 +151,7 @@ export function MockupShell({
           aria-hidden={!isOpen}
           onClick={closeSidebar}
           className={cn(
-            'absolute inset-0 z-30 bg-black/50 backdrop-blur-[0.5px] transition-opacity duration-200 ease-in-out',
+            'absolute inset-0 z-40 bg-black/50 backdrop-blur-[0.5px] transition-opacity duration-200 ease-in-out',
             isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           )}
         />
@@ -159,7 +159,7 @@ export function MockupShell({
         {/* Menú drawer desplegado por encima ('over') */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 left-0 z-40 flex bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-out shadow-2xl',
+            'absolute top-0 bottom-0 left-0 z-50 flex bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-out shadow-2xl',
             isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
           )}
           style={

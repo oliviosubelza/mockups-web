@@ -1,0 +1,39 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama CD 2: GET /api/v1/distributors (Listado de Centros y Polígonos)
+
+actor "Planificador" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Distributor Service" as Service
+participant "distributors DB" as DistDB
+participant "distribution_zones DB" as ZoneDB
+participant "Orders & Trucks DB" as OrdersDB
+
+User -> Web: Ingresa al módulo "Centros de Distribución"
+Web -> Gateway: GET /api/v1/distributors?cityId=1
+Gateway -> Service: getDistributorsListWithZones(cityId)
+
+Service -> DistDB: findActiveDistributorsByCity(cityId)
+DistDB --> Service: distributorsList[]
+
+Service -> ZoneDB: findZonesByDistributorIds(distributorIds)
+ZoneDB --> Service: zonesGeoJsonList[] (polygonGeoJson, areaKm2, isActive)
+
+Service -> OrdersDB: countAssignedOrdersAndTrucks(distributorIds)
+OrdersDB --> Service: metricsMap[] (ordersCount, availableTrucksCount)
+
+Service -> Service: aggregateDistributorsWithZones(distributors, zones, metrics)
+note right of Service
+  Lógica en Memoria:
+  - Asocia cada centro con su polígono GeoJSON
+  - Calcula KPIs: centros activos, con polígono, cobertura km²
+  - Deriva estado (Con polígono delimitado vs Sin polígono)
+end note
+
+Service -> Service: buildDistributorsResponse()
+Service --> Gateway: distributorsResponse
+Gateway --> Web: 200 OK (Lista de Centros + Polígonos + KPIs)
+Web --> User: Renderiza depósitos y polígonos en el mapa + lista lateral
+@enduml
