@@ -909,3 +909,371 @@
 
         CONSTRAINT fk_coll_closing_transport_order FOREIGN KEY (transport_order_id) REFERENCES transport_orders(id)
     );
+
+
+
+-- ── CONFIGURACIÓN ────────────────────────────────────────────────────────
+CREATE TABLE refund_approval_levels (
+    id BIGSERIAL PRIMARY KEY,
+    workflow_version_id BIGINT NOT NULL, -- Agrupa las filas que forman una misma versión publicada de la escalera
+    level_order SMALLINT NOT NULL, -- Posición en la escalera (1, 2, 3, 4…)
+    name VARCHAR(100) NOT NULL, -- Nombre del escritorio (ej. 'Analista de Experiencia al Cliente')
+    role_code VARCHAR(50) NOT NULL, -- Rol que resuelve el aprobador contra el servicio externo de roles
+    activation_min_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Monto mínimo desde el que este nivel entra a jugar; el techo es el activation_min_amount del siguiente nivel
+    approval_policy VARCHAR(20) NOT NULL DEFAULT 'ANY', -- 'ANY', 'ALL', 'QUORUM'
+    required_approvals SMALLINT DEFAULT 1, -- Solo tiene sentido con approval_policy = 'QUORUM'
+    on_reject VARCHAR(30) NOT NULL DEFAULT 'TERMINATE', -- 'TERMINATE', 'RETURN_PREVIOUS', 'RETURN_INITIATOR'
+    sla_hours SMALLINT NULL, -- Horas hasta que el nivel se considera vencido. NULL = sin plazo
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ── NEGOCIO ──────────────────────────────────────────────────────────────
+DROP TABLE refund_orders cascade;
+CREATE TABLE refund_orders (
+    id BIGSERIAL PRIMARY KEY,
+    note_number VARCHAR(50) NOT NULL, -- NÙMERO DE NOTA 1001
+    split_sequence SMALLINT NOT NULL DEFAULT 0, -- NOTA ORIGINAL / DISOCIADA
+
+    source_refund_order_id BIGINT NULL, -- NULL en la ORIGINAL / la fuente a la nota de la que salió
+    document_type VARCHAR(20) NOT NULL DEFAULT 'ORIGINAL', -- 'ORIGINAL', 'DISSOCIATED
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN', -- 'OPEN', 'APPROVED', 'REJECTED', 'ANNULLED' / Estado de la devoluciòn
+
+    current_workflow_instance_id BIGINT NULL, -- Cual de las instancias està corriendo ahora. | Cambia si es que hay màs de una instancia
+
+    -- item_selection_locked BOOLEAN NOT NULL DEFAULT FALSE, -- ninguna pantalla vuelve a mostrar casillas
+    distributor_id BIGINT NOT NULL, -- Distribuidora bajo la que se registró
+    employee_id BIGINT NOT NULL, -- Vendedor que registró la nota
+    owner_id BIGINT NOT NULL, -- Cliente
+    customer_id BIGINT NOT NULL,
+    replacement_date DATE NULL, -- Fecha estimada de reposición acordada con el cliente
+    justification TEXT, -- Por qué se pide la devolución, en palabras del vendedor
+    total DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Suma de refund_order_details.quantity × price_unit para las líneas ACTIVE de esta nota
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_order_source FOREIGN KEY (source_refund_order_id) REFERENCES refund_orders(id)
+    -- CONSTRAINT fk_refund_order_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
+);
+
+CREATE TABLE refund_order_details (
+    id BIGSERIAL PRIMARY KEY,
+    refund_order_id BIGINT NOT NULL, -- Devoluciòn a la que pertenece esta fila/detalle
+    source_detail_id BIGINT NULL, -- Hace referencia al item original por trazabilidad
+    product_id BIGINT NOT NULL, -- ID del producto
+
+    source_quantity DECIMAL(12, 2) NOT NULL, -- Cantidad original cuando se crea/ nunca cambia.
+    quantity DECIMAL(12, 2) NOT NULL, -- Cantidad vigente. Puede que se haya reducido en una nota/EDITING
+
+    price_unit DECIMAL(12, 2) NOT NULL, -- Precio unitario congelado al momento del reclamo
+    line_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'DISSOCIATED'
+
+    reason VARCHAR(100), -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'
+    notes TEXT, -- Observación libre del vendedor sobre este producto
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_order_detail_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
+    CONSTRAINT fk_refund_order_detail_source FOREIGN KEY (source_detail_id) REFERENCES refund_order_details(id),
+    CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity)
+);
+
+
+-- ── WORKFLOW ─────────────────────────────────────────────────────────────
+CREATE TABLE refund_workflow_instances (
+    id BIGSERIAL PRIMARY KEY,
+    refund_order_id BIGINT NOT NULL, -- La devoluciòn | cada instancia estarà asociada a una refound_order
+    attempt SMALLINT NOT NULL DEFAULT 1, -- Nùmero de intento
+    status VARCHAR(20) NOT NULL DEFAULT 'IN_APPROVAL', -- 'EDITING', 'IN_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED'
+    current_level_order SMALLINT NULL, -- Nivel de revisiòn: LVL 1, LVL 2, LVL 3, LVL 4
+    reactivated_from_instance_id BIGINT NULL, -- Cuando se hace la reversiòn - aqui se guarda la referencia
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Cuando se iniciò
+    finished_at TIMESTAMP NULL, -- Cuando se finalizò
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_wf_instance_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
+    CONSTRAINT fk_refund_wf_instance_reactivated FOREIGN KEY (reactivated_from_instance_id) REFERENCES refund_workflow_instances(id)
+);
+
+CREATE TABLE refund_workflow_instance_levels (
+    id BIGSERIAL PRIMARY KEY,
+    workflow_instance_id BIGINT NOT NULL, -- Referencia a la instancia
+    level_order SMALLINT NOT NULL, -- EL ORDEN DEL NIVEL
+    level_name VARCHAR(100) NOT NULL, -- NOMBRE DEL NIVEL
+    role_code VARCHAR(50) NOT NULL, -- EL ROL QUE PUEDE APROBAR ESTE NIVEL
+
+    min_amount DECIMAL(12, 2) NOT NULL, -- Monto mìnimo para activarse
+    max_amount DECIMAL(12, 2) NOT NULL, -- El rango màximo
+
+    decision_mode VARCHAR(20) NOT NULL DEFAULT 'DOCUMENT_DECISION', -- 'ITEM_SELECTION' | 'DOCUMENT_DECISION'
+        -- Solo en el nivel 1 se selecciona, los demàs ya no
+
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'IN_PROGRESS', 'APPROVED', 'REJECTED', 'SKIPPED'
+        -- Esto sirve para mostrar el estado del nivel
+
+    first_viewed_at TIMESTAMP NULL, -- Cuándo se lo abre
+        -- Al abrirse no cambia | Indica si ya fue abierto por alguien
+    first_viewed_by VARCHAR(255) NULL, -- La persona que lo vio
+
+    started_at TIMESTAMP NULL, -- Fecha que se inicio
+    finished_at TIMESTAMP NULL, -- Fecha que finalizò
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_wf_instance_level_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id)
+);
+
+
+
+
+CREATE TABLE refund_workflow_actions (
+    id BIGSERIAL PRIMARY KEY,
+    workflow_instance_id BIGINT NOT NULL, -- Referencia a la instancia
+    workflow_instance_level_id BIGINT NULL, -- NULL en acciones que no pertenecen a un nivel puntual (ej. CREATED, DISSOCIATED_CREATED)
+
+    related_refund_order_id BIGINT NULL, -- Se guarda el FK de la disociada.
+
+    action VARCHAR(30) NOT NULL,
+        -- 'CREATED', 'VIEWED', 'LEVEL1_ITEM_SELECTION', 'DISSOCIATED_CREATED', 'CLOSED'
+        -- 'APPROVE', 'SELLER_RESUBMITTED', 'REJECT', 'AUTO_ROUTED', 'REACTIVATE', 'CANCEL'
+
+    actor_employee_code BIGINT NULL, -- Quièn hizo la acciòn
+    actor_role_code VARCHAR(50) NULL, -- Que rol hizo la acciòn
+
+    system_summary TEXT,
+    -- Frase autogenerada ( 'Se aprobaron 5 de 7 ítems por Bs 5.260,63.') — va junto al comentario del revisor
+    comment TEXT,
+    -- Comentario Agregado por el revisor
+
+    reason TEXT, -- Motivo del rechazo, de la reactivación o de la corrección — obligatorio según la acción
+
+    previous_status VARCHAR(20) NULL, -- IN_APPROVAL | REJECTED | EDITING
+    new_status VARCHAR(20) NULL,
+    amount_before DECIMAL(12, 2) NULL, -- Solo las acciones que mueven el monto de la nota llevan estos dos
+    amount_after DECIMAL(12, 2) NULL,
+    -- at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_wf_action_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id),
+    CONSTRAINT fk_refund_wf_action_level FOREIGN KEY (workflow_instance_level_id) REFERENCES refund_workflow_instance_levels(id),
+    CONSTRAINT fk_refund_wf_action_related_order FOREIGN KEY (related_refund_order_id) REFERENCES refund_orders(id)
+);
+
+
+-- La selección binaria de Nivel 1, y solo eso
+CREATE TABLE refund_order_detail_decisions (
+    id BIGSERIAL PRIMARY KEY,
+    workflow_action_id BIGINT NOT NULL, -- La acción LEVEL1_ITEM_SELECTION que registró esta decisión
+    refund_order_detail_id BIGINT NOT NULL,
+    decision VARCHAR(20) NOT NULL, -- 'SELECTED', 'DISSOCIATED'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_refund_detail_decision_action FOREIGN KEY (workflow_action_id) REFERENCES refund_workflow_actions(id),
+    CONSTRAINT fk_refund_detail_decision_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id)
+);
+
+
+
+    -- 1) Nace la nota
+INSERT INTO refund_orders (id, note_number, split_sequence, document_type, status,
+                            distributor_id, employee_id, owner_id,customer_id, total)
+VALUES (2001, 'DEV-2001', 0,
+        'ORIGINAL', 'OPEN', 10, 555, 777, 661, 800.00);
+SELECT * FROM refund_orders;
+
+INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status)
+VALUES (3001, 2001, 900, 5, 5, 60.00, 'ACTIVE'),
+       (3002, 2001, 901, 2, 2, 250.00, 'ACTIVE');
+SELECT * FROM refund_order_details;
+
+-- 2) Arranca el workflow: instancia + snapshot de los 2 niveles
+INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
+VALUES (90, 2001, 1, 'IN_APPROVAL', 1);
+SELECT * FROM refund_workflow_instances;
+
+SELECT * FROM refund_orders;
+UPDATE refund_orders SET current_workflow_instance_id = 90 WHERE id = 2001;
+SELECT * FROM refund_orders;
+
+
+INSERT INTO refund_workflow_instance_levels ( id, workflow_instance_id, level_order, level_name, role_code,
+                                              min_amount,max_amount, decision_mode, status, started_at)
+VALUES (200, 90, 1, 'Analista CX', 'analista_cx', 0.00, 100, 'ITEM_SELECTION', 'IN_PROGRESS', now()),
+       (201, 90, 2, 'Gerente CX', 'gerente_cx', 500.00, 1000.00,'DOCUMENT_DECISION', 'PENDING', NULL);
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action, actor_type, at)
+VALUES (500, 90, NULL, 'CREATED', 'SYSTEM', now());
+
+-- 3) Nivel 1 selecciona TODO (sin excluir nada -> no hay split)
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, at)
+VALUES (501, 90, 200, 'LEVEL1_ITEM_SELECTION', 'HUMAN', 111, now());
+
+INSERT INTO refund_order_detail_decisions (workflow_action_id, refund_order_detail_id, decision)
+VALUES (501, 3001, 'SELECTED'),
+       (501, 3002, 'SELECTED');
+
+-- 4) Nivel 1 aprueba -> pasa a nivel 2 (la instancia sigue IN_APPROVAL, solo cambia el nivel activo)
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 200;
+UPDATE refund_workflow_instance_levels SET status = 'IN_PROGRESS', started_at = now() WHERE id = 201;
+UPDATE refund_workflow_instances SET current_level_order = 2 WHERE id = 90;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, previous_status, new_status, at)
+VALUES (502, 90, 200, 'APPROVE', 'HUMAN', 111, 'IN_APPROVAL', 'IN_APPROVAL', now());
+
+-- 5) Nivel 2 aprueba -> se cierra la instancia y la nota queda aprobada
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 201;
+UPDATE refund_workflow_instances SET status = 'APPROVED', current_level_order = NULL, finished_at = now() WHERE id = 90;
+UPDATE refund_orders SET status = 'APPROVED' WHERE id = 2001;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, previous_status, new_status, at)
+VALUES (503, 90, 201, 'APPROVE', 'HUMAN', 222, 'IN_APPROVAL', 'APPROVED', now());
+
+Reconstruir el historial de la 2001, en orden:
+
+SELECT a.at, a.action, a.actor_employee_code, l.level_name, a.previous_status, a.new_status
+FROM refund_workflow_actions a
+JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+LEFT JOIN refund_workflow_instance_levels l ON l.id = a.workflow_instance_level_id
+WHERE i.refund_order_id = 2001
+ORDER BY a.at;
+
+Caso 2 — Con disociación (nivel 1 selecciona parcial)
+
+Nota 1001, total 1000 Bs (detalle 4001 = 600, detalle 4002 = 400). Nivel 1 excluye el 4002.
+
+-- 1) Nace la nota original
+INSERT INTO refund_orders (id, external_sales_id, note_number, split_sequence, document_type, status,
+                            distributor_id, seller_code, client_id, total)
+VALUES (1001, 'SALE-1001', 'DEV-1001', 0, 'ORIGINAL', 'OPEN', 10, 555, 777, 1000.00);
+
+INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status)
+VALUES (4001, 1001, 900, 10, 10, 60.00, 'ACTIVE'),
+       (4002, 1001, 901, 4, 4, 100.00, 'ACTIVE');
+
+INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
+VALUES (55, 1001, 1, 'IN_APPROVAL', 1);
+UPDATE refund_orders SET current_workflow_instance_id = 55 WHERE id = 1001;
+
+INSERT INTO refund_workflow_instance_levels (id, workflow_instance_id, level_order, level_name, role_code,
+                                              activation_min_amount, decision_mode, status, started_at)
+VALUES (210, 55, 1, 'Analista CX', 'analista_cx', 0.00, 'ITEM_SELECTION', 'IN_PROGRESS', now());
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action, actor_type, at)
+VALUES (600, 55, NULL, 'CREATED', 'SYSTEM', now());
+
+-- 2) Nivel 1 selecciona PARCIAL: 4001 queda, 4002 se disocia
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, at)
+VALUES (601, 55, 210, 'LEVEL1_ITEM_SELECTION', 'HUMAN', 111, now());
+
+INSERT INTO refund_order_detail_decisions (workflow_action_id, refund_order_detail_id, decision)
+VALUES (601, 4001, 'SELECTED'),
+       (601, 4002, 'DISSOCIATED');
+
+-- 3) La transacción del split: original se recalcula, nace la disociada
+UPDATE refund_order_details SET line_status = 'DISSOCIATED' WHERE id = 4002;
+UPDATE refund_orders SET total = 600.00 WHERE id = 1001;   -- solo queda el detalle 4001
+
+INSERT INTO refund_orders (id, external_sales_id, note_number, split_sequence, source_refund_order_id,
+                            document_type, status, distributor_id, seller_code, client_id, total)
+VALUES (1004, 'SALE-1001', 'DEV-1001', 1, 1001, 'DISSOCIATED', 'OPEN', 10, 555, 777, 400.00);
+
+INSERT INTO refund_order_details (id, refund_order_id, source_detail_id, product_id, source_quantity, quantity, price_unit, line_status)
+VALUES (4010, 1004, 4002, 901, 4, 4, 100.00, 'ACTIVE');
+
+INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
+VALUES (56, 1004, 1, 'EDITING', NULL);
+UPDATE refund_orders SET current_workflow_instance_id = 56 WHERE id = 1004;
+
+-- Fila puente: vive en la instancia de la ORIGINAL, apunta a la disociada
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, related_refund_order_id,
+                                      amount_before, amount_after, at)
+VALUES (602, 55, NULL, 'DISSOCIATED_CREATED', 'HUMAN', 111, 1004, 1000.00, 600.00, now());
+
+-- 4) La original sigue de largo con lo que le quedó: nivel 1 aprueba, se cierra en un solo nivel (600 < 500? no, en este ejemplo asumimos que ya no necesita nivel 2)
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 210;
+UPDATE refund_workflow_instances SET status = 'APPROVED', current_level_order = NULL, finished_at = now() WHERE id = 55;
+UPDATE refund_orders SET status = 'APPROVED' WHERE id = 1001;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, previous_status, new_status, at)
+VALUES (603, 55, 210, 'APPROVE', 'HUMAN', 111, 'IN_APPROVAL', 'APPROVED', now());
+
+-- 5) Mientras tanto, el vendedor edita la disociada (recorta cantidad) y la reenvía
+UPDATE refund_order_details SET quantity = 2 WHERE id = 4010;   -- corta de 4 a 2 unidades
+UPDATE refund_orders SET total = 200.00 WHERE id = 1004;
+
+INSERT INTO refund_workflow_instance_levels (id, workflow_instance_id, level_order, level_name, role_code,
+                                              activation_min_amount, decision_mode, status, started_at)
+VALUES (220, 56, 1, 'Analista CX', 'analista_cx', 0.00, 'DOCUMENT_DECISION', 'IN_PROGRESS', now());
+UPDATE refund_workflow_instances SET status = 'IN_APPROVAL', current_level_order = 1 WHERE id = 56;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                      actor_type, actor_employee_code, previous_status, new_status,
+                                      amount_before, amount_after, at)
+VALUES (604, 56, NULL, 'SELLER_RESUBMITTED', 'HUMAN', 555, 'EDITING', 'IN_APPROVAL', 400.00, 200.00, now());
+
+Ver las dos historias por separado, y cómo se cruzan en el split:
+
+-- Historial completo de la original (incluye el momento en que "salió" la disociada)
+SELECT a.at, a.action, a.related_refund_order_id, a.amount_before, a.amount_after
+FROM refund_workflow_actions a
+JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+WHERE i.refund_order_id = 1001
+ORDER BY a.at;
+
+-- Historial de la disociada, desde su propia instancia (arranca en EDITING)
+SELECT a.at, a.action, a.previous_status, a.new_status
+FROM refund_workflow_actions a
+JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+WHERE i.refund_order_id = 1004
+ORDER BY a.at;
+
+-- "¿De dónde salió la 1004?" -- la fila puente, buscada desde el otro lado
+SELECT ro.id AS nota_origen, a.at, a.amount_before, a.amount_after
+FROM refund_workflow_actions a
+JOIN refund_orders ro ON ro.id = (SELECT refund_order_id FROM refund_workflow_instances WHERE id = a.workflow_instance_id)
+WHERE a.related_refund_order_id = 1004 AND a.action = 'DISSOCIATED_CREATED';

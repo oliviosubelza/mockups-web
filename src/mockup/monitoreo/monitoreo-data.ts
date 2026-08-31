@@ -27,8 +27,10 @@ import { createRand } from '../mock-random'
 import {
   CAMIONES,
   DEPOSITO,
+  DISTRIBUIDORAS,
   ORDENES_TRANSPORTE,
   aMinutos,
+  distribuidoraIdDe,
   finVentana,
   paradasDeOrden,
   rutaPorCamionId,
@@ -410,7 +412,47 @@ export interface ViajeMonitoreo {
 
 // ── Construcción ─────────────────────────────────────────────────────────────────────────────
 
-const DEPOT: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
+/**
+ * El depósito histórico —la planta de Santa Cruz, escrita a mano— como ÚLTIMO recurso, no como origen
+ * de todos los viajes.
+ */
+const DEPOT_FALLBACK: LatLngTuple = [DEPOSITO.lat, DEPOSITO.lng]
+
+/**
+ * De qué depósito sale un viaje: el de la distribuidora que DESPACHA sus paradas.
+ *
+ * ═══ EL SÍNTOMA ═══
+ *
+ * El monitoreo dibujaba viajes que salían de la planta de Santa Cruz y entregaban en Montero: una
+ * línea recta de 40 km hasta la primera parada, antes de empezar a repartir. La orden estaba bien —sus
+ * cuatro paradas son todas de Montero— y el mapa mostraba un camión cruzando el departamento en vacío.
+ *
+ * ═══ LA CAUSA ═══
+ *
+ * `DEPOT` era una CONSTANTE. Es exactamente el bug que el planificador ya había corregido cuando
+ * `optimizar` y `trazoDeRuta` pasaron a recibir el depósito por parámetro; el monitoreo se quedó con
+ * la versión vieja, y como es la pantalla que dibuja el recorrido REAL, ahí se veía peor.
+ *
+ * ═══ LA REGLA ═══
+ *
+ * El dueño del pedido (`Pedido.distribuidoraId`) es quien lo despacha, y de ahí sale el galpón. Se
+ * lee del SELLO del pedido y no del contorno vigente (`resolveDistribuidoraIdDePedido`) por dos
+ * razones: este módulo construye su dataset en la carga del módulo y no puede depender de que un store
+ * de Zustand ya esté inicializado; y un punto que hoy quedó fuera de todo contorno devolvería `null`,
+ * y un viaje sin origen no se puede dibujar. El sello siempre contesta.
+ *
+ * Se recorren las paradas hasta encontrar la primera con dueño conocido: desde que cada camión reparte
+ * en UNA ciudad (ver `construirParadas` en `mock-data`), todas apuntan al mismo lado.
+ */
+function depotDeParadas(paradas: Parada[]): LatLngTuple {
+  for (const parada of paradas) {
+    for (const pedido of parada.pedidos) {
+      const dist = DISTRIBUIDORAS.find((d) => d.id === distribuidoraIdDe(pedido))
+      if (dist) return [dist.lat, dist.lng]
+    }
+  }
+  return DEPOT_FALLBACK
+}
 
 /** Punto intermedio entre dos coordenadas (`t` = 0..1). Simula al camión a mitad de tramo. */
 const interpolar = (a: LatLngTuple, b: LatLngTuple, t: number): LatLngTuple => [
@@ -827,7 +869,13 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
   // saber a mitad de la iteración. Ni `nearestOrder` ni `paradasDeOrden` consumen el PRNG, así que
   // adelantarlas no corre el resto del dataset.
   const cargas = despachadas
-    .map((orden) => ({ orden, paradas: nearestOrder(DEPOT, paradasDeOrden(orden)) }))
+    .map((orden) => {
+      // El orden de visita se calcula DESDE SU depósito, no desde uno fijo: con el depósito equivocado
+      // el vecino-más-cercano arranca por la punta equivocada del recorrido.
+      const suyas = paradasDeOrden(orden)
+      const depot = depotDeParadas(suyas)
+      return { orden, paradas: nearestOrder(depot, suyas), depot }
+    })
     .filter((carga) => carga.paradas.length > 0)
 
   // ── UN camión, UNA carga en la calle ────────────────────────────────────────────────
@@ -866,7 +914,7 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
   /** Cargas del camión ya emitidas: da el índice de la actual dentro de su jornada. */
   const emitidas = new Map<string, number>()
 
-  cargas.forEach(({ orden, paradas }, i) => {
+  cargas.forEach(({ orden, paradas, depot }, i) => {
     const total = paradas.length
     const salidaPlanMin = libreDesdePlan.get(orden.camion) ?? SALIDA_MIN
     // Demora de rampa: papeles, conteo físico, esperar al ayudante. Es el atraso que más pesa en el día
@@ -1015,7 +1063,7 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
       })
 
       // ── El viaje: depósito → paradas de ESTA orden → depósito ──
-      const recorrido: LatLngTuple[] = [DEPOT, ...paradas.map((p) => [p.lat, p.lng] as LatLngTuple), DEPOT]
+      const recorrido: LatLngTuple[] = [depot, ...paradas.map((p) => [p.lat, p.lng] as LatLngTuple), depot]
       const desde = recorrido[cursor]
       const hasta = recorrido[Math.min(cursor + 1, recorrido.length - 1)]
       // El color de la ruta se hereda del planificador: el mismo camión tiene que verse del mismo
@@ -1094,7 +1142,9 @@ function tripIdOperativo(orderId: string): number {
 }
 
 function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitoreo; viaje: ViajeMonitoreo } | null {
-  const paradas = nearestOrder(DEPOT, paradasDeOrden(orden))
+  const suyas = paradasDeOrden(orden)
+  const depot = depotDeParadas(suyas)
+  const paradas = nearestOrder(depot, suyas)
   if (paradas.length === 0) return null
   const tripId = tripIdOperativo(orden.id)
   const entregas: EntregaMonitoreo[] = paradas.map((parada, index) => {
@@ -1149,16 +1199,16 @@ function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitore
   })
   const camion = CAMIONES.find((item) => item.placa === orden.camion)
   const recorrido: LatLngTuple[] = [
-    DEPOT,
+    depot,
     ...paradas.map((parada) => [parada.lat, parada.lng] as LatLngTuple),
-    DEPOT,
+    depot,
   ]
   const salida = hhmm(SALIDA_MIN)
   const tracking = snapshotDetalle(DISTRIBUIDOR_ACTIVO, tripId) ?? sembrarViaje({
     tripId,
     distributorId: DISTRIBUIDOR_ACTIVO,
     employeeId: idEmpleado(orden.chofer),
-    camino: [DEPOT, interpolar(DEPOT, recorrido[1], 0.35)],
+    camino: [depot, interpolar(depot, recorrido[1], 0.35)],
     antiguedadMin: rand.int(0, 3),
     battery: rand.int(54, 98),
     ahora: Date.now(),
