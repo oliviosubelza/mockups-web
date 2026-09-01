@@ -9,13 +9,14 @@
         longitude NUMERIC(9,6) NOT NULL,
     --     department_id BIGINT NOT NULL, -- Departamento/Estado geográfico
         city_id BIGINT NOT NULL,
+        code_sap BIGINT, -- Código de distribuidora en SAP/Ventas
+        is_active BOOLEAN NOT NULL DEFAULT TRUE
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
     CREATE TABLE sale_channel_restrictions(
