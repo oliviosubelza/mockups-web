@@ -1,0 +1,414 @@
+[
+  {
+    "pk": "TO#103",
+    "sk": "META",
+    "entityType": "TRANSPORT_ORDER",
+    "transportOrderId": 103,
+    "code": 1000456,
+    "status": "COMPLETED",
+    "distributorId": 1,
+    "dispatchPlanId": 899,
+    "routeId": 3344,
+    "truckId": 880012,
+    "licensePlate": "3456-ABC",
+    "driverEmployeeId": 456,
+    "driverName": "Carlos Mamani",
+    "helperEmployeeId": null,
+    "supervisorEmployeeId": 98,
+    "checkedBy": "driver_78",
+    "departureDate": "2026-07-16T08:00:00.000Z",
+    "completedDate": "2026-07-16T16:00:00.000Z",
+    "totalKm": "70.50",
+    "assignedWeightKg": "3480.50",
+    "assignedVolumeM3": "14.20",
+    "totalStopsCount": 2,
+    "completedStopsCount": 1,
+    "totalRevenueExpected": "3692.67",
+    "totalRevenueCollected": "1592.67",
+    "gsi1pk": "DIST#1#2026-07-16",
+    "gsi1sk": "TO#103",
+    "createdAt": "2026-07-15T17:40:00.000Z",
+    "updatedAt": "2026-07-16T16:00:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90112",
+    "entityType": "DELIVERY_ORDER",
+    "deliveryOrderId": 90112,
+    "dispatchDeliveryPointId": 4021,
+    "deliveryPointId": 45,
+    "sequence": 1,
+    "executedSequence": 1,
+    "customerName": "Casa La Ramada",
+    "ownerId": 4,
+    "latitude": "-17.786510",
+    "longitude": "-63.174220",
+    "deliveryWindowStart": "08:00",
+    "deliveryWindowEnd": "12:00",
+    "totalWeightKg": "620.40",
+    "totalVolumeM3": "2.30",
+    "totalNeto": "1592.67",
+    "estimatedDistanceM": "5400.00",
+    "estimatedTravelS": "780.00",
+    "status": "DELIVERED",
+    "deliveryResultCode": "EXITOSO",
+    "arrivedAt": "2026-07-16T09:02:00.000Z",
+    "deliveredAt": "2026-07-16T09:18:00.000Z",
+    "arrivalLatitude": "-17.786498",
+    "arrivalLongitude": "-63.174241",
+    "serviceTimeSeconds": 960,
+    "sales": [
+      {
+        "deliveryOrderSaleId": 88021,
+        "saleOrderId": 88213,
+        "companyCode": 2,
+        "invoiceId": 5001,
+        "totalInvoice": "1592.67",
+        "items": [
+          {
+            "deliveryOrderItemId": 55201,
+            "productId": 30201,
+            "plannedQty": "12.00",
+            "deliveredQty": "12.00",
+            "returnedQty": "0.00",
+            "unitPriceSnapshot": "66.36",
+            "itemStatus": "DELIVERED"
+          },
+          {
+            "deliveryOrderItemId": 55202,
+            "productId": 30204,
+            "plannedQty": "20.00",
+            "deliveredQty": "20.00",
+            "returnedQty": "0.00",
+            "unitPriceSnapshot": "39.80",
+            "itemStatus": "DELIVERED"
+          }
+        ],
+        "payments": [
+          {
+            "deliveryPaymentReferenceId": 801,
+            "collectionPaymentId": 1052,
+            "paymentMethod": "QR",
+            "referenceNumber": "25051501009100893840",
+            "bankName": null,
+            "authorizationCode": "TRX-880192",
+            "amount": "592.67",
+            "currency": "BOB",
+            "status": "COMPLETED",
+            "registeredAt": "2026-07-16T09:08:00.000Z",
+            "paidAt": "2026-07-16T09:12:10.000Z"
+          },
+          {
+            "deliveryPaymentReferenceId": 802,
+            "collectionPaymentId": null,
+            "paymentMethod": "CASH",
+            "referenceNumber": "REC-00982",
+            "bankName": null,
+            "authorizationCode": null,
+            "amount": "1000.00",
+            "currency": "BOB",
+            "status": "COMPLETED",
+            "registeredAt": "2026-07-16T09:08:00.000Z",
+            "paidAt": "2026-07-16T09:13:00.000Z"
+          }
+        ]
+      }
+    ],
+    "proofOfDelivery": {
+      "podId": 12044,
+      "receiverName": "Lic. Roberto Gomez",
+      "receiverDocument": "4829102 SC",
+      "receiverRelationship": "ENCARGADO_ALMACEN",
+      "signatureUrl": "https://dela.venado.bo/storage/customers/2026/07/sig_90112.png",
+      "imageUrl": "https://dela.venado.bo/storage/customers/2026/07/pod_90112.jpg",
+      "latitude": "-17.786492",
+      "longitude": "-63.174233",
+      "status": "CAPTURED",
+      "capturedAt": "2026-07-16T09:15:00.000Z",
+      "uploadedAt": "2026-07-16T09:16:12.000Z"
+    },
+    "incidents": []
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90112#HIST#2026-07-16T08:52:00.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90112,
+    "status": "ENROUTE",
+    "reason": "Chofer inicio el desplazamiento hacia el cliente",
+    "capturedAt": "2026-07-16T08:52:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90112#HIST#2026-07-16T09:02:00.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90112,
+    "status": "ARRIVED",
+    "reason": "Llegada fisica al cliente registrada con coordenadas GPS",
+    "capturedAt": "2026-07-16T09:02:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90112#HIST#2026-07-16T09:13:30.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90112,
+    "status": "ARRIVED",
+    "reason": "Cobro mixto validado y registrado en el sistema contable",
+    "capturedAt": "2026-07-16T09:13:30.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90112#HIST#2026-07-16T09:18:00.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90112,
+    "status": "DELIVERED",
+    "reason": "Entrega finalizada y confirmada en sitio",
+    "capturedAt": "2026-07-16T09:18:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90113",
+    "entityType": "DELIVERY_ORDER",
+    "deliveryOrderId": 90113,
+    "dispatchDeliveryPointId": 4022,
+    "deliveryPointId": 46,
+    "sequence": 2,
+    "executedSequence": 2,
+    "customerName": "Pulperia San Lorenzo",
+    "ownerId": 25,
+    "latitude": "-17.771002",
+    "longitude": "-63.160877",
+    "deliveryWindowStart": "08:00",
+    "deliveryWindowEnd": "11:00",
+    "totalWeightKg": "410.00",
+    "totalVolumeM3": "1.90",
+    "totalNeto": "2100.00",
+    "estimatedDistanceM": "3120.00",
+    "estimatedTravelS": "610.00",
+    "status": "INCIDENT",
+    "deliveryResultCode": "CLIENTE_AUSENTE",
+    "arrivedAt": "2026-07-16T09:55:00.000Z",
+    "deliveredAt": "2026-07-16T10:05:00.000Z",
+    "arrivalLatitude": "-17.771015",
+    "arrivalLongitude": "-63.160901",
+    "serviceTimeSeconds": 600,
+    "sales": [
+      {
+        "deliveryOrderSaleId": 88022,
+        "saleOrderId": 88214,
+        "companyCode": 2,
+        "invoiceId": 5002,
+        "totalInvoice": "2100.00",
+        "items": [
+          {
+            "deliveryOrderItemId": 55203,
+            "productId": 30201,
+            "plannedQty": "12.00",
+            "deliveredQty": "0.00",
+            "returnedQty": "12.00",
+            "unitPriceSnapshot": "66.36",
+            "itemStatus": "RETURNED"
+          }
+        ],
+        "payments": []
+      }
+    ],
+    "proofOfDelivery": null,
+    "incidents": [
+      {
+        "incidentId": 4012,
+        "productId": null,
+        "incidentCode": "CLIENTE_AUSENTE",
+        "severity": "ALTA",
+        "description": "Local cerrado en horario comercial. No responden llamadas.",
+        "imageUrl": "https://dela.venado.bo/storage/customers/2026/07/inc_4012.jpg",
+        "requiresReturn": true,
+        "resolutionStatus": "PENDING",
+        "resolvedAt": null,
+        "createdAt": "2026-07-16T10:05:00.000Z"
+      }
+    ]
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90113#HIST#2026-07-16T09:55:00.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90113,
+    "status": "ARRIVED",
+    "reason": "Llegada fisica al cliente registrada con coordenadas GPS",
+    "capturedAt": "2026-07-16T09:55:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "DO#90113#HIST#2026-07-16T10:05:00.000Z",
+    "entityType": "DO_HISTORY",
+    "deliveryOrderId": 90113,
+    "status": "INCIDENT",
+    "reason": "Incidencia reportada: local cerrado / cliente ausente",
+    "capturedAt": "2026-07-16T10:05:00.000Z"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-15T17:40:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "PENDING",
+    "description": "Orden de transporte creada e integrada con SAP",
+    "captureHour": "17:40:00",
+    "createdBy": "gino.gonzales"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T06:10:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "CHECKED_START",
+    "description": "Chofer inicio la revision a ciegas",
+    "captureHour": "06:10:00",
+    "createdBy": "driver_78"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T06:35:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "DISCREPANCY",
+    "description": "Conteo finalizado con 1 diferencia. Pendiente de revision del supervisor",
+    "captureHour": "06:35:00",
+    "createdBy": "driver_78"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T07:05:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "SUPERVISOR_VALIDATED",
+    "description": "Diferencias consolidadas por el supervisor",
+    "captureHour": "07:05:00",
+    "createdBy": "supervisor_98"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T07:30:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "EXIT_ORDER_APPROVED",
+    "description": "Orden de salida aprobada en garita",
+    "captureHour": "07:30:00",
+    "createdBy": "supervisor_98"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T08:00:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "ENROUTE",
+    "description": "Chofer inicio el recorrido de la hoja de ruta",
+    "captureHour": "08:00:00",
+    "createdBy": "driver_78"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "HIST#2026-07-16T16:00:00.000Z",
+    "entityType": "TO_HISTORY",
+    "status": "COMPLETED",
+    "description": "Orden de transporte finalizada y sincronizada con SAP",
+    "captureHour": "16:00:00",
+    "createdBy": "driver_78"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "INV#PROD#30201",
+    "entityType": "INVENTORY_ITEM",
+    "truckId": 880012,
+    "productId": 30201,
+    "productName": "Ketchup 900ml",
+    "isRefrigerated": false,
+    "equivalenceBoxUnit": "12.00",
+    "expectedQty": "24.00",
+    "expectedBoxes": "2.00",
+    "loadedQty": "24.00",
+    "loadedBoxes": "2.00",
+    "varianceQty": "0.00",
+    "damagedQty": "0.00",
+    "temperatureCelsius": null,
+    "status": "APPROVED",
+    "verifiedSupervisorId": 98,
+    "updatedBy": "supervisor_98",
+    "observation": "Las 2 unidades estaban al fondo de la carroceria"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "INV#PROD#30204",
+    "entityType": "INVENTORY_ITEM",
+    "truckId": 880012,
+    "productId": 30204,
+    "productName": "Levadura Fleischmann 1Kg",
+    "isRefrigerated": true,
+    "equivalenceBoxUnit": "10.00",
+    "expectedQty": "20.00",
+    "expectedBoxes": "2.00",
+    "loadedQty": "20.00",
+    "loadedBoxes": "2.00",
+    "varianceQty": "0.00",
+    "damagedQty": "0.00",
+    "temperatureCelsius": "4.2",
+    "status": "APPROVED",
+    "verifiedSupervisorId": 98,
+    "updatedBy": "supervisor_98"
+  },
+  {
+    "pk": "TO#103",
+    "sk": "ROUTE#3344",
+    "entityType": "ROUTE",
+    "routeId": 3344,
+    "name": "Ruta Norte 01",
+    "planningTruckId": 9201,
+    "engine": "GOOGLE_ROUTE_OPTIMIZATION",
+    "encodePolyline": "}_o~F~ps|U_ulLnnqC_mqNvxq`@",
+    "etaTotalDistanceM": "48250.00",
+    "etaTotalTimeS": "9600.00",
+    "totalCost": "64.04",
+    "colorHex": "2E86DE",
+    "isSelected": true
+  },
+  {
+    "pk": "TO#103",
+    "sk": "SALE#7781",
+    "entityType": "TO_SALE",
+    "transportOrderSalesId": 7781,
+    "salesOrderId": 88213,
+    "salesOrderSplitId": 10272,
+    "documentId": 1000026565,
+    "invoiceId": 5001,
+    "invoiceAmount": "1592.67",
+    "totalWeightKg": "620.40",
+    "totalVolumeM3": "2.30",
+    "items": [
+      {
+        "productId": 30201,
+        "quantityMin": "12.00",
+        "equivalenceBoxUnit": "12.00"
+      },
+      {
+        "productId": 30204,
+        "quantityMin": "20.00",
+        "equivalenceBoxUnit": "10.00"
+      }
+    ]
+  },
+  {
+    "pk": "TO#103",
+    "sk": "SALE#7782",
+    "entityType": "TO_SALE",
+    "transportOrderSalesId": 7782,
+    "salesOrderId": 88214,
+    "salesOrderSplitId": 10273,
+    "documentId": 1000026566,
+    "invoiceId": 5002,
+    "invoiceAmount": "2100.00",
+    "totalWeightKg": "410.00",
+    "totalVolumeM3": "1.90",
+    "items": [
+      {
+        "productId": 30201,
+        "quantityMin": "12.00",
+        "equivalenceBoxUnit": "12.00"
+      }
+    ]
+  }
+]

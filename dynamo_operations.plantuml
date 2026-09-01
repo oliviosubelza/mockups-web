@@ -1,0 +1,206 @@
+plantuml
+  @startuml
+  !theme plain
+  hide circle
+  hide empty members
+
+  skinparam packageStyle rectangle
+  skinparam class {
+      BackgroundColor White
+      ArrowColor #2E86DE
+      BorderColor #2c3e50
+  }
+
+  package "DynamoDB Table: LogisticsOperations" {
+
+      class "Agregado del Viaje (Partition Key)" as PK << (P, #ff9f43) >> {
+          **PK:** TO#103
+          ==
+          La Orden de Transporte ES la salida física:
+          lleva truck_id, departure_date y distributor_id.
+          Una Query por PK devuelve la pantalla §25 completa.
+      }
+
+      class "SK: META" as Meta {
+          **SK:** META
+          --
+          entityType: "TRANSPORT_ORDER"
+          code: 1000456
+          status: "ENROUTE"
+          distributorId: 1
+          truckId: 880012
+          licensePlate: "3456-ABC"
+          driverEmployeeId: 456
+          driverName: "Gino Baptista"
+          departureDate: "2026-07-16T08:00:00Z"
+          completedDate: null
+          assignedWeightKg: "9100.00"   <color:#c0392b>// string, no
+  Number</color>
+          assignedVolumeM3: "2600.00"
+          .. Contadores (fuente: Postgres) ..
+          totalStopsCount: 12
+          completedStopsCount: 7
+          totalRevenueExpected: "34723.15"
+          totalRevenueCollected: "18200.00"
+          .. Clave de GSI1 ..
+          gsi1pk: "DIST#1#2026-07-16"
+          gsi1sk: "TO#103"
+      }
+
+      class "SK: ROUTE#<id>" as Route {
+          **SK:** ROUTE#3344
+          --
+          entityType: "ROUTE"
+          <color:#27ae60>// 1 solo ítem: exige UNIQUE(route_id)</color>
+          encodePolyline: "u{~vB..._a@"
+          etaTotalDistanceM: 14500
+          etaTotalTimeS: 9600
+          colorHex: "2E86DE"
+          isSelected: true
+      }
+
+      class "SK: HIST#<ts>" as Hist {
+          **SK:** HIST#2026-07-16T08:00:00Z
+          --
+          entityType: "TO_HISTORY"
+          <color:#27ae60>// append-only, fuera de META</color>
+          status: "ENROUTE"
+          description: "Inicio de ruta"
+          captureHour: "08:00:00"
+      }
+
+      class "SK: SALE#<id>" as Sale {
+          **SK:** SALE#7781
+          --
+          entityType: "TO_SALE"
+          salesOrderId: 556
+          salesOrderSplitId: 10272
+          documentId: 1000026565
+          invoiceId: 5001
+          invoiceAmount: "1250.00"
+          .. Anidados (transport_order_sales_items) ..
+          items: [
+            { productId: 78, quantityMin: 24,
+              equivalenceBoxUnit: 12 }
+          ]
+      }
+
+      class "SK: INV#PROD#<id>" as Inv {
+          **SK:** INV#PROD#30201
+          --
+          entityType: "INVENTORY_ITEM"
+          productName: "Ketchup 900ml"
+          equivalenceBoxUnit: 12
+          expectedQty: 24
+          loadedQty: 24
+          varianceQty: 0
+          status: "MATCH"
+          <color:#c0392b>// exige UNIQUE(transport_order_id,
+  product_id)</color>
+      }
+
+      class "SK: DO#<id>" as DO {
+          **SK:** DO#90112
+          --
+          entityType: "DELIVERY_ORDER"
+          .. Parada desnormalizada (dispatch_delivery_points) ..
+          dispatchDeliveryPointId: 4021
+          deliveryPointId: 45
+          sequence: 1
+          executedSequence: 1
+          customerName: "Casa La Ramada"
+          latitude: -17.786510
+          longitude: -63.174220
+          deliveryWindowStart: "08:00"
+          deliveryWindowEnd: "12:00"
+          totalWeightKg: "620.40"
+          totalNeto: "2572.67"
+          .. Ejecución ..
+          status: "DELIVERED"
+          arrivedAt / deliveredAt
+          arrivalLatitude / arrivalLongitude
+          deliveryResultCode: null
+          .. <color:#27ae60>Nivel FACTURA (delivery_order_sales)</color> ..
+          sales: [
+            { deliveryOrderSaleId: 88021,
+              saleOrderId: 88213,
+              companyCode: 2,
+              invoiceId: 5001,
+              totalInvoice: "1592.67",
+              items:    [ { productId: 78, plannedQty: 24,
+                            deliveredQty: 24,
+                            unitPriceSnapshot: "66.36" } ],
+              payments: [ { paymentMethod: "QR",
+                            amount: "200.00",
+                            status: "COMPLETED" } ] }
+          ]
+          .. Anidado (proof_of_deliveries) ..
+          proofOfDelivery: { receiverName, signatureUrl }
+          .. Anidados (delivery_incidents) ..
+          incidents: [ { incidentCode: "CLIENTE_AUSENTE" } ]
+      }
+
+      class "SK: DO#<id>#HIST#<ts>" as DOHist {
+          **SK:** DO#90112#HIST#2026-07-16T08:25:00Z
+          --
+          entityType: "DO_HISTORY"
+          <color:#27ae60>// ordena junto a su DO#; append-only</color>
+          status: "ARRIVED"
+          reason: null
+          capturedAt: "2026-07-16T08:25:00Z"
+      }
+
+      PK --> Meta   : "1 ítem\n(cabecera del viaje)"
+      PK --> Route  : "1 ítem\n(geometría)"
+      PK --> Hist   : "N ítems\n(bitácora de la OT)"
+      PK --> Sale   : "N ítems\n(pedidos cargados)"
+      PK --> Inv    : "N ítems\n(uno por producto)"
+      PK --> DO     : "N ítems\n(uno por parada)"
+      PK --> DOHist : "N ítems\n(timeline por parada)"
+  }
+
+  package "GSI1 - Listado del monitor (§19)" {
+      class "Índice disperso sobre META" as GSI {
+          **GSI1PK:** DIST#1#2026-07-16
+          **GSI1SK:** TO#103
+          --
+          Solo los ítems META llevan estas claves.
+          Resuelve GET /monitoring/orders?distributorId
+          en una Query, sin Scan.
+      }
+  }
+
+  package "DynamoDB Table: TruckTracking" {
+      class "Última Posición Flota" as Flota {
+          **PK:** FLEET#1   <color:#7f8c8d>(distributor_id)</color>
+          **SK:** TO#103
+          --
+          <color:#27ae60>overwrite; se borra al cerrar la salida</color>
+          latitude / longitude
+          battery: 74
+          trackedAt / receivedAt
+          <color:#c0392b>sin TTL: lo gobierna el cierre</color>
+      }
+
+      class "Traza Histórica del Viaje" as Traza {
+          **PK:** TO#103
+          **SK:** TS#2026-07-16T08:24:39Z
+          --
+          <color:#27ae60>append; un ítem por ping</color>
+          latitude / longitude
+          battery: 74
+          employeeId: 456
+          receivedAt
+          expiresAt: 1786782279  <color:#7f8c8d>(TTL 30d, epoch seg)</color>
+          <color:#7f8c8d>trackedAt viaja en la SK, no se duplica</color>
+      }
+  }
+
+  note bottom of Traza
+    Cambio vs. la versión anterior: la partición pasa de
+    ROUTE# a TO#. routes no tiene distributor_id, así que
+    FLEET# no se podía componer desde el ping; y la app del
+    chofer trabaja con transportOrderId (§27, §28), no con
+    routeId. La tabla, los dos tipos de ítem y el TTL no cambian.
+  end note
+  @enduml

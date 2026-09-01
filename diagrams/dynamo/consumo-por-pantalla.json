@@ -1,0 +1,298 @@
+{
+  "documento": "Consumo de DynamoDB por pantalla, fase y consulta",
+  "version": "1.0.0",
+  "fecha": "2026-09-01",
+  "acompania": [
+    "diagrams/dynamo/ciclo-vida-ot.json",
+    "diagrams/dynamo/final-logistics-operations.json",
+    "diagrams/dynamo/final-truck-tracking.json"
+  ],
+  "reglaDeOro": "DynamoDB solo se LEE. Ninguna pantalla escribe aqui: toda mutacion entra por Postgres y se proyecta despues. Las 'fases' son las de ciclo-vida-ot.json.",
+  "comoLeerEsto": {
+    "faseDesde/faseHasta": "Ventana del ciclo de vida en la que la pantalla tiene sentido. Fuera de esa ventana la particion existe pero la pantalla no la pide.",
+    "itemsQueLee": "Prefijos de SK que la pantalla realmente consume del resultado del Query.",
+    "consulta": "Parametros literales del Query de DynamoDB.",
+    "costo": "Cuantas idas a Dynamo cuesta pintar la pantalla completa."
+  },
+
+  "accesos": [
+
+    {
+      "id": "A1",
+      "nombre": "Listado de ordenes despachadas",
+      "pantalla": { "ruta": "/monitoreo", "componentes": ["MonitoreoView", "TablaViajeMonitoreo", "ProgresoEntregas"] },
+      "docTecnica": "19",
+      "faseDesde": 6, "faseHasta": 16,
+      "itemsQueLee": ["META"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "indice": "GSI1",
+        "operacion": "Query",
+        "KeyConditionExpression": "gsi1pk = :d",
+        "ExpressionAttributeValues": { ":d": "DIST#1#2026-07-16" }
+      },
+      "campos": ["code", "status", "licensePlate", "driverName", "departureDate", "totalStopsCount", "completedStopsCount", "totalRevenueExpected", "totalRevenueCollected"],
+      "costo": "1 Query para TODAS las OT de la distribuidora del dia.",
+      "comentario": "Este es el motivo de existir del GSI1. Sin el indice esto seria un Scan. El item META lleva los contadores ya calculados: la tabla del monitor no agrega nada en cliente."
+    },
+
+    {
+      "id": "A2",
+      "nombre": "Pines de toda la flota en el mapa del listado",
+      "pantalla": { "ruta": "/monitoreo", "componentes": ["MonitoreoView (mapa)", "use-flota-viva"] },
+      "docTecnica": "19.8",
+      "faseDesde": 7, "faseHasta": 15,
+      "itemsQueLee": ["FLEET#{distributorId}"],
+      "consulta": {
+        "tabla": "TruckTracking",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :f",
+        "ExpressionAttributeValues": { ":f": "FLEET#1" }
+      },
+      "campos": ["sk (TO#id)", "latitude", "longitude", "battery", "trackedAt", "receivedAt"],
+      "costo": "1 Query para toda la flota.",
+      "comentario": "Se cruza con A1 por el sk (TO#103). Es la unica razon por la que existe el item ACTUAL: con la particion de la traza serian N Queries, una por camion. La columna 'Ultima senal' la calcula el cliente con now() - trackedAt, por eso trackedAt se devuelve crudo."
+    },
+
+    {
+      "id": "A3",
+      "nombre": "Detalle del viaje: mapa, paradas, pedidos, cobros y comprobantes",
+      "pantalla": { "ruta": "/monitoreo/seguimiento/:ordenId", "componentes": ["MonitoreoDetalleView", "SeguimientoMapa", "ParadasPanel", "DetalleParadaPanel", "TablaPedidosViaje"] },
+      "docTecnica": "25",
+      "faseDesde": 6, "faseHasta": 16,
+      "itemsQueLee": ["META", "ROUTE#", "DO#", "DO#...#HIST#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to",
+        "ExpressionAttributeValues": { ":to": "TO#103" }
+      },
+      "campos": ["META completo", "ROUTE#.encodePolyline", "DO#.* incluyendo sales[].items[], sales[].payments[], proofOfDelivery, incidents[]"],
+      "costo": "1 Query devuelve la pantalla ENTERA. Es el caso de uso que justifica el read-model.",
+      "comentario": "En Postgres esta misma pantalla son ~10 JOINs sobre transport_orders, routes, route_delivery_points, dispatch_delivery_points, delivery_orders, delivery_order_sales, delivery_order_items, delivery_payment_references, proof_of_deliveries y delivery_incidents. Los items SALE# e INV#PROD# vienen en el mismo Query pero esta pantalla los ignora: si molestan, filtrar en cliente es mas barato que un segundo Query."
+    },
+
+    {
+      "id": "A4",
+      "nombre": "Posicion del camion en el mapa de detalle",
+      "pantalla": { "ruta": "/monitoreo/seguimiento/:ordenId", "componentes": ["SeguimientoMapa", "use-seguimiento-vivo", "tracking-dynamo"] },
+      "docTecnica": "25",
+      "faseDesde": 7, "faseHasta": 15,
+      "itemsQueLee": ["TS#"],
+      "consulta": {
+        "tabla": "TruckTracking",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to",
+        "ExpressionAttributeValues": { ":to": "TO#103" },
+        "ScanIndexForward": false,
+        "Limit": 1
+      },
+      "campos": ["latitude", "longitude", "battery", "sk (trackedAt)", "receivedAt"],
+      "costo": "1 Query. Solo en la carga inicial; despues el pin lo mueve el SSE.",
+      "comentario": "Se hace una sola vez al abrir. A partir de ahi el evento tracking (26.1) parchea el pin sin volver a Dynamo."
+    },
+
+    {
+      "id": "A5",
+      "nombre": "Recorrido real recorrido por el camion (trazo historico)",
+      "pantalla": { "ruta": "/monitoreo/seguimiento/:ordenId", "componentes": ["SeguimientoMapa", "RutaParalela"] },
+      "docTecnica": "24",
+      "faseDesde": 7, "faseHasta": 16,
+      "itemsQueLee": ["TS#"],
+      "consulta": {
+        "tabla": "TruckTracking",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to AND sk BETWEEN :t1 AND :t2",
+        "ExpressionAttributeValues": {
+          ":to": "TO#103",
+          ":t1": "TS#2026-07-16T08:00:00.000Z",
+          ":t2": "TS#2026-07-16T16:00:00.000Z"
+        }
+      },
+      "campos": ["latitude", "longitude", "sk (trackedAt)"],
+      "costo": "1 Query, pero devuelve ~2400 items en una jornada de 8h a 1 ping/12s. Paginar.",
+      "comentario": "Es la comparacion entre el trazo planificado (ROUTE#.encodePolyline) y el real. Disponible solo 30 dias: despues el TTL borra la traza."
+    },
+
+    {
+      "id": "A6",
+      "nombre": "Detalle de una parada puntual",
+      "pantalla": { "ruta": "/monitoreo/seguimiento/pedido/:pedidoId", "componentes": ["DetalleParadaPanel", "GaleriaPunto", "VisorFoto"] },
+      "docTecnica": "25",
+      "faseDesde": 8, "faseHasta": 16,
+      "itemsQueLee": ["DO#90112", "DO#90112#HIST#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to AND begins_with(sk, :do)",
+        "ExpressionAttributeValues": { ":to": "TO#103", ":do": "DO#90112" }
+      },
+      "campos": ["status", "arrivedAt", "deliveredAt", "sales[]", "proofOfDelivery", "incidents[]", "historial"],
+      "costo": "1 Query.",
+      "comentario": "Aca se ve para que sirve la SK DO#{id}#HIST#{ts}: el begins_with('DO#90112') trae la parada Y su timeline en una sola consulta, porque ordenan pegados."
+    },
+
+    {
+      "id": "A7",
+      "nombre": "Manifiesto de carga para el conteo a ciegas (app movil)",
+      "pantalla": { "ruta": "app movil del chofer", "componentes": ["Detalle de OT para conteo"] },
+      "docTecnica": "21",
+      "faseDesde": 2, "faseHasta": 4,
+      "itemsQueLee": ["META", "INV#PROD#", "SALE#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to AND (begins_with(sk, :inv) OR sk = :meta)",
+        "nota": "DynamoDB NO soporta OR en KeyConditionExpression. En la practica: Query pk = :to y filtrar en cliente, o dos llamadas.",
+        "ExpressionAttributeValues": { ":to": "TO#103", ":inv": "INV#PROD#", ":meta": "META" }
+      },
+      "campos": ["productName", "equivalenceBoxUnit", "expectedQty", "loadedQty", "varianceQty", "status"],
+      "costo": "1 Query por PK, filtrado en cliente.",
+      "comentario": "CUIDADO: expectedQty esta en el item pero NO se le muestra al chofer. El enmascaramiento del conteo a ciegas es responsabilidad de la capa de API, no del modelo de datos. Si la app lee Dynamo directo, el conteo deja de ser a ciegas."
+    },
+
+    {
+      "id": "A8",
+      "nombre": "Historial de revisiones de rampa",
+      "pantalla": { "ruta": "/reportes/historial-revisiones", "componentes": ["HistorialRevisionesView"] },
+      "docTecnica": "45",
+      "faseDesde": 4, "faseHasta": 16,
+      "itemsQueLee": ["INV#PROD#", "HIST#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to AND begins_with(sk, :inv)",
+        "ExpressionAttributeValues": { ":to": "TO#103", ":inv": "INV#PROD#" }
+      },
+      "campos": ["productName", "expectedQty", "loadedQty", "varianceQty", "status", "verifiedSupervisorId", "observation"],
+      "costo": "1 Query por OT.",
+      "comentario": "Solo el DETALLE de una OT. El LISTADO de revisiones cruza OTs y no sale de aqui: ver 'sinCaminoDeAcceso'."
+    },
+
+    {
+      "id": "A9",
+      "nombre": "Timeline / bitacora de la orden de transporte",
+      "pantalla": { "ruta": "/monitoreo-historial", "componentes": ["MonitoreoEHistorialOTView", "linea-tiempo"] },
+      "docTecnica": "19, 44",
+      "faseDesde": 1, "faseHasta": 16,
+      "itemsQueLee": ["HIST#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to AND begins_with(sk, :h)",
+        "ExpressionAttributeValues": { ":to": "TO#103", ":h": "HIST#" },
+        "ScanIndexForward": true
+      },
+      "campos": ["status", "description", "captureHour", "createdBy"],
+      "costo": "1 Query. Devuelve la bitacora en orden cronologico sin ORDER BY: la SK ya ordena.",
+      "comentario": "Por esto los HIST# viven fuera de META. Si estuvieran anidados, cada evento reescribiria la cabecera entera y no se podrian leer sin traerla."
+    },
+
+    {
+      "id": "A10",
+      "nombre": "Cierre logistico: que salio, que volvio",
+      "pantalla": { "ruta": "/cierre-logistico", "componentes": ["CierreLogisticoView", "RegistroCierreOTView", "CierreCobranzaInPlaceEditor"] },
+      "docTecnica": "39",
+      "faseDesde": 15, "faseHasta": 16,
+      "itemsQueLee": ["META", "INV#PROD#", "DO#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to",
+        "ExpressionAttributeValues": { ":to": "TO#103" }
+      },
+      "campos": ["INV#PROD#.loadedQty (lo que salio)", "DO#.sales[].items[].deliveredQty y returnedQty (lo que se entrego)", "META.totalRevenueCollected"],
+      "costo": "1 Query.",
+      "comentario": "OJO: el faltante fisico y el arqueo se CALCULAN comparando loadedQty contra la suma de deliveredQty. Ese calculo no puede vivir en Dynamo. Y transport_order_warehouse_closings / _collection_closings NO estan proyectados: son escritura pura de cierre."
+    },
+
+    {
+      "id": "A11",
+      "nombre": "Detalle historico de una OT cerrada",
+      "pantalla": { "ruta": "/reportes/historial-ordenes-transporte/:otId", "componentes": ["DetalleOrdenTransporteView"] },
+      "docTecnica": "45",
+      "faseDesde": 16, "faseHasta": 16,
+      "itemsQueLee": ["META", "ROUTE#", "SALE#", "INV#PROD#", "DO#", "HIST#", "DO#...#HIST#"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "operacion": "Query",
+        "KeyConditionExpression": "pk = :to",
+        "ExpressionAttributeValues": { ":to": "TO#103" }
+      },
+      "campos": ["los 21 items"],
+      "costo": "1 Query devuelve el expediente completo del viaje.",
+      "comentario": "El unico consumidor que quiere TODA la particion. Es tambien el que fuerza a definir el TTL: mientras esta pantalla exista, la OT cerrada no se puede borrar de la proyeccion. Decidir cuantos meses."
+    },
+
+    {
+      "id": "A12",
+      "nombre": "Listado de ordenes de transporte antes de despachar",
+      "pantalla": { "ruta": "/ordenes-transporte", "componentes": ["OrdenesTransporteView", "TrucksAndOrdersView"] },
+      "docTecnica": "11, 17",
+      "faseDesde": 1, "faseHasta": 5,
+      "itemsQueLee": ["META"],
+      "consulta": {
+        "tabla": "LogisticsOperations",
+        "indice": "GSI1",
+        "operacion": "Query",
+        "KeyConditionExpression": "gsi1pk = :d",
+        "FilterExpression": "#s IN (:p, :cs, :d2, :sv, :rr)",
+        "ExpressionAttributeNames": { "#s": "status" },
+        "ExpressionAttributeValues": {
+          ":d": "DIST#1#2026-07-16",
+          ":p": "PENDING", ":cs": "CHECKED_START", ":d2": "DISCREPANCY",
+          ":sv": "SUPERVISOR_VALIDATED", ":rr": "READY_FOR_ROUTE"
+        }
+      },
+      "campos": ["code", "status", "licensePlate", "driverName", "assignedWeightKg", "totalStopsCount"],
+      "costo": "1 Query. El FilterExpression se aplica DESPUES de leer: se paga la lectura de todas las OT del dia.",
+      "comentario": "Si el listado pre-despacho crece, conviene meter el status en la gsi1sk (por ejemplo STATUS#PENDING#TO#103) y filtrar por begins_with en vez de FilterExpression."
+    }
+  ],
+
+  "sinCaminoDeAcceso": [
+    {
+      "necesidad": "App movil: 'Mis entregas' del chofer",
+      "docTecnica": "27",
+      "consultaQueHaceHoy": "GET /transport-orders?driverId=78&status=APPROVED",
+      "problema": "No hay indice por chofer. Con el modelo actual habria que hacer Scan.",
+      "opciones": ["Agregar GSI2: gsi2pk = DRIVER#{driverEmployeeId}#{fecha}, gsi2sk = TO#{id}, tambien disperso sobre META", "Dejarlo en Postgres: el volumen por chofer es de 2 o 3 OT por dia"],
+      "recomendacion": "Postgres. No justifica un segundo GSI."
+    },
+    {
+      "necesidad": "Polling del estado de un pago QR",
+      "docTecnica": "42",
+      "consultaQueHaceHoy": "GET /payments/qr/:referenceId/status",
+      "problema": "El pago vive dentro de DO#{id}.sales[].payments[]. Con solo el referenceId (801) no hay Query que lo alcance.",
+      "opciones": ["Que el endpoint reciba tambien el transportOrderId y el deliveryOrderId", "Leerlo de Postgres"],
+      "recomendacion": "Postgres. Es estado transaccional en vuelo, no una vista."
+    },
+    {
+      "necesidad": "Revision semaforo: listado por distribuidora",
+      "docTecnica": "44",
+      "consultaQueHaceHoy": "COUNT(DISTINCT product_id), BOOL_OR(is_refrigerated) agrupado por OT",
+      "problema": "DynamoDB no agrega.",
+      "opciones": ["Precalcular totalDiscrepantProducts y hasCold como atributos del item META", "Dejarlo en Postgres"],
+      "recomendacion": "Si se proyecta, que los contadores los calcule Postgres y Dynamo los copie. Nunca recalcular en la proyeccion."
+    },
+    {
+      "necesidad": "Diferencias por chofer",
+      "docTecnica": "47",
+      "consultaQueHaceHoy": "SUM(CASE WHEN variance_qty < 0 ...) GROUP BY driver_employee_id HAVING",
+      "problema": "Agrega y agrupa a traves de multiples OT y multiples particiones.",
+      "recomendacion": "Postgres. Es una consulta analitica, no una vista de lectura por clave."
+    }
+  ],
+
+  "resumenPorItem": {
+    "META": { "loQueLee": ["A1", "A3", "A7", "A10", "A11", "A12"], "papel": "Cabecera del viaje. Es el unico item con las claves del GSI1, o sea el unico visible desde el listado." },
+    "ROUTE#3344": { "loQueLee": ["A3", "A11"], "papel": "Geometria planificada. Solo la piden las pantallas con mapa." },
+    "SALE#": { "loQueLee": ["A7", "A11"], "papel": "Snapshot de lo que se cargo. Nace en la fase 1 y no cambia nunca mas." },
+    "INV#PROD#": { "loQueLee": ["A7", "A8", "A10", "A11"], "papel": "Conteo fisico de rampa. Vive entre las fases 2 y 4 y despues es solo lectura." },
+    "DO#": { "loQueLee": ["A3", "A6", "A10", "A11"], "papel": "La parada. El item mas mutado del ciclo: cambia en las fases 8, 9, 10, 11, 12, 13 y 14." },
+    "HIST#": { "loQueLee": ["A9", "A11"], "papel": "Bitacora de la OT. Append-only, ordenada por la SK." },
+    "DO#<id>#HIST#": { "loQueLee": ["A6", "A11"], "papel": "Bitacora de la parada. Ordena pegada a su DO# por diseno." },
+    "TruckTracking TS#": { "loQueLee": ["A4", "A5"], "papel": "Traza. TTL 30 dias." },
+    "TruckTracking FLEET#": { "loQueLee": ["A2"], "papel": "Ultima posicion. Existe solo para que A2 cueste 1 Query en vez de N." }
+  }
+}

@@ -1,0 +1,51 @@
+[
+  {
+    "pk": "TO#103",
+    "sk": "TS#2026-07-16T08:24:39.000Z",
+    "latitude": "-17.783412",
+    "longitude": "-63.181245",
+    "battery": 74,
+    "employeeId": 456,
+    "receivedAt": "2026-07-16T08:24:40.180Z",
+    "expiresAt": 1786782279
+  },
+  {
+    "pk": "TO#103",
+    "sk": "TS#2026-07-16T08:24:51.000Z",
+    "latitude": "-17.784050",
+    "longitude": "-63.180010",
+    "battery": 74,
+    "employeeId": 456,
+    "receivedAt": "2026-07-16T08:24:52.090Z",
+    "expiresAt": 1786782291
+  },
+  {
+    "pk": "TO#103",
+    "sk": "TS#2026-07-16T08:25:03.000Z",
+    "latitude": "-17.784880",
+    "longitude": "-63.178430",
+    "battery": 73,
+    "employeeId": 456,
+    "receivedAt": "2026-07-16T08:25:04.310Z",
+    "expiresAt": 1786782303
+  },
+  {
+    "pk": "TO#103",
+    "sk": "TS#2026-07-16T08:25:15.000Z",
+    "latitude": "-17.785610",
+    "longitude": "-63.176920",
+    "battery": 73,
+    "employeeId": 456,
+    "receivedAt": "2026-07-16T08:25:16.220Z",
+    "expiresAt": 1786782315
+  },
+  {
+    "pk": "FLEET#1",
+    "sk": "TO#103",
+    "latitude": "-17.785610",
+    "longitude": "-63.176920",
+    "battery": 73,
+    "trackedAt": "2026-07-16T08:25:15.000Z",
+    "receivedAt": "2026-07-16T08:25:16.220Z"
+  }
+]
