@@ -1,0 +1,97 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 2: GET /api/v1/refunds (Bandeja de notas de devolución)
+
+actor "Analista / Gerente / Vendedor" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Order Service" as Service
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+participant "Role Directory Client\n(servicio externo)" as RoleDir
+
+User -> Web: Entra al módulo "Devoluciones"
+Web -> Gateway: GET /api/v1/refunds?distributorId=10&employeeId=555\n&status=OPEN&workflowState=ESPERANDO_LVL1&from=2026-08-17&to=2026-08-31\n&search=Ferretería&awaitingEmployeeCode=57&page=1&pageSize=20
+note right of Web
+  Ventana por defecto: últimos 14 días.
+  Para los roles de venta el FE fuerza
+  employeeId al del usuario: un vendedor
+  solo ve sus propias notas.
+end note
+Gateway -> Service: getRefundOrdersPaged(params, actor)
+
+Service -> Service: 1. applyRoleScope(params, actor)
+note right of Service
+  - vendedor / vendedor_agencia:
+    employeeId = actor.employeeCode, forzado
+  - roles aprobadores: ven toda la
+    distribuidora
+end note
+
+Service -> OrdersDB: 2. findRefundOrdersPage(filters)
+note right of OrdersDB
+  WHERE deleted_at IS NULL
+  AND distributor_id = :distributorId
+  AND (:status IS NULL OR status = :status)
+  AND (:employeeId IS NULL OR employee_id = :employeeId)
+  AND created_at::date BETWEEN :from AND :to
+  ORDER BY created_at DESC, id DESC
+  LIMIT :pageSize OFFSET (:page - 1) * :pageSize
+  La búsqueda por cliente exige JOIN al
+  maestro de clientes (hoy sin FK).
+end note
+OrdersDB --> Service: rows[] + totalItems
+
+Service -> InstanceDB: 3. findCurrentInstances(currentWorkflowInstanceIds)
+InstanceDB --> Service: instances[] (attempt, status, current_level_order)
+
+Service -> LevelsDB: 4. findOpenLevels(instanceIds)
+note right of LevelsDB
+  Trae el nivel IN_PROGRESS de cada instancia
+  con level_name, role_code, started_at y el
+  conteo de niveles del intento, para el
+  "Nivel 2 de 4".
+end note
+LevelsDB --> Service: openLevels[]
+
+Service -> ActionsDB: 5. countApprovalsByLevel(openLevelIds)
+note right of ActionsDB
+  Cuenta las acciones APPROVE por nivel:
+  con eso se sabe cuántas firmas faltan y
+  quién ya firmó.
+end note
+ActionsDB --> Service: approvalsByLevel[]
+
+opt awaitingEmployeeCode presente ("esperando mi firma")
+    Service -> RoleDir: 6. resolveApproversByRole(openLevels.roleCode)
+    RoleDir --> Service: employeesByRole[]
+
+    Service -> Service: 7. filterAwaitingSignature(rows, employeesByRole, approvalsByLevel)
+    note right of Service
+      Se queda solo con las notas donde el
+      empleado pertenece al rol del nivel abierto
+      Y todavía no firmó. Quien ya firmó un
+      quórum sale de su propia bandeja.
+      Es un filtro del mismo recurso, no
+      un endpoint aparte.
+    end note
+end
+
+Service -> Service: 8. deriveWorkflowState(instance, openLevel)
+note right of Service
+  Estado del workflow, derivado y no
+  almacenado: APROBADA, RECHAZADA,
+  EN_EDICION o ESPERANDO_LVL1..4.
+  Con el nivel abierto vencido
+  (started_at + sla_hours < NOW())
+  la fila se marca DEMORADA.
+end note
+
+Service -> Service: 9. buildRefundListResponse(rows, instances, levels, counts)
+Service --> Gateway: refundOrdersPage
+Gateway --> Web: 200 OK (items[] + paginación)
+Web --> User: Renderiza la bandeja con el plazo y el nivel en curso
+@enduml

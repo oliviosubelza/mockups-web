@@ -1,0 +1,51 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 14: GET /api/v1/refunds/approvers?roleCode= (Resolver el rol a personas)
+
+actor "Analista / Gerente" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Role Directory Client\n(servicio externo)" as RoleDir
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+User -> Web: Abre "¿Quién tiene que firmar?" en el detalle
+Web -> Gateway: GET /api/v1/refunds/2001/approvers?roleCode=gerente_cx
+Gateway -> Service: getLevelApprovers(refundOrderId: 2001, roleCode, actor)
+
+Service -> LevelsDB: 1. findLevelByRole(instanceId, roleCode)
+LevelsDB --> Service: level { id: 201, level_order: 2,\napproval_policy: 'QUORUM', required_approvals: 2 }
+
+Service -> RoleDir: 2. resolveApproversByRole('gerente_cx')
+note right of RoleDir
+  Nuestras tablas guardan SOLO role_code.
+  La lista de personas es del directorio
+  externo y puede cambiar entre una consulta
+  y la siguiente: no se persiste.
+end note
+RoleDir --> Service: employees[] (employeeCode, employeeName)
+
+Service -> ActionsDB: 3. findLevelApprovals(instanceId, levelId: 201)
+note right of ActionsDB
+  Las acciones APPROVE del nivel dicen quién
+  ya firmó: actor_employee_code.
+end note
+ActionsDB --> Service: approvals[]
+
+Service -> Service: 4. computeSignatureState(level, employees, approvals)
+note right of Service
+  signaturesNeeded:
+  - ANY    -> 1
+  - ALL    -> cantidad de aprobadores del rol
+  - QUORUM -> required_approvals, topeado por
+              la cantidad de aprobadores
+  Por persona: hasActed (ya firmó) y
+  signaturesMissing para el nivel.
+end note
+
+Service --> Gateway: 200 OK (LevelApproversResult:\n{ roleCode, approvalPolicy, signaturesNeeded,\nsignaturesReceived, approvers: [{ employeeCode, employeeName, hasActed }] })
+Gateway --> Web: 200 OK
+Web --> User: Muestra quién firmó y cuántas firmas faltan
+@enduml

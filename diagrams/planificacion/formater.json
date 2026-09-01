@@ -1,0 +1,177 @@
+// ── 26 Obtener pedidos candidatos con estado de stock ────────────────────────────────────────
+
+// 26.1 / 26.2 — FilterCandidateOrdersDto
+{
+  "distributorId": 1,
+  "deliveryDate": "2026-08-05",
+  "channels": ["horizontal", "tradicional"],
+  "includeOutOfCutoff": false
+}
+
+// salida de 26.4 — filas de candidate_orders. SIN líneas de producto: solo agregados + salesOrderId.
+[
+  {
+    "candidateOrderId": 9041,
+    "salesOrderId": 88214,
+    "documentId": 4471002,
+    "distributorId": 1,
+    "totalWeightKg": 486.00,
+    "totalVolumeM3": 1.70,
+    "typeMovement": "VENTA",
+    "isIncluded": true
+  },
+  {
+    "candidateOrderId": 9042,
+    "salesOrderId": 88215,
+    "documentId": 4471003,
+    "distributorId": 1,
+    "totalWeightKg": 1240.00,
+    "totalVolumeM3": 4.30,
+    "typeMovement": "VENTA",
+    "isIncluded": true
+  },
+  { "...": "..." }
+]
+
+// 26.5 request — POST /sales/orders/items:batch (MS Ventas). Ids deduplicados, UNA sola llamada.
+{ "salesOrderIds": [88214, 88215, 88216] }
+
+// salida de 26.5 — respuesta de Ventas, indexada por salesOrderId.
+{
+  "88214": [
+    { "productId": 70211, "requestedQty": 44, "confirmedQty": 44 },
+    { "productId": 70455, "requestedQty": 14, "confirmedQty": 2 },
+    { "productId": 70880, "requestedQty": 30, "confirmedQty": 30 }
+  ],
+  "88215": [
+    { "productId": 70211, "requestedQty": 12, "confirmedQty": 12 },
+    { "productId": 70102, "requestedQty": 60, "confirmedQty": 0 }
+  ],
+  "88216": [
+    { "productId": 70455, "requestedQty": 8, "confirmedQty": 8 }
+  ]
+}
+
+// salida de 26.6 — summarizeStock(): las líneas colapsadas a dos números y un estado.
+{
+  "stockStatus": "PENDING",
+  "totalLines": 3,
+  "pendingLines": 1,
+  "noStockLines": 0
+}
+
+// salida de 26.6a — markStockUnknown(): Ventas dio timeout o 5xx. El listado se devuelve igual.
+{
+  "stockStatus": "UNKNOWN",
+  "totalLines": 0,
+  "pendingLines": 0,
+  "noStockLines": 0
+}
+
+// 26.9 — Response Principal del listado.
+{
+  "success": true,
+  "code": 200,
+  "data": [
+    {
+      "candidateOrderId": 9041,
+      "salesOrderId": 88214,
+      "documentId": 4471002,
+      "totalWeightKg": 486.00,
+      "totalVolumeM3": 1.70,
+      "isIncluded": true,
+      "stockSummary": {
+        "stockStatus": "PENDING",
+        "totalLines": 3,
+        "pendingLines": 1,
+        "noStockLines": 0
+      }
+    },
+    {
+      "candidateOrderId": 9043,
+      "salesOrderId": 88216,
+      "documentId": 4471004,
+      "totalWeightKg": 902.00,
+      "totalVolumeM3": 3.10,
+      "isIncluded": true,
+      "stockSummary": {
+        "stockStatus": "CONFIRMED",
+        "totalLines": 1,
+        "pendingLines": 0,
+        "noStockLines": 0
+      }
+    },
+    { "...": "..." }
+  ]
+}
+
+// ── 27 Detalle de productos de un pedido ─────────────────────────────────────────────────────
+
+// salida de 27.4 — una fila de candidate_orders. Tres campos: es un puente y nada más.
+{ "candidateOrderId": 9041, "salesOrderId": 88214, "documentId": 4471002 }
+
+// salida de 27.5 — GET /sales/orders/88214/items. NO trae el nombre del producto.
+[
+  { "productId": 70211, "requestedQty": 44, "confirmedQty": 44 },
+  { "productId": 70455, "requestedQty": 14, "confirmedQty": 2 },
+  { "productId": 70880, "requestedQty": 30, "confirmedQty": 30 }
+]
+
+// salida de 27.6 — product_snapshot HOY. Sin description ni unit: el panel solo podría escribir "70455 — 2/14".
+[
+  { "productId": 70211, "weight": 8.40, "volume": 0.031 },
+  { "productId": 70455, "weight": 11.20, "volume": 0.048 },
+  { "productId": 70880, "weight": 6.00, "volume": 0.022 }
+]
+
+// salida de 27.6 — lo que HARÍA FALTA que devuelva (opción A: ampliar product_snapshot).
+[
+  { "productId": 70211, "description": "Papel higiénico x4", "unit": "packs", "weight": 8.40, "volume": 0.031 },
+  { "productId": 70455, "description": "Aceite girasol 900 ml", "unit": "cajas", "weight": 11.20, "volume": 0.048 },
+  { "productId": 70880, "description": "Arroz grano largo 5 kg", "unit": "bolsas", "weight": 6.00, "volume": 0.022 }
+]
+
+// 27.10 — Response Principal del detalle. El backend ya entrega las cortas separadas y primero.
+{
+  "success": true,
+  "code": 200,
+  "data": {
+    "candidateOrderId": 9041,
+    "salesOrderId": 88214,
+    "documentId": 4471002,
+    "summary": {
+      "stockStatus": "PENDING",
+      "totalLines": 3,
+      "pendingLines": 1,
+      "noStockLines": 0
+    },
+    "pending": [
+      {
+        "productId": 70455,
+        "description": "Aceite girasol 900 ml",
+        "unit": "cajas",
+        "requestedQty": 14,
+        "confirmedQty": 2,
+        "lineStatus": "PARTIAL"
+      }
+    ],
+    "confirmed": [
+      {
+        "productId": 70211,
+        "description": "Papel higiénico x4",
+        "unit": "packs",
+        "requestedQty": 44,
+        "confirmedQty": 44,
+        "lineStatus": "CONFIRMED"
+      },
+      {
+        "productId": 70880,
+        "description": "Arroz grano largo 5 kg",
+        "unit": "bolsas",
+        "requestedQty": 30,
+        "confirmedQty": 30,
+        "lineStatus": "CONFIRMED"
+      }
+    ]
+  }
+}

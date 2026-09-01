@@ -1,0 +1,59 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 15: GET /api/v1/refunds/returnable-products (Qué puede devolver el cliente)
+
+actor "Vendedor" as Seller
+participant "App Ventas / Web" as App
+participant "Gateway Controller" as Gateway
+participant "Refund Eligibility Service" as Service
+participant "Facturación ERP / SAP\n(servicio externo)" as ERP
+participant "refund_orders DB" as OrdersDB
+participant "refund_order_details DB" as DetailsDB
+
+Seller -> App: Elige el cliente para registrar la devolución
+App -> Gateway: GET /api/v1/refunds/returnable-products?clientId=777&excludeRefundOrderId=1004
+Gateway -> Service: getReturnableProducts(clientId: 777, excludeRefundOrderId, actor)
+
+Service -> ERP: 1. getInvoicedItems(clientId, windowDays: 90)
+note right of ERP
+  Ventana de elegibilidad: 90 días.
+  Devuelve por producto las facturas con
+  número, documento SAP, lote/vencimiento
+  y unidades facturadas.
+  Nuestras tablas NO guardan esto: sin el
+  ERP no hay elegibilidad.
+end note
+ERP --> Service: invoicedItems[] (productId, minUnits, invoices[])
+
+Service -> OrdersDB: 2. findClaimingRefundOrders(clientId, excludeRefundOrderId)
+note right of OrdersDB
+  Notas del cliente que todavía "ocupan"
+  cantidad: se excluyen las REJECTED y las
+  ANNULLED, y la nota que se está corrigiendo.
+end note
+OrdersDB --> Service: refundOrderIds[]
+
+Service -> DetailsDB: 3. sumClaimedByProduct(refundOrderIds)
+note right of DetailsDB
+  SUM(quantity) por product_id, solo
+  line_status = 'ACTIVE'. Las líneas
+  DISSOCIATED siguen contando en la nota que
+  se las llevó, no acá.
+end note
+DetailsDB --> Service: claimedByProduct[]
+
+Service -> Service: 4. computeAvailable(invoicedItems, claimedByProduct)
+note right of Service
+  available = MAX(0, invoiced - claimed)
+  Motivos de bloqueo, en orden:
+  - sin factura en los últimos 90 días
+  - available = 0: ya se devolvió todo
+  - cantidad pedida = 0
+  - cantidad pedida > available
+end note
+
+Service --> Gateway: 200 OK (ReturnableProductsResult:\n{ items: [{ productId, invoicedMinUnits, claimedMinUnits,\navailableMinUnits, blockedReason, invoices[] }] })
+Gateway --> App: 200 OK
+App --> Seller: Muestra qué producto y cuánto se puede reclamar
+@enduml

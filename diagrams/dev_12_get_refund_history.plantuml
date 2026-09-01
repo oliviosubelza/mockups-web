@@ -1,0 +1,80 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 12: GET /api/v1/refunds/:id/history (Historial completo de la nota)
+
+actor "Analista / Auditor" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund History Service" as Service
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_actions DB" as ActionsDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_order_detail_decisions DB" as DecisionsDB
+participant "refund_orders DB" as OrdersDB
+
+User -> Web: Abre la pestaña "Historial"
+Web -> Gateway: GET /api/v1/refunds/1001/history
+Gateway -> Service: getRefundOrderHistory(refundOrderId: 1001, actor)
+
+Service -> InstanceDB: 1. findInstancesByOrder(1001)
+note right of InstanceDB
+  ORDER BY attempt ASC.
+  Un intento por fila: el historial se lee
+  por intento, no en un único hilo plano.
+end note
+InstanceDB --> Service: instances[] (id, attempt, status,\nreactivated_from_instance_id, started_at, finished_at)
+
+Service -> ActionsDB: 2. findActionsByInstances(instanceIds)
+note right of ActionsDB
+  SELECT a.created_at, a.action, a.actor_employee_code,
+         a.actor_role_code, a.comment, a.reason,
+         a.system_summary, a.previous_status, a.new_status,
+         a.amount_before, a.amount_after,
+         a.related_refund_order_id
+  ORDER BY a.created_at, a.id
+  (el DDL tiene 'at' comentado: el orden
+  sale de created_at)
+end note
+ActionsDB --> Service: actions[]
+
+Service -> LevelsDB: 3. findLevelsByInstances(instanceIds)
+note right of LevelsDB
+  Da el nombre del escritorio de cada acción:
+  LEFT JOIN por workflow_instance_level_id,
+  que es NULL en CREATED, DISSOCIATED_CREATED,
+  REACTIVATE, SELLER_RESUBMITTED, CANCEL.
+end note
+LevelsDB --> Service: levels[]
+
+Service -> DecisionsDB: 4. findDecisionsByActions(itemSelectionActionIds)
+note right of DecisionsDB
+  Cuelga de la acción LEVEL1_ITEM_SELECTION:
+  qué línea quedó SELECTED y cuál DISSOCIATED.
+end note
+DecisionsDB --> Service: decisions[]
+
+Service -> OrdersDB: 5. findBridgedOrders(relatedRefundOrderIds)
+note right of OrdersDB
+  Resuelve la fila puente en los dos sentidos:
+  - "de esta nota salió la 1004"
+  - "¿de dónde salió la 1004?" ->
+    WHERE related_refund_order_id = 1004
+    AND action = 'DISSOCIATED_CREATED'
+end note
+OrdersDB --> Service: bridgedOrders[]
+
+Service -> Service: 6. buildTimeline(instances, actions, levels, decisions, bridged)
+note right of Service
+  Agrupa por intento y arma la frase visible:
+  system_summary (autogenerado) + comment
+  (del revisor) + reason (obligatorio en
+  REJECT, REACTIVATE y CANCEL).
+  Las acciones con amount_before/amount_after
+  muestran el movimiento del monto.
+end note
+
+Service --> Gateway: refundHistoryResponse (attempts[] con actions[])
+Gateway --> Web: 200 OK
+Web --> User: Renderiza la línea de tiempo por intento
+@enduml

@@ -1,0 +1,97 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 7: POST /api/v1/refunds/:id/levels/current/reject (Rechazar el nivel activo)
+
+actor "Aprobador del nivel" as Approver
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Approver -> Web: Tap en "Rechazar" + motivo obligatorio
+Web -> Gateway: POST /api/v1/refunds/2001/levels/current/reject\n(RejectLevelDto: { reason, comment })
+Gateway -> Service: rejectCurrentLevel(refundOrderId: 2001, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(2001)
+OrdersDB --> Service: order + instance { id: 90, status: 'IN_APPROVAL' }
+
+Service -> LevelsDB: 2. findCurrentLevel(90)
+LevelsDB --> Service: level { id: 201, level_order: 2,\nrole_code, on_reject: 'TERMINATE' }
+
+Service -> Service: 3. assertCanReject(order, level, actor, payload)
+note right of Service
+  422 si falta reason: en REJECT es obligatorio
+  403 si el actor no pertenece al rol del nivel
+  409 si la instancia no está IN_APPROVAL
+end note
+
+Service -> TX: 4. startTransaction()
+activate TX
+
+Service -> LevelsDB: 5. closeLevel(201, 'REJECTED', finishedAt: NOW())
+LevelsDB --> Service: ok
+
+Service -> ActionsDB: 6. insertWorkflowAction(90, 201, 'REJECT')
+note right of ActionsDB
+  - reason obligatorio
+  - comment del revisor
+  - previous_status = 'IN_APPROVAL'
+end note
+ActionsDB --> Service: ok
+
+alt on_reject = 'TERMINATE'
+    Service -> InstanceDB: 7. closeInstance(90, 'REJECTED', currentLevelOrder: NULL, finishedAt: NOW())
+    InstanceDB --> Service: ok
+
+    Service -> OrdersDB: 8. updateRefundOrderStatus(2001, 'REJECTED')
+    note right of OrdersDB
+      La nota muere acá. Reabrirla exige
+      una REACTIVATE explícita, que crea
+      un intento nuevo.
+    end note
+    OrdersDB --> Service: ok
+
+    Service -> ActionsDB: 9. insertWorkflowAction(90, NULL, 'CLOSED')
+    ActionsDB --> Service: ok
+else on_reject = 'RETURN_PREVIOUS'
+    Service -> LevelsDB: 10. reopenPreviousLevel(90, level_order - 1)
+    note right of LevelsDB
+      El nivel anterior vuelve a IN_PROGRESS
+      con started_at = NOW() y finished_at = NULL.
+      La instancia sigue IN_APPROVAL.
+    end note
+    LevelsDB --> Service: previousLevelId
+
+    Service -> InstanceDB: 11. updateCurrentLevelOrder(90, level_order - 1)
+    InstanceDB --> Service: ok
+else on_reject = 'RETURN_INITIATOR'
+    Service -> LevelsDB: 12. resetPendingLevels(90)
+    note right of LevelsDB
+      Todos los niveles del intento
+      quedan PENDING: la nota vuelve al
+      vendedor para corregirla.
+    end note
+    LevelsDB --> Service: ok
+
+    Service -> InstanceDB: 13. updateInstance(90, 'EDITING', currentLevelOrder: NULL)
+    note right of InstanceDB
+      La nota queda editable. El vendedor
+      corrige cantidades y la reenvía
+      (SELLER_RESUBMITTED), sin volver a
+      seleccionar ítems.
+    end note
+    InstanceDB --> Service: ok
+end
+
+Service -> TX: 14. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (RejectLevelResult:\n{ orderStatus, instanceStatus, currentLevelOrder, onReject })
+Gateway --> Web: 200 OK
+Web --> Approver: Rechazo registrado • Destino según la política del nivel
+@enduml

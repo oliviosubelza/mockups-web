@@ -1,0 +1,75 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 10: POST /api/v1/refunds/:id/resubmit (El vendedor reenvía a aprobación)
+
+actor "Vendedor" as Seller
+participant "App Ventas / Web" as App
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_approval_levels DB" as LevelsCfgDB
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Seller -> App: Tap en "Enviar a aprobación"
+App -> Gateway: POST /api/v1/refunds/1004/resubmit\n(ResubmitDto: { comment })
+Gateway -> Service: resubmitRefundOrder(refundOrderId: 1004, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(1004)
+OrdersDB --> Service: order { total: 200.00, current_workflow_instance_id: 56 }
+
+Service -> InstanceDB: 2. findInstance(56)
+InstanceDB --> Service: instance { status: 'EDITING', attempt: 1 }
+
+Service -> Service: 3. assertResubmittable(order, instance, actor)
+note right of Service
+  409 si instance.status != 'EDITING'
+  403 si el actor no es el vendedor dueño
+  422 si el total quedó en 0
+end note
+
+Service -> LevelsCfgDB: 4. findActiveApprovalLadder(order.total)
+note right of LevelsCfgDB
+  La escalera se recalcula con el total NUEVO:
+  al recortar cantidades, la nota puede
+  necesitar menos niveles que antes.
+end note
+LevelsCfgDB --> Service: ladder[]
+
+Service -> TX: 5. startTransaction()
+activate TX
+
+Service -> LevelsDB: 6. insertInstanceLevelsSnapshot(56, ladder)
+note right of LevelsDB
+  - nivel 1 con decision_mode =
+    'DOCUMENT_DECISION' (nunca ITEM_SELECTION:
+    la selección ya ocurrió en la original)
+  - status = 'IN_PROGRESS', started_at = NOW()
+  - niveles siguientes en 'PENDING'
+end note
+LevelsDB --> Service: levelIds[]
+
+Service -> InstanceDB: 7. updateInstance(56, 'IN_APPROVAL', currentLevelOrder: 1)
+InstanceDB --> Service: ok
+
+Service -> ActionsDB: 8. insertWorkflowAction(56, NULL, 'SELLER_RESUBMITTED')
+note right of ActionsDB
+  - previous_status = 'EDITING'
+  - new_status = 'IN_APPROVAL'
+  - amount_before = 400.00
+  - amount_after = 200.00
+  - system_summary = 'El vendedor recortó
+    la nota a Bs 200,00.'
+end note
+ActionsDB --> Service: ok
+
+Service -> TX: 9. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (ResubmitResult:\n{ instanceStatus: 'IN_APPROVAL', currentLevelOrder: 1, total })
+Gateway --> App: 200 OK
+App --> Seller: Nota enviada • Nivel 1 en revisión
+@enduml

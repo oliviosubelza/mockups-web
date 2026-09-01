@@ -1,0 +1,142 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 6: POST /api/v1/refunds/:id/levels/current/approve (Aprobar el nivel activo)
+
+actor "Aprobador del nivel" as Approver
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Role Directory Client\n(servicio externo)" as RoleDir
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Approver -> Web: Tap en "Aprobar" + comentario opcional
+Web -> Gateway: POST /api/v1/refunds/2001/levels/current/approve\n(ApproveLevelDto: { comment })
+Gateway -> Service: approveCurrentLevel(refundOrderId: 2001, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(2001)
+OrdersDB --> Service: order { status: 'OPEN', total: 800.00,\ncurrent_workflow_instance_id: 90 }
+
+Service -> LevelsDB: 2. findInstanceLevels(90)
+LevelsDB --> Service: levels[] (level_order, role_code, min_amount,\nmax_amount, approval_policy, required_approvals, status)
+
+Service -> RoleDir: 3. resolveApproversByRole(currentLevel.role_code)
+note right of RoleDir
+  El rol se resuelve contra el directorio
+  externo. La tabla solo guarda role_code:
+  nunca la lista de personas.
+end note
+RoleDir --> Service: employees[]
+
+Service -> Service: 4. assertCanApprove(order, currentLevel, actor, employees)
+note right of Service
+  409 si order.status != 'OPEN' o
+  instance.status != 'IN_APPROVAL'
+  403 si el actor no pertenece al rol del
+  nivel activo
+  409 si el nivel exige selección de ítems
+  y todavía no se registró
+end note
+
+Service -> ActionsDB: 5. countLevelApprovals(instanceId: 90, levelId: 201)
+note right of ActionsDB
+  Cuenta las acciones APPROVE ya
+  registradas en ESTE nivel y ESTE intento.
+  409 si el actor ya firmó (una firma por
+  persona y por nivel).
+end note
+ActionsDB --> Service: approvalsReceived: 0
+
+Service -> Service: 6. evaluateApprovalPolicy(currentLevel, approvalsReceived + 1)
+note right of Service
+  ANY    -> el nivel queda aprobado con 1 firma
+  ALL    -> hace falta la firma de todos los
+            empleados del rol
+  QUORUM -> hace falta required_approvals
+  Si no se alcanza, el nivel sigue
+  IN_PROGRESS y solo se registra la firma.
+end note
+
+Service -> TX: 7. startTransaction()
+activate TX
+
+Service -> ActionsDB: 8. insertWorkflowAction(90, 201, 'APPROVE')
+note right of ActionsDB
+  - actor_employee_code, actor_role_code
+  - comment del revisor
+  - system_summary autogenerado
+  - previous_status / new_status de la instancia
+end note
+ActionsDB --> Service: ok
+
+alt La política del nivel quedó satisfecha
+    Service -> LevelsDB: 9. closeLevel(201, 'APPROVED', finishedAt: NOW())
+    LevelsDB --> Service: ok
+
+    Service -> Service: 10. resolveNextLevel(levels, order.total)
+note right of Service
+  El nivel activo es el que contiene al monto
+  en su banda [min_amount, max_amount].
+  - Si order.total <= max_amount del nivel que
+    acaba de aprobar, la nota SE CIERRA ACÁ y
+    los niveles de arriba pasan a 'SKIPPED'.
+  - Si no, se abre el nivel siguiente.
+  El flujo solo sube o se detiene: nunca baja.
+end note
+
+    alt El monto excede el techo del nivel (queda escalera por delante)
+        Service -> LevelsDB: 11. openLevel(nextLevelId, 'IN_PROGRESS', startedAt: NOW())
+        LevelsDB --> Service: ok
+
+        Service -> InstanceDB: 12. updateCurrentLevelOrder(90, nextLevelOrder)
+        note right of InstanceDB
+          La instancia sigue IN_APPROVAL:
+          solo cambia el nivel activo.
+        end note
+        InstanceDB --> Service: ok
+
+        Service -> ActionsDB: 13. insertWorkflowAction(90, nextLevelId, 'AUTO_ROUTED')
+        note right of ActionsDB
+          Deja rastro del ruteo automático
+          hacia el siguiente escritorio.
+        end note
+        ActionsDB --> Service: ok
+    else El monto entra en la banda de este nivel (se liquida acá)
+        Service -> LevelsDB: 14. markSkippedLevels(higherLevelIds)
+        note right of LevelsDB
+          Los niveles superiores quedan 'SKIPPED'
+          con finished_at = NOW(): el monto nunca
+          los alcanzó.
+        end note
+        LevelsDB --> Service: ok
+
+        Service -> InstanceDB: 15. closeInstance(90, 'APPROVED', currentLevelOrder: NULL, finishedAt: NOW())
+        InstanceDB --> Service: ok
+
+        Service -> OrdersDB: 16. closeRefundOrder(2001, 'APPROVED')
+        note right of OrdersDB
+          Al cerrar se escribe el resultado
+          comercial, que antes no se guardaba:
+          - approved_total = monto autorizado
+          - rejected_total = total - approved_total
+          - settlement_type = 'NOTA_CREDITO'
+            o 'CAMBIO_STOCK'
+        end note
+        OrdersDB --> Service: ok
+
+        Service -> ActionsDB: 17. insertWorkflowAction(90, NULL, 'CLOSED')
+        ActionsDB --> Service: ok
+    end
+end
+
+Service -> TX: 18. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (ApproveLevelResult:\n{ orderStatus, instanceStatus, currentLevelOrder, approvalsReceived })
+Gateway --> Web: 200 OK
+Web --> Approver: Aprobación registrada • Nota aprobada o enviada al nivel siguiente
+@enduml

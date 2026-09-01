@@ -1,0 +1,229 @@
+<mxfile host="Electron">
+  <diagram id="plan-ped-30" name="P1 Pedidos ya planificados — MS Ventas (30)">
+    <mxGraphModel dx="5695" dy="1127" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3700" pageHeight="1140" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p30-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="MS Ventas / SAP" vertex="1">
+          <mxGeometry height="1060" width="150" x="-70" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-13" parent="p30-1" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="870" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="1060" width="150" x="200" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-14" parent="p30-2" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="870" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Planning Controller" vertex="1">
+          <mxGeometry height="1060" width="150" x="470" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-15" parent="p30-3" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="780" width="10" x="70" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Planning Service" vertex="1">
+          <mxGeometry height="1060" width="150" x="740" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-16" parent="p30-4" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="690" width="10" x="70" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="candidate_orders" vertex="1">
+          <mxGeometry height="1060" width="150" x="1010" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-17" parent="p30-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="180" width="10" x="70" y="295" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="dispatch_delivery_points" vertex="1">
+          <mxGeometry height="1060" width="210" x="1280" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-18" parent="p30-6" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-7" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="dispatch_plans" vertex="1">
+          <mxGeometry height="1060" width="150" x="1550" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-19" parent="p30-7" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-8" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="plan_status" vertex="1">
+          <mxGeometry height="1060" width="150" x="1820" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-20" parent="p30-8" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-9" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="transport_order_sales" vertex="1">
+          <mxGeometry height="1060" width="150" x="2090" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-21" parent="p30-9" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="90" width="10" x="70" y="525" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-10" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="transport_orders" vertex="1">
+          <mxGeometry height="1060" width="150" x="2360" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-22" parent="p30-10" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-11" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="delivery_order_sales" vertex="1">
+          <mxGeometry height="1060" width="150" x="2630" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-23" parent="p30-11" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="90" width="10" x="70" y="665" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-12" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="delivery_orders" vertex="1">
+          <mxGeometry height="1060" width="150" x="2900" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-24" parent="p30-12" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-25" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="POST /planning/sales-orders/planned-status&lt;br&gt;{ salesOrderIds[] } | { customerId, deliveryPointId, planDateFrom/To } 30.1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="120" as="sourcePoint" />
+            <mxPoint x="270" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-26" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="getPlannedStatus(PlannedStatusQueryDto) 30.2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="280" y="165" as="sourcePoint" />
+            <mxPoint x="540" y="165" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-27" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="resolvePlannedStatus(dto) 30.3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550" y="210" as="sourcePoint" />
+            <mxPoint x="810" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-28" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="validateQuery(dto) 30.3a&lt;br&gt;&amp;gt;= 1 criterio · employeeId NO soportado =&amp;gt; 400">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="915" y="255" />
+              <mxPoint x="915" y="295" />
+            </Array>
+            <mxPoint x="820" y="255" as="sourcePoint" />
+            <mxPoint x="820" y="295" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-29" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=420;" value="una sola consulta — 30.4 con sus tres LEFT JOIN" vertex="1">
+          <mxGeometry height="250" width="2000" x="950" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-30" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT sales_order_id, is_included, dispatch_delivery_point_id&lt;br&gt;WHERE deleted_at IS NULL AND sales_order_id IS NOT NULL&lt;br&gt;AND sales_order_id = ANY(:ids) 30.4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="330" as="sourcePoint" />
+            <mxPoint x="1080" y="330" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-31" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="LEFT JOIN ON id = co.dispatch_delivery_point_id 30.4a">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="375" as="sourcePoint" />
+            <mxPoint x="1350" y="375" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-32" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="LEFT JOIN ON id = ddp.dispatch_plan_id 30.4b">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="420" as="sourcePoint" />
+            <mxPoint x="1620" y="420" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-33" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="LEFT JOIN ON id = dp.plan_status_id  =&amp;gt; name 30.4c">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="465" as="sourcePoint" />
+            <mxPoint x="1890" y="465" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-34" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="List&amp;lt;CandidateOrderState&amp;gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="510" as="sourcePoint" />
+            <mxPoint x="820" y="510" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-35" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=420;" value="una sola consulta — 30.5 + su JOIN" vertex="1">
+          <mxGeometry height="160" width="1730" x="950" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-36" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT sales_order_id, sales_order_split_id&lt;br&gt;WHERE deleted_at IS NULL AND sales_order_id = ANY(:ids) 30.5">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="560" as="sourcePoint" />
+            <mxPoint x="2160" y="560" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-37" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="JOIN ON id = tos.transport_order_id =&amp;gt; code, status 30.5a">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="605" as="sourcePoint" />
+            <mxPoint x="2430" y="605" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-38" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="Map&amp;lt;salesOrderId, TransportOrder&amp;gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2160" y="650" as="sourcePoint" />
+            <mxPoint x="820" y="650" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-39" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=420;" value="una sola consulta — 30.6 + su JOIN" vertex="1">
+          <mxGeometry height="160" width="2270" x="950" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-40" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT sale_order_id  (ojo: sale_, no sales_)&lt;br&gt;WHERE deleted_at IS NULL AND sale_order_id = ANY(:ids) 30.6">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="700" as="sourcePoint" />
+            <mxPoint x="2700" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-41" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="JOIN ON id = dos.delivery_order_id =&amp;gt; status 30.6a">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="745" as="sourcePoint" />
+            <mxPoint x="2970" y="745" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-42" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="Map&amp;lt;saleOrderId, DeliveryOrder&amp;gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2700" y="790" as="sourcePoint" />
+            <mxPoint x="820" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-43" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="classifyStage(candidatas, ots, entregas) 30.7&lt;br&gt;gana la etapa MÁS AVANZADA">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="915" y="840" />
+              <mxPoint x="915" y="885" />
+            </Array>
+            <mxPoint x="820" y="840" as="sourcePoint" />
+            <mxPoint x="820" y="885" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-44" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="PlannedStatusResult">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="900" as="sourcePoint" />
+            <mxPoint x="550" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-45" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="200 OK">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="945" as="sourcePoint" />
+            <mxPoint x="280" y="945" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-46" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="{ plannedSalesOrderIds: [...], details: [...] }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="270" y="990" as="sourcePoint" />
+            <mxPoint x="10" y="990" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p30-47" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="30.1 — NO se puede filtrar por VENDEDOR: ninguna tabla&lt;br&gt;del esquema guarda el employee_id del vendedor.&lt;br&gt;Los tres employee_id que existen son OTRA persona:&lt;br&gt;dispatch_plans:99 planificador, routes:208 supervisor,&lt;br&gt;driver_ / helper_employee_id. Ver §4 del .md." vertex="1">
+          <mxGeometry height="150" width="380" x="3270" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-48" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="30.4 — sales_order_id es NULLABLE en candidate_orders:&lt;br&gt;una candidata puede venir de refund_order_id (devolución)&lt;br&gt;o transfer_id (traslado) y no tener pedido de venta.&lt;br&gt;Sin el IS NOT NULL, el ANY(:ids) las arrastra." vertex="1">
+          <mxGeometry height="135" width="380" x="3270" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-49" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="30.4a — dispatch_delivery_point_id también es NULLABLE:&lt;br&gt;es exactamente el corte entre RECEIVED_NOT_PLANNED y&lt;br&gt;PLANNED. Y como plan_date vive en dispatch_plans, una&lt;br&gt;candidata sin punto NO tiene fecha: el filtro por fecha&lt;br&gt;solo alcanza a lo que ya está planificado." vertex="1">
+          <mxGeometry height="150" width="380" x="3270" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-50" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="30.6 — delivery_order_sales usa sale_order_id (singular).&lt;br&gt;candidate_orders y transport_order_sales usan&lt;br&gt;sales_order_id. Tres tablas, dos grafías: el typo no&lt;br&gt;falla, devuelve vacío y el pedido parece no entregado." vertex="1">
+          <mxGeometry height="125" width="380" x="3270" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="p30-51" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="30.7 — la etapa más avanzada gana:&lt;br&gt;DELIVERED &amp;gt; IN_DELIVERY &amp;gt; DISPATCHED &amp;gt; PLAN_APPROVED &amp;gt;&lt;br&gt;PLANNED &amp;gt; EXCLUDED &amp;gt; RECEIVED_NOT_PLANNED &amp;gt; NOT_RECEIVED.&lt;br&gt;plannedSalesOrderIds son los de PLANNED en adelante:&lt;br&gt;lo que ya está comprometido en una operación." vertex="1">
+          <mxGeometry height="155" width="380" x="3270" y="860" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

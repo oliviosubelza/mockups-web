@@ -1,0 +1,173 @@
+<mxfile host="Electron" pages="1">
+  <diagram id="ventas-el3-31" name="P1 EL3 Obtener pedidos para logística — intake (31)">
+    <mxGraphModel dx="3858" dy="795" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3200" pageHeight="1120" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p31-1" value="Planificador" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="-70" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-2" value="Frontend" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="200" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-3" value="Gateway Controller" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="470" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-4" value="Planning Controller" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="740" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-5" value="Planning Service" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-6" value="MS Ventas — EL3" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-7" value="zones" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1550" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-8" value="dispatch_delivery_points" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1820" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-9" value="candidate_orders" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="2090" y="35" width="150" height="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-10" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-1">
+          <mxGeometry x="70" y="85" width="10" height="730" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-11" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-2">
+          <mxGeometry x="70" y="85" width="10" height="730" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-12" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-3">
+          <mxGeometry x="70" y="135" width="10" height="635" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-13" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-4">
+          <mxGeometry x="70" y="180" width="10" height="545" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-14" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-5">
+          <mxGeometry x="70" y="225" width="10" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-15" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-6">
+          <mxGeometry x="70" y="270" width="10" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-16" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-7">
+          <mxGeometry x="70" y="510" width="10" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-17" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-8">
+          <mxGeometry x="70" y="455" width="10" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-18" value="" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" vertex="1" parent="p31-9">
+          <mxGeometry x="70" y="585" width="10" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-19" value="Aplicar filtros y Buscar pedidos" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="120" as="sourcePoint" />
+            <mxPoint x="270" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-20" value="POST /planning/orders-by-filter (FilterOrdersDto) 31.1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="280" y="170" as="sourcePoint" />
+            <mxPoint x="540" y="170" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-21" value="filterOrders(FilterOrdersDto) 31.2" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550" y="215" as="sourcePoint" />
+            <mxPoint x="810" y="215" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-22" value="listForPlanning(dto) 31.3" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="260" as="sourcePoint" />
+            <mxPoint x="1080" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-23" value="POST /logistics/orders  (EL3)&lt;br&gt;{ channelIds, cityIds, employeeIds, marketIds, zoneIds,&lt;br&gt;distributorIds, paymentMethodIds, companyIds, status,&lt;br&gt;isCooled, initDate, finishDate } 31.4" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="305" as="sourcePoint" />
+            <mxPoint x="1350" y="305" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-24" value="{ data: [ { saleOrderId, saleOrderSplitId, sapSaleOrderId,&lt;br&gt;isCooled, ... } ], success, message }&lt;br&gt;N filas POR PEDIDO (una por split) y SIN lineas de producto" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1350" y="370" as="sourcePoint" />
+            <mxPoint x="1090" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-25" value="mapToCandidate(data) 31.5&lt;br&gt;acá se descartan el split, isCooled, el vendedor,&lt;br&gt;las coordenadas y 25+ campos mas" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="415" as="sourcePoint" />
+            <mxPoint x="1090" y="460" as="targetPoint" />
+            <Array as="points"><mxPoint x="1185" y="415" /><mxPoint x="1185" y="460" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-26" value="opt [al confirmar la selección — paso NO documentado en ningún flujo]" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=520;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="460" width="1420" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-27" value="INSERT INTO dispatch_delivery_points&lt;br&gt;(delivery_point_id, customer_id, zone_id, owner_id,&lt;br&gt;delivery_window_start/end, warehouse_destination_id) 31.6" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="490" as="sourcePoint" />
+            <mxPoint x="1890" y="490" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-28" value="SELECT id WHERE id = :zoneId  — validar la FK 31.6a" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="545" as="sourcePoint" />
+            <mxPoint x="1620" y="545" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-29" value="INSERT INTO candidate_orders&lt;br&gt;(sale_order_id, sale_order_split_id ?, is_cooled ?,&lt;br&gt;document_id, distributor_id, total_weight_kg,&lt;br&gt;total_volume_m3) 31.7" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="620" as="sourcePoint" />
+            <mxPoint x="2160" y="620" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-30" value="{ id }" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2160" y="665" as="sourcePoint" />
+            <mxPoint x="1090" y="665" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-31" value="listOrder[] + totales por canal/ciudad/zona" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="700" as="sourcePoint" />
+            <mxPoint x="820" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-32" value="200 OK" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="760" as="sourcePoint" />
+            <mxPoint x="550" y="760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-33" value="{ listOrder[], totalCustomers, totalOrders, totalWeight }" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="805" as="sourcePoint" />
+            <mxPoint x="280" y="805" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-34" value="Grilla de pedidos para planificar" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="270" y="850" as="sourcePoint" />
+            <mxPoint x="10" y="850" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p31-35" value="&lt;b&gt;31.4 — EL SPLIT cambia el grano&lt;/b&gt;&lt;br&gt;Los dos elementos del ejemplo son EL MISMO pedido:&lt;br&gt;saleOrderId = 1 en ambos, saleOrderSplitId = 1 y 2,&lt;br&gt;isCooled = false y true, y companyId = 1 en LOS DOS.&lt;br&gt;=&amp;gt; el split NO es por empresa (refuta la hipótesis del §5.4&lt;br&gt;de planificacion y del comentario :440 del DDL). El correlato&lt;br&gt;visible es la TEMPERATURA. La unidad planificable es el split,&lt;br&gt;no el pedido: candidate_orders está en el grano equivocado." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="2710" y="130" width="420" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-36" value="&lt;b&gt;BLOQUEANTE 31.7&lt;/b&gt; — total_volume_m3 es DECIMAL(12,2)&lt;br&gt;y EL3 manda totalVolume = 0.000586 =&amp;gt; se guarda 0.00.&lt;br&gt;El segundo pedido, 0.00826 =&amp;gt; 0.01. Perdemos el volumen de&lt;br&gt;casi todo y la barra de ocupación del camión queda en cero.&lt;br&gt;Afecta candidate_orders:183, dispatch_delivery_points:144&lt;br&gt;y transport_order_sales:307. Hace falta DECIMAL(12,6)." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="2710" y="330" width="420" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-37" value="&lt;b&gt;31.5&lt;/b&gt; — EL3 trae deliveryPointLatitude/Longitude, pero&lt;br&gt;dispatch_delivery_points NO tiene columnas de coordenadas.&lt;br&gt;El ruteo las necesita (routes.encode_polyline existe), así que&lt;br&gt;hoy viven en memoria y se pierden al guardar: un plan histórico&lt;br&gt;no se puede redibujar ni re-rutear sin volver a llamar a EL3." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="2710" y="520" width="420" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-38" value="&lt;b&gt;31.6a&lt;/b&gt; — EL3 devuelve zoneId + zone, pero las zonas son&lt;br&gt;NUESTRO dato maestro (§28/§29) y dispatch_delivery_points.zone_id&lt;br&gt;tiene FK a zones(id). Si ese id sale de otro catálogo, el INSERT&lt;br&gt;falla. Hay que confirmar si Ventas llama nuestra §29 y cachea,&lt;br&gt;o si mantiene zonas propias — el segundo caso invalida la §29." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="2710" y="705" width="420" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="p31-39" value="&lt;b&gt;31.7&lt;/b&gt; — isCooled SE DESCARTA y no hay columna donde ponerlo.&lt;br&gt;trucks.is_refrigerated:64 existe justo para emparejar un split&lt;br&gt;frío con un camión con termo — sin persistir el flag, después&lt;br&gt;del intake ese match es IMPOSIBLE. Tercer campo con la misma&lt;br&gt;historia, junto al vendedor y las coordenadas." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="2710" y="880" width="420" height="140" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,4 @@
+{ 
+    ...prev, 
+    [id]: { newData } 
+}

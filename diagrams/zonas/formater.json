@@ -1,0 +1,133 @@
+// ── 28 Crear zona de reparto ─────────────────────────────────────────────────────────────────
+
+// 28.1 — CreateZoneDto. El anillo va en [lng, lat] y CERRADO (repite la primera posición al final),
+// igual que la columna polygon_geojson. La conversión desde/hacia Leaflet ([lat, lng]) es del Frontend.
+{
+  "name": "Zona Norte",
+  "cityId": 1,
+  "polygonGeojson": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [-63.207, -17.758],
+        [-63.157, -17.758],
+        [-63.157, -17.808],
+        [-63.207, -17.808],
+        [-63.207, -17.758]
+      ]
+    ]
+  }
+}
+
+// salida de 28.5 — zonas activas de la ciudad, para el chequeo de solapamiento de 28.5a
+[
+  { "id": 1, "name": "Zona Norte",  "cityId": 1, "polygonGeojson": { "type": "Polygon", "coordinates": [["..."]] } },
+  { "id": 3, "name": "Zona Centro", "cityId": 1, "polygonGeojson": { "type": "Polygon", "coordinates": [["..."]] } }
+]
+
+// 201 Created — con warnings cargados. El warning NO es un fallo parcial: la zona quedó escrita.
+{
+  "id": 6,
+  "name": "Zona Norte",
+  "cityId": 1,
+  "polygonGeojson": {
+    "type": "Polygon",
+    "coordinates": [[[-63.207, -17.758], [-63.157, -17.758], [-63.157, -17.808], [-63.207, -17.808], [-63.207, -17.758]]]
+  },
+  "isActive": true,
+  "createdAt": "2026-08-19T14:02:11Z",
+  "createdBy": "j.perez",
+  "warnings": [
+    { "code": "OVERLAPS_EXISTING_ZONE", "zoneId": 3, "zoneName": "Zona Centro" }
+  ]
+}
+
+// 422 Unprocessable Entity — cualquiera de los cuatro checks de 28.4.
+// polygon_geojson es JSONB: si esto no se valida acá, el INSERT pasa y el error aparece recién en 29.5.
+{
+  "status": 422,
+  "code": "INVALID_POLYGON",
+  "detail": "El anillo exterior no está cerrado: la última posición debe repetir la primera.",
+  "field": "polygonGeojson.coordinates[0]"
+}
+
+
+// ── 29 Resolver la zona de un punto — lo que consume MS Ventas ────────────────────────────────
+
+// 29.1 — ResolveZoneDto. latitude/longitude con NOMBRE, nunca un par posicional: GeoJSON guarda
+// [lng, lat] y el swap no falla, devuelve la zona equivocada en silencio.
+// cityId es opcional (acota el escaneo). deliveryPointId es SOLO para el log: no tenemos tabla
+// delivery_points, así que no se persiste en ningún lado.
+{
+  "latitude": -17.783,
+  "longitude": -63.182,
+  "cityId": 1,
+  "deliveryPointId": 7
+}
+
+// salida de 29.4 — candidatas activas, con geometría, del scope consultado
+[
+  { "id": 1, "name": "Zona Norte",  "cityId": 1, "polygonGeojson": { "type": "Polygon", "coordinates": [["..."]] } },
+  { "id": 2, "name": "Zona Sur",    "cityId": 1, "polygonGeojson": { "type": "Polygon", "coordinates": [["..."]] } },
+  { "id": 3, "name": "Zona Centro", "cityId": 1, "polygonGeojson": { "type": "Polygon", "coordinates": [["..."]] } }
+]
+
+// ── Los CUATRO resultados de 29.5. Los cuatro son 200 OK. Ninguno es 404. ──
+
+// 1) IN_ZONE — el punto cae en exactamente una zona
+{
+  "status": "IN_ZONE",
+  "zone": { "id": 1, "name": "Zona Norte", "cityId": 1 },
+  "ambiguous": false
+}
+
+// 2) IN_ZONE con solapamiento — 2+ coincidencias, desempatadas por 29.5a (menor área, luego menor id).
+// ambiguous + overlappingZoneIds existen para que el operador pueda ir a corregir el dibujo.
+{
+  "status": "IN_ZONE",
+  "zone": { "id": 3, "name": "Zona Centro", "cityId": 1 },
+  "ambiguous": true,
+  "overlappingZoneIds": [1, 3]
+}
+
+// 3) OUT_OF_ZONE — hay zonas dibujadas y el punto no cae en ninguna.
+// Es una RESPUESTA DE NEGOCIO, no un error: el cliente quedó fuera del área de reparto.
+{
+  "status": "OUT_OF_ZONE",
+  "zone": null
+}
+
+// 4) NO_ZONES_DEFINED — no hay ninguna zona con geometría en el scope consultado.
+// Es un HUECO DE CONFIGURACIÓN NUESTRO, no un problema del pedido: Ventas NO debe bloquear por esto.
+{
+  "status": "NO_ZONES_DEFINED",
+  "zone": null
+}
+
+// 400 Bad Request — 29.3a. Un -999 de longitud es un bug del llamador; responderle OUT_OF_ZONE
+// lo esconde para siempre.
+{
+  "status": 400,
+  "code": "INVALID_COORDINATES",
+  "detail": "longitude debe estar entre -180 y 180.",
+  "field": "longitude"
+}
+
+// ── Batch, si algún día Ventas valida más de un punto por llamada (§6.1 — NO implementado) ──
+
+// POST /zones/resolve:batch
+{
+  "cityId": 1,
+  "points": [
+    { "ref": "dp-7",  "latitude": -17.783, "longitude": -63.182 },
+    { "ref": "dp-19", "latitude": -17.341, "longitude": -63.249 }
+  ]
+}
+
+// respuesta del batch — `ref` es el eco del pedido, para que Ventas no dependa del orden
+{
+  "results": [
+    { "ref": "dp-7",  "status": "IN_ZONE",      "zone": { "id": 3, "name": "Zona Centro", "cityId": 1 }, "ambiguous": false },
+    { "ref": "dp-19", "status": "OUT_OF_ZONE",  "zone": null }
+  ]
+}

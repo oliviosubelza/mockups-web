@@ -1,0 +1,165 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 1: POST /api/v1/refunds (Intake de la nota desde Ventas)
+
+actor "Vendedor" as Seller
+participant "App Ventas (MS_Sales)" as Sales
+participant "Gateway Controller" as Gateway
+participant "Refund Order Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_reasons DB" as ReasonsDB
+participant "refund_approval_levels DB" as LevelsCfgDB
+participant "refund_orders DB" as OrdersDB
+participant "refund_order_details DB" as DetailsDB
+participant "refund_order_detail_sources DB" as SourcesDB
+participant "refund_order_detail_photos DB" as PhotosDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Seller -> Sales: Registra la nota de devolución (cliente, líneas, motivos, fotos)
+Sales -> Gateway: POST /api/v1/refunds\n(CreateRefundOrderDto)
+note right of Sales
+  Ventas es el dueño del alta.
+  Logística no tiene formulario de creación:
+  este endpoint ES el contrato con Ventas.
+end note
+Gateway -> Service: createRefundOrder(payload)
+
+Service -> ReasonsDB: 1. findActiveReasons(payload.items.reason)
+note right of ReasonsDB
+  El catálogo dice qué evidencia exige cada
+  motivo: lot_requirement y
+  due_date_requirement en REQUIRED / OPTIONAL
+  / HIDDEN, más requires_photo y
+  requires_notes.
+  reason es FK: un motivo inventado no entra.
+end note
+ReasonsDB --> Service: reasons[]
+
+Service -> Service: 2. validatePayload(payload, reasons)
+note right of Service
+  - al menos una línea y quantity > 0
+  - price_unit congelado al momento del reclamo
+  - reason existe y está activo
+  - lote y vencimiento según el motivo:
+    REQUIRED exige el dato, HIDDEN lo descarta
+  - al menos una foto si requires_photo
+  - la suma de sources[].quantity es
+    EXACTAMENTE items[].quantity
+end note
+
+Service -> Service: 3. computeTotal(payload.items)
+note right of Service
+  total = SUM(quantity * price_unit)
+  de las líneas ACTIVE
+end note
+
+Service -> LevelsCfgDB: 4. findActiveApprovalLadder(total)
+note right of LevelsCfgDB
+  SELECT de la versión publicada:
+  is_active = TRUE AND deleted_at IS NULL,
+  ORDER BY level_order.
+  El techo de cada nivel es el piso del
+  siguiente; el último no tiene techo.
+  El nivel 1 SIEMPRE entra. Los niveles cuyo
+  piso quedó por encima del total nacen
+  'SKIPPED': el monto nunca los alcanza.
+end note
+LevelsCfgDB --> Service: ladder[] (level_order, name, role_code,\nmin_amount, max_amount, approval_policy,\nrequired_approvals, on_reject, sla_hours)
+
+Service -> TX: 5. startTransaction()
+activate TX
+
+Service -> OrdersDB: 6. insertRefundOrder(payload, total)
+note right of OrdersDB
+  - external_sales_id = id de la nota en Ventas
+    (idempotencia: el UNIQUE con split_sequence
+    corta el reintento del POST)
+  - note_number = correlativo de Ventas
+  - split_sequence = 0
+  - document_type = 'ORIGINAL'
+  - status = 'OPEN'
+  - source_refund_order_id = NULL
+  - distributor_id, employee_id,
+    owner_id, customer_id
+  - replacement_date, justification
+  - edit_count = 0
+  - approved_total, rejected_total y
+    settlement_type quedan NULL hasta el cierre
+end note
+OrdersDB --> Service: refundOrderId: 2001
+
+Service -> DetailsDB: 7. insertRefundOrderDetails(2001, payload.items)
+note right of DetailsDB
+  Por línea:
+  - source_quantity = quantity (se congela)
+  - line_status = 'ACTIVE'
+  - source_detail_id = NULL (nace acá)
+  - reason, notes
+end note
+DetailsDB --> Service: detailIds[]: [3001, 3002]
+
+Service -> SourcesDB: 8. insertDetailSources(detailIds, payload.items.sources)
+note right of SourcesDB
+  De qué factura y de qué lote sale cada
+  unidad: invoice_number, invoice_sap_doc,
+  invoiced_at, lot, due_date, quantity.
+  invoice_sap_doc es referencia lógica: SAP
+  no es nuestra base.
+end note
+SourcesDB --> Service: ok
+
+Service -> PhotosDB: 9. insertDetailPhotos(detailIds, payload.items.photos)
+note right of PhotosDB
+  La evidencia que abre el revisor:
+  storage_key (la fuente), url servida,
+  content_type, sort_order y uploaded_by.
+  El UNIQUE de storage_key evita subir dos
+  veces el mismo objeto.
+end note
+PhotosDB --> Service: ok
+
+Service -> InstanceDB: 10. insertWorkflowInstance(2001, attempt: 1, 'IN_APPROVAL', currentLevelOrder: 1)
+InstanceDB --> Service: workflowInstanceId: 90
+
+Service -> OrdersDB: 11. updateCurrentWorkflowInstance(2001, 90)
+OrdersDB --> Service: ok
+
+Service -> LevelsDB: 12. insertInstanceLevelsSnapshot(90, ladder)
+note right of LevelsDB
+  Congela la escalera de ESTE intento:
+  banda (min_amount / max_amount),
+  approval_policy, required_approvals,
+  on_reject y sla_hours.
+  - nivel 1: decision_mode = 'ITEM_SELECTION',
+    status = 'IN_PROGRESS', started_at = NOW()
+  - niveles 2..N: 'DOCUMENT_DECISION',
+    status = 'PENDING'
+  Republicar la configuración no
+  reescribe la historia.
+end note
+LevelsDB --> Service: levelIds[]: [200, 201]
+
+Service -> ActionsDB: 13. insertWorkflowAction(90, level: NULL, 'CREATED')
+note right of ActionsDB
+  - actor_employee_code = vendedor
+  - new_status = 'IN_APPROVAL'
+  - amount_after = total
+end note
+ActionsDB --> Service: ok
+
+Service -> TX: 14. commitTransaction()
+deactivate TX
+
+note right of Service
+  Reintento del mismo external_sales_id:
+  el UNIQUE lo rechaza y el servicio responde
+  200 con la nota ya creada, no un duplicado.
+end note
+
+Service --> Gateway: 201 Created (RefundOrderCreatedResult:\n{ refundOrderId, noteNumber, total, currentLevel })
+Gateway --> Sales: 201 Created
+Sales --> Seller: Nota registrada • En aprobación, Nivel 1 de N
+@enduml

@@ -1,0 +1,80 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 8: POST /api/v1/refunds/:id/reactivate (Nuevo intento sobre una nota cerrada)
+
+actor "Supervisor CX" as Supervisor
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_approval_levels DB" as LevelsCfgDB
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Supervisor -> Web: Tap en "Reactivar" + motivo obligatorio
+Web -> Gateway: POST /api/v1/refunds/2001/reactivate\n(ReactivateDto: { reason })
+Gateway -> Service: reactivateRefundOrder(refundOrderId: 2001, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(2001)
+OrdersDB --> Service: order { status: 'REJECTED', total: 800.00,\ncurrent_workflow_instance_id: 90 }
+
+Service -> Service: 2. assertCanReactivate(order, actor, payload)
+note right of Service
+  409 si order.status no es 'REJECTED'
+  (APPROVED y ANNULLED no se reactivan)
+  422 si falta reason
+  403 si el actor no tiene el rol habilitado
+end note
+
+Service -> LevelsCfgDB: 3. findActiveApprovalLadder(order.total)
+note right of LevelsCfgDB
+  Se vuelve a leer la configuración vigente:
+  el intento nuevo puede tomar una escalera
+  distinta de la del intento anterior.
+end note
+LevelsCfgDB --> Service: ladder[]
+
+Service -> TX: 4. startTransaction()
+activate TX
+
+Service -> InstanceDB: 5. insertWorkflowInstance(2001, attempt: previous + 1, 'IN_APPROVAL', currentLevelOrder: 1)
+note right of InstanceDB
+  - attempt = intento anterior + 1
+  - reactivated_from_instance_id = 90
+  El intento viejo NO se toca: queda
+  REJECTED como evidencia.
+end note
+InstanceDB --> Service: newInstanceId: 91
+
+Service -> LevelsDB: 6. insertInstanceLevelsSnapshot(91, ladder)
+note right of LevelsDB
+  TODOS los niveles del intento nuevo van
+  con decision_mode = 'DOCUMENT_DECISION'.
+  La selección de ítems ocurrió una sola vez,
+  en el nivel 1 del primer intento, y no
+  vuelve a mostrarse.
+end note
+LevelsDB --> Service: levelIds[]
+
+Service -> OrdersDB: 7. updateRefundOrder(2001, status: 'OPEN', currentWorkflowInstanceId: 91)
+OrdersDB --> Service: ok
+
+Service -> ActionsDB: 8. insertWorkflowAction(91, NULL, 'REACTIVATE')
+note right of ActionsDB
+  - reason obligatorio
+  - previous_status = 'REJECTED'
+  - new_status = 'IN_APPROVAL'
+  - actor_employee_code / actor_role_code
+end note
+ActionsDB --> Service: ok
+
+Service -> TX: 9. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (ReactivateResult:\n{ instanceId: 91, attempt, currentLevelOrder: 1 })
+Gateway --> Web: 200 OK
+Web --> Supervisor: Nota reactivada • Intento 2 en curso, sin selección de ítems
+@enduml

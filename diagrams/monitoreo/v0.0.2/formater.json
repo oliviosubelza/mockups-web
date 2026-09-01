@@ -1,0 +1,95 @@
+{
+    "filterMonitoringDto": {
+        "distributorId": 1,
+        "plate": "3456",
+        "transportStatus": "EN_RUTA"
+    }
+}
+[
+  {
+    "transportOrderId": 4471,
+    "distributorId": 1,
+    "routeId": 512,
+    "orderStatus": "DISPATCHED",
+    "assignedWeightKg": 3480.50,
+    "assignedVolumeM3": 14.20,
+    "truckId": 880012,
+    "licensePlate": "3456-ABC",
+    "driverEmployeeId": 456,
+    "nameDriverEmployee": "Carlos Mamani",
+    "helperEmployeeId": null,
+    "nameHelperEmployee": null,
+    "transportStatus": "EN_RUTA",
+    "departureDate": "2026-07-16T08:00:00.000Z",
+    "completedDate": null
+  },
+  { "...": "..." }
+]
+{
+  "total": 12,
+  "delivered": 6,
+  "failed": 1,
+  "returned": 0,
+  "pending": 5,
+  "progressPct": 58,
+  "incidents": 1,
+  "outOfWindow": 0
+}
+
+[
+  {
+    "pk": "FLEET#1",
+    "sk": "ORDER#4471",
+    "latitude": -17.783412,
+    "longitude": -63.181245,
+    "battery": 74,
+    "trackedAt": "2026-07-16T08:24:39.000Z",
+    "receivedAt": "2026-07-16T08:24:40.180Z"
+  },
+  { "...": "..." }
+]
+
+{
+    "success": true,
+    "code": 200,
+    "data": [
+        {
+            "transportOrderId": 4471,
+            "code": "OT-2026-004471",
+            "routeId": 512,
+            "orderStatus": "DISPATCHED",
+            "truckPlate": "3456-ABC",
+            "driverName": "Carlos Mamani",
+            "transportStatus": "EN_RUTA",
+            "departureDate": "2026-07-16T08:00:00.000Z",
+            "progress": {
+                "total": 12,
+                "delivered": 6,
+                "failed": 1,
+                "pending": 5,
+                "progressPct": 58,
+                "incidents": 1
+            },
+            "tracking": {
+                "transportOrderId": 4471,
+                "latitude": -17.783412,
+                "longitude": -63.181245,
+                "battery": 74,
+                "trackedAt": "2026-07-16T08:24:39.000Z",
+                "receivedAt": "2026-07-16T08:24:40.180Z"
+            }
+        },
+        {
+            "...": "..."
+        }
+    ]
+}
+
+{
+  "transportOrderId": 4471,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}

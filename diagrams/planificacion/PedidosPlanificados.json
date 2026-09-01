@@ -1,0 +1,125 @@
+// ── 30 Consultar qué pedidos ya están planificados — lo que consume MS Ventas ─────────────────
+
+// 30.1 modo LISTA (recomendado). El vendedor es dato de Ventas: ellos resuelven "pedidos de V001"
+// y nos preguntan por esa lista. No guardamos el employee_id del vendedor en ninguna tabla.
+{
+  "salesOrderIds": [88214, 88219, 88301, 88477, 88999],
+  "distributorId": 1
+}
+
+// 30.1 modo FILTRO. Al menos customerId o deliveryPointId.
+// OJO: con planDateFrom/To los RECEIVED_NOT_PLANNED no pueden aparecer — plan_date vive en
+// dispatch_plans y una candidata sin dispatch_delivery_point_id no tiene fecha.
+{
+  "customerId": 18,
+  "deliveryPointId": 7,
+  "saleChannelId": 1,
+  "distributorId": 1,
+  "planDateFrom": "2026-08-19",
+  "planDateTo": "2026-08-21"
+}
+
+// 400 — employeeId NO es un filtro válido. Se rechaza explícito, NUNCA se ignora en silencio:
+// un filtro ignorado le devuelve a Ventas los pedidos de todos los vendedores sin ninguna señal.
+{
+  "status": 400,
+  "code": "UNSUPPORTED_FILTER",
+  "detail": "No se puede filtrar por vendedor: el esquema no guarda el employee_id del vendedor. Los employee_id existentes son planificador, supervisor, chofer y ayudante. Usar salesOrderIds[].",
+  "field": "employeeId"
+}
+
+// salida de 30.4 + 30.4a-c — UNA sola consulta con tres LEFT JOIN.
+// LEFT y no INNER: dispatch_delivery_point_id es nullable y es el corte entre RECEIVED_NOT_PLANNED
+// y PLANNED. Con INNER, las candidatas sin plan desaparecen y Ventas las reenvía.
+[
+  { "salesOrderId": 88214, "isIncluded": true,  "dispatchDeliveryPointId": 900, "dispatchPlanId": 41, "planDate": "2026-08-20", "planStatus": "DRAFT",    "customerId": 18, "deliveryPointId": 7 },
+  { "salesOrderId": 88219, "isIncluded": true,  "dispatchDeliveryPointId": 901, "dispatchPlanId": 41, "planDate": "2026-08-20", "planStatus": "APPROVED", "customerId": 18, "deliveryPointId": 7 },
+  { "salesOrderId": 88301, "isIncluded": false, "dispatchDeliveryPointId": 902, "dispatchPlanId": 41, "planDate": "2026-08-20", "planStatus": "DRAFT",    "customerId": 22, "deliveryPointId": 9 },
+  { "salesOrderId": 88477, "isIncluded": true,  "dispatchDeliveryPointId": 903, "dispatchPlanId": 40, "planDate": "2026-08-19", "planStatus": "APPROVED", "customerId": 31, "deliveryPointId": 14 }
+]
+// 88999 no aparece: no hay fila en candidate_orders => NOT_RECEIVED
+
+// salida de 30.5 + 30.5a — puede traer MÁS DE UNA fila por sales_order_id:
+// sales_order_split_id existe porque a la altura de la OT el pedido puede estar partido por empresa.
+[
+  { "salesOrderId": 88219, "salesOrderSplitId": 1, "transportOrderId": 10045, "code": 1000456, "status": "ENROUTE" },
+  { "salesOrderId": 88477, "salesOrderSplitId": null, "transportOrderId": 10041, "code": 1000451, "status": "COMPLETED" }
+]
+
+// salida de 30.6 + 30.6a — la columna es sale_order_id, SINGULAR.
+// candidate_orders y transport_order_sales usan sales_order_id. El typo no falla: devuelve vacío
+// y un pedido entregado se reporta como si nunca hubiera salido.
+[
+  { "saleOrderId": 88477, "deliveryOrderId": 77120, "status": "DELIVERED" }
+]
+
+// 200 OK — respuesta de 30.7. El array es lo que Ventas pidió; details[] evita romper el contrato
+// dentro de un mes. details[] responde por TODOS los ids consultados, incluidos los no encontrados.
+{
+  "plannedSalesOrderIds": [88214, 88219, 88477],
+  "details": [
+    {
+      "salesOrderId": 88214,
+      "status": "PLANNED",
+      "isPlanned": true,
+      "dispatchPlanId": 41,
+      "planDate": "2026-08-20",
+      "planStatus": "DRAFT",
+      "reversible": true,
+      "transportOrders": [],
+      "deliveryOrders": []
+    },
+    {
+      "salesOrderId": 88219,
+      "status": "DISPATCHED",
+      "isPlanned": true,
+      "dispatchPlanId": 41,
+      "planDate": "2026-08-20",
+      "planStatus": "APPROVED",
+      "reversible": false,
+      "transportOrders": [{ "transportOrderId": 10045, "code": 1000456, "status": "ENROUTE" }],
+      "deliveryOrders": []
+    },
+    {
+      "salesOrderId": 88301,
+      "status": "EXCLUDED",
+      "isPlanned": false,
+      "reversible": true,
+      "dispatchPlanId": 41,
+      "planDate": "2026-08-20",
+      "reason": "El planificador lo excluyó del plan (is_included = false). LO RECIBIMOS: no reenviar."
+    },
+    {
+      "salesOrderId": 88477,
+      "status": "DELIVERED",
+      "isPlanned": true,
+      "dispatchPlanId": 40,
+      "planDate": "2026-08-19",
+      "planStatus": "APPROVED",
+      "reversible": false,
+      "transportOrders": [{ "transportOrderId": 10041, "code": 1000451, "status": "COMPLETED" }],
+      "deliveryOrders": [{ "deliveryOrderId": 77120, "status": "DELIVERED" }]
+    },
+    {
+      "salesOrderId": 88999,
+      "status": "NOT_RECEIVED",
+      "isPlanned": false,
+      "reversible": true,
+      "reason": "No existe candidate_orders para ese sales_order_id."
+    }
+  ]
+}
+
+// 200 OK — ninguno planificado. Es una respuesta válida con cuerpo, NUNCA un 404.
+{
+  "plannedSalesOrderIds": [],
+  "details": [
+    { "salesOrderId": 88999, "status": "NOT_RECEIVED", "isPlanned": false, "reversible": true,
+      "reason": "No existe candidate_orders para ese sales_order_id." }
+  ]
+}
+
+// 400 — los otros tres rechazos de 30.3a
+{ "status": 400, "code": "MISSING_CRITERIA",   "detail": "Requiere salesOrderIds[] o al menos customerId / deliveryPointId." }
+{ "status": 400, "code": "AMBIGUOUS_CRITERIA", "detail": "No se pueden combinar salesOrderIds[] con los filtros por cliente." }
+{ "status": 400, "code": "TOO_MANY_IDS",       "detail": "salesOrderIds admite hasta 500 elementos por llamada.", "field": "salesOrderIds" }

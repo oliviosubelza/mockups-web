@@ -1,0 +1,104 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 13: GET y POST /api/v1/refund-approval-levels (Configurar y publicar la escalera)
+
+actor "Gerente General" as Admin
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Approval Config Service" as Service
+participant "Role Directory Client\n(servicio externo)" as RoleDir
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_approval_levels DB" as LevelsCfgDB
+
+== Leer la escalera vigente ==
+
+Admin -> Web: Entra a "Configuración de aprobaciones"
+Web -> Gateway: GET /api/v1/refund-approval-levels
+Gateway -> Service: getPublishedApprovalLadder()
+
+Service -> LevelsCfgDB: 1. findActiveLadder()
+note right of LevelsCfgDB
+  WHERE is_active = TRUE AND deleted_at IS NULL
+  ORDER BY workflow_version_id DESC, level_order ASC
+  Una sola versión queda activa: el resto son
+  versiones archivadas del mismo agrupador.
+end note
+LevelsCfgDB --> Service: levels[]
+
+Service -> Service: 2. deriveBands(levels)
+note right of Service
+  El techo de cada nivel es el
+  activation_min_amount del siguiente;
+  el último no tiene techo.
+  La banda se muestra "Bs 500 a Bs 2.000".
+end note
+Service --> Gateway: ladderResponse (workflowVersionId + levels[] con banda)
+Gateway --> Web: 200 OK
+Web --> Admin: Muestra los niveles, roles, bandas, políticas y plazos
+
+== Publicar una versión nueva ==
+
+Admin -> Web: Edita niveles y confirma "Publicar"
+Web -> Gateway: POST /api/v1/refund-approval-levels\n(PublishLadderDto: { levels: [{ levelOrder, name, roleCode,\nactivationMinAmount, approvalPolicy, requiredApprovals, onReject, slaHours }] })
+Gateway -> Service: publishApprovalLadder(payload, actor)
+
+Service -> Service: 3. assertAdminRole(actor)
+note right of Service
+  403 si el actor no es gerente_general:
+  configurar la escalera es privilegio de
+  administración, no de aprobación.
+end note
+
+Service -> RoleDir: 4. resolveApproversByRole(payload.levels.roleCode)
+RoleDir --> Service: employeesByRole[]
+
+Service -> Service: 5. validateLadder(payload, employeesByRole)
+note right of Service
+  422 si:
+  - el primer nivel no tiene
+    activation_min_amount = 0
+  - los pisos no son estrictamente
+    crecientes por level_order
+  - un nivel apunta a un rol sin
+    empleados resueltos
+  - approval_policy = 'QUORUM' con
+    required_approvals mayor que la cantidad
+    de aprobadores del rol, o menor que 1
+  - approval_policy != 'QUORUM' y
+    required_approvals distinto de 1
+  - on_reject fuera de {TERMINATE,
+    RETURN_PREVIOUS, RETURN_INITIATOR}
+  - on_reject = 'RETURN_PREVIOUS' en el
+    nivel 1, que no tiene anterior
+end note
+
+Service -> TX: 6. startTransaction()
+activate TX
+
+Service -> LevelsCfgDB: 7. deactivatePreviousVersion()
+note right of LevelsCfgDB
+  UPDATE refund_approval_levels
+  SET is_active = FALSE
+  WHERE is_active = TRUE
+  La versión anterior se archiva, no se borra:
+  las instancias en curso ya congelaron su
+  snapshot y no se ven afectadas.
+end note
+LevelsCfgDB --> Service: ok
+
+Service -> LevelsCfgDB: 8. insertLadderVersion(newWorkflowVersionId, payload.levels)
+note right of LevelsCfgDB
+  Una fila por nivel, todas con el mismo
+  workflow_version_id y is_active = TRUE.
+  created_by = actor.
+end note
+LevelsCfgDB --> Service: insertedIds[]
+
+Service -> TX: 9. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 201 Created (PublishLadderResult: { workflowVersionId, levels })
+Gateway --> Web: 201 Created
+Web --> Admin: Escalera publicada • Aplica a las notas nuevas
+@enduml

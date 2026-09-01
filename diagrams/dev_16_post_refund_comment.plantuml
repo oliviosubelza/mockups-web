@@ -1,0 +1,50 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 16: POST /api/v1/refunds/:id/comments (Comentar sin decidir)
+
+actor "Aprobador / Vendedor" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+User -> Web: Escribe un comentario en el detalle
+Web -> Gateway: POST /api/v1/refunds/2001/comments\n(CommentDto: { comment })
+Gateway -> Service: addRefundComment(refundOrderId: 2001, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(2001)
+OrdersDB --> Service: order { current_workflow_instance_id: 90 }
+
+Service -> InstanceDB: 2. findInstance(90)
+InstanceDB --> Service: instance { status: 'IN_APPROVAL', current_level_order: 2 }
+
+Service -> Service: 3. assertCommentable(order, instance, actor, payload)
+note right of Service
+  422 si el comentario viene vacío
+  409 si la nota no tiene instancia
+  403 si el actor no participa de la nota
+  (ni vendedor dueño ni rol de algún nivel)
+  Comentar NO consume la firma del nivel ni
+  cambia estados.
+end note
+
+Service -> ActionsDB: 4. insertWorkflowAction(90, currentLevelId, 'COMMENT')
+note right of ActionsDB
+  - comment del actor
+  - previous_status = new_status (no hay
+    movimiento de estado)
+  - sin amount_before / amount_after
+  'COMMENT' ya está en el CHECK de action.
+  Y el CHECK de reason no lo alcanza: el
+  motivo solo es obligatorio en REJECT,
+  REACTIVATE y CANCEL.
+end note
+ActionsDB --> Service: ok
+
+Service --> Gateway: 201 Created (CommentResult: { actionId, createdAt })
+Gateway --> Web: 201 Created
+Web --> User: El comentario aparece en el historial
+@enduml

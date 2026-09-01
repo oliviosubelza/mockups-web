@@ -1,0 +1,165 @@
+// ── 31 / EL3 · POST /logistics/orders — contrato publicado por Ventas, anotado ────────────────
+
+// 31.4 REQUEST — tal como lo definió Ventas.
+{
+  "channelIds":       [ 1 ],
+  "cityIds":          [ 1 ],
+  "employeeIds":      [ 1 ],          // VENDEDORES. Confirma que el filtro por vendedor existe.
+  "marketIds":        [ 1 ],
+  "zoneIds":          [ 1 ],          // ver §4: ¿de qué catálogo salen estos ids?
+  "distributorIds":   [ 1 ],          // array, pero nuestro distributor_id es NOT NULL singular (§6.1)
+  "paymentMethodIds": [ 1 ],
+  "companyIds":       [ 1 ],
+  "status":           [ "invoiced" ], // string en inglés; la response devuelve statusId + español (§6.2)
+  "isCooled":         false,         // ahora viaja POR SPLIT en la response: false = "solo seco",
+                                      // y no hay forma de pedir los dos (§7.5)
+  "initDate":         "2026-08-19",
+  "finishDate":       "2026-08-19"
+}
+
+// 31.4 RESPONSE (revisión del 2026-08-19) — un elemento de data[], con el destino de cada campo.
+// El bloqueante del identificador quedó RESUELTO. Lo que abrió es más grande: el SPLIT.
+{
+  // --- IDENTIDAD: los tres ids nuevos. candidate_orders solo tiene sales_order_id (§2.3) ----
+  "saleOrderId": 1,                     // el pedido comercial. MISMO en los dos elementos del ejemplo
+  "saleOrderSplitId": 1,                // el split DENTRO del pedido. SE DESCARTA: no hay columna
+  "sapSaleOrderId": 1,                  // el id que SAP le da a ESE split. varía por split. SE DESCARTA
+  "isCooled": false,                    // SE DESCARTA — y trucks.is_refrigerated:64 existe para matchearlo
+
+  // --- empresa / almacén -------------------------------------------------------------------
+  "companyId": 1,                       // -> delivery_order_sales.company_code (recién en última milla)
+  "companyName": "INDUSTRIAS VENADO S.A.",  // sin destino (se resuelve por id)
+  "warehouseId": 2,                     // -> dispatch_delivery_points.warehouse_destination_id :139
+  "warehouseName": "Agencia Norte",     // sin destino
+
+  // --- estado: TRES vocabularios distintos en el mismo objeto (§6.2) ------------------------
+  "statusId": 2,                        // sin destino
+  "statusDescription": "Pendiente",     // sin destino
+  "orderTypeName": "Normal",            // candidato a candidate_orders.type_movement :188
+  "origin": "MOVIL",                    // sin destino
+
+  // --- zona: ¿es NUESTRO id? dispatch_delivery_points.zone_id tiene FK a zones(id) (§4) -----
+  "zoneId": 1,                          // -> dispatch_delivery_points.zone_id :134  (SUJETO A CONFIRMAR)
+  "zone": "Norte",                      // ojo: nuestra zones.name de ejemplo es "Zona Norte", no matchea
+
+  // --- VENDEDOR: los tres campos que pide la migración del §3.2 ----------------------------
+  "employeeId": 8,                      // hoy SE DESCARTA — candidate_orders no tiene la columna
+  "employeeCode": "V001",               // hoy SE DESCARTA
+  "employeeName": "Carlos Rojas",       // hoy SE DESCARTA
+
+  // --- cliente ------------------------------------------------------------------------------
+  "customerId": 18,                     // -> dispatch_delivery_points.customer_id :137
+  "customerCode": "C000254",            // sin destino
+  "customerName": "Supermercado América",  // -> .customer_name :138  — VARCHAR(50), entra justo
+  "customerDocumentNumber": "1020304050",  // sin destino
+  "customerDocumentType": "NIT",        // sin destino
+  "customerComplement": null,           // sin destino
+  "customerPhone": "77777777",          // sin destino — le sirve al chofer en última milla
+  "customerLatitude": -21,              // SE DESCARTA (§3.1)
+  "customerLongitude": -50.5,           // SE DESCARTA (§3.1)
+  "customerAvgTicket": 1900,            // sin destino — serviría para calcular priority :140
+  "customerDropSize": 2200,             // sin destino — ídem
+
+  // --- owner / dueño comercial --------------------------------------------------------------
+  "ownerId": 4,                         // -> dispatch_delivery_points.owner_id :135
+  "ownerName": "Juan Pérez",            // -> .owner_name :136 — VARCHAR(50)
+  "ownerSubChannelName": "MAYORISTA",   // sin destino — es criterio de agrupación
+  "ownerSubChannelId": 1,               // sin destino
+  "ownerDocumentNumber": "1020304050",  // sin destino
+  "ownerDocumentType": "NIT",           // sin destino
+  "ownerComplement": null,              // sin destino
+
+  // --- punto de entrega ---------------------------------------------------------------------
+  "deliveryPointId": 7,                 // -> dispatch_delivery_points.delivery_point_id :133
+  "deliveryPointContact": "Sucursal Central",  // sin destino — se compara con proof_of_deliveries.receiver_name
+  "deliveryPointLatitude": -21,         // SE DESCARTA — y el ruteo las necesita (§3.1)
+  "deliveryPointLongitude": -50.5,      // SE DESCARTA
+  "deliveryPointStartHourReception": "08:00:00",  // -> .delivery_window_start :141
+  "deliveryPointEndHourReception": "12:00:00",    // -> .delivery_window_end :142
+
+  // --- pago: lo más urgente después de los bloqueantes -------------------------------------
+  "paymentModeId": 1,                   // sin destino — define si el chofer COBRA en la parada
+  "paymentModeType": "Contado",         // sin destino — conecta con delivery_payment_references
+
+  // --- fechas de cabecera (duplican las del punto) -----------------------------------------
+  "dateReception": "2026-07-31",
+  "startHourReception": "08:00:00",
+  "endHourReception": "12:00:00",
+
+  // --- documentos SAP: strings, y nuestras columnas son BIGINT (§2.3) ----------------------
+  "sapReserveCode": "SO000123",         // TIENE LETRAS: no cabe en BIGINT. Es lo único que distingue
+                                        // las dos órdenes del ejemplo (mismo cliente/punto/vendedor).
+  "sapDocOrder": "5000123456",          // sin destino
+  "sapDocDelivery": "4800123456",       // sin destino
+  "sapDocRequirement": "4100123456",    // -> candidate_orders.document_id :180  — BIGINT NOT NULL,
+                                        // hay que confirmar que SIEMPRE viene
+  "sapDocContable": "5100123456",       // sin destino
+  "sapDocTransport": "4900123456",      // sin destino
+  "sapDocInvoice": "5200123456",        // -> transport_order_sales.invoice_id (recién en la OT)
+  "sapStatus": "CREADO",                // tercer vocabulario de estado
+
+  // --- montos y magnitudes ------------------------------------------------------------------
+  "totalGross": 32.20,                  // sin destino
+  "totalBonusDiscount": 0,              // sin destino
+  "totalDiscount": 1.93,                // sin destino
+  "totalNet": 30.27,                    // -> dispatch_delivery_points.total_neto :145
+  "totalWeight": 0.42,                  // -> candidate_orders.total_weight_kg :182 — confirmar unidad (§6.5)
+  "totalVolume": 0.000586,              // -> .total_volume_m3 :183 — DECIMAL(12,2) LO GUARDA COMO 0.00 (§2.2)
+  "totalIce": 0                         // sin destino
+}
+
+// SEGUNDO elemento del ejemplo. Es EL MISMO PEDIDO: saleOrderId sigue siendo 1.
+// Mismo companyId (1), mismo warehouseId (2), mismo customerId (18), mismo deliveryPointId (7),
+// mismo employeeId (8). Lo que cambia:
+{
+  "saleOrderId": 1,                     // <- IDÉNTICO
+  "saleOrderSplitId": 2,                // <- el split
+  "sapSaleOrderId": 2,                  // <- SAP lo ve como otro pedido
+  "isCooled": true,                     // <- FRÍO, mientras el split 1 es seco
+  "companyId": 1,                       // <- IDÉNTICO: por eso el split NO es por empresa (§2.1)
+  "sapReserveCode": "SO000125",         // varía por split
+  "totalGross": 145.60,
+  "totalDiscount": 8.74,
+  "totalNet": 136.86,
+  "totalWeight": 1.68,
+  "totalVolume": 0.00826,               // DECIMAL(12,2) => 0.01
+  "totalIce": 0
+}
+
+// >>> ESTO REFUTA la hipótesis escrita en el proyecto de que el split era POR EMPRESA
+// (§5.4 de planificacion/DocumentacionTecnica.md y el comentario del DDL :440
+//  "REFERENCIA A LA ORDEN DIVIDIDA POR EMPRESA").
+// companyId es 1 en los dos splits. Lo único que los diferencia es isCooled.
+// Lectura probable: el pedido se parte POR TEMPERATURA, porque frío y seco no viajan
+// en el mismo compartimento. Sigue siendo hipótesis (una sola muestra), pero con evidencia.
+
+// Envoltorio de la respuesta. NO hay paginación: data[] es plano (§6.3).
+// El §26 habla de 216 pedidos x 57 campos cada uno.
+{
+  "data": [ /* ... */ ],
+  "success": true,
+  "message": "Pedidos listados"
+}
+
+
+// ── Lo que todavía falta en EL3 ───────────────────────────────────────────────────────────────
+{
+  "distributorId": 1,        // si distributorIds queda como array, hace falta saber de cuál es cada fila
+  "page": 1,                 // paginación — con splits hay MÁS filas que pedidos
+  "limit": 100,
+  "total": 216
+}
+
+// ── Cómo tiene que quedar la respuesta de la §30 con splits ──────────────────────────────────
+// Un array plano de ids de pedido NO puede expresar "el split seco entró al plan y el frío no":
+// devolver 1 dice que el pedido está planificado (falso), omitirlo dice que no lo está (también falso).
+{
+  "plannedSalesOrderIds": [1],
+  "partiallyPlannedSalesOrderIds": [1],
+  "details": [
+    { "saleOrderId": 1, "saleOrderSplitId": 1, "isCooled": false, "status": "PLANNED",
+      "dispatchPlanId": 41, "reversible": true },
+    { "saleOrderId": 1, "saleOrderSplitId": 2, "isCooled": true,  "status": "RECEIVED_NOT_PLANNED",
+      "reason": "Sin camión refrigerado disponible en el plan de esa fecha." }
+  ]
+}

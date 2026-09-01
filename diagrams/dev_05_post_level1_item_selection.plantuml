@@ -1,0 +1,127 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 5: POST /api/v1/refunds/:id/levels/1/item-selection (Selección de ítems y disociación)
+
+actor "Analista CX (Nivel 1)" as Analyst
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_order_details DB" as DetailsDB
+participant "refund_order_detail_decisions DB" as DecisionsDB
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Analyst -> Web: Marca qué líneas quedan en la nota y cuáles se disocian
+Web -> Gateway: POST /api/v1/refunds/1001/levels/1/item-selection\n(Level1SelectionDto: { items: [{ detailId, decision }], comment })
+Gateway -> Service: applyLevel1ItemSelection(refundOrderId: 1001, payload, actor)
+
+Service -> LevelsDB: 1. findCurrentLevel(instanceId)
+LevelsDB --> Service: level { id: 210, level_order: 1,\ndecision_mode: 'ITEM_SELECTION', status: 'IN_PROGRESS' }
+
+Service -> Service: 2. assertSelectionAllowed(level, actor)
+note right of Service
+  409 si decision_mode != 'ITEM_SELECTION'
+  (solo el nivel 1 del PRIMER intento
+  selecciona; después nunca más hay casillas)
+  403 si actor.roleCode != level.role_code
+  422 si la selección no cubre todas las
+  líneas ACTIVE, o si deja cero seleccionadas
+end note
+
+Service -> TX: 3. startTransaction()
+activate TX
+
+Service -> ActionsDB: 4. insertWorkflowAction(instanceId, 210, 'LEVEL1_ITEM_SELECTION')
+ActionsDB --> Service: workflowActionId: 601
+
+Service -> DecisionsDB: 5. insertDetailDecisions(601, payload.items)
+note right of DecisionsDB
+  Una fila por línea:
+  decision = 'SELECTED' | 'DISSOCIATED'
+  Es el registro binario del nivel 1
+  y nada más.
+end note
+DecisionsDB --> Service: ok
+
+alt Selección total (ninguna línea disociada)
+    Service -> Service: 6. noSplitRequired()
+    note right of Service
+      La nota sigue de largo con su total
+      intacto. No nace ninguna disociada.
+    end note
+else Selección parcial (al menos una línea disociada)
+    Service -> DetailsDB: 7. markDetailsDissociated(dissociatedDetailIds)
+    note right of DetailsDB
+      UPDATE refund_order_details
+      SET line_status = 'DISSOCIATED'
+    end note
+    DetailsDB --> Service: ok
+
+    Service -> Service: 8. recomputeTotals(activeItems, dissociatedItems)
+    note right of Service
+      totalOriginal = SUM(ACTIVE)
+      totalDisociada = SUM(DISSOCIATED)
+    end note
+
+    Service -> OrdersDB: 9. updateRefundOrderTotal(1001, totalOriginal)
+    OrdersDB --> Service: ok
+
+    Service -> OrdersDB: 10. insertDissociatedRefundOrder(source: 1001, totalDisociada)
+    note right of OrdersDB
+      Nace la nota disociada:
+      - note_number = el MISMO de la original
+      - split_sequence = siguiente (1, 2…)
+      - source_refund_order_id = 1001
+      - document_type = 'DISSOCIATED'
+      - status = 'OPEN'
+      - mismo distributor_id, employee_id,
+        owner_id, customer_id
+    end note
+    OrdersDB --> Service: dissociatedOrderId: 1004
+
+    Service -> DetailsDB: 11. cloneDetailsIntoDissociated(1004, dissociatedDetailIds)
+    note right of DetailsDB
+      Por línea movida:
+      - source_detail_id = línea de origen
+      - source_quantity y quantity = la cantidad
+        que traía (tope para el vendedor)
+      - price_unit congelado sin cambios
+      - line_status = 'ACTIVE'
+    end note
+    DetailsDB --> Service: ok
+
+    Service -> InstanceDB: 12. insertWorkflowInstance(1004, attempt: 1, 'EDITING', currentLevelOrder: NULL)
+    note right of InstanceDB
+      La disociada NO entra en aprobación:
+      arranca en EDITING, esperando que el
+      vendedor corrija y la reenvíe.
+    end note
+    InstanceDB --> Service: dissociatedInstanceId: 56
+
+    Service -> OrdersDB: 13. updateCurrentWorkflowInstance(1004, 56)
+    OrdersDB --> Service: ok
+
+    Service -> ActionsDB: 14. insertWorkflowAction(instanceId: 55, level: NULL, 'DISSOCIATED_CREATED')
+    note right of ActionsDB
+      Fila puente: vive en la instancia de la
+      ORIGINAL y apunta a la disociada.
+      - related_refund_order_id = 1004
+      - amount_before = 1000.00
+      - amount_after = 600.00
+      - system_summary = 'Se disoció 1 de 2 ítems
+        por Bs 400,00.'
+    end note
+    ActionsDB --> Service: ok
+end
+
+Service -> TX: 15. commitTransaction()
+deactivate TX
+
+Service --> Gateway: 200 OK (Level1SelectionResult:\n{ refundOrderId, total, dissociatedOrderId?, itemSelectionLocked: true })
+Gateway --> Web: 200 OK
+Web --> Analyst: Selección registrada • Las casillas no vuelven a mostrarse
+@enduml

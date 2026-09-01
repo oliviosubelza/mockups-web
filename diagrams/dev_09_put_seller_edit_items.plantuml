@@ -1,0 +1,89 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 9: PUT /api/v1/refunds/:id/items (El vendedor corrige la nota en EDITING)
+
+actor "Vendedor" as Seller
+participant "App Ventas / Web" as App
+participant "Gateway Controller" as Gateway
+participant "Refund Order Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_order_details DB" as DetailsDB
+participant "refund_order_detail_sources DB" as SourcesDB
+
+Seller -> App: Recorta cantidades de la nota disociada (o devuelta por el revisor)
+App -> Gateway: PUT /api/v1/refunds/1004/items\n(EditRefundItemsDto: { items: [{ detailId, quantity, notes }], justification })
+Gateway -> Service: editRefundOrderItems(refundOrderId: 1004, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(1004)
+OrdersDB --> Service: order { status: 'OPEN', document_type: 'DISSOCIATED',\ncurrent_workflow_instance_id: 56 }
+
+Service -> InstanceDB: 2. findInstance(56)
+InstanceDB --> Service: instance { status: 'EDITING', current_level_order: NULL }
+
+Service -> DetailsDB: 3. findActiveDetails(1004)
+DetailsDB --> Service: details[] (source_quantity, quantity, price_unit)
+
+Service -> Service: 4. assertEditable(order, instance, actor, payload)
+note right of Service
+  409 si instance.status != 'EDITING':
+  una nota en aprobación no se edita
+  409 si order.edit_count >= 1: el tope de
+  negocio es una sola corrección por nota
+  403 si el actor no es el vendedor dueño
+  de la nota ni de su distribuidora
+  422 si quantity > source_quantity — el CHECK
+  de la tabla exige 0 <= quantity <= source_quantity
+  422 si todas las líneas quedan en 0
+end note
+
+Service -> Service: 5. recomputeTotal(payload.items)
+note right of Service
+  total = SUM(quantity * price_unit)
+  price_unit NUNCA se toca: quedó congelado
+  al momento del reclamo.
+end note
+
+Service -> TX: 6. startTransaction()
+activate TX
+
+Service -> DetailsDB: 7. updateDetailQuantities(1004, payload.items)
+note right of DetailsDB
+  Solo baja quantity y notes.
+  source_quantity se mantiene como techo
+  y evidencia de lo que se recibió.
+end note
+DetailsDB --> Service: ok
+
+Service -> SourcesDB: 8. adjustDetailSources(detailIds, payload.items)
+note right of SourcesDB
+  Al recortar la línea hay que recortar sus
+  orígenes: la suma de sources.quantity tiene
+  que seguir dando quantity.
+end note
+SourcesDB --> Service: ok
+
+Service -> OrdersDB: 9. updateRefundOrder(1004, total, justification, editCount + 1)
+note right of OrdersDB
+  edit_count = edit_count + 1.
+  Es el contador que hace exigible la regla
+  de "una sola corrección".
+end note
+OrdersDB --> Service: ok
+
+Service -> TX: 10. commitTransaction()
+deactivate TX
+
+note right of Service
+  La edición no genera acción de workflow:
+  el movimiento se registra recién al
+  reenviar (SELLER_RESUBMITTED), con
+  amount_before y amount_after.
+end note
+
+Service --> Gateway: 200 OK (EditRefundItemsResult: { refundOrderId, total })
+Gateway --> App: 200 OK
+App --> Seller: Cambios guardados • La nota sigue en edición hasta que la reenvíe
+@enduml

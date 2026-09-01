@@ -1,0 +1,69 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 11: POST /api/v1/refunds/:id/cancel (Anular la nota)
+
+actor "Vendedor / Supervisor CX" as Actor
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_orders DB" as OrdersDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Actor -> Web: Tap en "Anular" + motivo obligatorio
+Web -> Gateway: POST /api/v1/refunds/2001/cancel\n(CancelDto: { reason })
+Gateway -> Service: cancelRefundOrder(refundOrderId: 2001, payload, actor)
+
+Service -> OrdersDB: 1. findRefundOrderWithInstance(2001)
+OrdersDB --> Service: order { status: 'OPEN', current_workflow_instance_id: 90 }
+
+Service -> Service: 2. assertCancellable(order, actor, payload)
+note right of Service
+  409 si order.status != 'OPEN': una nota
+  APPROVED, REJECTED o ANNULLED no se anula
+  422 si falta reason
+  403 si el actor no es el vendedor dueño
+  ni tiene rol de supervisión
+end note
+
+Service -> TX: 3. startTransaction()
+activate TX
+
+Service -> LevelsDB: 4. skipOpenLevels(90)
+note right of LevelsDB
+  Los niveles PENDING y el IN_PROGRESS
+  pasan a 'SKIPPED' con finished_at = NOW().
+  Nadie más tiene que firmar.
+end note
+LevelsDB --> Service: ok
+
+Service -> InstanceDB: 5. closeInstance(90, 'CANCELLED', currentLevelOrder: NULL, finishedAt: NOW())
+InstanceDB --> Service: ok
+
+Service -> OrdersDB: 6. updateRefundOrderStatus(2001, 'ANNULLED')
+OrdersDB --> Service: ok
+
+Service -> ActionsDB: 7. insertWorkflowAction(90, NULL, 'CANCEL')
+note right of ActionsDB
+  - reason obligatorio
+  - previous_status / new_status
+  - amount_before = total, amount_after = 0.00
+end note
+ActionsDB --> Service: ok
+
+Service -> TX: 8. commitTransaction()
+deactivate TX
+
+note right of Service
+  ANNULLED es terminal: no hay REACTIVATE
+  para una nota anulada. Las disociadas que
+  ya salieron de ella siguen su propio curso.
+end note
+
+Service --> Gateway: 200 OK (CancelResult: { orderStatus: 'ANNULLED' })
+Gateway --> Web: 200 OK
+Web --> Actor: Nota anulada
+@enduml

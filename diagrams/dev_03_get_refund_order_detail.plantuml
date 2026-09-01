@@ -1,0 +1,119 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 3: GET /api/v1/refunds/:id (Detalle y pantalla de decisión)
+
+actor "Aprobador / Vendedor" as User
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Order Service" as Service
+participant "refund_orders DB" as OrdersDB
+participant "refund_order_details DB" as DetailsDB
+participant "refund_order_detail_sources DB" as SourcesDB
+participant "refund_order_detail_photos DB" as PhotosDB
+participant "refund_reasons DB" as ReasonsDB
+participant "refund_workflow_instances DB" as InstanceDB
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+participant "refund_order_detail_decisions DB" as DecisionsDB
+participant "Clientes / SAP\n(servicio externo)" as Sales
+participant "Role Directory Client\n(servicio externo)" as RoleDir
+
+User -> Web: Abre una nota de la bandeja
+Web -> Gateway: GET /api/v1/refunds/1001
+Gateway -> Service: getRefundOrderDetail(refundOrderId: 1001, actor)
+
+Service -> OrdersDB: 1. findRefundOrder(1001)
+OrdersDB --> Service: order (note_number, split_sequence, document_type,\nstatus, source_refund_order_id, total, justification, replacement_date)
+
+Service -> Service: 2. assertVisibility(order, actor)
+note right of Service
+  Un rol "solo mis documentos" que pide la
+  nota de otro vendedor recibe 404, no 403:
+  no se revela la existencia del documento.
+end note
+
+Service -> DetailsDB: 3. findDetails(1001)
+note right of DetailsDB
+  Todas las líneas, ACTIVE y DISSOCIATED.
+  Las DISSOCIATED se muestran tachadas con
+  el enlace a la nota que se las llevó.
+end note
+DetailsDB --> Service: details[] (product_id, source_quantity, quantity,\nprice_unit, line_status, reason, notes)
+
+Service -> SourcesDB: 3.1a findSourcesByDetails(detailIds)
+note right of SourcesDB
+  Los orígenes de cada línea: factura,
+  documento SAP, lote, vencimiento y cuánto
+  sale de cada uno.
+end note
+SourcesDB --> Service: sources[]
+
+Service -> PhotosDB: 3.1b findPhotosByDetails(detailIds)
+note right of PhotosDB
+  ORDER BY sort_order. Es lo primero que abre
+  el revisor: si storage_key se firma en cada
+  lectura, la URL se genera acá.
+end note
+PhotosDB --> Service: photos[]
+
+Service -> ReasonsDB: 3.1c findReasons(details.reason)
+note right of ReasonsDB
+  Da la etiqueta visible del motivo y qué
+  campos exige, para que el detalle muestre
+  lote y vencimiento solo cuando aplican.
+end note
+ReasonsDB --> Service: reasons[]
+
+Service -> InstanceDB: 4. findInstances(1001)
+note right of InstanceDB
+  Todos los intentos, no solo el vigente:
+  el intento anterior queda como evidencia.
+end note
+InstanceDB --> Service: instances[] (attempt, status, current_level_order,\nreactivated_from_instance_id)
+
+Service -> LevelsDB: 5. findInstanceLevels(instanceIds)
+LevelsDB --> Service: levels[] (level_order, level_name, role_code,\nmin_amount, max_amount, decision_mode, status,\nfirst_viewed_at, started_at, finished_at)
+
+Service -> ActionsDB: 6. findActionsTimeline(instanceIds)
+ActionsDB --> Service: actions[] (action, actor, comment, reason,\nsystem_summary, amount_before, amount_after, created_at)
+
+Service -> DecisionsDB: 7. findLevel1Decisions(itemSelectionActionIds)
+DecisionsDB --> Service: decisions[] (refund_order_detail_id, decision)
+
+Service -> OrdersDB: 8. findSplitFamily(noteNumber, 1001)
+note right of OrdersDB
+  Nota origen (source_refund_order_id) y
+  disociadas hijas: comparten note_number
+  y se ordenan por split_sequence.
+end note
+OrdersDB --> Service: relatedOrders[]
+
+Service -> Sales: 9. getClientAndInvoiceData(order.owner_id, details.productIds)
+note right of Sales
+  NIT, canal, sector y el documento SAP de la
+  factura de origen no viven en nuestras
+  tablas: se piden a Ventas/SAP.
+end note
+Sales --> Service: clientDetails + invoiceRefs[]
+
+Service -> RoleDir: 10. resolveApproversByRole(openLevel.roleCode)
+RoleDir --> Service: employees[]
+
+Service -> Service: 11. buildDecisionContext(order, levels, actions, employees, actor)
+note right of Service
+  Deriva para el FE:
+  - canDecide: hay nivel abierto, el actor
+    pertenece al rol y no firmó todavía
+  - showItemCheckboxes: solo si el nivel
+    abierto tiene decision_mode =
+    'ITEM_SELECTION'
+  - firmas recibidas / necesarias
+  - plazo restante del nivel (SLA)
+  - posición "Nivel 2 de 4"
+end note
+
+Service --> Gateway: refundOrderDetailResponse
+Gateway --> Web: 200 OK
+Web --> User: Renderiza cabecera, líneas con fotos, familia de la nota y el historial
+@enduml

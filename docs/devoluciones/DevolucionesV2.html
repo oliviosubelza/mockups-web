@@ -1,0 +1,3082 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<style>body{margin:0;padding:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Devoluciones · Secuencias</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground: #FAF9F6;
+    --surface: #FFFFFF;
+    --line: #E2E0D8;
+    --ink: #15181A;
+    --muted: #6A6F6C;
+    --accent: #14584F;
+    --accent-soft: #E4EFEC;
+    --warn: #8A4B12;
+    --warn-soft: #F7EDE2;
+
+    --font-title: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --font-text: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0D1413;
+      --surface: #141D1B;
+      --line: #25322F;
+      --ink: #E7EDEA;
+      --muted: #93A09B;
+      --accent: #5FBFA8;
+      --accent-soft: #152724;
+      --warn: #D79A5B;
+      --warn-soft: #241B12;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0D1413;
+    --surface: #141D1B;
+    --line: #25322F;
+    --ink: #E7EDEA;
+    --muted: #93A09B;
+    --accent: #5FBFA8;
+    --accent-soft: #152724;
+    --warn: #D79A5B;
+    --warn-soft: #241B12;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* ---------- header ---------- */
+
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+  }
+
+  .masthead__text {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 68ch;
+  }
+
+  .masthead h1 {
+    font-family: var(--font-title);
+    font-weight: 600;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .masthead p {
+    color: var(--muted);
+    font-size: 0.98rem;
+  }
+
+  .masthead code,
+  .mono { font-family: var(--font-mono); }
+
+  .masthead code {
+    font-size: 0.85rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 2px 7px;
+  }
+
+  .theme-toggle {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: border-color 140ms ease, color 140ms ease;
+  }
+
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* ---------- layout ---------- */
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  }
+
+  /* ---------- index ---------- */
+
+  .index {
+    position: sticky;
+    top: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+
+  @media (max-width: 980px) {
+    .index { position: static; max-height: none; }
+  }
+
+  .index__title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .index__list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .index__link {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-decoration: none;
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 7px 9px;
+    border: 1px solid transparent;
+    transition: background-color 140ms ease, border-color 140ms ease;
+  }
+
+  .index__link:hover { background: var(--accent-soft); border-color: var(--line); }
+
+  .index__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .index__num {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .index__route {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
+  /* ---------- cards ---------- */
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    min-width: 0;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    scroll-margin-top: 24px;
+  }
+
+  .card--model { border-color: var(--accent); }
+
+  .card__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .card__title {
+    font-family: var(--font-title);
+    font-weight: 600;
+    font-size: 1.4rem;
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+  }
+
+  .card__sub {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+  }
+
+  .card__route {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 7px 10px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .card__desc {
+    color: var(--muted);
+    font-size: 0.95rem;
+    max-width: 78ch;
+  }
+
+  .callout {
+    font-size: 0.92rem;
+    color: var(--ink);
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    border-radius: 0 8px 8px 0;
+    padding: 11px 14px;
+  }
+
+  .chips {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 9px;
+  }
+
+  .rules {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 20px;
+    font-size: 0.93rem;
+  }
+
+  .rules li { padding-left: 2px; }
+
+  .scroll { overflow-x: auto; }
+
+  .fields {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fields th,
+  .fields td {
+    text-align: left;
+    vertical-align: top;
+    padding: 7px 12px 7px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .fields th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .fields td:first-child { font-family: var(--font-mono); white-space: nowrap; }
+
+  .fields td:nth-child(2) { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
+
+  .code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .tables {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+  }
+
+  .table-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .table-card__name {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 500;
+    word-break: break-all;
+  }
+
+  .table-card__layer {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .table-card__desc {
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .diagram {
+    overflow-x: auto;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+
+  .diagram pre.mermaid {
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    min-width: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="masthead__text">
+      <h1>Devoluciones · Secuencias</h1>
+      <p>El modelo de datos y los 16 endpoints del motor de aprobación de devoluciones, cada uno con su diagrama de secuencia, su contrato y las reglas que lo gobiernan.</p>
+      <p>Sales registra la devolución y nosotros generamos el número de nota. Solo el Nivel 1 del primer intento de una nota original selecciona ítems, y solo una nota disociada en <code>EDITING</code> admite cambios de cantidad.</p>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-live="polite">Tema oscuro</button>
+  </header>
+
+  <div class="layout">
+
+    <nav class="index" aria-label="Índice">
+      <p class="index__title">Modelo</p>
+      <ul class="index__list">
+        <li><a class="index__link" href="#modelo"><span class="index__num">Modelo de datos</span><span class="index__route">10 tablas · 4 capas</span></a></li>
+        <li><a class="index__link" href="#ddl"><span class="index__num">Integridad</span><span class="index__route">restricciones e índices</span></a></li>
+      </ul>
+
+      <p class="index__title">Endpoints</p>
+      <ul class="index__list">
+        <li><a class="index__link" href="#e01"><span class="index__num">01</span><span class="index__route">POST /refunds</span></a></li>
+        <li><a class="index__link" href="#e02"><span class="index__num">02</span><span class="index__route">GET /refunds</span></a></li>
+        <li><a class="index__link" href="#e03"><span class="index__num">03</span><span class="index__route">GET /refunds/:id</span></a></li>
+        <li><a class="index__link" href="#e04"><span class="index__num">04</span><span class="index__route">POST /refunds/:id/levels/current/view</span></a></li>
+        <li><a class="index__link" href="#e05"><span class="index__num">05</span><span class="index__route">POST /refunds/:id/levels/1/item-selection</span></a></li>
+        <li><a class="index__link" href="#e06"><span class="index__num">06</span><span class="index__route">POST /refunds/:id/levels/current/approve</span></a></li>
+        <li><a class="index__link" href="#e07"><span class="index__num">07</span><span class="index__route">POST /refunds/:id/levels/current/reject</span></a></li>
+        <li><a class="index__link" href="#e08"><span class="index__num">08</span><span class="index__route">POST /refunds/:id/reactivate</span></a></li>
+        <li><a class="index__link" href="#e09"><span class="index__num">09</span><span class="index__route">PUT /refunds/:id/items</span></a></li>
+        <li><a class="index__link" href="#e10"><span class="index__num">10</span><span class="index__route">POST /refunds/:id/resubmit</span></a></li>
+        <li><a class="index__link" href="#e11"><span class="index__num">11</span><span class="index__route">POST /refunds/:id/cancel</span></a></li>
+        <li><a class="index__link" href="#e12"><span class="index__num">12</span><span class="index__route">GET /refunds/:id/history</span></a></li>
+        <li><a class="index__link" href="#e13"><span class="index__num">13</span><span class="index__route">GET · POST /refund-approval-levels</span></a></li>
+        <li><a class="index__link" href="#e14"><span class="index__num">14</span><span class="index__route">GET /refunds/:id/approvers</span></a></li>
+        <li><a class="index__link" href="#e15"><span class="index__num">15</span><span class="index__route">GET /refunds/returnable-products</span></a></li>
+        <li><a class="index__link" href="#e16"><span class="index__num">16</span><span class="index__route">POST /refunds/:id/comments</span></a></li>
+      </ul>
+
+      <p class="index__title">Cierre</p>
+      <ul class="index__list">
+        <li><a class="index__link" href="#ejemplo"><span class="index__num">Ejemplo</span><span class="index__route">nota 235054</span></a></li>
+        <li><a class="index__link" href="#matriz"><span class="index__num">Matriz</span><span class="index__route">quién escribe qué</span></a></li>
+        <li><a class="index__link" href="#cambios"><span class="index__num">Cambios</span><span class="index__route">de esta versión</span></a></li>
+      </ul>
+    </nav>
+
+    <main class="stack">
+<article class="card card--model" id="modelo">
+  <span class="card__eyebrow">Modelo</span>
+  <h2 class="card__title">Diez tablas en cuatro capas</h2>
+  <p class="card__desc">El modelo final tiene diez tablas repartidas en cuatro capas. <span class="mono">Configuración</span> guarda lo parametrizable: el catálogo de motivos con la evidencia que exige cada uno y la escalera de niveles de aprobación. <span class="mono">Negocio</span> guarda el documento: la nota y sus líneas, con el precio unitario congelado y los nombres fotografiados al momento de registrar. <span class="mono">Evidencia</span> guarda de dónde sale cada cantidad —facturas y lotes— y las fotografías del producto. <span class="mono">Workflow</span> guarda el recorrido: un intento por instancia, sus niveles materializados, la bitácora append-only de acciones y la selección binaria del Nivel 1. No existen tablas de revisiones: no hay <span class="mono">refund_order_revisions</span>, ni <span class="mono">refund_order_revision_details</span>, ni <span class="mono">refund_workflow_level_views</span>. El historial se reconstruye desde los intentos y las acciones.</p>
+
+  <ul class="tables">
+    <li class="table-card">
+      <span class="table-card__layer">Configuración</span>
+      <span class="table-card__name">refund_approval_levels</span>
+      <span class="table-card__desc">La escalera configurable de niveles: orden, rol, monto de activación, política de aprobación y qué hacer al rechazar. Cuatro niveles confirmados, montos configurables.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Configuración</span>
+      <span class="table-card__name">refund_reasons</span>
+      <span class="table-card__desc">Catálogo de motivos con clave textual. Determina si la línea exige lote, fecha de vencimiento, fotografía u observaciones. El motivo ya no es texto libre.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Negocio</span>
+      <span class="table-card__name">refund_orders</span>
+      <span class="table-card__desc">La nota de devolución. Comparte número con sus disociadas y se distingue por el correlativo de split. Guarda vendedor, propietario y cliente como referencias lógicas con su nombre histórico.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Negocio</span>
+      <span class="table-card__name">refund_order_details</span>
+      <span class="table-card__desc">Las líneas de la nota. Cantidad vigente contra cantidad de origen, precio unitario congelado, motivo del catálogo y el vínculo hacia la línea de la que fue copiada.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Evidencia</span>
+      <span class="table-card__name">refund_order_detail_sources</span>
+      <span class="table-card__desc">Una fila por factura o lote que respalda la línea. La suma de sus cantidades tiene que ser exactamente la cantidad del detalle.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Evidencia</span>
+      <span class="table-card__name">refund_order_detail_photos</span>
+      <span class="table-card__desc">Fotografías del producto devuelto, referenciadas por clave de almacenamiento. En la disociación se heredan, no se copian.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Workflow</span>
+      <span class="table-card__name">refund_workflow_instances</span>
+      <span class="table-card__desc">Un intento de aprobación. La disociada nace en edición, la original nace en aprobación, y cada reactivación crea otra instancia con el número de intento incrementado.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Workflow</span>
+      <span class="table-card__name">refund_workflow_instance_levels</span>
+      <span class="table-card__desc">Los niveles materializados de un intento con la configuración copiada. Aquí vive el modo de decisión: casillas solo en el Nivel 1 del primer intento de una nota original.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Workflow</span>
+      <span class="table-card__name">refund_workflow_actions</span>
+      <span class="table-card__desc">Bitácora append-only de todo lo que pasó: quién, cuándo, con qué comentario y qué movimiento de monto. Nunca se actualiza ni se corrige.</span>
+    </li>
+    <li class="table-card">
+      <span class="table-card__layer">Workflow</span>
+      <span class="table-card__name">refund_order_detail_decisions</span>
+      <span class="table-card__desc">Evidencia inmutable de la selección del Nivel 1: por cada línea, si quedó seleccionada o si se fue a la nota disociada.</span>
+    </li>
+  </ul>
+
+  <div class="diagram">
+    <pre class="mermaid">
+erDiagram
+    refund_orders ||--o{ refund_orders : "disocia en"
+    refund_orders ||--o{ refund_order_details : "contiene"
+    refund_orders ||--o{ refund_workflow_instances : "acumula intentos"
+    refund_order_details ||--o{ refund_order_details : "origina copia"
+    refund_order_details ||--o{ refund_order_detail_sources : "se respalda en"
+    refund_order_details ||--o{ refund_order_detail_photos : "documenta con"
+    refund_order_details ||--o{ refund_order_detail_decisions : "recibe decision"
+    refund_reasons ||--o{ refund_order_details : "clasifica"
+    refund_workflow_instances ||--o{ refund_workflow_instances : "reactiva"
+    refund_workflow_instances ||--o{ refund_workflow_instance_levels : "materializa"
+    refund_workflow_instances ||--o{ refund_workflow_actions : "registra"
+    refund_workflow_instance_levels ||--o{ refund_workflow_actions : "contextualiza"
+    refund_workflow_actions ||--o{ refund_order_detail_decisions : "respalda"
+
+    refund_orders {
+        BIGINT id PK
+        VARCHAR note_number
+        SMALLINT split_sequence
+        BIGINT source_refund_order_id FK
+        VARCHAR document_type
+        VARCHAR status
+        BIGINT distributor_id FK
+        BIGINT seller_employee_id
+        VARCHAR seller_name_snapshot
+        BIGINT owner_id
+        VARCHAR owner_name_snapshot
+        BIGINT customer_id
+        VARCHAR customer_name_snapshot
+        DATE replacement_date
+        TEXT justification
+        DECIMAL total
+        TIMESTAMP rejected_at
+        TIMESTAMP reactivation_expires_at
+        VARCHAR created_by
+        VARCHAR updated_by
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+        TIMESTAMP deleted_at
+    }
+
+    refund_order_details {
+        BIGINT id PK
+        BIGINT refund_order_id FK
+        BIGINT source_detail_id FK
+        BIGINT product_id
+        VARCHAR product_code
+        VARCHAR product_name_snapshot
+        DECIMAL source_quantity
+        DECIMAL quantity
+        DECIMAL price_unit
+        VARCHAR unit_of_measure
+        VARCHAR minimum_unit_of_measure
+        DECIMAL units_per_unit
+        VARCHAR line_status
+        VARCHAR reason FK
+        TEXT notes
+        VARCHAR created_by
+        VARCHAR updated_by
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+        TIMESTAMP deleted_at
+    }
+
+    refund_order_detail_sources {
+        BIGINT id PK
+        BIGINT refund_order_detail_id FK
+        VARCHAR invoice_number
+        VARCHAR invoice_sap_doc
+        DATE invoiced_at
+        VARCHAR lot
+        DATE due_date
+        DECIMAL quantity
+        VARCHAR created_by
+        VARCHAR updated_by
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+        TIMESTAMP deleted_at
+    }
+
+    refund_order_detail_photos {
+        BIGINT id PK
+        BIGINT refund_order_detail_id FK
+        VARCHAR storage_key UK
+        VARCHAR content_type
+        BIGINT size_bytes
+        SMALLINT sort_order
+        TIMESTAMP taken_at
+        VARCHAR uploaded_by
+        TIMESTAMP created_at
+        TIMESTAMP deleted_at
+    }
+
+    refund_reasons {
+        VARCHAR code PK
+        VARCHAR name
+        VARCHAR lot_requirement
+        VARCHAR due_date_requirement
+        BOOLEAN requires_photo
+        BOOLEAN requires_notes
+        SMALLINT sort_order
+        BOOLEAN is_active
+    }
+
+    refund_approval_levels {
+        BIGINT id PK
+        BIGINT workflow_version_id
+        SMALLINT level_order
+        VARCHAR name
+        VARCHAR role_code
+        DECIMAL activation_min_amount
+        VARCHAR approval_policy
+        SMALLINT required_approvals
+        VARCHAR on_reject
+        SMALLINT sla_hours
+        BOOLEAN is_active
+    }
+
+    refund_workflow_instances {
+        BIGINT id PK
+        BIGINT refund_order_id FK
+        SMALLINT attempt
+        VARCHAR status
+        SMALLINT current_level_order
+        BIGINT reactivated_from_instance_id FK
+        TIMESTAMP started_at
+        TIMESTAMP finished_at
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+        TIMESTAMP deleted_at
+    }
+
+    refund_workflow_instance_levels {
+        BIGINT id PK
+        BIGINT workflow_instance_id FK
+        SMALLINT level_order
+        VARCHAR level_name
+        VARCHAR role_code
+        DECIMAL min_amount
+        DECIMAL max_amount
+        VARCHAR approval_policy
+        SMALLINT required_approvals
+        VARCHAR on_reject
+        SMALLINT sla_hours
+        VARCHAR decision_mode
+        VARCHAR status
+        TIMESTAMP first_viewed_at
+        VARCHAR first_viewed_by
+        TIMESTAMP started_at
+        TIMESTAMP finished_at
+    }
+
+    refund_workflow_actions {
+        BIGINT id PK
+        BIGINT workflow_instance_id FK
+        BIGINT workflow_instance_level_id FK
+        BIGINT related_refund_order_id FK
+        VARCHAR action
+        VARCHAR actor_employee_code
+        VARCHAR actor_name_snapshot
+        VARCHAR actor_role_code
+        TEXT system_summary
+        TEXT comment
+        TEXT reason
+        VARCHAR previous_status
+        VARCHAR new_status
+        DECIMAL amount_before
+        DECIMAL amount_after
+        TIMESTAMP created_at
+    }
+
+    refund_order_detail_decisions {
+        BIGINT id PK
+        BIGINT workflow_action_id FK
+        BIGINT refund_order_detail_id FK
+        VARCHAR decision
+        TIMESTAMP created_at
+    }
+    </pre>
+  </div>
+
+  <p class="callout"><span class="mono">refund_approval_levels</span> aparece en el diagrama sin ninguna relación dibujada, y es a propósito: es configuración, no runtime. Cuando arranca un intento, sus niveles se copian a <span class="mono">refund_workflow_instance_levels</span> con monto, política, cantidad de aprobaciones, comportamiento al rechazar y SLA ya resueltos. Desde ahí en adelante el intento vive de esa copia, así que cambiar la configuración después no reescribe los documentos en curso y no hace falta una FK hacia el runtime.</p>
+
+  <h3 class="card__sub">refund_orders</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Lo genera nuestro servicio, no Sales. El endpoint de creación lo devuelve.</td></tr>
+        <tr><td class="mono">note_number</td><td class="mono">VARCHAR</td><td>Lo genera nuestro servicio. No es único por sí solo: la original y sus disociadas lo comparten.</td></tr>
+        <tr><td class="mono">split_sequence</td><td class="mono">SMALLINT</td><td>0 en la original, se incrementa en cada disociada. Junto con el número forma la clave única.</td></tr>
+        <tr><td class="mono">source_refund_order_id</td><td class="mono">BIGINT FK nullable</td><td>Nulo en la original. En la disociada apunta a la nota de la que salió.</td></tr>
+        <tr><td class="mono">document_type</td><td class="mono">VARCHAR</td><td>CHECK de catálogo: ORIGINAL o DISSOCIATED. Solo DISSOCIATED admite edición de cantidades.</td></tr>
+        <tr><td class="mono">status</td><td class="mono">VARCHAR</td><td>Estado del documento, con CHECK de catálogo: IN_APPROVAL, EDITING, APPROVED, REJECTED, CANCELLED. Acompaña al de la instancia abierta: pasa a APPROVED al cerrar aprobada, a REJECTED al rechazar con TERMINATE y a CANCELLED al anular.</td></tr>
+        <tr><td class="mono">distributor_id</td><td class="mono">BIGINT FK</td><td>Única FK real hacia otro dominio: <span class="mono">distributors.id</span>. Distribuidora bajo la que se registró la nota.</td></tr>
+        <tr><td class="mono">seller_employee_id</td><td class="mono">BIGINT</td><td>Vendedor que registró la devolución. Referencia lógica a un servicio externo, sin FK.</td></tr>
+        <tr><td class="mono">seller_name_snapshot</td><td class="mono">VARCHAR</td><td>Nombre del vendedor al momento de registrar. Fotografía histórica para el documento.</td></tr>
+        <tr><td class="mono">owner_id</td><td class="mono">BIGINT</td><td>Propietario mostrado en pantalla. Referencia lógica, sin tabla local ni FK.</td></tr>
+        <tr><td class="mono">owner_name_snapshot</td><td class="mono">VARCHAR</td><td>Nombre histórico del propietario. Sobrevive a los cambios del sistema de origen.</td></tr>
+        <tr><td class="mono">customer_id</td><td class="mono">BIGINT</td><td>Cliente mostrado en pantalla. Referencia lógica, sin tabla local ni FK.</td></tr>
+        <tr><td class="mono">customer_name_snapshot</td><td class="mono">VARCHAR</td><td>Nombre histórico del cliente al momento de registrar.</td></tr>
+        <tr><td class="mono">replacement_date</td><td class="mono">DATE</td><td>Fecha de reposición declarada al registrar la devolución.</td></tr>
+        <tr><td class="mono">justification</td><td class="mono">TEXT</td><td>Justificación del documento. En una disociada en edición el vendedor puede modificarla.</td></tr>
+        <tr><td class="mono">total</td><td class="mono">DECIMAL</td><td>Único total del documento. Se recalcula al disociar y al reenviar una disociada editada.</td></tr>
+        <tr><td class="mono">rejected_at</td><td class="mono">TIMESTAMP nullable</td><td>Se escribe al rechazar con TERMINATE. Nulo mientras la nota no fue rechazada.</td></tr>
+        <tr><td class="mono">reactivation_expires_at</td><td class="mono">TIMESTAMP nullable</td><td>Se calcula al rechazar. La reactivación exige estar dentro de la ventana o tener permiso especial.</td></tr>
+        <tr><td class="mono">created_by</td><td class="mono">VARCHAR</td><td>Auditoría de creación.</td></tr>
+        <tr><td class="mono">updated_by</td><td class="mono">VARCHAR</td><td>Auditoría de última modificación.</td></tr>
+        <tr><td class="mono">created_at</td><td class="mono">TIMESTAMP</td><td>Fecha de registro de la nota.</td></tr>
+        <tr><td class="mono">updated_at</td><td class="mono">TIMESTAMP</td><td>Fecha de última modificación.</td></tr>
+        <tr><td class="mono">deleted_at</td><td class="mono">TIMESTAMP nullable</td><td>Borrado lógico. Las líneas nunca se eliminan físicamente.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="callout">La instancia activa no se guarda como puntero en la nota: se obtiene consultando <span class="mono">refund_workflow_instances</span>, donde un índice único parcial garantiza que exista como máximo una instancia abierta por nota.</p>
+
+  <h3 class="card__sub">refund_order_details</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador de la línea.</td></tr>
+        <tr><td class="mono">refund_order_id</td><td class="mono">BIGINT FK</td><td>Nota a la que pertenece la línea.</td></tr>
+        <tr><td class="mono">source_detail_id</td><td class="mono">BIGINT FK nullable</td><td>Nulo en la nota original. En la disociada apunta a la línea de la que fue copiada, y por ahí se heredan las fotografías.</td></tr>
+        <tr><td class="mono">product_id</td><td class="mono">BIGINT</td><td>Producto devuelto. Referencia al catálogo externo.</td></tr>
+        <tr><td class="mono">product_code</td><td class="mono">VARCHAR</td><td>Fotografía histórica del código: el catálogo externo puede cambiar.</td></tr>
+        <tr><td class="mono">product_name_snapshot</td><td class="mono">VARCHAR</td><td>Fotografía histórica del nombre del producto.</td></tr>
+        <tr><td class="mono">source_quantity</td><td class="mono">DECIMAL</td><td>CHECK <span class="mono">source_quantity &gt; 0</span>. Es el techo: la cantidad vigente nunca puede superarla.</td></tr>
+        <tr><td class="mono">quantity</td><td class="mono">DECIMAL</td><td>CHECK <span class="mono">quantity &gt; 0</span> y <span class="mono">quantity &lt;= source_quantity</span>. El vendedor solo puede reducirla, nunca aumentarla.</td></tr>
+        <tr><td class="mono">price_unit</td><td class="mono">DECIMAL</td><td>CHECK <span class="mono">price_unit &gt;= 0</span>. Queda congelado: todo se valora con este precio y ningún nivel lo modifica.</td></tr>
+        <tr><td class="mono">unit_of_measure</td><td class="mono">VARCHAR nullable</td><td>Unidad de medida declarada, opcional.</td></tr>
+        <tr><td class="mono">minimum_unit_of_measure</td><td class="mono">VARCHAR nullable</td><td>Unidad mínima, opcional.</td></tr>
+        <tr><td class="mono">units_per_unit</td><td class="mono">DECIMAL nullable</td><td>Factor de conversión entre la unidad y la unidad mínima, opcional.</td></tr>
+        <tr><td class="mono">line_status</td><td class="mono">VARCHAR</td><td>CHECK <span class="mono">line_status IN ('ACTIVE','DISSOCIATED')</span>. La línea no seleccionada queda DISSOCIATED, no se borra.</td></tr>
+        <tr><td class="mono">reason</td><td class="mono">VARCHAR FK</td><td>Apunta a <span class="mono">refund_reasons.code</span>. Ya no admite texto libre.</td></tr>
+        <tr><td class="mono">notes</td><td class="mono">TEXT</td><td>Observaciones de la línea. Obligatorias si el motivo lo exige. Editables solo en una disociada en edición.</td></tr>
+        <tr><td class="mono">created_by · updated_by</td><td class="mono">VARCHAR</td><td>Auditoría de la línea.</td></tr>
+        <tr><td class="mono">created_at · updated_at</td><td class="mono">TIMESTAMP</td><td>Auditoría temporal.</td></tr>
+        <tr><td class="mono">deleted_at</td><td class="mono">TIMESTAMP nullable</td><td>Borrado lógico. El vendedor no puede eliminar líneas físicamente.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="card__sub">refund_order_detail_sources</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador del origen.</td></tr>
+        <tr><td class="mono">refund_order_detail_id</td><td class="mono">BIGINT FK</td><td>Línea que este origen respalda.</td></tr>
+        <tr><td class="mono">invoice_number</td><td class="mono">VARCHAR nullable</td><td>Número de factura. Puede faltar si hay documento SAP o lote.</td></tr>
+        <tr><td class="mono">invoice_sap_doc</td><td class="mono">VARCHAR nullable</td><td>Documento SAP de la factura. Puede faltar si hay número de factura o lote.</td></tr>
+        <tr><td class="mono">invoiced_at</td><td class="mono">DATE nullable</td><td>Fecha de facturación congelada al crear la devolución.</td></tr>
+        <tr><td class="mono">lot</td><td class="mono">VARCHAR nullable</td><td>Lote. Obligatorio cuando el motivo lo exige por <span class="mono">lot_requirement</span>.</td></tr>
+        <tr><td class="mono">due_date</td><td class="mono">DATE nullable</td><td>Vencimiento. Obligatorio cuando el motivo lo exige por <span class="mono">due_date_requirement</span>.</td></tr>
+        <tr><td class="mono">quantity</td><td class="mono">DECIMAL</td><td>CHECK <span class="mono">quantity &gt; 0</span>. La suma de los orígenes de una línea tiene que dar exactamente la cantidad del detalle.</td></tr>
+        <tr><td class="mono">created_by · updated_by</td><td class="mono">VARCHAR</td><td>Auditoría del origen.</td></tr>
+        <tr><td class="mono">created_at · updated_at</td><td class="mono">TIMESTAMP</td><td>Auditoría temporal.</td></tr>
+        <tr><td class="mono">deleted_at</td><td class="mono">TIMESTAMP nullable</td><td>Borrado lógico.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="card__desc">Además hay un CHECK a nivel de fila: <span class="mono">invoice_number IS NOT NULL OR invoice_sap_doc IS NOT NULL OR lot IS NOT NULL</span>. Un origen sin ninguna de las tres referencias no identifica nada. Así llega la línea en el contrato HTTP, con sus orígenes anidados:</p>
+  <pre class="code">{ "productId": 501, "quantity": 15,
+  "sources": [
+    { "invoiceNumber": "F-100", "invoiceSapDoc": "100", "invoicedAt": "2026-08-01", "lot": "L01", "dueDate": "2027-01-01", "quantity": 10 },
+    { "invoiceNumber": "F-200", "invoiceSapDoc": "200", "invoicedAt": "2026-08-10", "lot": "L02", "dueDate": "2027-02-01", "quantity": 5 }
+  ] }</pre>
+  <p class="callout">La misma información tiene dos formas y conviene no confundirlas. En el contrato HTTP <span class="mono">sources</span> es un <strong>array anidado dentro de la línea</strong>. En PostgreSQL es <strong>una fila por origen</strong> en <span class="mono">refund_order_detail_sources</span>, cada una apuntando al detalle. La creación inserta el array como filas dentro de la misma transacción, y esa transacción valida <span class="mono">SUM(sources.quantity) = refund_order_details.quantity</span>. La regla vale también al editar: si el vendedor reduce la cantidad de la línea, ajusta las cantidades de sus orígenes en la misma transacción y la suma tiene que seguir coincidiendo exactamente. Lo que no puede hacer es inventar una factura o un lote que no venía en la nota de origen. Antes de crear la devolución las facturas y lotes elegibles pertenecen a SAP, que calcula la elegibilidad; al crearla, la selección utilizada queda congelada localmente acá.</p>
+
+  <h3 class="card__sub">refund_order_detail_photos</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador de la fotografía.</td></tr>
+        <tr><td class="mono">refund_order_detail_id</td><td class="mono">BIGINT FK</td><td>Línea a la que la fotografía pertenece de forma propia.</td></tr>
+        <tr><td class="mono">storage_key</td><td class="mono">VARCHAR UNIQUE</td><td>Clave del archivo en el almacenamiento. Es única, y por eso el mismo archivo no puede registrarse dos veces.</td></tr>
+        <tr><td class="mono">content_type</td><td class="mono">VARCHAR nullable</td><td>Tipo MIME, opcional.</td></tr>
+        <tr><td class="mono">size_bytes</td><td class="mono">BIGINT nullable</td><td>Tamaño del archivo, opcional.</td></tr>
+        <tr><td class="mono">sort_order</td><td class="mono">SMALLINT</td><td>Orden de presentación de la galería.</td></tr>
+        <tr><td class="mono">taken_at</td><td class="mono">TIMESTAMP nullable</td><td>Fecha de captura, opcional.</td></tr>
+        <tr><td class="mono">uploaded_by</td><td class="mono">VARCHAR nullable</td><td>Quién subió el archivo, opcional.</td></tr>
+        <tr><td class="mono">created_at</td><td class="mono">TIMESTAMP</td><td>Fecha de registro.</td></tr>
+        <tr><td class="mono">deleted_at</td><td class="mono">TIMESTAMP nullable</td><td>Borrado lógico.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="callout">No hace falta guardar la <span class="mono">url</span> si puede derivarse de <span class="mono">storage_key</span>. Y en la disociación <strong>el archivo no se duplica</strong>: la línea de la nota disociada hereda las fotografías siguiendo su <span class="mono">source_detail_id</span> hacia la línea original. Si el vendedor agrega fotografías nuevas mientras edita, esas sí se guardan asociadas al detalle disociado. Al consultar el detalle, la respuesta devuelve las propias más las heredadas.</p>
+
+  <h3 class="card__sub">refund_workflow_instances</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador del intento.</td></tr>
+        <tr><td class="mono">refund_order_id</td><td class="mono">BIGINT FK</td><td>Nota a la que pertenece el intento.</td></tr>
+        <tr><td class="mono">attempt</td><td class="mono">SMALLINT</td><td>Arranca en 1 y se incrementa en cada reactivación. De acá sale el número de reactivaciones, sin contador aparte.</td></tr>
+        <tr><td class="mono">status</td><td class="mono">VARCHAR</td><td>CHECK de catálogo: EDITING, IN_APPROVAL, APPROVED, REJECTED, CANCELLED.</td></tr>
+        <tr><td class="mono">current_level_order</td><td class="mono">SMALLINT</td><td>Nivel activo. Nulo en una disociada recién creada y en cualquier instancia cerrada.</td></tr>
+        <tr><td class="mono">reactivated_from_instance_id</td><td class="mono">BIGINT FK nullable</td><td>Apunta al intento rechazado del que nació esta reactivación. El intento anterior queda inmutable.</td></tr>
+        <tr><td class="mono">started_at</td><td class="mono">TIMESTAMP</td><td>Inicio del intento.</td></tr>
+        <tr><td class="mono">finished_at</td><td class="mono">TIMESTAMP</td><td>Cierre del intento. Se completa al aprobar, rechazar con TERMINATE o cancelar.</td></tr>
+        <tr><td class="mono">created_at · updated_at</td><td class="mono">TIMESTAMP</td><td>Auditoría temporal.</td></tr>
+        <tr><td class="mono">deleted_at</td><td class="mono">TIMESTAMP nullable</td><td>Borrado lógico.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="card__desc">La disociada nace en <span class="mono">EDITING</span> y sin nivel activo. La original nace en <span class="mono">IN_APPROVAL</span> con el Nivel 1 activo. Solo puede existir una instancia abierta por nota, y una reactivación siempre crea otra instancia en vez de reabrir la anterior.</p>
+
+  <h3 class="card__sub">refund_workflow_instance_levels</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador del nivel materializado.</td></tr>
+        <tr><td class="mono">workflow_instance_id</td><td class="mono">BIGINT FK</td><td>Intento al que pertenece el nivel.</td></tr>
+        <tr><td class="mono">level_order</td><td class="mono">SMALLINT</td><td>Posición del nivel en la escalera, de 1 a 4.</td></tr>
+        <tr><td class="mono">level_name</td><td class="mono">VARCHAR</td><td>Nombre copiado de la configuración al arrancar el intento.</td></tr>
+        <tr><td class="mono">role_code</td><td class="mono">VARCHAR</td><td>Rol que decide. Los aprobadores concretos se resuelven por rol, no se persisten.</td></tr>
+        <tr><td class="mono">min_amount</td><td class="mono">DECIMAL</td><td>Monto desde el cual el nivel se activa, congelado en el intento.</td></tr>
+        <tr><td class="mono">max_amount</td><td class="mono">DECIMAL</td><td>Techo del tramo, congelado en el intento.</td></tr>
+        <tr><td class="mono">approval_policy</td><td class="mono">VARCHAR</td><td>CHECK de catálogo. Define si alcanza una firma o si se exigen varias.</td></tr>
+        <tr><td class="mono">required_approvals</td><td class="mono">SMALLINT</td><td>Cantidad de firmas necesarias. Una persona firma una sola vez por nivel.</td></tr>
+        <tr><td class="mono">on_reject</td><td class="mono">VARCHAR</td><td>CHECK de catálogo con solo dos valores: TERMINATE y RETURN_PREVIOUS. El Nivel 1 no puede usar RETURN_PREVIOUS.</td></tr>
+        <tr><td class="mono">sla_hours</td><td class="mono">SMALLINT</td><td>Plazo esperado de decisión, copiado de la configuración.</td></tr>
+        <tr><td class="mono">decision_mode</td><td class="mono">VARCHAR</td><td>CHECK de catálogo. <span class="mono">ITEM_SELECTION</span> solo en el Nivel 1 del primer intento de una nota ORIGINAL; <span class="mono">DOCUMENT_DECISION</span> en los niveles 2 a 4, en las disociadas, en los intentos reactivados y en los niveles que regresan por RETURN_PREVIOUS.</td></tr>
+        <tr><td class="mono">status</td><td class="mono">VARCHAR</td><td>CHECK de catálogo: PENDING el nivel al que todavía no llegó el documento, ACTIVE el vigente, y APPROVED, REJECTED o SKIPPED los cerrados. Una instancia cerrada no puede dejar ningún nivel ACTIVE.</td></tr>
+        <tr><td class="mono">first_viewed_at</td><td class="mono">TIMESTAMP</td><td>Primera apertura del nivel. Abrir no cambia estados del documento.</td></tr>
+        <tr><td class="mono">first_viewed_by</td><td class="mono">VARCHAR</td><td>Quién lo abrió primero.</td></tr>
+        <tr><td class="mono">started_at</td><td class="mono">TIMESTAMP</td><td>Activación del nivel.</td></tr>
+        <tr><td class="mono">finished_at</td><td class="mono">TIMESTAMP</td><td>Cierre del nivel.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="card__sub">refund_workflow_actions</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador de la acción. La tabla es append-only.</td></tr>
+        <tr><td class="mono">workflow_instance_id</td><td class="mono">BIGINT FK</td><td>Intento en el que ocurrió la acción. Permite agrupar el historial por intento.</td></tr>
+        <tr><td class="mono">workflow_instance_level_id</td><td class="mono">BIGINT FK nullable</td><td>Nivel en el que ocurrió, cuando aplica. Las acciones fuera de un nivel lo dejan nulo.</td></tr>
+        <tr><td class="mono">related_refund_order_id</td><td class="mono">BIGINT FK nullable</td><td>Se usa únicamente en <span class="mono">DISSOCIATED_CREATED</span>, para apuntar a la nota disociada recién creada.</td></tr>
+        <tr><td class="mono">action</td><td class="mono">VARCHAR</td><td>CHECK de catálogo: CREATED, VIEWED, LEVEL1_ITEM_SELECTION, DISSOCIATED_CREATED, APPROVE, REJECT, RETURNED_PREVIOUS, SELLER_RESUBMITTED, AUTO_ROUTED, REACTIVATE, CANCEL, COMMENT, CLOSED.</td></tr>
+        <tr><td class="mono">actor_employee_code</td><td class="mono">VARCHAR nullable</td><td>Nulo en las acciones automáticas del sistema.</td></tr>
+        <tr><td class="mono">actor_name_snapshot</td><td class="mono">VARCHAR nullable</td><td>Nombre histórico del actor. Nulo en las acciones automáticas.</td></tr>
+        <tr><td class="mono">actor_role_code</td><td class="mono">VARCHAR nullable</td><td>Rol con el que actuó. Nulo en las acciones automáticas.</td></tr>
+        <tr><td class="mono">system_summary</td><td class="mono">TEXT</td><td>Resumen generado por el sistema para leer la bitácora sin interpretar campos sueltos.</td></tr>
+        <tr><td class="mono">comment</td><td class="mono">TEXT</td><td>Comentario libre de quien decide.</td></tr>
+        <tr><td class="mono">reason</td><td class="mono">TEXT</td><td>Obligatorio en REJECT, REACTIVATE y CANCEL.</td></tr>
+        <tr><td class="mono">previous_status</td><td class="mono">VARCHAR</td><td>Estado antes de la acción.</td></tr>
+        <tr><td class="mono">new_status</td><td class="mono">VARCHAR</td><td>Estado después de la acción.</td></tr>
+        <tr><td class="mono">amount_before</td><td class="mono">DECIMAL</td><td>Monto antes de la acción. Los movimientos de monto del historial salen de acá.</td></tr>
+        <tr><td class="mono">amount_after</td><td class="mono">DECIMAL</td><td>Monto después de la acción.</td></tr>
+        <tr><td class="mono">created_at</td><td class="mono">TIMESTAMP</td><td>Es la fecha efectiva de la acción. No existe otro campo de fecha en la tabla.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="card__sub">refund_order_detail_decisions</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador de la decisión por línea.</td></tr>
+        <tr><td class="mono">workflow_action_id</td><td class="mono">BIGINT FK</td><td>Acción <span class="mono">LEVEL1_ITEM_SELECTION</span> que produjo la decisión. Cuelga de la bitácora, así que hereda su inmutabilidad.</td></tr>
+        <tr><td class="mono">refund_order_detail_id</td><td class="mono">BIGINT FK</td><td>Línea decidida.</td></tr>
+        <tr><td class="mono">decision</td><td class="mono">VARCHAR</td><td>CHECK de catálogo: SELECTED o DISSOCIATED. Es binaria y por línea completa.</td></tr>
+        <tr><td class="mono">created_at</td><td class="mono">TIMESTAMP</td><td>Momento de la selección.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="card__desc">No hay <span class="mono">approved_quantity</span> ni <span class="mono">approved_amount</span>: el Nivel 1 selecciona líneas completas, no cantidades ni montos parciales dentro de una línea.</p>
+
+  <h3 class="card__sub">refund_reasons</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">code</td><td class="mono">VARCHAR PK</td><td>Clave del motivo. Es lo que referencia <span class="mono">refund_order_details.reason</span>.</td></tr>
+        <tr><td class="mono">name</td><td class="mono">VARCHAR</td><td>Etiqueta visible del motivo.</td></tr>
+        <tr><td class="mono">lot_requirement</td><td class="mono">VARCHAR</td><td>Define si el motivo exige lote en los orígenes de la línea.</td></tr>
+        <tr><td class="mono">due_date_requirement</td><td class="mono">VARCHAR</td><td>Define si el motivo exige fecha de vencimiento en los orígenes.</td></tr>
+        <tr><td class="mono">requires_photo</td><td class="mono">BOOLEAN</td><td>Si es verdadero, la línea no se acepta sin fotografía.</td></tr>
+        <tr><td class="mono">requires_notes</td><td class="mono">BOOLEAN</td><td>Si es verdadero, la línea no se acepta sin observaciones.</td></tr>
+        <tr><td class="mono">sort_order</td><td class="mono">SMALLINT</td><td>Orden de presentación en el formulario.</td></tr>
+        <tr><td class="mono">is_active</td><td class="mono">BOOLEAN</td><td>Un motivo inactivo deja de ofrecerse sin romper las notas históricas que lo usan.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="card__sub">refund_approval_levels</h3>
+  <div class="scroll">
+    <table class="fields">
+      <thead><tr><th>Campo</th><th>Tipo</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td class="mono">BIGINT PK</td><td>Identificador del nivel configurado.</td></tr>
+        <tr><td class="mono">workflow_version_id</td><td class="mono">BIGINT</td><td>Versión de la configuración a la que pertenece el nivel.</td></tr>
+        <tr><td class="mono">level_order</td><td class="mono">SMALLINT</td><td>Posición en la escalera: LVL1 Analista de Experiencia al Usuario, LVL2 Gerente de Experiencia al Usuario, LVL3 Gerente Comercial, LVL4 Gerente General.</td></tr>
+        <tr><td class="mono">name</td><td class="mono">VARCHAR</td><td>Nombre del nivel, que se copia al intento.</td></tr>
+        <tr><td class="mono">role_code</td><td class="mono">VARCHAR</td><td>Rol que decide en ese nivel. Los aprobadores se resuelven por rol.</td></tr>
+        <tr><td class="mono">activation_min_amount</td><td class="mono">DECIMAL</td><td>Monto desde el cual el nivel entra en juego. Los montos siguen siendo configurables.</td></tr>
+        <tr><td class="mono">approval_policy</td><td class="mono">VARCHAR</td><td>CHECK de catálogo. Define si alcanza una firma o si el nivel exige varias.</td></tr>
+        <tr><td class="mono">required_approvals</td><td class="mono">SMALLINT</td><td>Cantidad de firmas requeridas para dar por cerrado el nivel.</td></tr>
+        <tr><td class="mono">on_reject</td><td class="mono">VARCHAR</td><td>CHECK de catálogo con dos valores únicamente: TERMINATE y RETURN_PREVIOUS.</td></tr>
+        <tr><td class="mono">sla_hours</td><td class="mono">SMALLINT</td><td>Plazo esperado de decisión del nivel.</td></tr>
+        <tr><td class="mono">is_active</td><td class="mono">BOOLEAN</td><td>Un nivel inactivo deja de materializarse en los intentos nuevos, sin tocar los que ya están en curso.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</article>
+
+<article class="card" id="ddl">
+  <span class="card__eyebrow">Integridad</span>
+  <h2 class="card__title">Lo que declara la base</h2>
+  <p class="card__desc">Buena parte de las reglas de este módulo no viven en el servicio: viven en la base, como claves únicas, índices parciales y CHECK de catálogo. Esto es lo que el esquema declara y por qué.</p>
+
+  <ul class="rules">
+    <li><strong><span class="mono">UNIQUE (note_number, split_sequence)</span>.</strong> El número de nota por sí solo no puede ser único, porque la original y todas sus disociadas lo comparten: son el mismo documento de negocio partido en dos. Lo que distingue una fila de otra es el correlativo: 0 para la original y 1 en adelante para cada disociada. La unicidad se declara sobre el par.</li>
+    <li><strong>Índice único parcial de una sola instancia abierta por nota.</strong> Se declara sobre <span class="mono">refund_workflow_instances (refund_order_id)</span> con la condición <span class="mono">status IN ('EDITING','IN_APPROVAL')</span>. Reemplaza al puntero que antes vivía en la nota: en vez de mantener a mano una columna que apunte a la instancia vigente —y arriesgarse a que quede desincronizada—, la instancia activa se obtiene consultando la única fila abierta, y la base garantiza que nunca haya dos. Los intentos cerrados quedan fuera del índice, así que una nota puede acumular todos los intentos que haga falta.</li>
+    <li><strong>FK real <span class="mono">refund_orders.distributor_id → distributors.id</span>.</strong> La distribuidora sí es una tabla nuestra, así que la relación se declara de verdad y la base impide registrar una nota bajo una distribuidora que no existe.</li>
+    <li><strong>Vendedor, propietario y cliente son referencias lógicas, sin FK.</strong> Viven en servicios externos y no tienen tabla local, así que no hay integridad referencial que declarar. Lo que sí se guarda es <span class="mono">seller_name_snapshot</span>, <span class="mono">owner_name_snapshot</span> y <span class="mono">customer_name_snapshot</span>: el nombre tal como estaba al registrar. Eso permite mostrar el documento histórico aunque los otros sistemas renombren, fusionen o den de baja al empleado o al cliente.</li>
+    <li><strong>CHECK de catálogo en todas las columnas de dominio cerrado.</strong> <span class="mono">document_type</span> (ORIGINAL, DISSOCIATED), <span class="mono">status</span> del documento, <span class="mono">line_status</span> (ACTIVE, DISSOCIATED), <span class="mono">decision_mode</span> (ITEM_SELECTION, DOCUMENT_DECISION), el <span class="mono">status</span> del nivel (PENDING, ACTIVE, APPROVED, REJECTED, SKIPPED), <span class="mono">approval_policy</span>, <span class="mono">on_reject</span> con solo dos valores —TERMINATE y RETURN_PREVIOUS—, <span class="mono">action</span> con las trece acciones de la bitácora y <span class="mono">decision</span> con SELECTED y DISSOCIATED. Ninguna de esas columnas admite un valor que el servicio no sepa interpretar.</li>
+    <li><strong>CHECK de coherencia del split.</strong> Una nota ORIGINAL lleva <span class="mono">split_sequence = 0</span> y <span class="mono">source_refund_order_id</span> nulo; una DISSOCIATED lleva <span class="mono">split_sequence &gt; 0</span> y <span class="mono">source_refund_order_id</span> obligatorio. La base no deja registrar una disociada huérfana ni una original que apunte a un padre.</li>
+    <li><strong>CHECK de instancia cerrada sin nivel activo.</strong> Si <span class="mono">status</span> está en APPROVED, REJECTED o CANCELLED, <span class="mono">current_level_order</span> tiene que ser nulo. No puede quedar un intento terminado con un nivel esperando decisión.</li>
+    <li><strong>Motivo obligatorio en REJECT, REACTIVATE y CANCEL.</strong> Un CHECK sobre <span class="mono">refund_workflow_actions</span> exige <span class="mono">reason</span> no nulo en esas tres acciones. Son las tres que cortan o reabren el recorrido, y ninguna puede quedar sin explicación en el historial.</li>
+    <li><strong><span class="mono">related_refund_order_id</span> solo en <span class="mono">DISSOCIATED_CREATED</span>.</strong> Un CHECK lo obliga a ser nulo en cualquier otra acción. Es el único caso donde una acción se refiere a otra nota además de la suya: el momento en que la selección parcial crea la disociada.</li>
+    <li><strong>Una firma por persona y por nivel.</strong> Un índice único sobre el nivel del intento y el actor impide que la misma persona firme dos veces el mismo nivel para llegar al número de aprobaciones requeridas.</li>
+    <li><strong><span class="mono">refund_workflow_actions</span> es append-only.</strong> No se actualiza nunca, no tiene columnas de modificación y no se presenta como tabla editable. Corregir el pasado no es actualizar una fila: es agregar otra acción. Por eso <span class="mono">created_at</span> alcanza como fecha efectiva y las decisiones por línea cuelgan de la acción, heredando su inmutabilidad.</li>
+  </ul>
+
+  <p class="callout">El script de creación elimina el esquema completo al principio, así que no lleva ningún <span class="mono">DROP TABLE refund_orders CASCADE</span> suelto antes de crear: sería redundante y da la falsa impresión de que esa tabla necesita un trato aparte.</p>
+</article>
+<article class="card" id="e01">
+  <p class="card__eyebrow">Endpoint 01</p>
+  <h2 class="card__title">Registro de la devolución</h2>
+  <p class="card__route">POST /api/v1/refunds — intake desde Sales</p>
+  <p class="card__desc">Sales tiene un único formulario de registro y no selecciona una venta previa ni envía identificadores propios: el documento nace acá. Nuestro servicio genera el <span class="mono">id</span> y el <span class="mono">note_number</span>, congela los nombres de vendedor, propietario y cliente, y persiste la evidencia elegida (facturas, lotes y fotografías) que hasta ese momento vivía en SAP. La nota nace como <span class="mono">ORIGINAL</span> con <span class="mono">split_sequence = 0</span> y su instancia de workflow arranca en <span class="mono">IN_APPROVAL</span> con el Nivel 1 activo en modo <span class="mono">ITEM_SELECTION</span>.</p>
+  <ul class="chips">
+    <li class="chip">refund_reasons</li>
+    <li class="chip">refund_approval_levels</li>
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+    <li class="chip">refund_order_detail_photos</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Vendedor
+    participant Sales as App Sales
+    participant GW as Gateway Controller
+    participant SVC as RefundOrderService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant REA as refund_reasons DB
+    participant LVL as refund_approval_levels DB
+    participant RO as refund_orders DB
+    participant ROD as refund_order_details DB
+    participant SRC as refund_order_detail_sources DB
+    participant PH as refund_order_detail_photos DB
+    participant WI as refund_workflow_instances DB
+    participant WIL as refund_workflow_instance_levels DB
+    participant ACT as refund_workflow_actions DB
+
+    Vendedor->>Sales: 1. completa el formulario de devolución
+    Sales->>GW: 2. POST /api/v1/refunds (payload)
+    GW->>SVC: 3. create(dto, actor)
+    Note right of SVC: Sin identificador externo de venta<br/>El header Idempotency-Key sería una<br/>preocupación técnica del endpoint —<br/>hoy no está en el modelo de datos
+    SVC->>REA: 4. findActiveByCodes(reasons[])
+    REA-->>SVC: 4.1 motivos con lot_requirement,<br/>due_date_requirement, requires_photo,<br/>requires_notes
+    Note right of SVC: 4.2 valida evidencia exigida por motivo<br/>Motivo inexistente o inactivo — 422
+    SVC->>SVC: 5. validateSources(lines[])
+    Note right of SVC: SUM(sources.quantity) igual a la<br/>cantidad de la línea<br/>quantity mayor que cero<br/>quantity no supera source_quantity<br/>cada origen con factura, doc SAP o lote
+    SVC->>SVC: 6. total = SUM(quantity * price_unit)
+    SVC->>LVL: 7. resolveLevels(workflow_version, total)
+    LVL-->>SVC: 7.1 LVL1..LVL4 con activation_min_amount
+    SVC->>TX: 8. startTransaction()
+    activate TX
+    SVC->>SVC: 9. noteNumber = generateNoteNumber()
+    SVC->>RO: 10. insert(note_number, split_sequence = 0,<br/>document_type = ORIGINAL, status = IN_APPROVAL,<br/>distributor_id, seller_employee_id,<br/>seller_name_snapshot, owner_id, owner_name_snapshot,<br/>customer_id, customer_name_snapshot,<br/>replacement_date, justification, total)
+    RO-->>SVC: 10.1 refundOrderId
+    loop por cada línea
+        SVC->>ROD: 11. insert(product_id, product_code,<br/>product_name_snapshot, source_quantity, quantity,<br/>price_unit, line_status = ACTIVE, reason, notes)
+        ROD-->>SVC: 11.1 detailId
+        loop por cada origen del array sources
+            SVC->>SRC: 11a. insert(refund_order_detail_id,<br/>invoice_number, invoice_sap_doc, invoiced_at,<br/>lot, due_date, quantity)
+        end
+        opt hay fotografías
+            SVC->>PH: 11b. insert(storage_key, content_type,<br/>size_bytes, sort_order, taken_at, uploaded_by)
+        end
+    end
+    SVC->>WI: 12. insert(refund_order_id, attempt = 1,<br/>status = IN_APPROVAL, current_level_order = 1)
+    WI-->>SVC: 12.1 instanceId
+    SVC->>WIL: 13. insertLevels(LVL1..LVL4)
+    Note right of WIL: Nivel 1 — decision_mode ITEM_SELECTION,<br/>status ACTIVE<br/>Niveles dentro de banda por monto — PENDING<br/>Niveles fuera de banda — SKIPPED
+    SVC->>ACT: 14. insert(action = CREATED,<br/>actor_employee_code, actor_name_snapshot,<br/>new_status = IN_APPROVAL, amount_after = total)
+    SVC->>TX: 15. commit()
+    deactivate TX
+    SVC-->>GW: 16. { refundOrderId, noteNumber, total, currentLevel }
+    GW-->>Sales: 17. 201 Created
+    Sales-->>Vendedor: 18. muestra el número de nota generado
+    </pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "distributorId": 501,
+  "sellerEmployeeId": 8812,
+  "sellerName": "Marcos Vaca",
+  "ownerId": 3301,
+  "ownerName": "Comercial Los Tajibos SRL",
+  "customerId": 77120,
+  "customerName": "Mini Market El Trompillo",
+  "replacementDate": "2026-09-10",
+  "justification": "Producto observado por el cliente en la entrega del 01/09.",
+  "lines": [
+    {
+      "productId": 501,
+      "productCode": "PRD-501",
+      "productName": "Producto A",
+      "sourceQuantity": 15,
+      "quantity": 15,
+      "priceUnit": 40.00,
+      "unitOfMeasure": "CJ",
+      "minimumUnitOfMeasure": "UN",
+      "unitsPerUnit": 12,
+      "reason": "DAMAGED",
+      "notes": "Cajas golpeadas en el transporte.",
+      "sources": [
+        { "invoiceNumber": "F-100", "invoiceSapDoc": "100", "invoicedAt": "2026-08-01", "lot": "L01", "dueDate": "2027-01-01", "quantity": 10 },
+        { "invoiceNumber": "F-200", "invoiceSapDoc": "200", "invoicedAt": "2026-08-10", "lot": "L02", "dueDate": "2027-02-01", "quantity": 5 }
+      ],
+      "photos": [
+        { "storageKey": "refunds/2026/09/a1b2c3.jpg", "contentType": "image/jpeg", "sizeBytes": 184320, "sortOrder": 1, "takenAt": "2026-09-01T14:22:00Z" }
+      ]
+    },
+    {
+      "productId": 502,
+      "productCode": "PRD-502",
+      "productName": "Producto B",
+      "sourceQuantity": 10,
+      "quantity": 10,
+      "priceUnit": 40.00,
+      "reason": "NEAR_EXPIRY",
+      "notes": "Vence dentro de los 30 días.",
+      "sources": [
+        { "invoiceNumber": "F-100", "invoiceSapDoc": "100", "invoicedAt": "2026-08-01", "lot": "L01", "dueDate": "2027-01-01", "quantity": 6 },
+        { "invoiceNumber": "F-200", "invoiceSapDoc": "200", "invoicedAt": "2026-08-10", "lot": "L02", "dueDate": "2027-02-01", "quantity": 4 }
+      ]
+    }
+  ]
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "splitSequence": 0,
+  "documentType": "ORIGINAL",
+  "status": "IN_APPROVAL",
+  "total": 1000.00,
+  "currentLevel": 1,
+  "workflow": {
+    "instanceId": 9001,
+    "attempt": 1,
+    "status": "IN_APPROVAL",
+    "currentLevelOrder": 1,
+    "levels": [
+      { "levelOrder": 1, "levelName": "Analista de Experiencia al Usuario", "roleCode": "UX_ANALYST", "decisionMode": "ITEM_SELECTION", "status": "ACTIVE" },
+      { "levelOrder": 2, "levelName": "Gerente de Experiencia al Usuario", "roleCode": "UX_MANAGER", "decisionMode": "DOCUMENT_DECISION", "status": "PENDING" },
+      { "levelOrder": 3, "levelName": "Gerente Comercial", "roleCode": "COMMERCIAL_MANAGER", "decisionMode": "DOCUMENT_DECISION", "status": "SKIPPED" },
+      { "levelOrder": 4, "levelName": "Gerente General", "roleCode": "GENERAL_MANAGER", "decisionMode": "DOCUMENT_DECISION", "status": "SKIPPED" }
+    ]
+  }
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>El <span class="mono">note_number</span> y el <span class="mono">id</span> los genera nuestro servicio; Sales no aporta ningún identificador propio y la respuesta devuelve los dos.</li>
+    <li>La nota no apunta a una venta: no hay campo de venta origen ni relación con el documento de Sales.</li>
+    <li>Un eventual header <span class="mono">Idempotency-Key</span> sería una preocupación técnica del endpoint —deduplicación de reintentos HTTP— y no una relación de negocio; hoy no existe en el modelo de datos.</li>
+    <li>Cada <span class="mono">reason</span> se valida contra <span class="mono">refund_reasons</span> activos. Código inexistente o inactivo devuelve 422 <span class="mono">REASON_NOT_FOUND</span>.</li>
+    <li>El motivo manda la evidencia: con <span class="mono">requires_photo</span> sin fotografías, <span class="mono">lot_requirement</span> sin lote, <span class="mono">due_date_requirement</span> sin vencimiento o <span class="mono">requires_notes</span> sin observaciones, 422 <span class="mono">MISSING_EVIDENCE</span>.</li>
+    <li>El array <span class="mono">sources[]</span> del contrato HTTP se persiste como una fila por origen en <span class="mono">refund_order_detail_sources</span>.</li>
+    <li>Validación transaccional: <span class="mono">SUM(sources.quantity)</span> debe ser exactamente <span class="mono">refund_order_details.quantity</span>; si no, 422 <span class="mono">SOURCE_SUM_MISMATCH</span>.</li>
+    <li>Cada origen exige al menos uno entre <span class="mono">invoice_number</span>, <span class="mono">invoice_sap_doc</span> o <span class="mono">lot</span>; 422 <span class="mono">SOURCE_WITHOUT_REFERENCE</span>.</li>
+    <li>Restricciones de línea: <span class="mono">source_quantity &gt; 0</span>, <span class="mono">quantity &gt; 0</span>, <span class="mono">quantity &lt;= source_quantity</span>, <span class="mono">price_unit &gt;= 0</span>, <span class="mono">line_status = ACTIVE</span>.</li>
+    <li>El total se calcula en el servidor con el <span class="mono">price_unit</span> congelado; un total enviado por el cliente se ignora.</li>
+    <li>Se guardan los snapshots de vendedor, propietario y cliente. Son referencias lógicas a servicios externos: sin tablas locales ni claves foráneas.</li>
+    <li><span class="mono">distributor_id</span> sí tiene clave foránea real contra <span class="mono">distributors</span>; distribuidora inexistente devuelve 422.</li>
+    <li>Se crea la instancia inicial en <span class="mono">IN_APPROVAL</span>, <span class="mono">attempt = 1</span>, con el Nivel 1 <span class="mono">ACTIVE</span> en <span class="mono">ITEM_SELECTION</span> y los niveles fuera de banda por monto en <span class="mono">SKIPPED</span>.</li>
+    <li>Se registra <span class="mono">CREATED</span> en la bitácora append-only con <span class="mono">amount_after = total</span>.</li>
+    <li>Todo ocurre en una sola transacción: cualquier fallo revierte la nota, sus líneas, sus orígenes, sus fotografías y su workflow.</li>
+    <li>El índice único parcial garantiza una sola instancia abierta (<span class="mono">EDITING</span> o <span class="mono">IN_APPROVAL</span>) por nota.</li>
+  </ul>
+</article>
+
+<article class="card" id="e02">
+  <p class="card__eyebrow">Endpoint 02</p>
+  <h2 class="card__title">Bandeja de devoluciones</h2>
+  <p class="card__route">GET /api/v1/refunds?status=&amp;documentType=&amp;distributorId=&amp;sellerEmployeeId=&amp;customerId=&amp;noteNumber=&amp;dateFrom=&amp;dateTo=&amp;page=&amp;pageSize=&amp;sort=</p>
+  <p class="card__desc">La bandeja lista notas, no workflows, pero cada fila necesita mostrar en qué punto de la aprobación está. Como no existe un puntero a la instancia activa dentro de la nota, la instancia vigente se resuelve buscando la única instancia abierta de cada nota —la que está en <span class="mono">EDITING</span> o <span class="mono">IN_APPROVAL</span>—, garantizada por el índice único parcial. Una nota cerrada no tiene instancia abierta: ahí se muestra el último intento y, si fue rechazada, la fecha límite de reactivación.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Analista
+    participant Web as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundQueryService
+    participant RO as refund_orders DB
+    participant WI as refund_workflow_instances DB
+    participant WIL as refund_workflow_instance_levels DB
+
+    Analista->>Web: 1. abre la bandeja y aplica filtros
+    Web->>GW: 2. GET /api/v1/refunds (filtros, paginación)
+    GW->>SVC: 3. list(filters, actor)
+    Note right of SVC: 3.1 el alcance se recorta por rol<br/>El vendedor ve solo sus notas<br/>El aprobador ve las de su distribuidora
+    SVC->>RO: 4. findPaged(filtros, deleted_at IS NULL)
+    RO-->>SVC: 4.1 filas con note_number, split_sequence,<br/>document_type, status, total, snapshots,<br/>rejected_at, reactivation_expires_at
+    SVC->>WI: 5. findOpenInstances(refundOrderIds[])
+    Note right of WI: Una sola instancia abierta por nota<br/>status IN (EDITING, IN_APPROVAL)<br/>garantizado por índice único parcial
+    WI-->>SVC: 5.1 instancia vigente con attempt<br/>y current_level_order
+    opt la nota no tiene instancia abierta
+        SVC->>WI: 6. findLastInstance(refundOrderId)
+        WI-->>SVC: 6.1 último intento cerrado<br/>APPROVED, REJECTED o CANCELLED
+    end
+    SVC->>WIL: 7. findLevelByOrder(instanceId, current_level_order)
+    WIL-->>SVC: 7.1 level_name, role_code, decision_mode, sla_hours
+    SVC->>SVC: 8. buildRows()
+    Note right of SVC: Cada fila expone — número de nota,<br/>tipo original o disociada, vendedor,<br/>propietario, cliente, total,<br/>estado del documento, estado del workflow,<br/>nivel actual y fecha límite de<br/>reactivación cuando el estado es REJECTED
+    SVC-->>GW: 9. { items[], page, pageSize, total }
+    GW-->>Web: 10. 200 OK
+    Web-->>Analista: 11. renderiza la bandeja paginada
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "items": [
+    {
+      "refundOrderId": 1001,
+      "noteNumber": "235054",
+      "splitSequence": 0,
+      "documentType": "ORIGINAL",
+      "status": "IN_APPROVAL",
+      "sellerEmployeeId": 8812,
+      "sellerName": "Marcos Vaca",
+      "ownerId": 3301,
+      "ownerName": "Comercial Los Tajibos SRL",
+      "customerId": 77120,
+      "customerName": "Mini Market El Trompillo",
+      "total": 600.00,
+      "workflow": {
+        "instanceId": 9001,
+        "attempt": 1,
+        "status": "IN_APPROVAL",
+        "currentLevelOrder": 2,
+        "currentLevelName": "Gerente de Experiencia al Usuario",
+        "decisionMode": "DOCUMENT_DECISION"
+      },
+      "reactivationExpiresAt": null,
+      "createdAt": "2026-09-01T15:04:00Z"
+    },
+    {
+      "refundOrderId": 1004,
+      "noteNumber": "235054",
+      "splitSequence": 1,
+      "documentType": "DISSOCIATED",
+      "sourceRefundOrderId": 1001,
+      "status": "EDITING",
+      "sellerEmployeeId": 8812,
+      "sellerName": "Marcos Vaca",
+      "ownerId": 3301,
+      "ownerName": "Comercial Los Tajibos SRL",
+      "customerId": 77120,
+      "customerName": "Mini Market El Trompillo",
+      "total": 400.00,
+      "workflow": {
+        "instanceId": 9002,
+        "attempt": 1,
+        "status": "EDITING",
+        "currentLevelOrder": null,
+        "currentLevelName": null,
+        "decisionMode": null
+      },
+      "reactivationExpiresAt": null,
+      "createdAt": "2026-09-02T10:11:00Z"
+    },
+    {
+      "refundOrderId": 987,
+      "noteNumber": "234901",
+      "splitSequence": 0,
+      "documentType": "ORIGINAL",
+      "status": "REJECTED",
+      "sellerName": "Ruth Áñez",
+      "ownerName": "Distribuidora Norte SA",
+      "customerName": "Almacén Doña Rosa",
+      "total": 820.00,
+      "workflow": {
+        "instanceId": 8804,
+        "attempt": 2,
+        "status": "REJECTED",
+        "currentLevelOrder": null,
+        "currentLevelName": null,
+        "decisionMode": null
+      },
+      "rejectedAt": "2026-08-28T19:40:00Z",
+      "reactivationExpiresAt": "2026-09-04T19:40:00Z",
+      "createdAt": "2026-08-20T09:00:00Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 25,
+  "total": 3
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>La instancia vigente se busca: es la única instancia de la nota con <span class="mono">status IN ('EDITING','IN_APPROVAL')</span>. No hay ningún puntero a la instancia activa guardado en la nota.</li>
+    <li>El índice único parcial hace imposible encontrar dos instancias abiertas para la misma nota; si aparecieran, es un error de datos y no un caso a resolver en la consulta.</li>
+    <li>Cada fila muestra número de nota, tipo original o disociada, vendedor, propietario, cliente, total, estado del documento, estado del workflow, nivel actual y la fecha límite de reactivación cuando corresponda.</li>
+    <li>Una nota disociada en <span class="mono">EDITING</span> no tiene nivel activo: <span class="mono">currentLevelOrder</span> viaja en <span class="mono">null</span>.</li>
+    <li><span class="mono">reactivationExpiresAt</span> se expone únicamente cuando el estado es <span class="mono">REJECTED</span>; en el resto de los estados es <span class="mono">null</span>.</li>
+    <li>El número de nota no es único: la original y sus disociadas lo comparten y se distinguen por <span class="mono">split_sequence</span>. Filtrar por <span class="mono">noteNumber</span> devuelve la familia completa.</li>
+    <li>Se excluyen las filas con <span class="mono">deleted_at</span> no nulo.</li>
+    <li>Los nombres que se listan son los snapshots del documento, no el valor actual de los servicios externos.</li>
+    <li>El alcance se recorta por rol: un vendedor solo ve las notas donde es <span class="mono">seller_employee_id</span>. Filtrar fuera del alcance devuelve una página vacía, no 403.</li>
+    <li><span class="mono">pageSize</span> tiene tope de 100; por encima se responde 422 <span class="mono">INVALID_PAGE_SIZE</span>.</li>
+    <li>Un rango con <span class="mono">dateFrom</span> posterior a <span class="mono">dateTo</span> devuelve 422 <span class="mono">INVALID_DATE_RANGE</span>.</li>
+  </ul>
+</article>
+
+<article class="card" id="e03">
+  <p class="card__eyebrow">Endpoint 03</p>
+  <h2 class="card__title">Detalle de la nota</h2>
+  <p class="card__route">GET /api/v1/refunds/:id?includeHistory=true</p>
+  <p class="card__desc">El detalle es la vista completa del documento histórico: cabecera con los snapshots congelados, líneas valoradas con el <span class="mono">price_unit</span> del registro, los orígenes por factura y lote de cada línea, y las fotografías. Muestra además la familia —la original y sus disociadas—, los intentos con sus niveles y la bitácora de acciones, incluida la selección inicial del Nivel 1. En una nota disociada, las fotografías no se duplicaron: se heredan de la línea origen a través de <span class="mono">source_detail_id</span> y se devuelven junto con las propias.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+    <li class="chip">refund_order_detail_photos</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_order_detail_decisions</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Analista
+    participant Web as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundDetailService
+    participant RO as refund_orders DB
+    participant ROD as refund_order_details DB
+    participant SRC as refund_order_detail_sources DB
+    participant PH as refund_order_detail_photos DB
+    participant WI as refund_workflow_instances DB
+    participant WIL as refund_workflow_instance_levels DB
+    participant ACT as refund_workflow_actions DB
+    participant DEC as refund_order_detail_decisions DB
+
+    Analista->>Web: 1. abre una nota de la bandeja
+    Web->>GW: 2. GET /api/v1/refunds/1004
+    GW->>SVC: 3. findById(id, actor)
+    SVC->>RO: 4. findOne(id, deleted_at IS NULL)
+    RO-->>SVC: 4.1 cabecera con seller_name_snapshot,<br/>owner_name_snapshot, customer_name_snapshot,<br/>document_type, split_sequence, source_refund_order_id,<br/>total, rejected_at, reactivation_expires_at
+    Note right of SVC: 4.2 si el rol solo ve sus propios documentos<br/>y la nota no le pertenece — 404, nunca 403<br/>No se revela la existencia del documento
+    SVC->>RO: 5. findFamily(note_number)
+    RO-->>SVC: 5.1 original y disociadas ordenadas<br/>por split_sequence
+    SVC->>ROD: 6. findDetails(refundOrderId)
+    ROD-->>SVC: 6.1 líneas con product_code,<br/>product_name_snapshot, source_quantity,<br/>quantity, price_unit, line_status,<br/>reason, notes, source_detail_id
+    SVC->>SRC: 7. findSources(detailIds[])
+    SRC-->>SVC: 7.1 una fila por factura y lote<br/>con invoice_number, invoice_sap_doc,<br/>invoiced_at, lot, due_date, quantity
+    SVC->>PH: 8. findOwnPhotos(detailIds[])
+    PH-->>SVC: 8.1 fotografías propias del detalle
+    opt la línea tiene source_detail_id
+        SVC->>PH: 9. findInheritedPhotos(sourceDetailIds[])
+        PH-->>SVC: 9.1 fotografías de la línea origen
+        Note right of SVC: 9.2 se heredan por source_detail_id<br/>El archivo no se duplica<br/>Cada foto se marca como propia o heredada
+    end
+    SVC->>WI: 10. findInstances(refundOrderId)
+    WI-->>SVC: 10.1 intentos ordenados por attempt<br/>con reactivated_from_instance_id
+    SVC->>WIL: 11. findLevels(instanceIds[])
+    WIL-->>SVC: 11.1 niveles con decision_mode, status,<br/>first_viewed_at, started_at, finished_at
+    SVC->>ACT: 12. findActions(instanceIds[])
+    ACT-->>SVC: 12.1 bitácora append-only ordenada<br/>por created_at con related_refund_order_id
+    SVC->>DEC: 13. findSelection(actionIds[])
+    DEC-->>SVC: 13.1 SELECTED o DISSOCIATED por línea
+    SVC-->>GW: 14. detalle armado
+    GW-->>Web: 15. 200 OK
+    Web-->>Analista: 16. renderiza cabecera, líneas,<br/>evidencia, familia e historial
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1004,
+  "noteNumber": "235054",
+  "splitSequence": 1,
+  "documentType": "DISSOCIATED",
+  "sourceRefundOrderId": 1001,
+  "status": "EDITING",
+  "distributorId": 501,
+  "sellerEmployeeId": 8812,
+  "sellerNameSnapshot": "Marcos Vaca",
+  "ownerId": 3301,
+  "ownerNameSnapshot": "Comercial Los Tajibos SRL",
+  "customerId": 77120,
+  "customerNameSnapshot": "Mini Market El Trompillo",
+  "replacementDate": "2026-09-10",
+  "justification": "Producto observado por el cliente en la entrega del 01/09.",
+  "total": 400.00,
+  "rejectedAt": null,
+  "reactivationExpiresAt": null,
+  "family": [
+    { "refundOrderId": 1001, "splitSequence": 0, "documentType": "ORIGINAL", "status": "IN_APPROVAL", "total": 600.00 },
+    { "refundOrderId": 1004, "splitSequence": 1, "documentType": "DISSOCIATED", "status": "EDITING", "total": 400.00 }
+  ],
+  "details": [
+    {
+      "detailId": 7002,
+      "sourceDetailId": 5002,
+      "productId": 502,
+      "productCode": "PRD-502",
+      "productNameSnapshot": "Producto B",
+      "sourceQuantity": 10,
+      "quantity": 10,
+      "priceUnit": 40.00,
+      "lineTotal": 400.00,
+      "lineStatus": "ACTIVE",
+      "reason": "NEAR_EXPIRY",
+      "notes": "Vence dentro de los 30 días.",
+      "sources": [
+        { "sourceId": 9101, "invoiceNumber": "F-100", "invoiceSapDoc": "100", "invoicedAt": "2026-08-01", "lot": "L01", "dueDate": "2027-01-01", "quantity": 6, "amount": 240.00 },
+        { "sourceId": 9102, "invoiceNumber": "F-200", "invoiceSapDoc": "200", "invoicedAt": "2026-08-10", "lot": "L02", "dueDate": "2027-02-01", "quantity": 4, "amount": 160.00 }
+      ],
+      "photos": [
+        { "photoId": 4410, "storageKey": "refunds/2026/09/d9e8f7.jpg", "sortOrder": 1, "origin": "INHERITED", "fromDetailId": 5002 }
+      ]
+    }
+  ],
+  "attempts": [
+    {
+      "instanceId": 9002,
+      "attempt": 1,
+      "status": "EDITING",
+      "currentLevelOrder": null,
+      "reactivatedFromInstanceId": null,
+      "startedAt": "2026-09-02T10:11:00Z",
+      "finishedAt": null,
+      "levels": [
+        { "levelOrder": 1, "levelName": "Analista de Experiencia al Usuario", "roleCode": "UX_ANALYST", "decisionMode": "DOCUMENT_DECISION", "status": "PENDING", "firstViewedAt": null, "firstViewedBy": null }
+      ],
+      "actions": [
+        { "actionId": 6011, "action": "DISSOCIATED_CREATED", "relatedRefundOrderId": 1001, "actorEmployeeCode": null, "actorNameSnapshot": null, "systemSummary": "Nota disociada creada desde la nota 1001 por selección parcial del Nivel 1.", "amountBefore": null, "amountAfter": 400.00, "createdAt": "2026-09-02T10:11:00Z" }
+      ]
+    }
+  ],
+  "initialSelection": {
+    "actionId": 6010,
+    "sourceInstanceId": 9001,
+    "decidedAt": "2026-09-02T10:11:00Z",
+    "comment": "Se aprueba el Producto A; el Producto B se disocia para corrección del vendedor.",
+    "items": [
+      { "refundOrderDetailId": 5001, "productCode": "PRD-501", "decision": "SELECTED" },
+      { "refundOrderDetailId": 5002, "productCode": "PRD-502", "decision": "DISSOCIATED" }
+    ]
+  }
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>La cabecera se sirve con los snapshots del documento: el nombre histórico de vendedor, propietario y cliente, aunque los sistemas externos hayan cambiado.</li>
+    <li>Las líneas incluyen <span class="mono">product_code</span> y <span class="mono">product_name_snapshot</span> congelados, y se valoran con el <span class="mono">price_unit</span> del registro.</li>
+    <li>Los orígenes se devuelven como un array dentro de la línea; en PostgreSQL son una fila por factura y lote en <span class="mono">refund_order_detail_sources</span>. La suma de sus cantidades siempre coincide con la cantidad de la línea.</li>
+    <li>Las fotografías se devuelven en dos grupos combinados: las propias del detalle y las heredadas por <span class="mono">source_detail_id</span>, marcadas con su origen. El archivo nunca se duplica.</li>
+    <li>La familia se resuelve por <span class="mono">note_number</span> y se ordena por <span class="mono">split_sequence</span>: la original en 0 y cada disociada con su secuencia.</li>
+    <li>Los intentos vienen ordenados por <span class="mono">attempt</span>, con <span class="mono">reactivated_from_instance_id</span> apuntando al intento rechazado del que salieron. Los intentos anteriores son inmutables.</li>
+    <li>La bitácora es append-only y se ordena por <span class="mono">created_at</span>, que es la fecha efectiva de la acción; no hay otro campo de fecha.</li>
+    <li><span class="mono">related_refund_order_id</span> solo aparece en <span class="mono">DISSOCIATED_CREATED</span>.</li>
+    <li>La selección inicial se reconstruye desde <span class="mono">refund_order_detail_decisions</span> con valores <span class="mono">SELECTED</span> o <span class="mono">DISSOCIATED</span>: son líneas completas, nunca cantidades ni montos aprobados.</li>
+    <li>Un rol acotado a sus propios documentos que pide una nota ajena recibe 404 <span class="mono">REFUND_NOT_FOUND</span>, no 403: no se revela la existencia del documento.</li>
+    <li>Una nota con <span class="mono">deleted_at</span> no nulo devuelve 404.</li>
+    <li>La consulta es de solo lectura: no sella <span class="mono">first_viewed_at</span> ni registra <span class="mono">VIEWED</span>. Eso corresponde al endpoint de apertura de nivel.</li>
+  </ul>
+</article>
+
+<article class="card" id="e04">
+  <p class="card__eyebrow">Endpoint 04</p>
+  <h2 class="card__title">Apertura del nivel activo</h2>
+  <p class="card__route">POST /api/v1/refunds/:id/levels/current/view</p>
+  <p class="card__desc">Registra que el aprobador del nivel activo abrió el documento, para poder medir el tiempo de respuesta contra el <span class="mono">sla_hours</span> del nivel. Sella <span class="mono">first_viewed_at</span> y <span class="mono">first_viewed_by</span> una sola vez —la primera apertura gana— y deja constancia con una acción <span class="mono">VIEWED</span>. Abrir un documento nunca cambia el estado de la nota, ni el de la instancia, ni el del nivel: es idempotente y repetirlo devuelve exactamente lo mismo.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Aprobador
+    participant Web as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundWorkflowService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders DB
+    participant WI as refund_workflow_instances DB
+    participant WIL as refund_workflow_instance_levels DB
+    participant ACT as refund_workflow_actions DB
+
+    Aprobador->>Web: 1. abre el documento que tiene pendiente
+    Web->>GW: 2. POST /api/v1/refunds/1001/levels/current/view
+    GW->>SVC: 3. viewCurrentLevel(id, actor)
+    SVC->>RO: 4. findOne(id)
+    RO-->>SVC: 4.1 cabecera de la nota
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia abierta con current_level_order
+    alt no hay instancia abierta o no hay nivel activo
+        SVC-->>GW: 5.2 409 NO_ACTIVE_LEVEL
+    else hay nivel activo
+        SVC->>WIL: 6. findLevel(instanceId, current_level_order)
+        WIL-->>SVC: 6.1 nivel con role_code, decision_mode,<br/>sla_hours y first_viewed_at
+        Note right of SVC: 6.2 el role_code del actor debe coincidir<br/>con el del nivel activo — si no, 403
+        alt first_viewed_at es nulo
+            SVC->>TX: 7. startTransaction()
+            activate TX
+            SVC->>WIL: 8. update(first_viewed_at = now(),<br/>first_viewed_by = actor)
+            Note right of WIL: Se sella una sola vez<br/>El status del nivel no cambia<br/>La instancia y la nota no cambian
+            SVC->>ACT: 9. insert(action = VIEWED,<br/>workflow_instance_level_id,<br/>actor_employee_code, actor_role_code,<br/>previous_status igual a new_status)
+            SVC->>TX: 10. commit()
+            deactivate TX
+        else ya estaba sellado
+            Note right of SVC: 11. no se escribe nada<br/>Idempotente — se devuelve el sello original
+        end
+        SVC-->>GW: 12. { levelOrder, firstViewedAt, firstViewedBy, alreadyViewed }
+        GW-->>Web: 13. 200 OK
+        Web-->>Aprobador: 14. habilita las acciones del nivel
+    end
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "workflowInstanceId": 9001,
+  "attempt": 1,
+  "levelOrder": 1,
+  "levelName": "Analista de Experiencia al Usuario",
+  "roleCode": "UX_ANALYST",
+  "decisionMode": "ITEM_SELECTION",
+  "levelStatus": "ACTIVE",
+  "firstViewedAt": "2026-09-02T09:58:00Z",
+  "firstViewedBy": "EMP-4471",
+  "alreadyViewed": false,
+  "slaHours": 24,
+  "documentStatus": "IN_APPROVAL"
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>La apertura no cambia estados: ni <span class="mono">refund_orders.status</span>, ni <span class="mono">refund_workflow_instances.status</span>, ni el <span class="mono">status</span> del nivel.</li>
+    <li><span class="mono">first_viewed_at</span> y <span class="mono">first_viewed_by</span> se sellan una única vez; la primera apertura gana y las siguientes no reescriben el sello.</li>
+    <li>Es idempotente: las llamadas repetidas devuelven 200 con el sello original y <span class="mono">alreadyViewed = true</span>.</li>
+    <li>El <span class="mono">VIEWED</span> de la bitácora se registra solo en el sellado efectivo, para no inflar el historial con cada apertura.</li>
+    <li>Si la nota no tiene instancia abierta o la instancia no tiene nivel activo —por ejemplo una disociada en <span class="mono">EDITING</span>— se responde 409 <span class="mono">NO_ACTIVE_LEVEL</span>.</li>
+    <li>El <span class="mono">role_code</span> del actor debe coincidir con el del nivel activo; si no, 403 <span class="mono">ROLE_NOT_ALLOWED</span>.</li>
+    <li>El endpoint resuelve <span class="mono">current</span> desde <span class="mono">current_level_order</span> de la instancia abierta: el cliente no elige a qué nivel apunta.</li>
+    <li>El sello vive en el nivel de la instancia, así que un intento reactivado tiene su propio <span class="mono">first_viewed_at</span> y no arrastra el del intento anterior.</li>
+    <li>Nota inexistente, borrada o fuera del alcance del rol devuelve 404.</li>
+  </ul>
+</article>
+
+<article class="card" id="e05">
+  <p class="card__eyebrow">Endpoint 05</p>
+  <h2 class="card__title">Selección de ítems del Nivel 1</h2>
+  <p class="card__route">POST /api/v1/refunds/:id/levels/1/item-selection</p>
+  <p class="card__desc">Es la única pantalla con casillas de todo el flujo y existe solo en el Nivel 1 del primer intento de una nota <span class="mono">ORIGINAL</span>. La decisión es binaria por línea completa: <span class="mono">SELECTED</span> o <span class="mono">DISSOCIATED</span>; nunca se tocan cantidades ni precios. Con selección total la nota sigue entera al nivel que le corresponde por monto. Con selección parcial la original se queda con lo seleccionado, recalcula su total y continúa inmediatamente —no espera a nadie—, mientras los ítems no seleccionados se van a una nota disociada nueva que nace en edición del vendedor.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+    <li class="chip">refund_order_detail_photos</li>
+    <li class="chip">refund_approval_levels</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_order_detail_decisions</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Analista
+    participant Web as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundItemSelectionService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders DB
+    participant ROD as refund_order_details DB
+    participant SRC as refund_order_detail_sources DB
+    participant PH as refund_order_detail_photos DB
+    participant LVL as refund_approval_levels DB
+    participant WI as refund_workflow_instances DB
+    participant WIL as refund_workflow_instance_levels DB
+    participant ACT as refund_workflow_actions DB
+    participant DEC as refund_order_detail_decisions DB
+
+    Analista->>Web: 1. marca las líneas y comenta
+    Web->>GW: 2. POST /api/v1/refunds/1001/levels/1/item-selection
+    GW->>SVC: 3. selectItems(id, { comment, items[] }, actor)
+    SVC->>RO: 4. findOne(id)
+    RO-->>SVC: 4.1 document_type, split_sequence, total
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia con attempt y current_level_order
+    SVC->>WIL: 6. findLevel(instanceId, 1)
+    WIL-->>SVC: 6.1 decision_mode y status del Nivel 1
+    Note right of SVC: 6.2 solo document_type ORIGINAL,<br/>attempt igual a 1, Nivel 1 ACTIVE<br/>y decision_mode ITEM_SELECTION<br/>En cualquier otro caso — 409<br/>Cada línea ACTIVE debe venir decidida<br/>una sola vez y al menos una SELECTED
+    SVC->>ROD: 7. findDetails(refundOrderId)
+    ROD-->>SVC: 7.1 líneas ACTIVE con quantity y price_unit
+    SVC->>TX: 8. startTransaction()
+    activate TX
+    SVC->>ACT: 9. insert(action = LEVEL1_ITEM_SELECTION,<br/>workflow_instance_level_id, comment,<br/>actor_employee_code, amount_before = total)
+    ACT-->>SVC: 9.1 workflowActionId
+    SVC->>DEC: 10. insertDecisions(workflowActionId,<br/>detailId, decision)
+    Note right of DEC: Evidencia inmutable — SELECTED o DISSOCIATED<br/>Líneas completas, sin cantidad ni monto aprobado
+    alt selección total — todas las líneas SELECTED
+        Note right of SVC: 11. no se crea ninguna nota disociada<br/>El total no cambia
+    else selección parcial
+        SVC->>RO: 12. insert(note_number igual al de la original,<br/>split_sequence + 1, document_type = DISSOCIATED,<br/>source_refund_order_id = original,<br/>status = EDITING, mismos snapshots de<br/>vendedor, propietario y cliente)
+        RO-->>SVC: 12.1 dissociatedId
+        loop por cada línea no seleccionada
+            SVC->>ROD: 13. insert(refund_order_id = dissociatedId,<br/>source_detail_id = línea original,<br/>mismo product_code, product_name_snapshot,<br/>quantity, price_unit, reason, notes)
+            ROD-->>SVC: 13.1 newDetailId
+            SVC->>SRC: 13a. copyAll(sourceDetailId, newDetailId)
+            Note right of SRC: Se copian TODOS los orígenes<br/>Las cantidades arrancan iguales a las de la fuente<br/>SUM(sources.quantity) sigue igual a quantity
+            SVC->>ROD: 13b. update(línea original,<br/>line_status = DISSOCIATED)
+        end
+        Note right of PH: 14. las fotografías NO se duplican<br/>La disociada las hereda por source_detail_id<br/>y puede sumar fotografías propias
+        SVC->>RO: 15. update(original,<br/>total = SUM de las líneas seleccionadas)
+        SVC->>WI: 16. insert(refund_order_id = dissociatedId,<br/>attempt = 1, status = EDITING,<br/>current_level_order nulo)
+        WI-->>SVC: 16.1 newInstanceId
+        SVC->>WIL: 17. insertLevels(decision_mode = DOCUMENT_DECISION,<br/>status = PENDING)
+        SVC->>ACT: 18. insert(action = DISSOCIATED_CREATED,<br/>related_refund_order_id = dissociatedId,<br/>amount_after = total de la disociada)
+    end
+    SVC->>WIL: 19. update(Nivel 1, status = APPROVED, finished_at)
+    SVC->>LVL: 20. resolveNextLevel(total vigente de la original)
+    LVL-->>SVC: 20.1 siguiente nivel por activation_min_amount
+    alt queda un nivel requerido
+        SVC->>WIL: 21. update(nivel siguiente, status = ACTIVE,<br/>started_at, decision_mode = DOCUMENT_DECISION)
+        SVC->>WI: 21a. update(current_level_order = nivel siguiente)
+        SVC->>ACT: 21b. insert(action = AUTO_ROUTED,<br/>actor nulo, amount_before, amount_after)
+        Note right of SVC: La original continúa INMEDIATAMENTE<br/>No espera la corrección del vendedor
+    else ningún nivel adicional requerido
+        SVC->>WI: 22. update(status = APPROVED, finished_at)
+        SVC->>RO: 22a. update(status = APPROVED)
+        SVC->>ACT: 22b. insert(action = CLOSED, actor nulo)
+    end
+    SVC->>TX: 23. commit()
+    deactivate TX
+    SVC-->>GW: 24. resultado con la original y la disociada
+    GW-->>Web: 25. 200 OK
+    Web-->>Analista: 26. muestra el nuevo total y la nota disociada
+    </pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "comment": "Se aprueba el Producto A; el Producto B se disocia para corrección del vendedor.",
+  "items": [
+    { "refundOrderDetailId": 5001, "decision": "SELECTED" },
+    { "refundOrderDetailId": 5002, "decision": "DISSOCIATED" }
+  ]
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "original": {
+    "refundOrderId": 1001,
+    "noteNumber": "235054",
+    "splitSequence": 0,
+    "documentType": "ORIGINAL",
+    "status": "IN_APPROVAL",
+    "totalBefore": 1000.00,
+    "total": 600.00,
+    "workflow": {
+      "instanceId": 9001,
+      "attempt": 1,
+      "status": "IN_APPROVAL",
+      "currentLevelOrder": 2,
+      "currentLevelName": "Gerente de Experiencia al Usuario",
+      "decisionMode": "DOCUMENT_DECISION"
+    }
+  },
+  "dissociated": {
+    "refundOrderId": 1004,
+    "noteNumber": "235054",
+    "splitSequence": 1,
+    "documentType": "DISSOCIATED",
+    "sourceRefundOrderId": 1001,
+    "status": "EDITING",
+    "total": 400.00,
+    "workflow": {
+      "instanceId": 9002,
+      "attempt": 1,
+      "status": "EDITING",
+      "currentLevelOrder": null
+    },
+    "details": [
+      {
+        "detailId": 7002,
+        "sourceDetailId": 5002,
+        "productCode": "PRD-502",
+        "quantity": 10,
+        "priceUnit": 40.00,
+        "sources": [
+          { "invoiceNumber": "F-100", "lot": "L01", "quantity": 6 },
+          { "invoiceNumber": "F-200", "lot": "L02", "quantity": 4 }
+        ],
+        "photosInherited": 1,
+        "photosOwn": 0
+      }
+    ]
+  },
+  "actions": [
+    { "action": "LEVEL1_ITEM_SELECTION", "workflowActionId": 6010, "amountBefore": 1000.00, "amountAfter": 600.00 },
+    { "action": "DISSOCIATED_CREATED", "workflowActionId": 6011, "relatedRefundOrderId": 1004, "amountAfter": 400.00 },
+    { "action": "AUTO_ROUTED", "workflowActionId": 6012, "actorEmployeeCode": null }
+  ]
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Solo aplica al Nivel 1 del primer intento (<span class="mono">attempt = 1</span>) de una nota con <span class="mono">document_type = ORIGINAL</span> y <span class="mono">decision_mode = ITEM_SELECTION</span>. En cualquier otro caso, 409 <span class="mono">ITEM_SELECTION_NOT_ALLOWED</span>.</li>
+    <li>La decisión es binaria por línea completa: <span class="mono">SELECTED</span> o <span class="mono">DISSOCIATED</span>. No se modifican cantidades, no se aprueban parciales dentro de una línea y no se cambian precios.</li>
+    <li>Todas las líneas <span class="mono">ACTIVE</span> deben venir decididas exactamente una vez; faltantes o duplicadas devuelven 422 <span class="mono">INCOMPLETE_SELECTION</span>. Al menos una línea debe ser <span class="mono">SELECTED</span>.</li>
+    <li>El comentario del analista es obligatorio y queda en la acción <span class="mono">LEVEL1_ITEM_SELECTION</span>.</li>
+    <li>Selección total: no nace ninguna nota disociada, el total no cambia y la original continúa al nivel requerido por su monto.</li>
+    <li>Selección parcial: la original conserva las líneas seleccionadas, recalcula <span class="mono">total</span> y continúa inmediatamente al Nivel 2 o al nivel que le corresponda por monto. No queda esperando la corrección del vendedor.</li>
+    <li>Los no seleccionados generan una fila nueva en <span class="mono">refund_orders</span>: mismo <span class="mono">note_number</span>, otro <span class="mono">id</span>, <span class="mono">split_sequence</span> incrementado, <span class="mono">document_type = DISSOCIATED</span> y <span class="mono">source_refund_order_id</span> apuntando a la original.</li>
+    <li>Se copian las líneas no seleccionadas con <span class="mono">source_detail_id</span> hacia la línea original, y se copian TODOS sus orígenes de <span class="mono">refund_order_detail_sources</span>, con cantidades iniciales iguales a las de la nota fuente.</li>
+    <li>Las fotografías se heredan por <span class="mono">source_detail_id</span>: el archivo no se duplica. La disociada puede sumar fotografías propias y el detalle devuelve propias más heredadas.</li>
+    <li>La línea original que se fue queda con <span class="mono">line_status = DISSOCIATED</span>: no se elimina físicamente.</li>
+    <li>La disociada nace con instancia propia en <span class="mono">EDITING</span>, <span class="mono">attempt = 1</span>, sin nivel activo e historial independiente; sus niveles son todos <span class="mono">DOCUMENT_DECISION</span>.</li>
+    <li>Se registra <span class="mono">DISSOCIATED_CREATED</span> con <span class="mono">related_refund_order_id</span> hacia la nota disociada; es la única acción que usa ese campo.</li>
+    <li>La selección queda como evidencia inmutable en <span class="mono">refund_order_detail_decisions</span>, ligada a la acción; no se guardan cantidades ni montos aprobados por línea.</li>
+    <li>El ruteo posterior es automático y va con actor nulo (<span class="mono">AUTO_ROUTED</span>); si el total recalculado no requiere niveles adicionales, la instancia cierra en <span class="mono">APPROVED</span> y se registra <span class="mono">CLOSED</span>.</li>
+    <li>Todo ocurre en una sola transacción: si falla la copia de orígenes o la creación de la instancia, no se parte la nota.</li>
+    <li>Reintentar sobre un Nivel 1 ya completado devuelve 409: la selección ocurre una sola vez por nota.</li>
+  </ul>
+</article>
+<article class="card" id="e06">
+  <p class="card__eyebrow">Endpoint 06</p>
+  <h2 class="card__title">Aprobar el nivel vigente</h2>
+  <p class="card__route"><span class="mono">POST /api/v1/refunds/:id/levels/current/approve</span></p>
+  <p class="card__desc">Cada persona firma una sola vez por nivel, y el nivel se cierra cuando la política configurada queda satisfecha — <span class="mono">ANY</span> con una firma, <span class="mono">ALL</span> con todos los aprobadores del rol, <span class="mono">QUORUM</span> con <span class="mono">required_approvals</span> firmas distintas. Al cerrarse el nivel, el monto vigente de la nota decide el destino: si cae dentro de la banda del nivel la nota se liquida ahí y los niveles superiores quedan <span class="mono">SKIPPED</span>; si la supera se abre el siguiente nivel y queda la huella <span class="mono">AUTO_ROUTED</span>. La aprobación final solamente cambia <span class="mono">refund_orders.status</span> a <span class="mono">APPROVED</span>, cierra la instancia y registra <span class="mono">CLOSED</span>.</p>
+  <div class="callout">La liquidación (nota de crédito o intercambio físico) está fuera de alcance. Aprobar no escribe ningún campo de totales aprobados ni rechazados: el monto aprobado es <span class="mono">refund_orders.total</span> y los movimientos se leen desde la bitácora.</div>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_approval_levels</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Aprobador
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundApprovalService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant CFG as refund_approval_levels
+    participant IAM as Servicio de Identidad
+
+    Aprobador->>App: 1. Confirma la aprobación del nivel
+    App->>GW: 2. POST /refunds/1001/levels/current/approve
+    GW->>SVC: 3. approveCurrentLevel(refundOrderId, actor, comment)
+    SVC->>IAM: 4. resolveActor(token)
+    IAM-->>SVC: 4.1 employeeCode, name, roleCode
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia IN_APPROVAL, attempt, current_level_order
+    SVC->>WL: 6. findActiveLevel(instanceId)
+    WL-->>SVC: 6.1 nivel ACTIVE con policy, required_approvals, min_amount, max_amount
+    Note right of SVC: Validaciones previas —<br/>instancia abierta y en IN_APPROVAL<br/>rol del actor igual a role_code del nivel<br/>una firma por persona y por nivel
+
+    SVC->>WA: 7. countApprovalsByActor(levelId, employeeCode)
+    WA-->>SVC: 7.1 cantidad de firmas previas del actor
+    alt El actor ya firmó este nivel
+        SVC-->>GW: 7.2 error 409 DUPLICATE_APPROVAL
+    else Firma válida
+        SVC->>TX: 8. start()
+        activate TX
+        TX->>WA: 8.1 insert(action APPROVE, actor, comment, previous_status, new_status)
+        Note right of WA: Bitácora append-only —<br/>actor_employee_code, actor_name_snapshot,<br/>actor_role_code, comment, created_at
+
+        SVC->>WA: 9. countDistinctApprovers(levelId)
+        WA-->>SVC: 9.1 firmas acumuladas del nivel
+        alt La política todavía no se satisface
+            Note right of WL: ANY necesita 1 firma<br/>ALL necesita todos los aprobadores del rol<br/>QUORUM necesita required_approvals firmas<br/>El nivel sigue ACTIVE
+        else Política satisfecha
+            TX->>WL: 10. update(status APPROVED, finished_at now)
+            SVC->>RO: 11. readCurrentTotal(refundOrderId)
+            RO-->>SVC: 11.1 total vigente de la nota
+            SVC->>CFG: 12. resolveRouting(total, levelOrder)
+            CFG-->>SVC: 12.1 banda del nivel y siguiente nivel requerido
+            alt El total no supera max_amount del nivel
+                TX->>WL: 13. updateHigherLevels(status SKIPPED, finished_at now)
+                TX->>WI: 14. update(status APPROVED, current_level_order null, finished_at now)
+                TX->>RO: 15. update(status APPROVED, updated_at now)
+                TX->>WA: 16. insert(action CLOSED, actor nulo, system_summary)
+                Note right of RO: Cierre —<br/>solo se escribe refund_orders.status igual a APPROVED<br/>no se escribe ningún campo de liquidación<br/>ni de totales aprobados o rechazados
+            else El total supera la banda del nivel
+                TX->>WL: 17. activateNextLevel(status ACTIVE, decision_mode DOCUMENT_DECISION, started_at now)
+                TX->>WI: 18. update(current_level_order igual al nivel abierto)
+                TX->>WA: 19. insert(action AUTO_ROUTED, actor nulo, amount_before, amount_after)
+                Note right of WA: AUTO_ROUTED deja la huella del ruteo<br/>automático por monto — actor nulo
+            end
+        end
+        TX-->>SVC: 20. commit()
+        deactivate TX
+        SVC-->>GW: 21. estado del nivel, de la instancia y de la nota
+        GW-->>App: 22. 200 OK
+        App-->>Aprobador: 23. Muestra el nuevo nivel vigente o el cierre
+    end
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "comment": "Evidencia fotográfica completa y motivo válido."
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "attempt": 1,
+  "level": { "levelOrder": 2, "name": "Gerente de Experiencia al Usuario", "status": "APPROVED" },
+  "approvals": { "policy": "QUORUM", "requiredApprovals": 2, "collected": 2 },
+  "skippedLevels": [3, 4],
+  "instanceStatus": "APPROVED",
+  "documentStatus": "APPROVED",
+  "currentLevel": null,
+  "total": 600.00
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>La nota debe tener exactamente una instancia abierta y esa instancia debe estar en <span class="mono">IN_APPROVAL</span>. Si está en <span class="mono">EDITING</span> se responde <span class="mono">409 INSTANCE_NOT_IN_APPROVAL</span>.</li>
+    <li>El <span class="mono">role_code</span> del actor tiene que coincidir con el del nivel vigente. Si no coincide, <span class="mono">403 ROLE_NOT_ALLOWED</span>.</li>
+    <li>Una firma por persona y por nivel. Una segunda aprobación del mismo <span class="mono">actor_employee_code</span> sobre el mismo <span class="mono">workflow_instance_level_id</span> devuelve <span class="mono">409 DUPLICATE_APPROVAL</span>.</li>
+    <li><span class="mono">ANY</span> cierra el nivel con la primera firma. <span class="mono">ALL</span> exige la firma de todos los aprobadores resueltos por rol. <span class="mono">QUORUM</span> exige <span class="mono">required_approvals</span> firmas de personas distintas.</li>
+    <li>Cerrado el nivel, la banda de montos decide: si el total vigente entra en la banda del nivel, los niveles superiores pasan a <span class="mono">SKIPPED</span> y la nota se aprueba ahí mismo.</li>
+    <li>Si el total supera la banda, se abre el siguiente nivel con <span class="mono">decision_mode = DOCUMENT_DECISION</span> y se registra <span class="mono">AUTO_ROUTED</span> con actor nulo y el movimiento de monto.</li>
+    <li>Ningún nivel distinto del Nivel 1 del primer intento de una nota <span class="mono">ORIGINAL</span> puede usar casillas: aprobar nunca acepta selección de líneas ni cantidades.</li>
+    <li>Al cerrar la nota se escribe únicamente <span class="mono">refund_orders.status = APPROVED</span>, se cierra la instancia con <span class="mono">finished_at</span> y se registra <span class="mono">CLOSED</span>. La liquidación está fuera de alcance.</li>
+    <li>El comentario es opcional en <span class="mono">APPROVE</span>; el motivo obligatorio aplica a <span class="mono">REJECT</span>, <span class="mono">REACTIVATE</span> y <span class="mono">CANCEL</span>.</li>
+  </ul>
+</article>
+
+<article class="card" id="e07">
+  <p class="card__eyebrow">Endpoint 07</p>
+  <h2 class="card__title">Rechazar el nivel vigente</h2>
+  <p class="card__route"><span class="mono">POST /api/v1/refunds/:id/levels/current/reject</span></p>
+  <p class="card__desc">El motivo es obligatorio y el destino del rechazo no lo elige quien rechaza: lo define <span class="mono">on_reject</span> del nivel configurado, y solo existen dos valores posibles. Con <span class="mono">TERMINATE</span> la nota muere: se cierra el nivel, la instancia queda <span class="mono">REJECTED</span>, la nota pasa a <span class="mono">REJECTED</span>, se guarda <span class="mono">rejected_at</span> y se calcula <span class="mono">reactivation_expires_at</span>. Con <span class="mono">RETURN_PREVIOUS</span> se reabre el nivel anterior y la instancia sigue en aprobación.</p>
+  <div class="callout">Rechazar nunca habilita edición de cantidades. La edición existe únicamente para una nota <span class="mono">DISSOCIATED</span> cuya instancia esté en <span class="mono">EDITING</span>. El Nivel 1 no puede configurarse con <span class="mono">RETURN_PREVIOUS</span> porque no tiene nivel anterior.</div>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_reasons</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Aprobador
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundApprovalService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant RSN as refund_reasons
+
+    Aprobador->>App: 1. Rechaza y escribe el motivo
+    App->>GW: 2. POST /refunds/1001/levels/current/reject
+    GW->>SVC: 3. rejectCurrentLevel(refundOrderId, actor, reason, comment)
+    Note right of GW: reason es obligatorio —<br/>sin motivo se responde 422
+
+    SVC->>RSN: 4. assertReasonExists(reason)
+    RSN-->>SVC: 4.1 motivo activo
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia IN_APPROVAL, attempt, current_level_order
+    SVC->>WL: 6. findActiveLevel(instanceId)
+    WL-->>SVC: 6.1 nivel ACTIVE con on_reject y role_code
+    Note right of WL: on_reject solo admite<br/>TERMINATE o RETURN_PREVIOUS<br/>El Nivel 1 no admite RETURN_PREVIOUS
+
+    SVC->>TX: 7. start()
+    activate TX
+    TX->>WL: 7.1 update(status REJECTED, finished_at now)
+    TX->>WA: 7.2 insert(action REJECT, actor, reason, comment, previous_status, new_status)
+
+    alt on_reject igual a TERMINATE
+        TX->>WI: 8. update(status REJECTED, current_level_order null, finished_at now)
+        TX->>RO: 9. update(status REJECTED, rejected_at now, reactivation_expires_at calculado)
+        Note right of RO: rejected_at es el sello del rechazo<br/>reactivation_expires_at es la fecha límite<br/>para reactivar sin permiso especial
+        TX->>WA: 10. insert(action CLOSED, actor nulo, system_summary)
+        Note right of WA: La nota no entra en edición —<br/>solo puede reactivarse dentro de la ventana
+    else on_reject igual a RETURN_PREVIOUS
+        TX->>WL: 11. reopenPreviousLevel(status ACTIVE, decision_mode DOCUMENT_DECISION, started_at now, finished_at null)
+        TX->>WI: 12. update(current_level_order igual al nivel anterior, status sigue IN_APPROVAL)
+        TX->>WA: 13. insert(action RETURNED_PREVIOUS, actor, reason, comment)
+        Note right of WL: El nivel que regresa siempre es DOCUMENT_DECISION —<br/>nunca vuelven las casillas del Nivel 1<br/>y las cantidades siguen bloqueadas
+    end
+    TX-->>SVC: 14. commit()
+    deactivate TX
+    SVC-->>GW: 15. destino aplicado, estado de la instancia y de la nota
+    GW-->>App: 16. 200 OK
+    App-->>Aprobador: 17. Muestra el cierre o el nivel reabierto
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "reason": "EVIDENCIA_INSUFICIENTE",
+  "comment": "Las fotografías no permiten identificar el lote declarado."
+}</pre>
+  <h3 class="card__sub">Response — TERMINATE</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "attempt": 1,
+  "onReject": "TERMINATE",
+  "level": { "levelOrder": 2, "status": "REJECTED" },
+  "instanceStatus": "REJECTED",
+  "documentStatus": "REJECTED",
+  "rejectedAt": "2026-08-31T15:20:00Z",
+  "reactivationExpiresAt": "2026-09-07T15:20:00Z",
+  "editingEnabled": false
+}</pre>
+  <h3 class="card__sub">Response — RETURN_PREVIOUS</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "attempt": 1,
+  "onReject": "RETURN_PREVIOUS",
+  "level": { "levelOrder": 3, "status": "REJECTED" },
+  "reopenedLevel": { "levelOrder": 2, "status": "ACTIVE", "decisionMode": "DOCUMENT_DECISION" },
+  "instanceStatus": "IN_APPROVAL",
+  "documentStatus": "IN_APPROVAL",
+  "editingEnabled": false
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li><span class="mono">reason</span> es obligatorio y tiene que existir y estar activo en <span class="mono">refund_reasons</span>. Sin motivo, <span class="mono">422 REASON_REQUIRED</span>.</li>
+    <li>El destino se lee de <span class="mono">on_reject</span> del nivel vigente. Los únicos valores válidos del catálogo son <span class="mono">TERMINATE</span> y <span class="mono">RETURN_PREVIOUS</span>.</li>
+    <li>Un Nivel 1 configurado con <span class="mono">RETURN_PREVIOUS</span> es una configuración inválida: no hay nivel anterior y se responde <span class="mono">409 NO_PREVIOUS_LEVEL</span>.</li>
+    <li>Con <span class="mono">TERMINATE</span> se cierra el nivel, la instancia pasa a <span class="mono">REJECTED</span> sin nivel activo, la nota pasa a <span class="mono">REJECTED</span> y se escriben <span class="mono">rejected_at</span> y <span class="mono">reactivation_expires_at</span> en la misma transacción.</li>
+    <li>Con <span class="mono">TERMINATE</span> se registran dos acciones: <span class="mono">REJECT</span> con actor y motivo, y <span class="mono">CLOSED</span> con actor nulo.</li>
+    <li>Con <span class="mono">RETURN_PREVIOUS</span> el nivel anterior vuelve a <span class="mono">ACTIVE</span> con <span class="mono">decision_mode = DOCUMENT_DECISION</span>, la instancia sigue en <span class="mono">IN_APPROVAL</span> y se registra <span class="mono">RETURNED_PREVIOUS</span>.</li>
+    <li>Rechazar no habilita edición de cantidades en ningún caso, ni siquiera sobre una nota disociada ya reenviada.</li>
+    <li>Rechazar tampoco reabre la selección por casillas: las decisiones del Nivel 1 quedan congeladas en <span class="mono">refund_order_detail_decisions</span>.</li>
+    <li>El actor debe pertenecer al <span class="mono">role_code</span> del nivel vigente; en caso contrario, <span class="mono">403 ROLE_NOT_ALLOWED</span>.</li>
+  </ul>
+</article>
+
+<article class="card" id="e08">
+  <p class="card__eyebrow">Endpoint 08</p>
+  <h2 class="card__title">Reactivar una nota rechazada</h2>
+  <p class="card__route"><span class="mono">POST /api/v1/refunds/:id/reactivate</span></p>
+  <p class="card__desc">Una nota rechazada puede volver a circular solamente si sigue dentro de la ventana de reactivación o si el actor tiene el permiso especial que la ignora. La reactivación no corrige el documento: crea otra fila en <span class="mono">refund_workflow_instances</span> con <span class="mono">attempt + 1</span> y <span class="mono">reactivated_from_instance_id</span> apuntando al intento rechazado, que queda inmutable. Todos los niveles del intento nuevo nacen en <span class="mono">DOCUMENT_DECISION</span>.</p>
+  <div class="callout">No hay contador de reactivaciones: la cantidad de reactivaciones es la cantidad de intentos de la nota menos uno, leída de <span class="mono">refund_workflow_instances.attempt</span>.</div>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_approval_levels</li>
+    <li class="chip">refund_reasons</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Solicitante
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundReactivationService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant CFG as refund_approval_levels
+    participant IAM as Servicio de Identidad
+
+    Solicitante->>App: 1. Solicita reactivar y escribe el motivo
+    App->>GW: 2. POST /refunds/1001/reactivate
+    GW->>SVC: 3. reactivate(refundOrderId, actor, reason, comment)
+    SVC->>IAM: 4. resolvePermissions(token)
+    IAM-->>SVC: 4.1 employeeCode, roleCode, tienePermisoEspecial
+    SVC->>RO: 5. findById(refundOrderId)
+    RO-->>SVC: 5.1 status, total, rejected_at, reactivation_expires_at
+    Note right of RO: Ventana —<br/>status igual a REJECTED<br/>y fecha_actual no supera reactivation_expires_at<br/>o el actor tiene permiso especial
+
+    alt La nota no está REJECTED
+        SVC-->>GW: 6. error 409 NOT_REJECTED
+    else Ventana vencida y sin permiso especial
+        SVC-->>GW: 7. error 403 REACTIVATION_WINDOW_EXPIRED
+    else Reactivación permitida
+        SVC->>WI: 8. assertNoOpenInstance(refundOrderId)
+        WI-->>SVC: 8.1 no hay instancia en EDITING ni IN_APPROVAL
+        SVC->>WI: 9. findLastInstance(refundOrderId)
+        WI-->>SVC: 9.1 instancia rechazada con attempt igual a N
+        SVC->>CFG: 10. loadActiveLevels(workflowVersion, total)
+        CFG-->>SVC: 10.1 niveles vigentes con bandas y políticas
+
+        SVC->>TX: 11. start()
+        activate TX
+        TX->>WI: 11.1 insert(attempt N mas 1, status IN_APPROVAL, current_level_order 1, reactivated_from_instance_id, started_at now)
+        Note right of WI: El intento anterior no se modifica —<br/>queda inmutable como evidencia histórica
+        TX->>WL: 11.2 insertLevels(decision_mode DOCUMENT_DECISION para todos los niveles)
+        Note right of WL: Sin casillas —<br/>ITEM_SELECTION solo existe en el Nivel 1<br/>del primer intento de una nota ORIGINAL
+        TX->>RO: 11.3 update(status IN_APPROVAL, rejected_at null, reactivation_expires_at null)
+        Note right of RO: No se tocan cantidades, precios ni líneas<br/>y no se crea ninguna nota disociada
+        TX->>WA: 11.4 insert(action REACTIVATE, actor, reason, comment, previous_status REJECTED, new_status IN_APPROVAL)
+        TX-->>SVC: 12. commit()
+        deactivate TX
+        SVC-->>GW: 13. intento nuevo, nivel activo y estado del documento
+        GW-->>App: 14. 201 Created
+        App-->>Solicitante: 15. Muestra el intento 2 esperando el Nivel 1
+    end
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "reason": "DOCUMENTACION_COMPLETADA",
+  "comment": "Se adjuntó la factura F-200 que faltaba en el primer intento."
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "documentType": "ORIGINAL",
+  "documentStatus": "IN_APPROVAL",
+  "instance": {
+    "id": 7702,
+    "attempt": 2,
+    "status": "IN_APPROVAL",
+    "currentLevelOrder": 1,
+    "reactivatedFromInstanceId": 7701
+  },
+  "levels": [
+    { "levelOrder": 1, "decisionMode": "DOCUMENT_DECISION", "status": "ACTIVE" },
+    { "levelOrder": 2, "decisionMode": "DOCUMENT_DECISION", "status": "PENDING" }
+  ],
+  "reactivations": 1,
+  "itemSelectionEnabled": false,
+  "editingEnabled": false
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Solo se reactiva desde <span class="mono">status = REJECTED</span>. Cualquier otro estado responde <span class="mono">409 NOT_REJECTED</span>.</li>
+    <li>La condición es <span class="mono">fecha_actual &lt;= reactivation_expires_at</span> o que el actor tenga el permiso especial. Fuera de la ventana y sin ese permiso, <span class="mono">403 REACTIVATION_WINDOW_EXPIRED</span>.</li>
+    <li><span class="mono">reason</span> es obligatorio, igual que en el rechazo y en la anulación.</li>
+    <li>El índice único parcial garantiza una sola instancia abierta por nota: si quedara alguna en <span class="mono">EDITING</span> o <span class="mono">IN_APPROVAL</span>, la inserción falla con <span class="mono">409 OPEN_INSTANCE_EXISTS</span>.</li>
+    <li>La instancia nueva lleva <span class="mono">attempt + 1</span> y <span class="mono">reactivated_from_instance_id</span> apuntando al intento rechazado.</li>
+    <li>El intento anterior queda inmutable: no se reabren sus niveles ni se corrigen sus acciones.</li>
+    <li>Todos los niveles del intento nuevo nacen con <span class="mono">decision_mode = DOCUMENT_DECISION</span>. No hay casillas de selección en ninguna reactivación.</li>
+    <li>Reactivar no permite editar cantidades, cambiar precios, agregar líneas ni crear otra nota disociada.</li>
+    <li>No existe <span class="mono">reactivation_count</span>: la cantidad de reactivaciones se cuenta sobre los intentos registrados.</li>
+    <li>Se registra <span class="mono">REACTIVATE</span> con actor, motivo y el movimiento de estado en <span class="mono">previous_status</span> y <span class="mono">new_status</span>.</li>
+  </ul>
+</article>
+
+<article class="card" id="e09">
+  <p class="card__eyebrow">Endpoint 09</p>
+  <h2 class="card__title">Editar las líneas de una nota disociada</h2>
+  <p class="card__route"><span class="mono">PUT /api/v1/refunds/:id/items</span></p>
+  <p class="card__desc">Es la única escritura que hace el vendedor sobre el documento y su llave es doble: <span class="mono">document_type = DISSOCIATED</span> y la instancia abierta en <span class="mono">EDITING</span>. Dentro de esa ventana puede reducir cantidades, cambiar observaciones y la justificación, y guardar todas las veces que quiera; no hay límite de guardados ni contador de ediciones. Toda reducción de cantidad obliga a ajustar los orígenes de la línea en la misma transacción, porque la suma de <span class="mono">refund_order_detail_sources.quantity</span> tiene que dar exactamente la cantidad vigente del detalle.</p>
+  <div class="callout">Los orígenes vienen congelados desde la nota fuente. El vendedor puede bajar la cantidad de una factura o de un lote existente, incluso hasta soltarlo, pero no puede inventar una factura ni un lote que no venía de la nota origen.</div>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_reasons</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Vendedor
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundItemsService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant RD as refund_order_details
+    participant RS as refund_order_detail_sources
+    participant WI as refund_workflow_instances
+
+    Vendedor->>App: 1. Reduce cantidades y ajusta los orígenes
+    App->>GW: 2. PUT /refunds/1004/items
+    GW->>SVC: 3. updateItems(refundOrderId, payload)
+    SVC->>RO: 4. findById(refundOrderId)
+    RO-->>SVC: 4.1 document_type, status, source_refund_order_id
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia con status EDITING
+    Note right of SVC: Llave de edición —<br/>document_type igual a DISSOCIATED<br/>y workflow.status igual a EDITING<br/>No hay límite de guardados
+
+    alt La nota es ORIGINAL o la instancia no está en EDITING
+        SVC-->>GW: 6. error 409 NOT_EDITABLE
+    else Edición permitida
+        SVC->>RD: 7. loadDetails(refundOrderId)
+        RD-->>SVC: 7.1 líneas vigentes con source_quantity, quantity, price_unit
+        SVC->>RS: 8. loadSources(detailIds)
+        RS-->>SVC: 8.1 orígenes congelados por factura y lote
+
+        Note right of SVC: Validaciones por línea —<br/>la línea pertenece a esta nota<br/>quantity mayor que cero<br/>quantity no supera source_quantity<br/>quantity no aumenta respecto de la vigente<br/>price_unit no cambia<br/>no se agregan ni se borran líneas<br/>cada origen enviado ya existía en la línea<br/>la suma de orígenes iguala la cantidad de la línea
+
+        SVC->>TX: 9. start()
+        activate TX
+        TX->>RD: 9.1 update(quantity, notes, updated_by, updated_at)
+        TX->>RS: 9.2 updateQuantities(orígenes de cada línea tocada)
+        Note right of RS: Detalle y orígenes se escriben juntos —<br/>si la suma no coincide se revierte todo
+        TX->>RO: 9.3 update(justification, updated_by, updated_at)
+        Note right of RO: El total se recalcula recién al reenviar —<br/>durante la edición se devuelve el total proyectado
+        TX-->>SVC: 10. commit()
+        deactivate TX
+        SVC-->>GW: 11. líneas vigentes, orígenes y total proyectado
+        GW-->>App: 12. 200 OK
+        App-->>Vendedor: 13. Puede seguir editando y guardando
+    end
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "justification": "El cliente aceptó devolver menos unidades del Producto B.",
+  "items": [
+    {
+      "detailId": 7002,
+      "quantity": 7,
+      "notes": "Se retiran 7 de las 10 unidades apartadas.",
+      "sources": [
+        { "sourceId": 9101, "invoiceNumber": "F-100", "lot": "L01", "quantity": 5 },
+        { "sourceId": 9102, "invoiceNumber": "F-200", "lot": "L02", "quantity": 2 }
+      ]
+    }
+  ]
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1004,
+  "noteNumber": "235054",
+  "splitSequence": 1,
+  "documentType": "DISSOCIATED",
+  "sourceRefundOrderId": 1001,
+  "workflowStatus": "EDITING",
+  "projectedTotal": 280.00,
+  "items": [
+    {
+      "detailId": 7002,
+      "sourceDetailId": 5002,
+      "productCode": "PRD-502",
+      "sourceQuantity": 10,
+      "quantity": 7,
+      "priceUnit": 40.00,
+      "sources": [
+        { "sourceId": 9101, "invoiceNumber": "F-100", "invoiceSapDoc": "100", "lot": "L01", "quantity": 5 },
+        { "sourceId": 9102, "invoiceNumber": "F-200", "invoiceSapDoc": "200", "lot": "L02", "quantity": 2 }
+      ]
+    }
+  ]
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Solo edita una nota con <span class="mono">document_type = DISSOCIATED</span> cuya instancia abierta esté en <span class="mono">EDITING</span>. En cualquier otro caso, <span class="mono">409 NOT_EDITABLE</span>.</li>
+    <li>Se puede guardar tantas veces como haga falta mientras la instancia siga en <span class="mono">EDITING</span>. No existe límite de un guardado ni contador de ediciones.</li>
+    <li>Se permite reducir cantidades, cambiar <span class="mono">notes</span> de la línea y cambiar la <span class="mono">justification</span> de la nota.</li>
+    <li>No se puede aumentar la cantidad vigente ni superar <span class="mono">source_quantity</span>: <span class="mono">422 QUANTITY_INCREASE_NOT_ALLOWED</span>.</li>
+    <li>No se pueden agregar productos, borrar líneas físicamente ni modificar <span class="mono">price_unit</span>: el valor se calcula siempre con el precio congelado.</li>
+    <li>No se puede tocar la nota original ni ninguna línea que no pertenezca a esta nota disociada.</li>
+    <li>Al reducir una cantidad hay que ajustar los orígenes de esa línea en la misma transacción; <span class="mono">SUM(sources.quantity)</span> debe dar exactamente <span class="mono">refund_order_details.quantity</span>, si no, <span class="mono">422 SOURCES_SUM_MISMATCH</span> y rollback completo.</li>
+    <li>Cada origen enviado tiene que existir ya en la línea, heredado de la nota fuente. Una factura o un lote nuevo devuelve <span class="mono">422 UNKNOWN_SOURCE</span>.</li>
+    <li>Cada origen conserva la regla <span class="mono">quantity &gt; 0</span> y al menos uno de <span class="mono">invoice_number</span>, <span class="mono">invoice_sap_doc</span> o <span class="mono">lot</span>.</li>
+    <li>El total definitivo se recalcula al reenviar; durante la edición la respuesta expone un total proyectado.</li>
+  </ul>
+</article>
+
+<article class="card" id="e10">
+  <p class="card__eyebrow">Endpoint 10</p>
+  <h2 class="card__title">Reenviar la nota disociada a aprobación</h2>
+  <p class="card__route"><span class="mono">POST /api/v1/refunds/:id/resubmit</span></p>
+  <p class="card__desc">Cierra la ventana de edición del vendedor y devuelve la nota disociada al circuito de aprobación. Recalcula el total desde las líneas vigentes con el precio congelado, revalida que la suma de orígenes coincida línea por línea y activa el Nivel 1 en modo <span class="mono">DOCUMENT_DECISION</span>: el aprobador solo puede comentar, aprobar o rechazar. Queda la huella <span class="mono">SELLER_RESUBMITTED</span> con el monto anterior y el monto reenviado.</p>
+  <div class="callout">Las casillas del Nivel 1 no vuelven nunca. <span class="mono">ITEM_SELECTION</span> existe solamente en el Nivel 1 del primer intento de una nota <span class="mono">ORIGINAL</span>; una disociada reenviada arranca siempre en <span class="mono">DOCUMENT_DECISION</span>.</div>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Vendedor
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundResubmitService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant RD as refund_order_details
+    participant RS as refund_order_detail_sources
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+
+    Vendedor->>App: 1. Confirma el reenvío de la nota disociada
+    App->>GW: 2. POST /refunds/1004/resubmit
+    GW->>SVC: 3. resubmit(refundOrderId, actor, comment)
+    SVC->>RO: 4. findById(refundOrderId)
+    RO-->>SVC: 4.1 document_type DISSOCIATED, total anterior
+    SVC->>WI: 5. findOpenInstance(refundOrderId)
+    WI-->>SVC: 5.1 instancia en EDITING
+
+    alt La instancia no está en EDITING
+        SVC-->>GW: 6. error 409 NOT_IN_EDITING
+    else Reenvío permitido
+        SVC->>RD: 7. loadDetails(refundOrderId)
+        RD-->>SVC: 7.1 líneas ACTIVE con quantity y price_unit
+        SVC->>RS: 8. sumSourcesByDetail(detailIds)
+        RS-->>SVC: 8.1 suma de orígenes por línea
+        Note right of SVC: Validación de integridad —<br/>al menos una línea vigente<br/>cada quantity mayor que cero y no supera source_quantity<br/>la suma de orígenes iguala la cantidad de cada línea<br/>la evidencia exigida por el motivo está completa
+
+        SVC->>TX: 9. start()
+        activate TX
+        TX->>RO: 9.1 update(total recalculado, updated_by, updated_at)
+        Note right of RO: total igual a la suma de quantity por price_unit<br/>con el precio congelado de cada línea
+        TX->>WI: 9.2 update(status IN_APPROVAL, current_level_order 1)
+        Note right of WI: Bloquea la edición —<br/>al salir de EDITING el PUT de líneas deja de aplicar
+        TX->>WL: 9.3 activateLevel1(decision_mode DOCUMENT_DECISION, status ACTIVE, started_at now)
+        Note right of WL: Sin casillas — el Nivel 1 solo comenta,<br/>aprueba o rechaza el documento completo
+        TX->>WA: 9.4 insert(action SELLER_RESUBMITTED, actor, comment, amount_before, amount_after)
+        Note right of WA: amount_before es el total previo<br/>amount_after es el total reenviado
+        TX-->>SVC: 10. commit()
+        deactivate TX
+        SVC-->>GW: 11. total recalculado y nivel activo
+        GW-->>App: 12. 200 OK
+        App-->>Vendedor: 13. La nota queda en aprobación y sin edición
+    end
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "comment": "Cantidades ajustadas junto con el cliente."
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1004,
+  "noteNumber": "235054",
+  "splitSequence": 1,
+  "documentType": "DISSOCIATED",
+  "documentStatus": "IN_APPROVAL",
+  "instance": { "id": 7710, "attempt": 1, "status": "IN_APPROVAL", "currentLevelOrder": 1 },
+  "level": { "levelOrder": 1, "decisionMode": "DOCUMENT_DECISION", "status": "ACTIVE" },
+  "amountBefore": 400.00,
+  "amountAfter": 280.00,
+  "editingEnabled": false
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Solo se reenvía una nota <span class="mono">DISSOCIATED</span> cuya instancia abierta esté en <span class="mono">EDITING</span>; en otro caso, <span class="mono">409 NOT_IN_EDITING</span>.</li>
+    <li>El reenvío bloquea la edición: al pasar la instancia a <span class="mono">IN_APPROVAL</span>, el <span class="mono">PUT /items</span> deja de aplicar.</li>
+    <li>El total se recalcula como la suma de <span class="mono">quantity × price_unit</span> de las líneas vigentes, siempre con el precio congelado.</li>
+    <li>Antes de escribir se revalida <span class="mono">SUM(sources.quantity) = refund_order_details.quantity</span> por cada línea; si falla, <span class="mono">422 SOURCES_SUM_MISMATCH</span> y no se reenvía nada.</li>
+    <li>Una nota sin líneas vigentes no puede reenviarse: <span class="mono">422 NO_ACTIVE_ITEMS</span>.</li>
+    <li>Se activa el Nivel 1 con <span class="mono">decision_mode = DOCUMENT_DECISION</span>. Nunca se activa con casillas de selección.</li>
+    <li>Se registra <span class="mono">SELLER_RESUBMITTED</span> con <span class="mono">amount_before</span> y <span class="mono">amount_after</span>: el movimiento del monto se lee de la bitácora.</li>
+    <li>Aprobado el Nivel 1, la nota continúa por los niveles que exija su monto recalculado, con el mismo ruteo automático del endpoint de aprobación.</li>
+  </ul>
+</article>
+
+<article class="card" id="e11">
+  <p class="card__eyebrow">Endpoint 11</p>
+  <h2 class="card__title">Anular la nota</h2>
+  <p class="card__route"><span class="mono">POST /api/v1/refunds/:id/cancel</span></p>
+  <p class="card__desc">Corta el circuito de una nota todavía abierta, sea que esté en edición o en aprobación, y siempre con motivo obligatorio. Los niveles que quedaban pendientes pasan a <span class="mono">SKIPPED</span>, la instancia cierra como <span class="mono">CANCELLED</span> y la nota queda anulada. La anulación es terminal: no se aprueba, no se edita y no se reactiva una nota anulada, porque la reactivación existe solo para el rechazo.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_reasons</li>
+  </ul>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    actor Solicitante
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundCancelService
+    participant TX as Transaction Manager<br/>(QueryRunner)
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant RSN as refund_reasons
+
+    Solicitante->>App: 1. Anula la nota y escribe el motivo
+    App->>GW: 2. POST /refunds/1004/cancel
+    GW->>SVC: 3. cancel(refundOrderId, actor, reason, comment)
+    Note right of GW: reason es obligatorio —<br/>igual que en REJECT y en REACTIVATE
+
+    SVC->>RSN: 4. assertReasonExists(reason)
+    RSN-->>SVC: 4.1 motivo activo
+    SVC->>RO: 5. findById(refundOrderId)
+    RO-->>SVC: 5.1 status y document_type
+    SVC->>WI: 6. findOpenInstance(refundOrderId)
+    WI-->>SVC: 6.1 instancia en EDITING o IN_APPROVAL
+
+    alt No hay instancia abierta
+        SVC-->>GW: 7. error 409 NOT_CANCELLABLE
+    else Nota abierta
+        SVC->>TX: 8. start()
+        activate TX
+        TX->>WL: 8.1 update(niveles PENDING y ACTIVE a SKIPPED, finished_at now)
+        Note right of WL: Los niveles abiertos no se rechazan —<br/>se saltean porque el documento deja de circular
+        TX->>WI: 8.2 update(status CANCELLED, current_level_order null, finished_at now)
+        TX->>RO: 8.3 update(status CANCELLED, updated_by, updated_at)
+        Note right of RO: Estado terminal —<br/>no se aprueba, no se edita y no se reactiva<br/>La reactivación existe solo desde REJECTED
+        TX->>WA: 8.4 insert(action CANCEL, actor, reason, comment, previous_status, new_status CANCELLED)
+        TX->>WA: 8.5 insert(action CLOSED, actor nulo, system_summary)
+        TX-->>SVC: 9. commit()
+        deactivate TX
+        SVC-->>GW: 10. estado final del documento
+        GW-->>App: 11. 200 OK
+        App-->>Solicitante: 12. Muestra la nota anulada
+    end
+</pre>
+  </div>
+  <h3 class="card__sub">Request</h3>
+  <pre class="code">{
+  "reason": "SOLICITUD_DESISTIDA",
+  "comment": "El cliente retiró el reclamo antes de la revisión."
+}</pre>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1004,
+  "noteNumber": "235054",
+  "splitSequence": 1,
+  "documentType": "DISSOCIATED",
+  "documentStatus": "CANCELLED",
+  "instance": { "id": 7710, "attempt": 1, "status": "CANCELLED", "currentLevelOrder": null },
+  "skippedLevels": [1, 2],
+  "terminal": true
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Solo se anula una nota abierta, es decir con una instancia en <span class="mono">EDITING</span> o en <span class="mono">IN_APPROVAL</span>. Sobre una nota ya <span class="mono">APPROVED</span>, <span class="mono">REJECTED</span> o <span class="mono">CANCELLED</span> se responde <span class="mono">409 NOT_CANCELLABLE</span>.</li>
+    <li><span class="mono">reason</span> es obligatorio y debe existir en <span class="mono">refund_reasons</span>: sin motivo, <span class="mono">422 REASON_REQUIRED</span>.</li>
+    <li>Todos los niveles abiertos, <span class="mono">PENDING</span> o <span class="mono">ACTIVE</span>, pasan a <span class="mono">SKIPPED</span> con <span class="mono">finished_at</span>; no se registran como rechazados.</li>
+    <li>La instancia cierra en <span class="mono">CANCELLED</span> sin nivel activo y la nota queda en <span class="mono">CANCELLED</span>.</li>
+    <li>La anulación es terminal: no habilita edición, no admite reactivación y no crea otro intento. La ventana de reactivación pertenece solamente al rechazo.</li>
+    <li>Anular la nota original no anula automáticamente su nota disociada: cada fila de <span class="mono">refund_orders</span> tiene su propio workflow y se anula por separado.</li>
+    <li>Se registran <span class="mono">CANCEL</span> con actor y motivo, y <span class="mono">CLOSED</span> con actor nulo, ambas en la bitácora append-only.</li>
+    <li>No se escribe ningún campo de liquidación ni de totales: <span class="mono">refund_orders.total</span> conserva el valor que tenía al anularse, como evidencia histórica.</li>
+  </ul>
+</article>
+<article class="card" id="e12">
+  <p class="card__eyebrow">Endpoint 12</p>
+  <h2 class="card__title">Historial de la nota</h2>
+  <p class="card__route">GET /api/v1/refunds/:id/history</p>
+  <p class="card__desc">Devuelve la bitácora completa de la nota agrupada por intento. Cada intento es una fila de <span class="mono">refund_workflow_instances</span> y ordena sus acciones por <span class="mono">created_at</span>, que es la fecha efectiva de cada hecho: no existe ningún otro campo de fecha en la acción. La bitácora es append-only, de modo que el historial nunca se corrige hacia atrás, solamente crece.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">refund_order_detail_decisions</li>
+    <li class="chip">refund_order_details</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Usuario
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundHistoryService
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant DD as refund_order_detail_decisions
+    participant RD as refund_order_details
+
+    Usuario->>App: 1. abrir historial de la nota
+    App->>GW: 2. GET /api/v1/refunds/1001/history
+    GW->>SVC: 3. obtenerHistorial(refundOrderId)
+    SVC->>RO: 4. buscarNota(id)
+    RO-->>SVC: 4.1 nota — note_number, split_sequence, document_type, source_refund_order_id
+    Note right of RO: Si document_type es DISSOCIATED<br/>source_refund_order_id apunta a la original
+    SVC->>WA: 5. buscarVinculoDisociacion(refundOrderId)
+    WA-->>SVC: 5.1 acciones DISSOCIATED_CREATED leidas en los dos sentidos
+    Note right of WA: Desde la original se lee<br/>related_refund_order_id<br/>desde la disociada se busca la accion<br/>cuyo related_refund_order_id es esta nota
+    SVC->>WI: 6. listarIntentos(refundOrderId)
+    WI-->>SVC: 6.1 intentos ordenados por attempt con reactivated_from_instance_id
+    SVC->>WL: 7. listarNiveles(workflowInstanceIds)
+    WL-->>SVC: 7.1 niveles con decision_mode, status, first_viewed_at
+    SVC->>WA: 8. listarAcciones(workflowInstanceIds)
+    WA-->>SVC: 8.1 acciones con amount_before, amount_after y created_at
+    Note right of WA: Los movimientos de monto salen de<br/>amount_before y amount_after de las acciones<br/>nunca de campos de la nota
+    SVC->>DD: 9. listarDecisionesDeItem(workflowActionIds)
+    DD-->>SVC: 9.1 filas SELECTED o DISSOCIATED por detalle
+    SVC->>RD: 10. resolverProductos(refundOrderDetailIds)
+    RD-->>SVC: 10.1 product_code y product_name_snapshot
+    SVC-->>GW: 11. historial agrupado por intento
+    GW-->>App: 12. 200 OK
+    App-->>Usuario: 13. linea de tiempo por intento
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "noteNumber": "235054",
+  "documentType": "ORIGINAL",
+  "family": {
+    "originalRefundOrderId": 1001,
+    "dissociatedRefundOrderIds": [1004],
+    "linkSource": "refund_workflow_actions.DISSOCIATED_CREATED"
+  },
+  "attempts": [
+    {
+      "workflowInstanceId": 7001,
+      "attempt": 1,
+      "status": "IN_APPROVAL",
+      "reactivatedFromInstanceId": null,
+      "actions": [
+        {
+          "id": 90001,
+          "action": "CREATED",
+          "actorName": "Vendedor Perez",
+          "amountBefore": null,
+          "amountAfter": 1000.00,
+          "createdAt": "2026-08-20T09:12:00Z"
+        },
+        {
+          "id": 90003,
+          "action": "LEVEL1_ITEM_SELECTION",
+          "actorRoleCode": "UX_ANALYST",
+          "amountBefore": 1000.00,
+          "amountAfter": 600.00,
+          "createdAt": "2026-08-20T11:40:00Z",
+          "itemDecisions": [
+            { "refundOrderDetailId": 5001, "productCode": "PRD-501", "decision": "SELECTED" },
+            { "refundOrderDetailId": 5002, "productCode": "PRD-502", "decision": "DISSOCIATED" }
+          ]
+        },
+        {
+          "id": 90004,
+          "action": "DISSOCIATED_CREATED",
+          "relatedRefundOrderId": 1004,
+          "amountBefore": null,
+          "amountAfter": 400.00,
+          "createdAt": "2026-08-20T11:40:00Z"
+        }
+      ]
+    }
+  ]
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Las acciones se agrupan por intento: cada grupo corresponde a una fila de <span class="mono">refund_workflow_instances</span> y se ordena por <span class="mono">attempt</span> ascendente.</li>
+    <li>El intento reactivado se encadena con el anterior por <span class="mono">reactivated_from_instance_id</span>; los intentos previos quedan inmutables y se muestran tal como cerraron.</li>
+    <li>El vínculo entre la original y su disociada se resuelve por la fila puente <span class="mono">DISSOCIATED_CREATED</span>, leída en los dos sentidos: desde la original por <span class="mono">related_refund_order_id</span>, desde la disociada buscando la acción que la nombra.</li>
+    <li><span class="mono">related_refund_order_id</span> solo tiene valor en <span class="mono">DISSOCIATED_CREATED</span>; en cualquier otra acción viaja nulo y no debe interpretarse.</li>
+    <li>La selección por ítem se lee de <span class="mono">refund_order_detail_decisions</span>, que cuelga de la acción <span class="mono">LEVEL1_ITEM_SELECTION</span> y solo admite <span class="mono">SELECTED</span> o <span class="mono">DISSOCIATED</span>: es una decisión por línea completa, sin cantidades aprobadas.</li>
+    <li>Los movimientos de monto se reconstruyen exclusivamente con <span class="mono">amount_before</span> y <span class="mono">amount_after</span> de cada acción; la nota no guarda montos parciales de ningún tipo.</li>
+    <li><span class="mono">created_at</span> es la fecha efectiva de la acción: no hay otro campo de fecha y no se sobrescribe.</li>
+    <li>Las acciones automáticas, como <span class="mono">AUTO_ROUTED</span> o <span class="mono">CLOSED</span> por sistema, llegan con actor nulo y se muestran atribuidas al sistema.</li>
+    <li><span class="mono">refund_workflow_actions</span> es append-only: el endpoint es de solo lectura y nunca corrige ni elimina filas.</li>
+    <li>Los nombres que se muestran salen de los snapshots (<span class="mono">actor_name_snapshot</span>, <span class="mono">product_name_snapshot</span>) para que el historial siga siendo legible aunque los sistemas externos cambien.</li>
+  </ul>
+</article>
+
+<article class="card" id="e13">
+  <p class="card__eyebrow">Endpoint 13</p>
+  <h2 class="card__title">Escalera de aprobación</h2>
+  <p class="card__route">GET · POST /api/v1/refund-approval-levels</p>
+  <p class="card__desc">El <span class="mono">GET</span> devuelve la versión activa de la escalera de niveles. El <span class="mono">POST</span> publica una versión nueva y archiva la anterior en la misma transacción. Las instancias en curso no se ven afectadas, porque al arrancar congelaron su propia copia de los niveles en <span class="mono">refund_workflow_instance_levels</span>.</p>
+  <ul class="chips">
+    <li class="chip">refund_approval_levels</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_instances</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Administrador
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as ApprovalLevelsService
+    participant AL as refund_approval_levels
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+
+    Administrador->>App: 1. abrir configuracion de niveles
+    App->>GW: 2. GET /api/v1/refund-approval-levels
+    GW->>SVC: 3. obtenerVersionActiva()
+    SVC->>AL: 4. buscarNiveles(is_active true)
+    AL-->>SVC: 4.1 niveles LVL1 a LVL4 ordenados por level_order
+    SVC-->>GW: 5. version activa
+    GW-->>App: 6. 200 OK
+    Administrador->>App: 7. publicar nueva escalera
+    App->>GW: 8. POST /api/v1/refund-approval-levels
+    GW->>SVC: 9. publicarVersion(niveles)
+    SVC->>SVC: 10. validarEscalera(niveles)
+    Note right of SVC: level_order consecutivo desde 1<br/>activation_min_amount creciente<br/>required_approvals coherente con approval_policy<br/>on_reject solo TERMINATE o RETURN_PREVIOUS<br/>el nivel 1 no puede usar RETURN_PREVIOUS
+    SVC->>AL: 11. archivarVersionAnterior(workflow_version_id)
+    AL-->>SVC: 11.1 filas anteriores con is_active false
+    SVC->>AL: 12. insertarNiveles(nuevoWorkflowVersionId)
+    AL-->>SVC: 12.1 niveles publicados
+    SVC->>WI: 13. verificarInstanciasAbiertas()
+    WI-->>SVC: 13.1 instancias EDITING e IN_APPROVAL
+    SVC->>WL: 14. confirmarSnapshotCongelado(workflowInstanceIds)
+    WL-->>SVC: 14.1 los niveles en curso conservan su copia
+    Note right of WL: Las instancias en curso no se migran —<br/>siguen con el snapshot que congelaron al iniciar
+    SVC-->>GW: 15. nueva version activa
+    GW-->>App: 16. 201 Created
+    App-->>Administrador: 17. escalera publicada
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "workflowVersionId": 12,
+  "isActive": true,
+  "levels": [
+    {
+      "levelOrder": 1,
+      "name": "Analista de Experiencia al Usuario",
+      "roleCode": "UX_ANALYST",
+      "activationMinAmount": 0.00,
+      "approvalPolicy": "ANY",
+      "requiredApprovals": 1,
+      "onReject": "TERMINATE",
+      "slaHours": 24
+    },
+    {
+      "levelOrder": 2,
+      "name": "Gerente de Experiencia al Usuario",
+      "roleCode": "UX_MANAGER",
+      "activationMinAmount": 500.00,
+      "approvalPolicy": "ANY",
+      "requiredApprovals": 1,
+      "onReject": "RETURN_PREVIOUS",
+      "slaHours": 24
+    },
+    {
+      "levelOrder": 3,
+      "name": "Gerente Comercial",
+      "roleCode": "COMMERCIAL_MANAGER",
+      "activationMinAmount": 5000.00,
+      "approvalPolicy": "ALL",
+      "requiredApprovals": 1,
+      "onReject": "TERMINATE",
+      "slaHours": 48
+    },
+    {
+      "levelOrder": 4,
+      "name": "Gerente General",
+      "roleCode": "GENERAL_MANAGER",
+      "activationMinAmount": 20000.00,
+      "approvalPolicy": "QUORUM",
+      "requiredApprovals": 2,
+      "onReject": "TERMINATE",
+      "slaHours": 72
+    }
+  ]
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>El <span class="mono">GET</span> siempre devuelve la versión con <span class="mono">is_active = true</span>; existe exactamente una versión activa por vez.</li>
+    <li>Publicar es atómico: archivar la versión anterior e insertar la nueva ocurre en una sola transacción, para que nunca haya cero ni dos versiones activas.</li>
+    <li>Las instancias en curso no se ven afectadas porque congelaron su snapshot en <span class="mono">refund_workflow_instance_levels</span> al iniciar; una nota que ya está aprobándose termina con las reglas con las que empezó.</li>
+    <li><span class="mono">level_order</span> debe ser consecutivo desde 1 y <span class="mono">activation_min_amount</span> estrictamente creciente entre niveles.</li>
+    <li><span class="mono">required_approvals</span> tiene que ser coherente con <span class="mono">approval_policy</span>: 1 en <span class="mono">ANY</span>, la cantidad de firmantes en <span class="mono">ALL</span>, y un número mayor a 1 y menor que el total en <span class="mono">QUORUM</span>.</li>
+    <li><span class="mono">on_reject</span> solo admite <span class="mono">TERMINATE</span> y <span class="mono">RETURN_PREVIOUS</span>: rechazar nunca devuelve el documento a edición de cantidades.</li>
+    <li>El Nivel 1 no puede configurarse con <span class="mono">RETURN_PREVIOUS</span> porque no tiene nivel anterior al que volver.</li>
+    <li>Los cuatro niveles confirmados son LVL1 Analista de Experiencia al Usuario, LVL2 Gerente de Experiencia al Usuario, LVL3 Gerente Comercial y LVL4 Gerente General; los montos de activación siguen siendo configurables.</li>
+    <li><span class="mono">role_code</span> es la única referencia a personas: la escalera nombra roles, nunca empleados.</li>
+  </ul>
+</article>
+
+<article class="card" id="e14">
+  <p class="card__eyebrow">Endpoint 14</p>
+  <h2 class="card__title">Aprobadores del nivel actual</h2>
+  <p class="card__route">GET /api/v1/refunds/:id/approvers</p>
+  <p class="card__desc">Devuelve quiénes pueden firmar el nivel activo de la nota. La resolución se hace por <span class="mono">role_code</span> contra el directorio externo de empleados en el momento de la consulta: no se persisten empleados asignados en ninguna tabla local.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+    <li class="chip">Directorio de Empleados (externo)</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Usuario
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as ApproversService
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+    participant DIR as Directorio de Empleados
+
+    Usuario->>App: 1. abrir panel de aprobadores
+    App->>GW: 2. GET /api/v1/refunds/1001/approvers
+    GW->>SVC: 3. resolverAprobadores(refundOrderId)
+    SVC->>RO: 4. buscarNota(id)
+    RO-->>SVC: 4.1 nota con total y status
+    SVC->>WI: 5. buscarInstanciaAbierta(refundOrderId)
+    WI-->>SVC: 5.1 instancia con current_level_order
+    Note right of WI: Si no hay instancia abierta<br/>la respuesta llega vacia — no hay nivel que firmar
+    SVC->>WL: 6. buscarNivelActivo(workflowInstanceId, current_level_order)
+    WL-->>SVC: 6.1 role_code, approval_policy, required_approvals, decision_mode
+    SVC->>DIR: 7. buscarEmpleadosPorRol(role_code, distributor_id)
+    DIR-->>SVC: 7.1 empleados vigentes del rol
+    Note right of DIR: Resolucion en tiempo real —<br/>no se persisten empleados asignados
+    SVC->>WA: 8. listarFirmasDelNivel(workflowInstanceLevelId, action APPROVE)
+    WA-->>SVC: 8.1 actor_employee_code y actor_name_snapshot de quienes ya firmaron
+    SVC->>SVC: 9. calcularFirmasFaltantes(approval_policy, required_approvals, firmas)
+    Note right of SVC: ANY — alcanza una firma<br/>ALL — firman todos los habilitados<br/>QUORUM — se exige required_approvals
+    SVC-->>GW: 10. aprobadores con estado de firma
+    GW-->>App: 11. 200 OK
+    App-->>Usuario: 12. lista de habilitados y pendientes
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "refundOrderId": 1001,
+  "workflowInstanceId": 7001,
+  "currentLevelOrder": 2,
+  "levelName": "Gerente de Experiencia al Usuario",
+  "roleCode": "UX_MANAGER",
+  "decisionMode": "DOCUMENT_DECISION",
+  "approvalPolicy": "ANY",
+  "requiredApprovals": 1,
+  "signaturesCollected": 0,
+  "signaturesMissing": 1,
+  "approvers": [
+    { "employeeCode": "E-4410", "name": "Lucia Vargas", "roleCode": "UX_MANAGER", "hasSigned": false },
+    { "employeeCode": "E-4432", "name": "Marcos Rios", "roleCode": "UX_MANAGER", "hasSigned": false }
+  ],
+  "resolution": "role_code contra el directorio externo, sin persistencia local"
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Los aprobadores se resuelven por <span class="mono">role_code</span> del nivel activo contra el directorio externo, filtrando por la distribuidora de la nota.</li>
+    <li>No se persisten empleados asignados: no existe tabla de asignaciones y el resultado puede cambiar entre dos consultas si el directorio cambia.</li>
+    <li>El <span class="mono">role_code</span> que manda es el congelado en <span class="mono">refund_workflow_instance_levels</span>, no el de la versión activa de la escalera.</li>
+    <li>Las firmas necesarias dependen de la política: <span class="mono">ANY</span> exige una firma, <span class="mono">ALL</span> exige la de todos los habilitados y <span class="mono">QUORUM</span> exige <span class="mono">required_approvals</span> firmas.</li>
+    <li>Quién ya firmó se deriva de las acciones <span class="mono">APPROVE</span> del nivel en <span class="mono">refund_workflow_actions</span>, no de un campo de estado por persona.</li>
+    <li>Un mismo empleado cuenta una sola vez aunque aparezca más de una acción suya sobre el nivel.</li>
+    <li>Si la nota no tiene instancia abierta, o la instancia está en <span class="mono">EDITING</span>, no hay nivel activo y la lista vuelve vacía.</li>
+    <li>El endpoint es de solo lectura: consultar aprobadores no registra la apertura del nivel ni cambia estados.</li>
+  </ul>
+</article>
+
+<article class="card" id="e15">
+  <p class="card__eyebrow">Endpoint 15</p>
+  <h2 class="card__title">Productos devolubles</h2>
+  <p class="card__route">GET /api/v1/refunds/returnable-products</p>
+  <p class="card__desc">Consulta previa al formulario. SAP calcula la elegibilidad de cada producto y devuelve las facturas y lotes posibles con su cantidad disponible. Durante esta consulta la devolución todavía no existe: esos datos siguen perteneciendo a SAP. Recién al crear la nota, los orígenes elegidos quedan congelados localmente como filas de <span class="mono">refund_order_detail_sources</span>.</p>
+  <ul class="chips">
+    <li class="chip">SAP (externo)</li>
+    <li class="chip">refund_reasons</li>
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_order_details</li>
+    <li class="chip">refund_order_detail_sources</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Vendedor
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as ReturnableProductsService
+    participant SAP as SAP
+    participant RS as refund_reasons
+    participant RO as refund_orders
+    participant RD as refund_order_details
+    participant SRC as refund_order_detail_sources
+
+    Vendedor->>App: 1. buscar producto devoluble del cliente
+    App->>GW: 2. GET /api/v1/refunds/returnable-products?customerId=88&amp;productCode=PRD-502
+    GW->>SVC: 3. buscarDevolubles(customerId, productCode, distributorId)
+    SVC->>SAP: 4. consultarElegibilidad(customerId, productCode)
+    SAP-->>SVC: 4.1 facturas y lotes elegibles con cantidad facturada
+    Note right of SAP: SAP calcula la elegibilidad —<br/>plazos, condicion del cliente y estado del lote
+    SVC->>RO: 5. buscarNotasVivas(customerId, productCode)
+    RO-->>SVC: 5.1 notas con status distinto de REJECTED y CANCELLED
+    SVC->>RD: 6. listarDetallesDeEsasNotas(refundOrderIds, productCode)
+    RD-->>SVC: 6.1 detalles ACTIVE con su quantity vigente
+    SVC->>SRC: 7. listarOrigenesReclamados(refundOrderDetailIds)
+    SRC-->>SVC: 7.1 cantidad ya reclamada por factura y lote
+    SVC->>SVC: 8. calcularDisponible(facturado, reclamado)
+    Note right of SVC: Disponible — lo facturado menos<br/>lo que ya reclaman otras notas vivas<br/>la devolucion actual todavia no existe
+    SVC->>RS: 9. obtenerRequisitosDeEvidencia(reasonCodes)
+    RS-->>SVC: 9.1 lot_requirement, due_date_requirement, requires_photo, requires_notes
+    SVC-->>GW: 10. productos con origenes posibles
+    GW-->>App: 11. 200 OK
+    App-->>Vendedor: 12. facturas y lotes seleccionables
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "customerId": 88,
+  "products": [
+    {
+      "productId": 502,
+      "productCode": "PRD-502",
+      "productName": "Producto B",
+      "unitOfMeasure": "CAJA",
+      "priceUnit": 20.00,
+      "eligibleSources": [
+        {
+          "invoiceNumber": "F-100",
+          "invoiceSapDoc": "100",
+          "invoicedAt": "2026-08-01",
+          "lot": "L01",
+          "dueDate": "2027-01-01",
+          "invoicedQuantity": 18,
+          "alreadyClaimedQuantity": 0,
+          "availableQuantity": 18
+        },
+        {
+          "invoiceNumber": "F-200",
+          "invoiceSapDoc": "200",
+          "invoicedAt": "2026-08-10",
+          "lot": "L02",
+          "dueDate": "2027-02-01",
+          "invoicedQuantity": 12,
+          "alreadyClaimedQuantity": 2,
+          "availableQuantity": 10
+        }
+      ]
+    }
+  ],
+  "note": "Los origenes se congelan en refund_order_detail_sources recien al crear la nota"
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>SAP es la autoridad de elegibilidad: decide qué facturas y lotes pueden devolverse y con qué cantidad facturada.</li>
+    <li>La devolución todavía no existe durante esta consulta: no se escribe ninguna fila, no se reserva stock y el resultado no compromete a nadie.</li>
+    <li>Lo disponible es lo facturado menos lo que ya reclaman otras notas vivas, es decir las que no están rechazadas ni canceladas.</li>
+    <li>El descuento por notas vivas se calcula sumando <span class="mono">refund_order_detail_sources.quantity</span> por factura y lote, no por producto en bruto.</li>
+    <li>Al crear la nota, los orígenes elegidos quedan congelados en <span class="mono">refund_order_detail_sources</span> como una fila por origen, con la cantidad tomada de cada uno.</li>
+    <li>En el contrato HTTP los orígenes viajan como un array dentro de la línea; en PostgreSQL son filas relacionadas.</li>
+    <li>La suma de las cantidades de los orígenes elegidos debe ser exactamente la cantidad de la línea; esa validación es transaccional al crear.</li>
+    <li>El motivo elegido define qué evidencia se exige (<span class="mono">lot_requirement</span>, <span class="mono">due_date_requirement</span>, <span class="mono">requires_photo</span>, <span class="mono">requires_notes</span>), así que la consulta ya devuelve esos requisitos para validar en pantalla.</li>
+    <li>Entre esta consulta y la creación puede pasar tiempo: la disponibilidad se vuelve a validar al momento de crear, porque otra nota pudo tomar el mismo lote.</li>
+  </ul>
+</article>
+
+<article class="card" id="e16">
+  <p class="card__eyebrow">Endpoint 16</p>
+  <h2 class="card__title">Comentar la nota</h2>
+  <p class="card__route">POST /api/v1/refunds/:id/comments</p>
+  <p class="card__desc">Agrega un comentario a la bitácora del documento. No cambia el estado de la nota, no cierra ni abre niveles y no consume la firma del nivel: queda simplemente como una acción <span class="mono">COMMENT</span> en <span class="mono">refund_workflow_actions</span>.</p>
+  <ul class="chips">
+    <li class="chip">refund_orders</li>
+    <li class="chip">refund_workflow_instances</li>
+    <li class="chip">refund_workflow_instance_levels</li>
+    <li class="chip">refund_workflow_actions</li>
+  </ul>
+  <div class="diagram">
+    <pre class="mermaid">
+sequenceDiagram
+    actor Aprobador
+    participant App as App Web
+    participant GW as Gateway Controller
+    participant SVC as RefundCommentService
+    participant RO as refund_orders
+    participant WI as refund_workflow_instances
+    participant WL as refund_workflow_instance_levels
+    participant WA as refund_workflow_actions
+
+    Aprobador->>App: 1. escribir comentario
+    App->>GW: 2. POST /api/v1/refunds/1001/comments
+    GW->>SVC: 3. comentar(refundOrderId, comment, actor)
+    SVC->>SVC: 4. validarComentario(comment)
+    Note right of SVC: El texto no puede venir vacio —<br/>se recorta y se limita su longitud
+    SVC->>RO: 5. buscarNota(id)
+    RO-->>SVC: 5.1 nota con status y document_type
+    SVC->>WI: 6. buscarInstanciaAbierta(refundOrderId)
+    WI-->>SVC: 6.1 instancia EDITING o IN_APPROVAL
+    SVC->>WL: 7. buscarNivelActivo(workflowInstanceId)
+    WL-->>SVC: 7.1 nivel activo o nulo si la instancia esta en EDITING
+    SVC->>WA: 8. insertarAccion(action COMMENT, comment, actor)
+    Note right of WA: previous_status igual a new_status<br/>amount_before y amount_after nulos<br/>no consume la firma del nivel
+    WA-->>SVC: 8.1 accion registrada con created_at
+    SVC-->>GW: 9. comentario creado
+    GW-->>App: 10. 201 Created
+    App-->>Aprobador: 11. comentario visible en el historial
+    </pre>
+  </div>
+  <h3 class="card__sub">Response</h3>
+  <pre class="code">{
+  "workflowActionId": 90012,
+  "refundOrderId": 1001,
+  "workflowInstanceId": 7001,
+  "workflowInstanceLevelId": 8102,
+  "action": "COMMENT",
+  "actorEmployeeCode": "E-4410",
+  "actorNameSnapshot": "Lucia Vargas",
+  "actorRoleCode": "UX_MANAGER",
+  "comment": "Falta la fotografia del lote L02",
+  "previousStatus": "IN_APPROVAL",
+  "newStatus": "IN_APPROVAL",
+  "createdAt": "2026-08-21T14:05:00Z"
+}</pre>
+  <h3 class="card__sub">Reglas</h3>
+  <ul class="rules">
+    <li>Comentar no cambia estados: <span class="mono">previous_status</span> y <span class="mono">new_status</span> quedan iguales y la nota sigue exactamente donde estaba.</li>
+    <li>No consume la firma del nivel: un aprobador puede comentar todas las veces que quiera y después aprobar o rechazar.</li>
+    <li>La acción se registra como <span class="mono">COMMENT</span> en <span class="mono">refund_workflow_actions</span>, con el actor y su <span class="mono">actor_name_snapshot</span>.</li>
+    <li>Si hay nivel activo, la acción se ata a él por <span class="mono">workflow_instance_level_id</span>; si la instancia está en <span class="mono">EDITING</span>, ese campo queda nulo.</li>
+    <li>El comentario se ata siempre a la instancia abierta de la nota; una nota sin instancia abierta no admite comentarios nuevos.</li>
+    <li>No se escriben <span class="mono">amount_before</span> ni <span class="mono">amount_after</span>: comentar no es un movimiento de monto.</li>
+    <li>El texto es obligatorio y no vacío; queda inmutable, porque la bitácora es append-only y no se edita ni se borra.</li>
+    <li>Una nota disociada en edición también admite comentarios, y quedan en su propio historial, separado del de la original.</li>
+  </ul>
+</article>
+
+<article class="card" id="ejemplo">
+  <p class="card__eyebrow">Ejemplo</p>
+  <h2 class="card__title">Nota 235054, paso a paso</h2>
+  <p class="card__desc">El vendedor registra la nota 235054 por Bs 1.000 con dos líneas: Producto A por Bs 600 y Producto B por Bs 400. El Nivel 1 abre el documento, ve las casillas porque es el primer intento de una nota original, y selecciona únicamente el Producto A.</p>
+
+  <h3 class="card__sub">1. Estado inicial</h3>
+  <p class="card__desc">Una sola fila en <span class="mono">refund_orders</span> con <span class="mono">id = 1001</span> y dos líneas en <span class="mono">refund_order_details</span>. El workflow nace <span class="mono">IN_APPROVAL</span> con el Nivel 1 en modo <span class="mono">ITEM_SELECTION</span>.</p>
+  <div class="scroll">
+    <table class="fields">
+      <thead>
+        <tr><th>Línea</th><th>Producto</th><th>Cantidad</th><th>price_unit</th><th>Valor</th><th>line_status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">5001</td><td>Producto A · PRD-501</td><td class="mono">15</td><td class="mono">40.00</td><td class="mono">600.00</td><td class="mono">ACTIVE</td></tr>
+        <tr><td class="mono">5002</td><td>Producto B · PRD-502</td><td class="mono">10</td><td class="mono">40.00</td><td class="mono">400.00</td><td class="mono">ACTIVE</td></tr>
+        <tr><td colspan="4"><strong>Total de la nota</strong></td><td class="mono"><strong>1000.00</strong></td><td class="mono">ORIGINAL</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="card__sub">2. Después de la selección del Nivel 1</h3>
+  <p class="card__desc">El Producto A queda <span class="mono">SELECTED</span> y el Producto B <span class="mono">DISSOCIATED</span>. La original recalcula su total a Bs 600 y avanza inmediatamente al Nivel 2; los ítems no seleccionados generan una segunda fila con el mismo <span class="mono">note_number</span>, otro <span class="mono">id</span> y <span class="mono">split_sequence</span> incrementado.</p>
+  <div class="scroll">
+    <table class="fields">
+      <thead>
+        <tr><th>id</th><th>note_number</th><th>split_sequence</th><th>source_refund_order_id</th><th>document_type</th><th>total</th><th>workflow</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">1001</td><td class="mono">235054</td><td class="mono">0</td><td class="mono">null</td><td class="mono">ORIGINAL</td><td class="mono">600.00</td><td class="mono">IN_APPROVAL — esperando Nivel 2</td></tr>
+        <tr><td class="mono">1004</td><td class="mono">235054</td><td class="mono">1</td><td class="mono">1001</td><td class="mono">DISSOCIATED</td><td class="mono">400.00</td><td class="mono">EDITING</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre class="code">refund_orders.id = 1001, note_number = 235054, split_sequence = 0,
+  source_refund_order_id = null, document_type = ORIGINAL,
+  total = 600.00, workflow = IN_APPROVAL esperando Nivel 2
+
+refund_orders.id = 1004, note_number = 235054, split_sequence = 1,
+  source_refund_order_id = 1001, document_type = DISSOCIATED,
+  total = 400.00, workflow = EDITING, attempt = 1</pre>
+  <p class="card__desc">La original no espera nada del vendedor: sigue su curso con Bs 600. La línea 5002 queda en la original con <span class="mono">line_status = DISSOCIATED</span> y no se borra. La disociada arranca con historial propio, <span class="mono">attempt = 1</span> y sin nivel activo, porque está en edición.</p>
+
+  <h3 class="card__sub">3. El Producto B llega con dos orígenes</h3>
+  <p class="card__desc">La línea 5002 se copia a la disociada como línea 7002 con <span class="mono">source_detail_id = 5002</span>, y se copian TODOS sus orígenes, cada uno atado al detalle nuevo. Las cantidades de origen arrancan iguales a las de la nota fuente y su suma es exactamente la cantidad de la línea.</p>
+  <div class="scroll">
+    <table class="fields">
+      <thead>
+        <tr><th>Origen</th><th>Factura</th><th>invoice_sap_doc</th><th>Lote</th><th>Vencimiento</th><th>Cantidad</th><th>Valor</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">9101</td><td class="mono">F-100</td><td class="mono">100</td><td class="mono">L01</td><td class="mono">2027-01-01</td><td class="mono">6</td><td class="mono">240.00</td></tr>
+        <tr><td class="mono">9102</td><td class="mono">F-200</td><td class="mono">200</td><td class="mono">L02</td><td class="mono">2027-02-01</td><td class="mono">4</td><td class="mono">160.00</td></tr>
+        <tr><td colspan="5"><strong>Suma de orígenes</strong></td><td class="mono"><strong>10</strong></td><td class="mono"><strong>400.00</strong></td></tr>
+        <tr><td colspan="5"><strong>Cantidad del detalle 7002</strong></td><td class="mono"><strong>10</strong></td><td class="mono"><strong>400.00</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="card__desc">Con <span class="mono">price_unit</span> congelado en Bs 40,00: 6 × 40 = Bs 240 y 4 × 40 = Bs 160, que suman los Bs 400 de la línea. Las fotografías no se duplican: la línea 7002 hereda las del detalle 5002 por <span class="mono">source_detail_id</span>.</p>
+
+  <h3 class="card__sub">4. El vendedor reduce la cantidad</h3>
+  <p class="card__desc">Mientras la disociada siga en <span class="mono">EDITING</span>, el vendedor puede bajar la cantidad de la línea 7002 de 10 a 7 unidades. En la misma transacción tiene que ajustar las cantidades de los dos orígenes, porque la suma debe seguir coincidiendo exactamente con la cantidad vigente del detalle.</p>
+  <div class="scroll">
+    <table class="fields">
+      <thead>
+        <tr><th>Concepto</th><th>Antes</th><th>Después</th><th>Valor después</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Detalle 7002 · <span class="mono">quantity</span></td><td class="mono">10</td><td class="mono">7</td><td class="mono">280.00</td></tr>
+        <tr><td>Origen 9101 · F-100 · L01</td><td class="mono">6</td><td class="mono">5</td><td class="mono">200.00</td></tr>
+        <tr><td>Origen 9102 · F-200 · L02</td><td class="mono">4</td><td class="mono">2</td><td class="mono">80.00</td></tr>
+        <tr><td><strong>Suma de orígenes</strong></td><td class="mono"><strong>10</strong></td><td class="mono"><strong>7</strong></td><td class="mono"><strong>280.00</strong></td></tr>
+        <tr><td><span class="mono">source_quantity</span> del detalle</td><td class="mono">10</td><td class="mono">10</td><td class="mono">—</td></tr>
+        <tr><td>Total de la nota 1004</td><td class="mono">400.00</td><td class="mono">280.00</td><td class="mono">280.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre class="code">SUM(sources.quantity) = 5 + 2 = 7
+refund_order_details.quantity = 7         -- coincide exactamente
+refund_order_details.source_quantity = 10 -- 7 &lt;= 10, no se supera el origen
+total = 7 x 40.00 = 280.00</pre>
+  <div class="callout">
+    <p>El vendedor puede guardar varias veces mientras la nota siga en <span class="mono">EDITING</span>. No puede aumentar cantidades por encima de <span class="mono">source_quantity</span>, agregar productos, cambiar <span class="mono">price_unit</span>, inventar una factura o un lote que no venía de la nota origen ni tocar la original. Al reenviar se bloquean las cantidades, se recalcula el total en Bs 280, se registra <span class="mono">SELLER_RESUBMITTED</span> con <span class="mono">amount_before = 400.00</span> y <span class="mono">amount_after = 280.00</span>, y el Nivel 1 se activa en modo <span class="mono">DOCUMENT_DECISION</span>, ya sin casillas.</p>
+  </div>
+</article>
+
+<article class="card" id="matriz">
+  <p class="card__eyebrow">Matriz</p>
+  <h2 class="card__title">Matriz de operaciones</h2>
+  <p class="card__desc">Qué escribe realmente cada operación del ciclo y, sobre todo, qué no ocurre. La columna de la derecha existe para cerrar las interpretaciones equivocadas que aparecieron en la versión anterior.</p>
+  <div class="scroll">
+    <table class="fields">
+      <thead>
+        <tr><th>Operación</th><th>Quién</th><th>Qué escribe</th><th>Qué NO pasa</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Crear la devolución</td>
+          <td>Vendedor desde Sales</td>
+          <td>Fila en <span class="mono">refund_orders</span> con <span class="mono">note_number</span> generado por nosotros, líneas en <span class="mono">refund_order_details</span>, orígenes en <span class="mono">refund_order_detail_sources</span>, fotografías, instancia <span class="mono">IN_APPROVAL</span> y acción <span class="mono">CREATED</span>.</td>
+          <td>Sales no manda ningún identificador externo, no selecciona una venta y la nota no apunta a un pedido; no se escribe ningún campo de liquidación.</td>
+        </tr>
+        <tr>
+          <td>Abrir el nivel</td>
+          <td>Aprobador del nivel activo</td>
+          <td><span class="mono">first_viewed_at</span> y <span class="mono">first_viewed_by</span> en el nivel, y una acción <span class="mono">VIEWED</span>.</td>
+          <td>Abrir no cambia el estado del documento ni del workflow, y no consume la firma del nivel.</td>
+        </tr>
+        <tr>
+          <td>Selección total del Nivel 1</td>
+          <td>Analista de Experiencia al Usuario</td>
+          <td>Acción <span class="mono">LEVEL1_ITEM_SELECTION</span> con todas las filas <span class="mono">SELECTED</span> en <span class="mono">refund_order_detail_decisions</span>.</td>
+          <td>No se crea ninguna nota disociada y el total no cambia; la original continúa al nivel que le exige su monto.</td>
+        </tr>
+        <tr>
+          <td>Selección parcial del Nivel 1</td>
+          <td>Analista de Experiencia al Usuario</td>
+          <td>Copia de las líneas no seleccionadas con <span class="mono">source_detail_id</span>, copia de TODOS sus orígenes en <span class="mono">refund_order_detail_sources</span>, nueva fila <span class="mono">DISSOCIATED</span> con <span class="mono">split_sequence</span> incrementado, instancia <span class="mono">EDITING</span> y acción <span class="mono">DISSOCIATED_CREATED</span>.</td>
+          <td>No se duplican los archivos de las fotografías: la disociada las hereda por <span class="mono">source_detail_id</span>; y no se aprueban cantidades parciales dentro de una línea.</td>
+        </tr>
+        <tr>
+          <td>Avance de la original</td>
+          <td>Sistema</td>
+          <td>Recalculo del total con las líneas que quedaron, activación inmediata del nivel siguiente y acción <span class="mono">AUTO_ROUTED</span> con actor nulo.</td>
+          <td>La original no queda esperando la corrección del vendedor ni depende de lo que pase con la disociada.</td>
+        </tr>
+        <tr>
+          <td>Editar cantidades</td>
+          <td>Vendedor</td>
+          <td><span class="mono">quantity</span> del detalle y de sus orígenes en una sola transacción, validando que la suma coincida.</td>
+          <td>Solo entra en edición una nota <span class="mono">DISSOCIATED</span> cuyo workflow esté en <span class="mono">EDITING</span>: la original nunca se edita, y no hay contador de guardados que limite la operación.</td>
+        </tr>
+        <tr>
+          <td>Guardar varias veces</td>
+          <td>Vendedor</td>
+          <td>Cada guardado pisa las cantidades vigentes mientras la instancia siga en <span class="mono">EDITING</span>.</td>
+          <td>No existe límite de un solo guardado ni contador de ediciones; el permiso se decide por tipo de documento y estado del workflow.</td>
+        </tr>
+        <tr>
+          <td>Reenviar</td>
+          <td>Vendedor</td>
+          <td>Bloqueo de la edición, recalculo del total, validación de la suma de orígenes, Nivel 1 activo en <span class="mono">DOCUMENT_DECISION</span> y acción <span class="mono">SELLER_RESUBMITTED</span>.</td>
+          <td>Al volver, el Nivel 1 ya no muestra casillas: solo puede comentar, aprobar o rechazar.</td>
+        </tr>
+        <tr>
+          <td>Rechazar</td>
+          <td>Aprobador del nivel activo</td>
+          <td>Con <span class="mono">TERMINATE</span>: nota en <span class="mono">REJECTED</span>, <span class="mono">rejected_at</span>, <span class="mono">reactivation_expires_at</span> y acciones <span class="mono">REJECT</span> y <span class="mono">CLOSED</span>. Con <span class="mono">RETURN_PREVIOUS</span>: se reabre el nivel anterior y la instancia sigue en aprobación.</td>
+          <td>Rechazar no habilita edición de cantidades en ningún caso, y el Nivel 1 no puede devolver a un nivel anterior porque no lo tiene.</td>
+        </tr>
+        <tr>
+          <td>Reactivar</td>
+          <td>Actor dentro de la ventana o con permiso especial</td>
+          <td>Nueva fila en <span class="mono">refund_workflow_instances</span> con <span class="mono">attempt + 1</span>, <span class="mono">reactivated_from_instance_id</span> al intento rechazado, todos los niveles en <span class="mono">DOCUMENT_DECISION</span> y acción <span class="mono">REACTIVATE</span> con motivo obligatorio.</td>
+          <td>Reactivar no habilita selección de ítems ni edición de cantidades, no crea otra disociada, no modifica el intento anterior y no incrementa ningún contador aparte de los intentos.</td>
+        </tr>
+        <tr>
+          <td>Aprobar y cerrar</td>
+          <td>Aprobador del último nivel requerido</td>
+          <td><span class="mono">refund_orders.status = APPROVED</span>, cierre de la instancia y acciones <span class="mono">APPROVE</span> y <span class="mono">CLOSED</span>.</td>
+          <td>No se escriben campos de liquidación ni totales parciales de aprobado o rechazado: la nota de crédito y el intercambio físico están fuera de alcance.</td>
+        </tr>
+        <tr>
+          <td>Comentar</td>
+          <td>Cualquier participante habilitado</td>
+          <td>Acción <span class="mono">COMMENT</span> en la bitácora, atada al nivel activo cuando lo hay.</td>
+          <td>No cambia estados ni consume la firma del nivel.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</article>
+
+<article class="card" id="cambios">
+  <p class="card__eyebrow">Cambios</p>
+  <h2 class="card__title">Cambios de esta versión</h2>
+  <p class="card__desc">Ocho decisiones que corrigen el modelo anterior. Cada una se tomó porque el diseño previo describía algo que el negocio no hace.</p>
+  <ul class="rules">
+    <li><strong>Se eliminó el identificador externo de la venta.</strong> Sales solo tiene un formulario para registrar la devolución: no elige una venta previa ni manda una referencia de otro sistema. Ese campo no representaba ninguna entidad real, así que se fue junto con su índice y con toda la explicación de reintento basada en él. Si más adelante hace falta evitar duplicados, se resuelve con un encabezado técnico del endpoint, no con una relación de negocio inventada.</li>
+    <li><strong>Los totales y la liquidación se simplificaron.</strong> Se sacaron los totales parciales de aprobado y rechazado porque duplicaban <span class="mono">total</span> cuando la nota se aprueba completa, y porque lo rechazado ya se deduce del estado o de la familia de notas disociadas. La forma de liquidar —nota de crédito o intercambio físico— quedó fuera de alcance, así que tampoco corresponde guardarla acá.</li>
+    <li><strong>Se eliminó el contador de ediciones.</strong> Contaba guardados, no decisiones, y por eso servía de poco: alguien podía corregir un dígito tres veces sin que eso significara nada. El permiso de editar ahora se decide por lo que realmente importa, <span class="mono">document_type = DISSOCIATED</span> y <span class="mono">workflow.status = EDITING</span>, y desapareció el límite artificial de un solo guardado.</li>
+    <li><strong>La edición es exclusiva de las notas disociadas.</strong> Solo entra en edición de cantidades el documento que el Nivel 1 apartó, y solo mientras su workflow esté en <span class="mono">EDITING</span>. La original nunca se edita y nunca queda esperando al vendedor: avanza en el mismo acto al nivel que le corresponde por monto, para que el circuito de aprobación no se frene por una discusión sobre las líneas apartadas.</li>
+    <li><strong>La reactivación tiene vigencia y no abre edición.</strong> Una nota rechazada se reactiva dentro de la ventana <span class="mono">reactivation_expires_at</span> o con permiso especial, con motivo obligatorio. Crea un intento nuevo con todos los niveles en <span class="mono">DOCUMENT_DECISION</span>: sin casillas, sin cambiar cantidades y sin generar otra disociada. La cantidad de reactivaciones se cuenta con los intentos, así que no hace falta ningún contador aparte, y el intento anterior queda inmutable como evidencia.</li>
+    <li><strong>Varias facturas y lotes por línea, con persistencia relacional.</strong> Una misma línea puede venir de más de una factura y más de un lote. En el contrato HTTP eso viaja como un array <span class="mono">sources[]</span> dentro de la línea; en PostgreSQL es una fila por origen en <span class="mono">refund_order_detail_sources</span>, con validación transaccional de que la suma de sus cantidades sea exactamente la cantidad del detalle. Guardarlo relacional es lo que permite descontar disponibilidad por factura y lote, y ajustar cada origen cuando el vendedor reduce.</li>
+    <li><strong>Snapshots de vendedor, propietario, cliente y producto.</strong> Esas cuatro entidades viven en servicios externos, sin tablas locales ni claves foráneas. Se guarda el identificador y además el nombre al momento de registrar, junto con el código y el nombre del producto. Así el documento histórico se sigue leyendo igual dentro de dos años, aunque el empleado cambie de puesto, el cliente se renombre o el catálogo se reorganice.</li>
+    <li><strong>Consistencia completa entre las diez tablas y los 16 endpoints.</strong> El modelo quedó en diez tablas —configuración, negocio, evidencia y workflow— sin tablas de revisiones, y cada endpoint escribe exactamente en las que le tocan y en ninguna más. La bitácora es append-only, existe como máximo una instancia abierta por nota y el número de nota se comparte con las disociadas gracias a la unicidad por número y secuencia. Sin ese cierre, el artefacto describía campos que ya nadie escribía y flujos que el negocio no ejecuta.</li>
+  </ul>
+</article>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var button = document.getElementById("theme-toggle");
+    var KEY = "devoluciones-secuencias-theme";
+
+    function readStored() {
+      try { return localStorage.getItem(KEY); } catch (e) { return null; }
+    }
+
+    function writeStored(value) {
+      try { localStorage.setItem(KEY, value); } catch (e) { /* storage no disponible */ }
+    }
+
+    function systemPrefersDark() {
+      try {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      } catch (e) { return false; }
+    }
+
+    function isDark() {
+      var stamped = root.getAttribute("data-theme");
+      if (stamped === "dark") return true;
+      if (stamped === "light") return false;
+      return systemPrefersDark();
+    }
+
+    function syncLabel() {
+      button.textContent = isDark() ? "Tema claro" : "Tema oscuro";
+    }
+
+    var stored = readStored();
+    if (stored === "dark" || stored === "light") {
+      root.setAttribute("data-theme", stored);
+    }
+    syncLabel();
+
+    button.addEventListener("click", function () {
+      var next = isDark() ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      writeStored(next);
+      syncLabel();
+    });
+  })();
+</script>
+
+<!--claude-mermaid-runtime-begin:3477-->
+<style>.mermaid-diagram{margin-block:4px}.mermaid-diagram svg{display:block;margin:0 auto;max-width:100%;height:auto}</style>
+<script src="/_runtime/mermaid-11.16.1.min.js"></script>
+<script>(function(){
+var CFG={"palettes":{"light":{"surface":"#f4efe4","text":"#42392e","line":"#8a7f6d","border":"#7a6c52","bg":"#fffdf8"},"dark":{"surface":"#262b34","text":"#f2f3f5","line":"#a8adb8","border":"#9aa4b8","bg":"#1f232b"}}};
+if(typeof mermaid==='undefined')return;
+var pres=Array.prototype.slice.call(document.querySelectorAll('pre.mermaid')).filter(function(p){if(p.hasAttribute('data-claude-mermaid-claimed'))return false;p.setAttribute('data-claude-mermaid-claimed','1');return true;});
+if(!pres.length)return;
+var mq=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+var root=document.documentElement;
+var items=pres.map(function(pre){
+var mount=document.createElement('div');mount.className='mermaid-diagram';
+return {pre:pre,mount:mount,src:pre.textContent||''};
+});
+var seq=0;
+var renderGen=0;
+var lastKey='';
+function pageBg(fallback){
+var els=[document.body,document.documentElement];
+for(var i=0;i<els.length;i++){
+var c=els[i]&&getComputedStyle(els[i]).backgroundColor;
+if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)')return c;
+}
+return fallback;
+}
+function render(){
+var theme=root.getAttribute('data-theme');
+var dark=theme==='dark'||(!!(mq&&mq.matches)&&theme!=='light');
+var pal=dark?CFG.palettes.dark:CFG.palettes.light;
+var bg=pageBg(pal.bg);
+var key=(dark?'d':'l')+'|'+bg;
+if(key===lastKey)return;
+lastKey=key;
+var gen=++renderGen;
+var font=getComputedStyle(document.body).fontFamily||'sans-serif';
+var nat={useMaxWidth:false};
+mermaid.initialize({
+startOnLoad:false,securityLevel:'strict',theme:'base',
+flowchart:nat,sequence:nat,er:nat,state:nat,class:nat,pie:nat,
+gantt:nat,journey:nat,timeline:nat,gitGraph:nat,mindmap:nat,xyChart:nat,
+quadrantChart:nat,sankey:nat,c4:nat,requirement:nat,block:nat,
+packet:nat,kanban:nat,architecture:nat,radar:nat,
+themeVariables:{background:bg,mainBkg:pal.surface,primaryColor:pal.surface,
+primaryTextColor:pal.text,lineColor:pal.line,primaryBorderColor:pal.border,
+nodeBorder:pal.border,clusterBorder:pal.border,edgeLabelBackground:bg,
+clusterBkg:'rgba(127,127,127,0.07)',titleColor:pal.text,
+darkMode:dark,rowOdd:bg,rowEven:'rgba(127,127,127,0.07)',
+attributeBackgroundColorOdd:bg,attributeBackgroundColorEven:'rgba(127,127,127,0.07)',
+fontSize:'16px',fontFamily:font},
+themeCSS:'.node rect, .node circle, .node polygon, .node path, .cluster rect { stroke-width: 2px; }'
+});
+items.forEach(function(it){
+var id='claude-mermaid-'+seq++;
+mermaid.render(id,it.src).then(function(r){
+if(gen!==renderGen)return;
+var prev=it.pre.previousElementSibling;
+if(prev&&prev.className==='mermaid-diagram'&&prev!==it.mount)return;
+it.mount.innerHTML=r.svg;
+if(!it.mount.parentNode)it.pre.parentNode.insertBefore(it.mount,it.pre);
+it.pre.style.display='none';
+},function(){
+var scratch=document.getElementById(id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+scratch=document.getElementById('d'+id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+if(gen!==renderGen)return;
+if(it.mount.parentNode)it.mount.parentNode.removeChild(it.mount);
+it.pre.style.display='';
+});
+});
+}
+render();
+if(mq&&mq.addEventListener)mq.addEventListener('change',render);
+if(typeof MutationObserver!=='undefined')new MutationObserver(render).observe(root,{attributes:true,attributeFilter:['data-theme']});
+})();</script>
+<script>
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose',
+    theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'default' });
+</script>
+</body>
+</html>

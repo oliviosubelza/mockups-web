@@ -930,25 +930,32 @@ CREATE TABLE refund_approval_levels (
     updated_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT ck_refund_level_policy CHECK (approval_policy IN ('ANY', 'ALL', 'QUORUM')),
+    CONSTRAINT ck_refund_level_on_reject CHECK (on_reject IN ('TERMINATE', 'RETURN_PREVIOUS', 'RETURN_INITIATOR')),
+    CONSTRAINT ck_refund_level_required_approvals CHECK (
+        (approval_policy = 'QUORUM' AND required_approvals >= 1) OR
+        (approval_policy <> 'QUORUM' AND required_approvals = 1)
+    ),
+    -- El nivel 1 no tiene anterior al que devolver
+    CONSTRAINT ck_refund_level_return_previous CHECK (NOT (level_order = 1 AND on_reject = 'RETURN_PREVIOUS')),
+    CONSTRAINT ck_refund_level_order CHECK (level_order >= 1),
+    CONSTRAINT ck_refund_level_min_amount CHECK (activation_min_amount >= 0),
+    CONSTRAINT ck_refund_level_sla CHECK (sla_hours IS NULL OR sla_hours > 0)
 );
 
-
-
-
-
-
-
-
-
-
-
+-- Un solo nivel por posiciòn dentro de cada versiòn publicada
+CREATE UNIQUE INDEX uq_refund_approval_levels_version_order ON refund_approval_levels (workflow_version_id, level_order) WHERE deleted_at IS NULL;
+-- La escalera vigente se lee por acà
+CREATE INDEX ix_refund_approval_levels_active ON refund_approval_levels (is_active, workflow_version_id, level_order) WHERE deleted_at IS NULL;
 
 
 -- ── NEGOCIO ──────────────────────────────────────────────────────────────
 DROP TABLE refund_orders cascade;
 CREATE TABLE refund_orders (
     id BIGSERIAL PRIMARY KEY,
+    external_sales_id VARCHAR(100) NOT NULL, -- Id de la nota en Ventas. Idempotencia del intake: el mismo id externo nunca crea dos notas
     note_number VARCHAR(50) NOT NULL, -- NÙMERO DE NOTA 1001
     split_sequence SMALLINT NOT NULL DEFAULT 0, -- NOTA ORIGINAL / DISOCIADA
 
@@ -966,6 +973,11 @@ CREATE TABLE refund_orders (
     replacement_date DATE NULL, -- Fecha estimada de reposición acordada con el cliente
     justification TEXT, -- Por qué se pide la devolución, en palabras del vendedor
     total DECIMAL(12, 2) NOT NULL DEFAULT 0.00, -- Suma de refund_order_details.quantity × price_unit para las líneas ACTIVE de esta nota
+    approved_total DECIMAL(12, 2) NULL, -- Monto finalmente autorizado. Se escribe al cerrar la instancia; NULL mientras està en curso
+    rejected_total DECIMAL(12, 2) NULL, -- Monto que quedò afuera al cerrar (total - approved_total)
+    settlement_type VARCHAR(20) NULL, -- 'NOTA_CREDITO', 'CAMBIO_STOCK' — cómo se liquida. Se define al aprobar; NULL mientras no cerrò
+
+    edit_count SMALLINT NOT NULL DEFAULT 0, -- Correcciones que el vendedor ya usò. El tope de negocio es 1
 
     created_by VARCHAR(255),
     updated_by VARCHAR(255),
@@ -973,8 +985,51 @@ CREATE TABLE refund_orders (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL,
 
-    CONSTRAINT fk_refund_order_source FOREIGN KEY (source_refund_order_id) REFERENCES refund_orders(id)
+    CONSTRAINT fk_refund_order_source FOREIGN KEY (source_refund_order_id) REFERENCES refund_orders(id),
     -- CONSTRAINT fk_refund_order_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
+
+    CONSTRAINT ck_refund_order_document_type CHECK (document_type IN ('ORIGINAL', 'DISSOCIATED')),
+    CONSTRAINT ck_refund_order_status CHECK (status IN ('OPEN', 'APPROVED', 'REJECTED', 'ANNULLED')),
+    CONSTRAINT ck_refund_order_settlement CHECK (settlement_type IS NULL OR settlement_type IN ('NOTA_CREDITO', 'CAMBIO_STOCK')),
+    CONSTRAINT ck_refund_order_edit_count CHECK (edit_count >= 0),
+    -- La ORIGINAL no apunta a nadie y va con split_sequence = 0; la DISOCIADA siempre apunta a su fuente
+    CONSTRAINT ck_refund_order_split_origin CHECK (
+        (document_type = 'ORIGINAL'    AND split_sequence = 0 AND source_refund_order_id IS NULL) OR
+        (document_type = 'DISSOCIATED' AND split_sequence > 0 AND source_refund_order_id IS NOT NULL)
+    )
+);
+
+-- El nùmero de nota se repite entre la original y sus disociadas: lo ùnico es el par con el split
+CREATE UNIQUE INDEX uq_refund_orders_note_split ON refund_orders (note_number, split_sequence) WHERE deleted_at IS NULL;
+-- Idempotencia del intake de Ventas: el mismo id externo no puede volver a crear la ORIGINAL
+CREATE UNIQUE INDEX uq_refund_orders_external_split ON refund_orders (external_sales_id, split_sequence) WHERE deleted_at IS NULL;
+-- Bandeja: filtra por distribuidora y estado, ordena por fecha
+CREATE INDEX ix_refund_orders_inbox ON refund_orders (distributor_id, status, created_at DESC) WHERE deleted_at IS NULL;
+-- Bandeja del vendedor
+CREATE INDEX ix_refund_orders_employee ON refund_orders (employee_id, created_at DESC) WHERE deleted_at IS NULL;
+-- Familia del split: "quiènes salieron de esta nota"
+CREATE INDEX ix_refund_orders_source ON refund_orders (source_refund_order_id) WHERE source_refund_order_id IS NOT NULL;
+
+-- Catàlogo cerrado de motivos del reclamo. Cada motivo dice què evidencia exige,
+-- y de ahì sale la validaciòn del formulario de Ventas: no se decide en el front.
+CREATE TABLE refund_reasons (
+    code VARCHAR(100) PRIMARY KEY, -- 'CONTAMINACION_FISICA', 'VENCIDO', 'RECALL'…
+    name VARCHAR(150) NOT NULL, -- Etiqueta visible
+    lot_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN' — què hacer con el lote
+    due_date_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN' — què hacer con el vencimiento
+    requires_photo BOOLEAN NOT NULL DEFAULT TRUE, -- Hoy todos los motivos exigen foto; queda por motivo para poder relajarlo
+    requires_notes BOOLEAN NOT NULL DEFAULT TRUE, -- La observaciòn del vendedor
+    sort_order SMALLINT NOT NULL DEFAULT 0, -- Orden en el selector
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN')),
+    CONSTRAINT ck_refund_reason_due_date CHECK (due_date_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
 );
 
 CREATE TABLE refund_order_details (
@@ -989,7 +1044,7 @@ CREATE TABLE refund_order_details (
     price_unit DECIMAL(12, 2) NOT NULL, -- Precio unitario congelado al momento del reclamo
     line_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'DISSOCIATED'
 
-    reason VARCHAR(100), -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'
+    reason VARCHAR(100) NOT NULL, -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'. FK a refund_reasons: ya no es texto libre
     notes TEXT, -- Observación libre del vendedor sobre este producto
 
     created_by VARCHAR(255),
@@ -1000,8 +1055,71 @@ CREATE TABLE refund_order_details (
 
     CONSTRAINT fk_refund_order_detail_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
     CONSTRAINT fk_refund_order_detail_source FOREIGN KEY (source_detail_id) REFERENCES refund_order_details(id),
-    CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity)
+    CONSTRAINT fk_refund_order_detail_reason FOREIGN KEY (reason) REFERENCES refund_reasons(code),
+    CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity),
+    CONSTRAINT ck_refund_order_detail_line_status CHECK (line_status IN ('ACTIVE', 'DISSOCIATED'))
 );
+
+CREATE INDEX ix_refund_order_details_order ON refund_order_details (refund_order_id) WHERE deleted_at IS NULL;
+-- Elegibilidad: cuànto ya reclamò el cliente de un producto
+CREATE INDEX ix_refund_order_details_product ON refund_order_details (product_id, line_status) WHERE deleted_at IS NULL;
+
+
+-- Orìgenes de la lìnea: de què factura y de què lote sale lo que se devuelve.
+-- La suma de origins.quantity tiene que dar exactamente refund_order_details.quantity;
+-- eso se valida en la transacciòn del intake, no con un CHECK de fila.
+CREATE TABLE refund_order_detail_sources (
+    id BIGSERIAL PRIMARY KEY,
+    refund_order_detail_id BIGINT NOT NULL,
+
+    invoice_number VARCHAR(50) NULL, -- Nùmero visible de la factura 'F-004512'
+    invoice_sap_doc VARCHAR(50) NULL, -- Documento SAP de la factura. Referencia lògica: SAP no es nuestra base
+    invoiced_at DATE NULL, -- Fecha de la factura. Sirve para la ventana de 90 dìas
+    lot VARCHAR(50) NULL, -- Lote del producto devuelto
+    due_date DATE NULL, -- Vencimiento del lote
+    quantity DECIMAL(12, 2) NOT NULL, -- Cuànto de la lìnea sale de este origen
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_source_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id),
+    CONSTRAINT ck_refund_source_qty CHECK (quantity > 0),
+    -- Un origen sin factura y sin lote no identifica nada
+    CONSTRAINT ck_refund_source_identified CHECK (invoice_number IS NOT NULL OR invoice_sap_doc IS NOT NULL OR lot IS NOT NULL)
+);
+
+CREATE INDEX ix_refund_order_detail_sources_detail ON refund_order_detail_sources (refund_order_detail_id) WHERE deleted_at IS NULL;
+
+
+-- Fotos de evidencia de la lìnea. Es lo primero que abre el revisor: sin esto no hay decisiòn.
+-- Guardamos la clave del objeto en el storage y la URL pùblica que hoy sirve el CDN.
+CREATE TABLE refund_order_detail_photos (
+    id BIGSERIAL PRIMARY KEY,
+    refund_order_detail_id BIGINT NOT NULL,
+
+    storage_key VARCHAR(500) NOT NULL, -- Clave en el bucket. Es la fuente: la URL se puede regenerar
+    url VARCHAR(1000) NULL, -- URL servida al front. NULL si se firma en cada lectura
+    content_type VARCHAR(100) NULL, -- 'image/jpeg', 'image/png'
+    size_bytes BIGINT NULL,
+    sort_order SMALLINT NOT NULL DEFAULT 0, -- Orden en el carrusel del detalle
+    taken_at TIMESTAMP NULL, -- Cuàndo se sacò la foto, si el mòvil lo informa
+    uploaded_by VARCHAR(255) NULL, -- Quièn la subiò
+
+    created_by VARCHAR(255),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_refund_photo_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id),
+    CONSTRAINT ck_refund_photo_size CHECK (size_bytes IS NULL OR size_bytes > 0)
+);
+
+CREATE INDEX ix_refund_order_detail_photos_detail ON refund_order_detail_photos (refund_order_detail_id, sort_order) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_refund_order_detail_photos_key ON refund_order_detail_photos (storage_key) WHERE deleted_at IS NULL;
 
 
 -- ── WORKFLOW ─────────────────────────────────────────────────────────────
@@ -1022,8 +1140,19 @@ CREATE TABLE refund_workflow_instances (
     deleted_at TIMESTAMP NULL,
 
     CONSTRAINT fk_refund_wf_instance_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
-    CONSTRAINT fk_refund_wf_instance_reactivated FOREIGN KEY (reactivated_from_instance_id) REFERENCES refund_workflow_instances(id)
+    CONSTRAINT fk_refund_wf_instance_reactivated FOREIGN KEY (reactivated_from_instance_id) REFERENCES refund_workflow_instances(id),
+
+    CONSTRAINT ck_refund_wf_instance_status CHECK (status IN ('EDITING', 'IN_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED')),
+    CONSTRAINT ck_refund_wf_instance_attempt CHECK (attempt >= 1),
+    -- Una instancia cerrada no tiene nivel activo
+    CONSTRAINT ck_refund_wf_instance_current_level CHECK (
+        (status = 'IN_APPROVAL' AND current_level_order IS NOT NULL) OR
+        (status <> 'IN_APPROVAL' AND current_level_order IS NULL)
+    )
 );
+
+-- Un intento por nùmero y por nota
+CREATE UNIQUE INDEX uq_refund_wf_instance_order_attempt ON refund_workflow_instances (refund_order_id, attempt) WHERE deleted_at IS NULL;
 
 CREATE TABLE refund_workflow_instance_levels (
     id BIGSERIAL PRIMARY KEY,
@@ -1033,7 +1162,13 @@ CREATE TABLE refund_workflow_instance_levels (
     role_code VARCHAR(50) NOT NULL, -- EL ROL QUE PUEDE APROBAR ESTE NIVEL
 
     min_amount DECIMAL(12, 2) NOT NULL, -- Monto mìnimo para activarse
-    max_amount DECIMAL(12, 2) NOT NULL, -- El rango màximo
+    max_amount DECIMAL(12, 2) NULL, -- Techo de la banda = piso del nivel siguiente. NULL en el ùltimo nivel: no tiene techo
+
+    -- La polìtica de firma tambièn se congela acà: republicar la escalera no reescribe la historia
+    approval_policy VARCHAR(20) NOT NULL DEFAULT 'ANY', -- 'ANY', 'ALL', 'QUORUM' — copiado de refund_approval_levels
+    required_approvals SMALLINT NOT NULL DEFAULT 1, -- Solo tiene sentido con 'QUORUM'
+    on_reject VARCHAR(30) NOT NULL DEFAULT 'TERMINATE', -- 'TERMINATE', 'RETURN_PREVIOUS', 'RETURN_INITIATOR'
+    sla_hours SMALLINT NULL, -- Plazo del nivel, congelado. NULL = sin plazo
 
     decision_mode VARCHAR(20) NOT NULL DEFAULT 'DOCUMENT_DECISION', -- 'ITEM_SELECTION' | 'DOCUMENT_DECISION'
         -- Solo en el nivel 1 se selecciona, los demàs ya no
@@ -1054,8 +1189,19 @@ CREATE TABLE refund_workflow_instance_levels (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL,
 
-    CONSTRAINT fk_refund_wf_instance_level_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id)
+    CONSTRAINT fk_refund_wf_instance_level_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id),
+
+    CONSTRAINT ck_refund_wf_level_status CHECK (status IN ('PENDING', 'IN_PROGRESS', 'APPROVED', 'REJECTED', 'SKIPPED')),
+    CONSTRAINT ck_refund_wf_level_decision_mode CHECK (decision_mode IN ('ITEM_SELECTION', 'DOCUMENT_DECISION')),
+    CONSTRAINT ck_refund_wf_level_policy CHECK (approval_policy IN ('ANY', 'ALL', 'QUORUM')),
+    CONSTRAINT ck_refund_wf_level_on_reject CHECK (on_reject IN ('TERMINATE', 'RETURN_PREVIOUS', 'RETURN_INITIATOR')),
+    CONSTRAINT ck_refund_wf_level_band CHECK (max_amount IS NULL OR max_amount >= min_amount)
 );
+
+-- Un nivel por posiciòn dentro del intento
+CREATE UNIQUE INDEX uq_refund_wf_level_instance_order ON refund_workflow_instance_levels (workflow_instance_id, level_order) WHERE deleted_at IS NULL;
+-- "Quièn tiene que firmar ahora": los niveles abiertos por rol
+CREATE INDEX ix_refund_wf_level_open ON refund_workflow_instance_levels (status, role_code) WHERE deleted_at IS NULL;
 
 
 
@@ -1070,6 +1216,8 @@ CREATE TABLE refund_workflow_actions (
     action VARCHAR(30) NOT NULL,
         -- 'CREATED', 'VIEWED', 'LEVEL1_ITEM_SELECTION', 'DISSOCIATED_CREATED', 'CLOSED'
         -- 'APPROVE', 'SELLER_RESUBMITTED', 'REJECT', 'AUTO_ROUTED', 'REACTIVATE', 'CANCEL'
+        -- 'COMMENT' — comentar sin decidir: no consume la firma del nivel ni mueve estados
+        -- 'RETURNED_PREVIOUS' — el rechazo con on_reject = 'RETURN_PREVIOUS' devolviò la nota al nivel anterior
 
     actor_employee_code BIGINT NULL, -- Quièn hizo la acciòn
     actor_role_code VARCHAR(50) NULL, -- Que rol hizo la acciòn
@@ -1095,8 +1243,31 @@ CREATE TABLE refund_workflow_actions (
 
     CONSTRAINT fk_refund_wf_action_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id),
     CONSTRAINT fk_refund_wf_action_level FOREIGN KEY (workflow_instance_level_id) REFERENCES refund_workflow_instance_levels(id),
-    CONSTRAINT fk_refund_wf_action_related_order FOREIGN KEY (related_refund_order_id) REFERENCES refund_orders(id)
+    CONSTRAINT fk_refund_wf_action_related_order FOREIGN KEY (related_refund_order_id) REFERENCES refund_orders(id),
+
+    CONSTRAINT ck_refund_wf_action_action CHECK (action IN (
+        'CREATED', 'VIEWED', 'LEVEL1_ITEM_SELECTION', 'DISSOCIATED_CREATED', 'CLOSED',
+        'APPROVE', 'SELLER_RESUBMITTED', 'REJECT', 'AUTO_ROUTED', 'REACTIVATE', 'CANCEL',
+        'COMMENT', 'RETURNED_PREVIOUS'
+    )),
+    -- El motivo es obligatorio en las acciones que lo exigen; en el resto es opcional
+    CONSTRAINT ck_refund_wf_action_reason CHECK (
+        action NOT IN ('REJECT', 'REACTIVATE', 'CANCEL') OR (reason IS NOT NULL AND length(trim(reason)) > 0)
+    ),
+    -- La fila puente del split es la ùnica que apunta a otra nota
+    CONSTRAINT ck_refund_wf_action_related CHECK (
+        related_refund_order_id IS NULL OR action = 'DISSOCIATED_CREATED'
+    )
 );
+
+-- Historial de la nota y conteo de firmas del nivel
+CREATE INDEX ix_refund_wf_action_instance ON refund_workflow_actions (workflow_instance_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX ix_refund_wf_action_level ON refund_workflow_actions (workflow_instance_level_id, action) WHERE deleted_at IS NULL;
+-- "¿de dònde saliò esta disociada?"
+CREATE INDEX ix_refund_wf_action_related ON refund_workflow_actions (related_refund_order_id) WHERE related_refund_order_id IS NOT NULL;
+-- Una persona firma una sola vez cada nivel
+CREATE UNIQUE INDEX uq_refund_wf_action_one_signature ON refund_workflow_actions (workflow_instance_level_id, actor_employee_code)
+    WHERE action = 'APPROVE' AND deleted_at IS NULL;
 
 
 -- La selección binaria de Nivel 1, y solo eso
@@ -1108,172 +1279,307 @@ CREATE TABLE refund_order_detail_decisions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_refund_detail_decision_action FOREIGN KEY (workflow_action_id) REFERENCES refund_workflow_actions(id),
-    CONSTRAINT fk_refund_detail_decision_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id)
+    CONSTRAINT fk_refund_detail_decision_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id),
+
+    CONSTRAINT ck_refund_detail_decision CHECK (decision IN ('SELECTED', 'DISSOCIATED'))
 );
 
+-- Una decisiòn por lìnea en cada selecciòn
+CREATE UNIQUE INDEX uq_refund_detail_decision ON refund_order_detail_decisions (workflow_action_id, refund_order_detail_id);
 
 
-    -- 1) Nace la nota
-INSERT INTO refund_orders (id, note_number, split_sequence, document_type, status,
-                            distributor_id, employee_id, owner_id,customer_id, total)
-VALUES (2001, 'DEV-2001', 0,
-        'ORIGINAL', 'OPEN', 10, 555, 777, 661, 800.00);
-SELECT * FROM refund_orders;
 
-INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status)
-VALUES (3001, 2001, 900, 5, 5, 60.00, 'ACTIVE'),
-       (3002, 2001, 901, 2, 2, 250.00, 'ACTIVE');
-SELECT * FROM refund_order_details;
+-- ── SEMILLA: catàlogo de motivos ─────────────────────────────────────────
+-- Las tres reglas de evidencia salen de acà, no del front:
+--   HIDDEN   -> el dato no existe para ese motivo y no se pide
+--   OPTIONAL -> se puede cargar
+--   REQUIRED -> sin el dato no se registra la lìnea
+INSERT INTO refund_reasons (code, name, lot_requirement, due_date_requirement, requires_photo, requires_notes, sort_order) VALUES
+    ('VENCIDO',               'Producto vencido',              'REQUIRED', 'REQUIRED', TRUE, TRUE, 10),
+    ('PROXIMO_VENCIMIENTO',   'Pròximo a vencer',              'REQUIRED', 'REQUIRED', TRUE, TRUE, 20),
+    ('CONTAMINACION_FISICA',  'Contaminaciòn fìsica',          'REQUIRED', 'REQUIRED', TRUE, TRUE, 30),
+    ('RECALL',                'Retiro de mercado (recall)',    'REQUIRED', 'REQUIRED', TRUE, TRUE, 40),
+    ('MUESTRAS_LABORATORIO',  'Muestras para laboratorio',     'REQUIRED', 'REQUIRED', TRUE, TRUE, 50),
+    ('DANOS_MANEJO_CLIENTE',  'Daños por manejo del cliente',  'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 60),
+    ('ERROR_PEDIDO',          'Error en el pedido',            'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 70),
+    ('ERROR_ENTREGA',         'Error en la entrega',           'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 80),
+    ('BAJO_RENDIMIENTO',      'Bajo rendimiento de venta',     'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 90),
+    ('CIERRE_NEGOCIO',        'Cierre del negocio',            'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 100),
+    ('VIGENTE_BUEN_ESTADO',   'Vigente y en buen estado',      'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 110),
+    ('EXCEPCIONAL',           'Caso excepcional',              'OPTIONAL', 'OPTIONAL', TRUE, TRUE, 120),
+    ('SIN_LOTE_NI_VENCIMIENTO','Sin lote ni vencimiento',      'HIDDEN',   'HIDDEN',   TRUE, TRUE, 130),
+    ('FALTANTE_CAJA_CERRADA', 'Faltante en caja cerrada',      'HIDDEN',   'HIDDEN',   TRUE, TRUE, 140);
 
--- 2) Arranca el workflow: instancia + snapshot de los 2 niveles
+
+-- ── SEMILLA: la escalera publicada ───────────────────────────────────────
+-- Un piso por nivel; el techo de cada uno es el piso del siguiente y el ùltimo no tiene techo.
+INSERT INTO refund_approval_levels (workflow_version_id, level_order, name, role_code,
+                                    activation_min_amount, approval_policy, required_approvals, on_reject, sla_hours, is_active) VALUES
+    (1, 1, 'Analista CX',       'analista_cx',       0.00,    'ANY',    1, 'RETURN_INITIATOR', 24,   TRUE),
+    (1, 2, 'Gerente CX',        'gerente_cx',        500.00,  'ANY',    1, 'TERMINATE',        NULL, TRUE),
+    (1, 3, 'Gerente Comercial', 'gerente_comercial', 2000.00, 'QUORUM', 2, 'TERMINATE',        48,   TRUE),
+    (1, 4, 'Gerente General',   'gerente_general',   5000.00, 'ALL',    1, 'TERMINATE',        72,   TRUE);
+
+
+-- ═════════════════════════════════════════════════════════════════════════
+-- CASO 1 — Sin disociaciòn: el nivel 1 selecciona todo y la nota sube al nivel 2
+-- Nota 2001, total 800 Bs (5 x 60 = 300 y 2 x 250 = 500).
+-- ═════════════════════════════════════════════════════════════════════════
+
+-- 1) Nace la nota
+INSERT INTO refund_orders (id, external_sales_id, note_number, split_sequence, document_type, status,
+                           distributor_id, employee_id, owner_id, customer_id, justification, total)
+VALUES (2001, 'SALE-2001', 'DEV-2001', 0, 'ORIGINAL', 'OPEN', 10, 555, 777, 661,
+        'Producto entregado con empaque dañado en la ùltima visita.', 800.00);
+
+INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status, reason, notes)
+VALUES (3001, 2001, 900, 5, 5, 60.00,  'ACTIVE', 'CONTAMINACION_FISICA', 'Tres cajas con el film roto.'),
+       (3002, 2001, 901, 2, 2, 250.00, 'ACTIVE', 'VENCIDO',              'Vencido en gòndola.');
+
+-- De què factura y de què lote sale cada lìnea: la suma da exactamente la cantidad de la lìnea
+INSERT INTO refund_order_detail_sources (refund_order_detail_id, invoice_number, invoice_sap_doc, invoiced_at, lot, due_date, quantity)
+VALUES (3001, 'F-004512', '4500231', '2026-07-14', 'L-2291', '2026-11-30', 3),
+       (3001, 'F-004890', '4500377', '2026-08-02', 'L-2318', '2026-12-15', 2),
+       (3002, 'F-004890', '4500377', '2026-08-02', 'L-2201', '2026-08-20', 2);
+
+-- La evidencia. Sin foto el revisor no decide, y todos los motivos la exigen
+INSERT INTO refund_order_detail_photos (refund_order_detail_id, storage_key, url, content_type, sort_order, uploaded_by)
+VALUES (3001, 'refunds/2001/3001/a1.jpg', 'https://cdn.wetrade.bo/refunds/2001/3001/a1.jpg', 'image/jpeg', 1, '555'),
+       (3001, 'refunds/2001/3001/a2.jpg', 'https://cdn.wetrade.bo/refunds/2001/3001/a2.jpg', 'image/jpeg', 2, '555'),
+       (3002, 'refunds/2001/3002/b1.jpg', 'https://cdn.wetrade.bo/refunds/2001/3002/b1.jpg', 'image/jpeg', 1, '555');
+
+-- 2) Arranca el workflow: instancia + snapshot de los niveles.
+--    Con 800 Bs entran el 1 (piso 0) y el 2 (piso 500); el 3 y el 4 nacen SKIPPED.
 INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
 VALUES (90, 2001, 1, 'IN_APPROVAL', 1);
-SELECT * FROM refund_workflow_instances;
 
-SELECT * FROM refund_orders;
 UPDATE refund_orders SET current_workflow_instance_id = 90 WHERE id = 2001;
-SELECT * FROM refund_orders;
 
+INSERT INTO refund_workflow_instance_levels (id, workflow_instance_id, level_order, level_name, role_code,
+                                             min_amount, max_amount, approval_policy, required_approvals, on_reject, sla_hours,
+                                             decision_mode, status, started_at)
+VALUES (200, 90, 1, 'Analista CX',       'analista_cx',       0.00,    500.00,  'ANY',    1, 'RETURN_INITIATOR', 24,   'ITEM_SELECTION',    'IN_PROGRESS', now()),
+       (201, 90, 2, 'Gerente CX',        'gerente_cx',        500.00,  2000.00, 'ANY',    1, 'TERMINATE',        NULL, 'DOCUMENT_DECISION', 'PENDING',     NULL),
+       (202, 90, 3, 'Gerente Comercial', 'gerente_comercial', 2000.00, 5000.00, 'QUORUM', 2, 'TERMINATE',        48,   'DOCUMENT_DECISION', 'SKIPPED',     NULL),
+       (203, 90, 4, 'Gerente General',   'gerente_general',   5000.00, NULL,    'ALL',    1, 'TERMINATE',        72,   'DOCUMENT_DECISION', 'SKIPPED',     NULL);
 
-INSERT INTO refund_workflow_instance_levels ( id, workflow_instance_id, level_order, level_name, role_code,
-                                              min_amount,max_amount, decision_mode, status, started_at)
-VALUES (200, 90, 1, 'Analista CX', 'analista_cx', 0.00, 100, 'ITEM_SELECTION', 'IN_PROGRESS', now()),
-       (201, 90, 2, 'Gerente CX', 'gerente_cx', 500.00, 1000.00,'DOCUMENT_DECISION', 'PENDING', NULL);
-
-INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action, actor_type, at)
-VALUES (500, 90, NULL, 'CREATED', 'SYSTEM', now());
-
--- 3) Nivel 1 selecciona TODO (sin excluir nada -> no hay split)
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, at)
-VALUES (501, 90, 200, 'LEVEL1_ITEM_SELECTION', 'HUMAN', 111, now());
+                                     actor_employee_code, actor_role_code, system_summary, new_status, amount_after)
+VALUES (500, 90, NULL, 'CREATED', 555, 'vendedor', 'Nota registrada por Bs 800,00.', 'IN_APPROVAL', 800.00);
+
+-- 3) El nivel 1 abre el documento: se sella la primera vista, una sola vez
+UPDATE refund_workflow_instance_levels SET first_viewed_at = now(), first_viewed_by = '57' WHERE id = 200;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action, actor_employee_code, actor_role_code)
+VALUES (501, 90, 200, 'VIEWED', 57, 'analista_cx');
+
+-- 4) El nivel 1 selecciona TODO: no hay split
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                     actor_employee_code, actor_role_code, system_summary)
+VALUES (502, 90, 200, 'LEVEL1_ITEM_SELECTION', 57, 'analista_cx', 'Se seleccionaron 2 de 2 ìtems.');
 
 INSERT INTO refund_order_detail_decisions (workflow_action_id, refund_order_detail_id, decision)
-VALUES (501, 3001, 'SELECTED'),
-       (501, 3002, 'SELECTED');
+VALUES (502, 3001, 'SELECTED'),
+       (502, 3002, 'SELECTED');
 
--- 4) Nivel 1 aprueba -> pasa a nivel 2 (la instancia sigue IN_APPROVAL, solo cambia el nivel activo)
-UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 200;
-UPDATE refund_workflow_instance_levels SET status = 'IN_PROGRESS', started_at = now() WHERE id = 201;
-UPDATE refund_workflow_instances SET current_level_order = 2 WHERE id = 90;
+-- 5) El nivel 1 aprueba. 800 > 500 (su techo), asì que la nota sube al nivel 2:
+--    la instancia sigue IN_APPROVAL y solo cambia el nivel activo
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED',    finished_at = now() WHERE id = 200;
+UPDATE refund_workflow_instance_levels SET status = 'IN_PROGRESS', started_at  = now() WHERE id = 201;
+UPDATE refund_workflow_instances       SET current_level_order = 2                     WHERE id = 90;
 
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, previous_status, new_status, at)
-VALUES (502, 90, 200, 'APPROVE', 'HUMAN', 111, 'IN_APPROVAL', 'IN_APPROVAL', now());
+                                     actor_employee_code, actor_role_code, comment, previous_status, new_status)
+VALUES (503, 90, 200, 'APPROVE',     57, 'analista_cx', 'Evidencia correcta.', 'IN_APPROVAL', 'IN_APPROVAL'),
+       (504, 90, 201, 'AUTO_ROUTED', NULL, NULL,        NULL,                  'IN_APPROVAL', 'IN_APPROVAL');
 
--- 5) Nivel 2 aprueba -> se cierra la instancia y la nota queda aprobada
+-- 6) El nivel 2 aprueba. 800 <= 2000 (su techo): se liquida acà, se cierra la instancia
+--    y la nota queda aprobada
 UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 201;
-UPDATE refund_workflow_instances SET status = 'APPROVED', current_level_order = NULL, finished_at = now() WHERE id = 90;
-UPDATE refund_orders SET status = 'APPROVED' WHERE id = 2001;
+UPDATE refund_workflow_instances
+   SET status = 'APPROVED', current_level_order = NULL, finished_at = now()
+ WHERE id = 90;
+UPDATE refund_orders
+   SET status = 'APPROVED', approved_total = 800.00, rejected_total = 0.00, settlement_type = 'NOTA_CREDITO'
+ WHERE id = 2001;
 
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, previous_status, new_status, at)
-VALUES (503, 90, 201, 'APPROVE', 'HUMAN', 222, 'IN_APPROVAL', 'APPROVED', now());
+                                     actor_employee_code, actor_role_code, system_summary, previous_status, new_status)
+VALUES (505, 90, 201, 'APPROVE', 72, 'gerente_cx', 'Se aprobaron 2 de 2 ìtems por Bs 800,00.', 'IN_APPROVAL', 'APPROVED'),
+       (506, 90, NULL, 'CLOSED',  NULL, NULL,      'Nota cerrada por nota de crèdito.',        'APPROVED',    'APPROVED');
 
-Reconstruir el historial de la 2001, en orden:
+-- El historial de la 2001, en orden. El 'at' del DDL està comentado: el orden sale de created_at
+SELECT a.created_at, a.action, a.actor_employee_code, l.level_name, a.previous_status, a.new_status,
+       a.system_summary, a.comment, a.reason
+  FROM refund_workflow_actions a
+  JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+  LEFT JOIN refund_workflow_instance_levels l ON l.id = a.workflow_instance_level_id
+ WHERE i.refund_order_id = 2001
+ ORDER BY a.created_at, a.id;
 
-SELECT a.at, a.action, a.actor_employee_code, l.level_name, a.previous_status, a.new_status
-FROM refund_workflow_actions a
-JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
-LEFT JOIN refund_workflow_instance_levels l ON l.id = a.workflow_instance_level_id
-WHERE i.refund_order_id = 2001
-ORDER BY a.at;
 
-Caso 2 — Con disociación (nivel 1 selecciona parcial)
-
-Nota 1001, total 1000 Bs (detalle 4001 = 600, detalle 4002 = 400). Nivel 1 excluye el 4002.
+-- ═════════════════════════════════════════════════════════════════════════
+-- CASO 2 — Con disociaciòn: el nivel 1 selecciona parcial
+-- Nota 1001, total 1000 Bs (detalle 4001 = 600, detalle 4002 = 400). El nivel 1 excluye el 4002.
+-- ═════════════════════════════════════════════════════════════════════════
 
 -- 1) Nace la nota original
 INSERT INTO refund_orders (id, external_sales_id, note_number, split_sequence, document_type, status,
-                            distributor_id, seller_code, client_id, total)
-VALUES (1001, 'SALE-1001', 'DEV-1001', 0, 'ORIGINAL', 'OPEN', 10, 555, 777, 1000.00);
+                           distributor_id, employee_id, owner_id, customer_id, justification, total)
+VALUES (1001, 'SALE-1001', 'DEV-1001', 0, 'ORIGINAL', 'OPEN', 10, 555, 777, 661,
+        'Reclamo del cliente por dos productos.', 1000.00);
 
-INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status)
-VALUES (4001, 1001, 900, 10, 10, 60.00, 'ACTIVE'),
-       (4002, 1001, 901, 4, 4, 100.00, 'ACTIVE');
+INSERT INTO refund_order_details (id, refund_order_id, product_id, source_quantity, quantity, price_unit, line_status, reason)
+VALUES (4001, 1001, 900, 10, 10, 60.00,  'ACTIVE', 'CONTAMINACION_FISICA'),
+       (4002, 1001, 901, 4,  4,  100.00, 'ACTIVE', 'VENCIDO');
+
+INSERT INTO refund_order_detail_sources (refund_order_detail_id, invoice_number, invoice_sap_doc, invoiced_at, lot, due_date, quantity)
+VALUES (4001, 'F-004512', '4500231', '2026-07-14', 'L-2291', '2026-11-30', 10),
+       (4002, 'F-004512', '4500231', '2026-07-14', 'L-2201', '2026-08-20', 4);
+
+INSERT INTO refund_order_detail_photos (refund_order_detail_id, storage_key, url, content_type, sort_order, uploaded_by)
+VALUES (4001, 'refunds/1001/4001/a1.jpg', 'https://cdn.wetrade.bo/refunds/1001/4001/a1.jpg', 'image/jpeg', 1, '555'),
+       (4002, 'refunds/1001/4002/b1.jpg', 'https://cdn.wetrade.bo/refunds/1001/4002/b1.jpg', 'image/jpeg', 1, '555');
 
 INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
 VALUES (55, 1001, 1, 'IN_APPROVAL', 1);
+
 UPDATE refund_orders SET current_workflow_instance_id = 55 WHERE id = 1001;
 
 INSERT INTO refund_workflow_instance_levels (id, workflow_instance_id, level_order, level_name, role_code,
-                                              activation_min_amount, decision_mode, status, started_at)
-VALUES (210, 55, 1, 'Analista CX', 'analista_cx', 0.00, 'ITEM_SELECTION', 'IN_PROGRESS', now());
+                                             min_amount, max_amount, approval_policy, required_approvals, on_reject, sla_hours,
+                                             decision_mode, status, started_at)
+VALUES (210, 55, 1, 'Analista CX', 'analista_cx', 0.00,   500.00,  'ANY', 1, 'RETURN_INITIATOR', 24,   'ITEM_SELECTION',    'IN_PROGRESS', now()),
+       (211, 55, 2, 'Gerente CX',  'gerente_cx',  500.00, 2000.00, 'ANY', 1, 'TERMINATE',        NULL, 'DOCUMENT_DECISION', 'PENDING',     NULL);
 
-INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action, actor_type, at)
-VALUES (600, 55, NULL, 'CREATED', 'SYSTEM', now());
-
--- 2) Nivel 1 selecciona PARCIAL: 4001 queda, 4002 se disocia
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, at)
-VALUES (601, 55, 210, 'LEVEL1_ITEM_SELECTION', 'HUMAN', 111, now());
+                                     actor_employee_code, actor_role_code, system_summary, new_status, amount_after)
+VALUES (600, 55, NULL, 'CREATED', 555, 'vendedor', 'Nota registrada por Bs 1.000,00.', 'IN_APPROVAL', 1000.00);
+
+-- 2) El nivel 1 selecciona PARCIAL: el 4001 queda, el 4002 se disocia
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                     actor_employee_code, actor_role_code, system_summary)
+VALUES (601, 55, 210, 'LEVEL1_ITEM_SELECTION', 57, 'analista_cx', 'Se seleccionò 1 de 2 ìtems.');
 
 INSERT INTO refund_order_detail_decisions (workflow_action_id, refund_order_detail_id, decision)
 VALUES (601, 4001, 'SELECTED'),
        (601, 4002, 'DISSOCIATED');
 
--- 3) La transacción del split: original se recalcula, nace la disociada
+-- 3) La transacciòn del split: la original se recalcula y nace la disociada
 UPDATE refund_order_details SET line_status = 'DISSOCIATED' WHERE id = 4002;
-UPDATE refund_orders SET total = 600.00 WHERE id = 1001;   -- solo queda el detalle 4001
+UPDATE refund_orders        SET total = 600.00              WHERE id = 1001; -- solo queda el 4001
 
 INSERT INTO refund_orders (id, external_sales_id, note_number, split_sequence, source_refund_order_id,
-                            document_type, status, distributor_id, seller_code, client_id, total)
-VALUES (1004, 'SALE-1001', 'DEV-1001', 1, 1001, 'DISSOCIATED', 'OPEN', 10, 555, 777, 400.00);
+                           document_type, status, distributor_id, employee_id, owner_id, customer_id, total)
+VALUES (1004, 'SALE-1001', 'DEV-1001', 1, 1001, 'DISSOCIATED', 'OPEN', 10, 555, 777, 661, 400.00);
 
-INSERT INTO refund_order_details (id, refund_order_id, source_detail_id, product_id, source_quantity, quantity, price_unit, line_status)
-VALUES (4010, 1004, 4002, 901, 4, 4, 100.00, 'ACTIVE');
+-- La lìnea se clona apuntando a la de origen; la cantidad recibida queda como techo del vendedor
+INSERT INTO refund_order_details (id, refund_order_id, source_detail_id, product_id, source_quantity, quantity, price_unit, line_status, reason)
+VALUES (4010, 1004, 4002, 901, 4, 4, 100.00, 'ACTIVE', 'VENCIDO');
 
+INSERT INTO refund_order_detail_sources (refund_order_detail_id, invoice_number, invoice_sap_doc, invoiced_at, lot, due_date, quantity)
+VALUES (4010, 'F-004512', '4500231', '2026-07-14', 'L-2201', '2026-08-20', 4);
+
+INSERT INTO refund_order_detail_photos (refund_order_detail_id, storage_key, url, content_type, sort_order, uploaded_by)
+VALUES (4010, 'refunds/1004/4010/b1.jpg', 'https://cdn.wetrade.bo/refunds/1004/4010/b1.jpg', 'image/jpeg', 1, '555');
+
+-- La disociada NO entra en aprobaciòn: arranca en EDITING, esperando al vendedor
 INSERT INTO refund_workflow_instances (id, refund_order_id, attempt, status, current_level_order)
 VALUES (56, 1004, 1, 'EDITING', NULL);
+
 UPDATE refund_orders SET current_workflow_instance_id = 56 WHERE id = 1004;
 
--- Fila puente: vive en la instancia de la ORIGINAL, apunta a la disociada
+-- Fila puente: vive en la instancia de la ORIGINAL y apunta a la disociada
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, related_refund_order_id,
-                                      amount_before, amount_after, at)
-VALUES (602, 55, NULL, 'DISSOCIATED_CREATED', 'HUMAN', 111, 1004, 1000.00, 600.00, now());
+                                     actor_employee_code, actor_role_code, related_refund_order_id,
+                                     system_summary, amount_before, amount_after)
+VALUES (602, 55, NULL, 'DISSOCIATED_CREATED', 57, 'analista_cx', 1004,
+        'Se disociò 1 ìtem por Bs 400,00.', 1000.00, 600.00);
 
--- 4) La original sigue de largo con lo que le quedó: nivel 1 aprueba, se cierra en un solo nivel (600 < 500? no, en este ejemplo asumimos que ya no necesita nivel 2)
-UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 210;
-UPDATE refund_workflow_instances SET status = 'APPROVED', current_level_order = NULL, finished_at = now() WHERE id = 55;
-UPDATE refund_orders SET status = 'APPROVED' WHERE id = 1001;
+-- 4) La original sigue con lo que le quedò. 600 > 500 (techo del nivel 1), asì que sube al nivel 2,
+--    y ahì 600 <= 2000: se liquida y cierra
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED',    finished_at = now() WHERE id = 210;
+UPDATE refund_workflow_instance_levels SET status = 'IN_PROGRESS', started_at  = now() WHERE id = 211;
+UPDATE refund_workflow_instances       SET current_level_order = 2                     WHERE id = 55;
 
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, previous_status, new_status, at)
-VALUES (603, 55, 210, 'APPROVE', 'HUMAN', 111, 'IN_APPROVAL', 'APPROVED', now());
+                                     actor_employee_code, actor_role_code, previous_status, new_status)
+VALUES (603, 55, 210, 'APPROVE', 57, 'analista_cx', 'IN_APPROVAL', 'IN_APPROVAL');
 
--- 5) Mientras tanto, el vendedor edita la disociada (recorta cantidad) y la reenvía
-UPDATE refund_order_details SET quantity = 2 WHERE id = 4010;   -- corta de 4 a 2 unidades
-UPDATE refund_orders SET total = 200.00 WHERE id = 1004;
+UPDATE refund_workflow_instance_levels SET status = 'APPROVED', finished_at = now() WHERE id = 211;
+UPDATE refund_workflow_instances
+   SET status = 'APPROVED', current_level_order = NULL, finished_at = now()
+ WHERE id = 55;
+UPDATE refund_orders
+   SET status = 'APPROVED', approved_total = 600.00, rejected_total = 0.00, settlement_type = 'NOTA_CREDITO'
+ WHERE id = 1001;
+
+INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
+                                     actor_employee_code, actor_role_code, system_summary, previous_status, new_status)
+VALUES (604, 55, 211, 'APPROVE', 72, 'gerente_cx', 'Se aprobò 1 de 1 ìtem por Bs 600,00.', 'IN_APPROVAL', 'APPROVED');
+
+-- 5) Mientras tanto el vendedor corrige la disociada (recorta de 4 a 2) y la reenvìa.
+--    La escalera se recalcula con el total nuevo: 200 Bs entra solo en el nivel 1.
+UPDATE refund_order_details SET quantity = 2      WHERE id = 4010;
+UPDATE refund_order_detail_sources SET quantity = 2 WHERE refund_order_detail_id = 4010;
+UPDATE refund_orders SET total = 200.00, edit_count = edit_count + 1 WHERE id = 1004;
 
 INSERT INTO refund_workflow_instance_levels (id, workflow_instance_id, level_order, level_name, role_code,
-                                              activation_min_amount, decision_mode, status, started_at)
-VALUES (220, 56, 1, 'Analista CX', 'analista_cx', 0.00, 'DOCUMENT_DECISION', 'IN_PROGRESS', now());
+                                             min_amount, max_amount, approval_policy, required_approvals, on_reject, sla_hours,
+                                             decision_mode, status, started_at)
+VALUES (220, 56, 1, 'Analista CX', 'analista_cx', 0.00, 500.00, 'ANY', 1, 'RETURN_INITIATOR', 24, 'DOCUMENT_DECISION', 'IN_PROGRESS', now());
+-- Ojo: el reenvìo va con DOCUMENT_DECISION. La selecciòn de ìtems ocurriò una sola vez, en la original
+
 UPDATE refund_workflow_instances SET status = 'IN_APPROVAL', current_level_order = 1 WHERE id = 56;
 
 INSERT INTO refund_workflow_actions (id, workflow_instance_id, workflow_instance_level_id, action,
-                                      actor_type, actor_employee_code, previous_status, new_status,
-                                      amount_before, amount_after, at)
-VALUES (604, 56, NULL, 'SELLER_RESUBMITTED', 'HUMAN', 555, 'EDITING', 'IN_APPROVAL', 400.00, 200.00, now());
+                                     actor_employee_code, actor_role_code, system_summary,
+                                     previous_status, new_status, amount_before, amount_after)
+VALUES (605, 56, NULL, 'SELLER_RESUBMITTED', 555, 'vendedor', 'El vendedor recortò la nota a Bs 200,00.',
+        'EDITING', 'IN_APPROVAL', 400.00, 200.00);
 
-Ver las dos historias por separado, y cómo se cruzan en el split:
 
--- Historial completo de la original (incluye el momento en que "salió" la disociada)
-SELECT a.at, a.action, a.related_refund_order_id, a.amount_before, a.amount_after
-FROM refund_workflow_actions a
-JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
-WHERE i.refund_order_id = 1001
-ORDER BY a.at;
+-- ── CONSULTAS DE LECTURA ─────────────────────────────────────────────────
 
--- Historial de la disociada, desde su propia instancia (arranca en EDITING)
-SELECT a.at, a.action, a.previous_status, a.new_status
-FROM refund_workflow_actions a
-JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
-WHERE i.refund_order_id = 1004
-ORDER BY a.at;
+-- Historial completo de la original, incluido el momento en que saliò la disociada
+SELECT a.created_at, a.action, a.related_refund_order_id, a.amount_before, a.amount_after
+  FROM refund_workflow_actions a
+  JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+ WHERE i.refund_order_id = 1001
+ ORDER BY a.created_at, a.id;
 
--- "¿De dónde salió la 1004?" -- la fila puente, buscada desde el otro lado
-SELECT ro.id AS nota_origen, a.at, a.amount_before, a.amount_after
-FROM refund_workflow_actions a
-JOIN refund_orders ro ON ro.id = (SELECT refund_order_id FROM refund_workflow_instances WHERE id = a.workflow_instance_id)
-WHERE a.related_refund_order_id = 1004 AND a.action = 'DISSOCIATED_CREATED';
+-- Historial de la disociada, desde su propia instancia: arranca en EDITING
+SELECT a.created_at, a.action, a.previous_status, a.new_status
+  FROM refund_workflow_actions a
+  JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+ WHERE i.refund_order_id = 1004
+ ORDER BY a.created_at, a.id;
+
+-- "¿De dònde saliò la 1004?" — la fila puente, buscada desde el otro lado
+SELECT i.refund_order_id AS nota_origen, a.created_at, a.amount_before, a.amount_after
+  FROM refund_workflow_actions a
+  JOIN refund_workflow_instances i ON i.id = a.workflow_instance_id
+ WHERE a.related_refund_order_id = 1004
+   AND a.action = 'DISSOCIATED_CREATED';
+
+-- La lìnea con su evidencia y sus orìgenes, que es lo que abre el revisor
+SELECT d.id AS detalle, d.product_id, d.quantity, d.price_unit, d.line_status, d.reason,
+       r.name AS motivo, r.lot_requirement, r.due_date_requirement,
+       (SELECT count(*) FROM refund_order_detail_photos p  WHERE p.refund_order_detail_id = d.id AND p.deleted_at IS NULL) AS fotos,
+       (SELECT sum(s.quantity) FROM refund_order_detail_sources s WHERE s.refund_order_detail_id = d.id AND s.deleted_at IS NULL) AS cantidad_en_origenes
+  FROM refund_order_details d
+  JOIN refund_reasons r ON r.code = d.reason
+ WHERE d.refund_order_id = 1001
+   AND d.deleted_at IS NULL
+ ORDER BY d.id;
+
+-- Cuànto ya reclamò el cliente de cada producto: es la base de la elegibilidad
+SELECT d.product_id, sum(d.quantity) AS reclamado_vigente
+  FROM refund_order_details d
+  JOIN refund_orders o ON o.id = d.refund_order_id
+ WHERE o.owner_id = 777
+   AND o.status NOT IN ('REJECTED', 'ANNULLED')
+   AND d.line_status = 'ACTIVE'
+   AND d.deleted_at IS NULL
+   AND o.deleted_at IS NULL
+ GROUP BY d.product_id;

@@ -1,0 +1,886 @@
+{
+  "filterMonitoringDto": {
+    "distributorId": 1,
+    "plate": "3456",
+    "transportStatus": "EN_RUTA"
+  }
+}
+[
+  {
+    "transportOrderId": 4471,
+    "distributorId": 1,
+    "routeId": 512,
+    "orderStatus": "DISPATCHED",
+    "assignedWeightKg": 3480.50,
+    "assignedVolumeM3": 14.20
+  },
+  {
+    "...": "..."
+  }
+]
+[
+  {
+    "routeId": 512,
+    "distributorId": 1,
+    "truckId": 880012,
+    "licensePlate": "3456-ABC",
+    "driverEmployeeId": 456,
+    "nameDriverEmployee": "Carlos Mamani",
+    "helperEmployeeId": null,
+    "nameHelperEmployee": null,
+    "transportStatus": "EN_RUTA",
+    "departureDate": "2026-07-16T08:00:00.000Z",
+    "completedDate": null
+  },
+  {
+    "...": "..."
+  }
+]
+{
+  "total": 12,
+  "delivered": 6,
+  "failed": 1,
+  "returned": 0,
+  "pending": 5,
+  "progressPct": 58,
+  "incidents": 1,
+  "outOfWindow": 0
+}
+
+[
+  {
+    "pk": "FLEET#1",
+    "sk": "ROUTE#512",
+    "latitude": -17.783412,
+    "longitude": -63.181245,
+    "battery": 74,
+    "trackedAt": "2026-07-16T08:24:39.000Z",
+    "receivedAt": "2026-07-16T08:24:40.180Z"
+  },
+  {
+    "...": "..."
+  }
+]
+
+{
+  "success": true,
+  "code": 200,
+  "data": [
+    {
+      "transportOrderId": 4471,
+      "code": "OT-2026-004471",
+      "routeId": 512,
+      "orderStatus": "DISPATCHED",
+      "truckPlate": "3456-ABC",
+      "driverName": "Carlos Mamani",
+      "transportStatus": "EN_RUTA",
+      "departureDate": "2026-07-16T08:00:00.000Z",
+      "progress": {
+        "total": 12,
+        "delivered": 6,
+        "failed": 1,
+        "pending": 5,
+        "progressPct": 58,
+        "incidents": 1
+      },
+      "tracking": {
+        "routeId": 512,
+        "latitude": -17.783412,
+        "longitude": -63.181245,
+        "battery": 74,
+        "trackedAt": "2026-07-16T08:24:39.000Z",
+        "receivedAt": "2026-07-16T08:24:40.180Z"
+      }
+    },
+    {
+      "transportOrderId": 4473,
+      "code": "OT-2026-004473",
+      "routeId": 512,
+      "orderStatus": "DISPATCHED",
+      "truckPlate": "3456-ABC",
+      "driverName": "Carlos Mamani",
+      "transportStatus": "EN_RUTA",
+      "departureDate": "2026-07-16T08:00:00.000Z",
+      "progress": {
+        "total": 4,
+        "delivered": 2,
+        "failed": 0,
+        "pending": 2,
+        "progressPct": 50,
+        "incidents": 0
+      },
+      "tracking": {
+        "routeId": 512,
+        "latitude": -17.783412,
+        "longitude": -63.181245,
+        "battery": 74,
+        "trackedAt": "2026-07-16T08:24:39.000Z",
+        "receivedAt": "2026-07-16T08:24:40.180Z"
+      }
+    },
+    {
+      "...": "..."
+    }
+  ]
+}
+
+{
+  "routeId": 512,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}
+
+[
+  {
+    "routeId": 512,
+    "distributorId": 1,
+    "truckId": 880012,
+    "licensePlate": "3456-ABC",
+    "driverEmployeeId": 456,
+    "nameDriverEmployee": "Carlos Mamani",
+    "transportStatus": "EN_RUTA",
+    "departureDate": "2026-07-16T08:00:00.000Z",
+    "completedDate": null
+  },
+  {
+    "...": "..."
+  }
+]
+
+{
+  "total": 12,
+  "delivered": 6,
+  "failed": 1,
+  "returned": 0,
+  "pending": 5,
+  "progressPct": 58,
+  "incidents": 1,
+  "outOfWindow": 0
+}
+
+{
+  "routeId": 512,
+  "distributorId": 1,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "employeeId": 456,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "battery": 0.74
+}
+{
+  "routeId": 512,
+  "distributorId": 1,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "employeeId": 456,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z",
+  "battery": 74
+}
+
+PK  ROUTE#{routeId
+}
+SK  TS#{trackedAt
+}
+
+· última posición de la salida  ->  Query PK, ScanIndexForward=false, Limit=1
+· recorrido entre dos horas     ->  Query PK, SK BETWEEN 'TS#t1' AND 'TS#t2'
+
+{
+  "pk": "ROUTE#512",
+  "sk": "TS#2026-07-16T08:24:39.000Z",
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "employeeId": 456,
+  "receivedAt": "2026-07-16T08:24:40.180Z",
+  "expiresAt": 1786782279
+}
+
+PK  FLEET#{distributorId
+}     (misma forma, otro origen)
+SK  ROUTE#{routeId
+}
+{
+  "pk": "FLEET#1",
+  "sk": "ROUTE#512",
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}
+{
+  "routeId": 512,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}
+
+{
+  "success": true,
+  "code": 202,
+  "message": "Ping registrado.",
+  "data": {
+    "routeId": 512,
+    "trackedAt": "2026-07-16T08:24:39.000Z",
+    "receivedAt": "2026-07-16T08:24:40.180Z"
+  }
+}
+
+{
+  "transportOrderId": 4471,
+  "code": "OT-2026-004471",
+  "distributorId": 1,
+  "routeId": 512,
+  "orderStatus": "DISPATCHED"
+}
+
+{
+  "routeId": 512,
+  "licensePlate": "3456-ABC",
+  "transportStatus": "EN_RUTA",
+  "departureDate": "...",
+  "completedDate": null
+}
+
+[
+  {
+    "routeDeliveryPointId": 88301,
+    "sequence": 1
+  },
+  {
+    "routeDeliveryPointId": 88302,
+    "sequence": 2
+  }
+]
+
+[
+  {
+    "customerName": "Casa La Ramada",
+    "deliveryWindowStart": "08:00",
+    "deliveryWindowEnd": "12:00"
+  }
+]
+
+[
+  {
+    "salesOrderId": "SO-88213",
+    "documentId": "1000026565",
+    "total": 1592.67
+  }
+]
+{
+  "deliveryPointId": [
+    45,
+    46
+  ]
+}
+
+[
+  {
+    "deliveryPointId": 45,
+    "ownerId": 4,
+    "ownerName": "Cliente padre 1",
+    "customerId": 78,
+    "customerName": "Cliente hijo 2",
+    "latitud": -17.786510,
+    "longitud": -63.174220
+  },
+  {
+    "...": "..."
+  }
+]
+
+{
+  "order": {
+    "transportOrderId": 4471,
+    "code": "OT-2026-004471",
+    "distributorId": 1,
+    "routeId": 512,
+    "orderStatus": "DISPATCHED",
+    "assignedWeightKg": 3480.50,
+    "assignedVolumeM3": 14.20
+  },
+  "deposito": {
+    "distributorId": 1,
+    "name": "Planta Santa Cruz",
+    "latitude": -17.771200,
+    "longitude": -63.142100
+  }
+}
+{
+  "routeId": 512,
+  "distributorId": 1,
+  "encodePolyline": "}_o~F~ps|U_ulLnnqC_mqNvxq`@",
+  "truckId": 880012,
+  "licensePlate": "3456-ABC",
+  "driverEmployeeId": 456,
+  "nameDriverEmployee": "Carlos Mamani",
+  "transportStatus": "EN_RUTA",
+  "departureDate": "2026-07-16T08:00:00.000Z",
+  "completedDate": null,
+  "etaTotalDistanceM": 48250.00,
+  "etaTotalTimeS": 9600.00
+}
+
+
+[
+  {
+    "routeDeliveryPointId": 88301,
+    "dispatchDeliveryPointId": 4021,
+    "sequence": 1,
+    "estimatedDistanceM": 5400.00,
+    "estimatedTravelS": 780.00,
+    "isActive": true
+  },
+  {
+    "routeDeliveryPointId": 88302,
+    "dispatchDeliveryPointId": 4022,
+    "sequence": 2,
+    "estimatedDistanceM": 3120.00,
+    "estimatedTravelS": 540.00,
+    "isActive": true
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "dispatchDeliveryPointId": 4021,
+    "deliveryPointId": 45,
+    "customerName": "Casa La Ramada",
+    "deliveryWindowStart": "08:00",
+    "deliveryWindowEnd": "12:00",
+    "totalWeightKg": 620.40,
+    "totalVolumeM3": 2.30,
+    "totalNeto": 2572.67
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "candidateOrderId": 7781,
+    "dispatchDeliveryPointId": 4021,
+    "salesOrderId": "SO-88213",
+    "documentId": "1000026565",
+    "totalWeightKg": 320.40,
+    "totalVolumeM3": 1.10,
+    "typeMovement": "VENTA"
+  },
+  {
+    "candidateOrderId": 7782,
+    "dispatchDeliveryPointId": 4021,
+    "salesOrderId": "SO-88240",
+    "documentId": "1000026571",
+    "totalWeightKg": 300.00,
+    "totalVolumeM3": 1.20,
+    "typeMovement": "VENTA"
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+{
+  "deliveryPointId": [
+    45,
+    46,
+    51,
+    78
+  ],
+  "ownerId": 4,
+  "customerId": null
+}
+
+[
+  {
+    "deliveryPointId": 45,
+    "ownerId": 4,
+    "ownerName": "Cliente padre 1",
+    "customerId": 78,
+    "customerName": "Cliente hijo 2",
+    "latitud": -17.786510,
+    "longitud": -63.174220
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "deliveryOrderId": 90112,
+    "dispatchDeliveryPointId": 4021,
+    "status": "DELIVERED",
+    "arrivedAt": "2026-07-16T08:25:00.000Z",
+    "deliveredAt": "2026-07-16T08:34:00.000Z",
+    "arrivalLatitude": -17.786498,
+    "arrivalLongitude": -63.174241,
+    "receiverName": "Lic. Roberto Gómez",
+    "receiverRelationship": "ENCARGADO_ALMACEN",
+    "deliveryResultCode": null
+  },
+  {
+    "deliveryOrderId": 90113,
+    "dispatchDeliveryPointId": 4022,
+    "status": "INCIDENT",
+    "arrivedAt": "2026-07-16T09:02:00.000Z",
+    "deliveredAt": "2026-07-16T09:11:00.000Z",
+    "arrivalLatitude": -17.771002,
+    "arrivalLongitude": -63.160877,
+    "receiverName": null,
+    "receiverRelationship": null,
+    "deliveryResultCode": "CLIENTE_AUSENTE"
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "deliveryOrderItemId": 55201,
+    "deliveryOrderId": 90112,
+    "productId": 78,
+    "plannedQty": 24,
+    "loadedQty": 24,
+    "deliveredQty": 24,
+    "returnedQty": 0,
+    "itemStatus": "DELIVERED"
+  },
+  {
+    "deliveryOrderItemId": 55202,
+    "deliveryOrderId": 90112,
+    "productId": 91,
+    "plannedQty": 12,
+    "loadedQty": 10,
+    "deliveredQty": 10,
+    "returnedQty": 0,
+    "itemStatus": "DELIVERED"
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "incidentId": 3301,
+    "deliveryOrderId": 90113,
+    "incidentCode": "CLIENTE_AUSENTE",
+    "incidentType": "LOGISTICO",
+    "severity": "ALTA",
+    "description": "Local cerrado en horario comercial. No responden llamadas.",
+    "photoUrl": "https://venado-logistics-s3.s3.amazonaws.com/incidents/2026/07/inc_1001.jpg",
+    "requiresReturn": true,
+    "resolutionStatus": "PENDING",
+    "resolvedAt": null,
+    "createdAt": "2026-07-16T09:08:00.000Z"
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+[
+  {
+    "podId": 12044,
+    "deliveryOrderId": 90112,
+    "receiverName": "Lic. Roberto Gómez",
+    "receiverDocument": "4829102 SC",
+    "signatureUrl": "https://venado-logistics-s3.s3.amazonaws.com/pod/2026/07/pod_1001_sign.png",
+    "photoUrl": "https://venado-logistics-s3.s3.amazonaws.com/pod/2026/07/pod_1001_photo.jpg",
+    "gpsLat": -17.786492,
+    "gpsLon": -63.174233,
+    "podStatus": "CAPTURED",
+    "podResultCode": null,
+    "deviceId": 9041,
+    "capturedAt": "2026-07-16T08:34:00.000Z",
+    "uploadedAt": "2026-07-16T08:36:12.000Z",
+    "notes": null
+  },
+  {
+    "...": "..."
+  }
+]
+
+
+
+[
+  {
+    "historyId": 77010,
+    "deliveryOrderId": 90112,
+    "status": "PENDING",
+    "reason": null,
+    "createdAt": "2026-07-16T08:00:00.000Z",
+    "createdBy": null
+  },
+  {
+    "historyId": 77012,
+    "deliveryOrderId": 90112,
+    "status": "ENROUTE",
+    "reason": null,
+    "createdAt": "2026-07-16T08:13:00.000Z",
+    "createdBy": null
+  },
+  {
+    "historyId": 77014,
+    "deliveryOrderId": 90112,
+    "status": "ARRIVED",
+    "reason": null,
+    "createdAt": "2026-07-16T08:25:00.000Z",
+    "createdBy": null
+  },
+  {
+    "historyId": 77019,
+    "deliveryOrderId": 90112,
+    "status": "DELIVERED",
+    "reason": null,
+    "createdAt": "2026-07-16T08:34:00.000Z",
+    "createdBy": null
+  },
+  {
+    "...": "..."
+  }
+]
+
+Query  TableName = truck_tracking
+       KeyConditionExpression = "pk = :pk"
+       ExpressionAttributeValues = {
+  ":pk": "ROUTE#512"
+}
+       ScanIndexForward = false          -- del más nuevo al más viejo
+       Limit = 1
+
+
+{
+  "pk": "ROUTE#512",
+  "sk": "TS#2026-07-16T08:24:39.000Z",
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "employeeId": 456,
+  "receivedAt": "2026-07-16T08:24:40.180Z",
+  "expiresAt": 1786782279
+}
+
+
+{
+  "routeId": 512,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}
+
+
+{
+  "success": true,
+  "code": 200,
+  "data": {
+    "order": {
+      "transportOrderId": 4471,
+      "code": "OT-2026-004471",
+      "distributorId": 1,
+      "routeId": 512,
+      "orderStatus": "DISPATCHED",
+      "assignedWeightKg": 3480.50,
+      "assignedVolumeM3": 14.20
+    },
+    "deposito": {
+      "distributorId": 1,
+      "name": "Planta Santa Cruz",
+      "latitude": -17.771200,
+      "longitude": -63.142100
+    },
+    "route": {
+      "routeId": 512,
+      "licensePlate": "3456-ABC",
+      "nameDriverEmployee": "Carlos Mamani",
+      "driverEmployeeId": 456,
+      "transportStatus": "EN_RUTA",
+      "departureDate": "2026-07-16T08:00:00.000Z",
+      "completedDate": null,
+      "encodePolyline": "}_o~F~ps|U_ulLnnqC_mqNvxq`@",
+      "etaTotalDistanceM": 48250.00,
+      "etaTotalTimeS": 9600.00
+    },
+    "progress": {
+      "total": 6,
+      "delivered": 1,
+      "failed": 0,
+      "returned": 0,
+      "incidents": 1,
+      "pending": 4,
+      "progressPct": 33,
+      "outOfWindow": 0
+    },
+    "tracking": {
+      "routeId": 512,
+      "latitude": -17.783412,
+      "longitude": -63.181245,
+      "battery": 74,
+      "trackedAt": "2026-07-16T08:24:39.000Z",
+      "receivedAt": "2026-07-16T08:24:40.180Z"
+    },
+    "paradas": [
+      {
+        "deliveryOrderId": 90112,
+        "dispatchDeliveryPointId": 4021,
+        "deliveryPointId": 45,
+        "sequence": 1,
+        "customerName": "Casa La Ramada",
+        "latitude": -17.786510,
+        "longitude": -63.174220,
+        "deliveryWindowStart": "08:00",
+        "deliveryWindowEnd": "12:00",
+        "totalWeightKg": 620.40,
+        "totalVolumeM3": 2.30,
+        "estimatedDistanceM": 5400.00,
+        "estimatedTravelS": 780.00,
+        "status": "DELIVERED",
+        "arrivedAt": "2026-07-16T08:25:00.000Z",
+        "deliveredAt": "2026-07-16T08:34:00.000Z",
+        "arrivalLatitude": -17.786498,
+        "arrivalLongitude": -63.174241,
+        "receiverName": "Lic. Roberto Gómez",
+        "deliveryResultCode": null,
+        "outOfWindow": false,
+        "pedidos": [
+          {
+            "candidateOrderId": 7781,
+            "salesOrderId": "SO-88213",
+            "documentId": "1000026565",
+            "totalWeightKg": 320.40,
+            "totalVolumeM3": 1.10,
+            "typeMovement": "VENTA"
+          },
+          {
+            "...": "..."
+          }
+        ],
+        "items": [
+          {
+            "deliveryOrderItemId": 55201,
+            "productId": 78,
+            "plannedQty": 24,
+            "loadedQty": 24,
+            "deliveredQty": 24,
+            "returnedQty": 0,
+            "itemStatus": "DELIVERED"
+          },
+          {
+            "...": "..."
+          }
+        ],
+        "incidencias": [],
+        "comprobante": {
+          "podId": 12044,
+          "receiverName": "Lic. Roberto Gómez",
+          "receiverDocument": "4829102 SC",
+          "signatureUrl": "https://venado-logistics-s3.s3.amazonaws.com/pod/2026/07/pod_1001_sign.png",
+          "photoUrl": "https://venado-logistics-s3.s3.amazonaws.com/pod/2026/07/pod_1001_photo.jpg",
+          "gpsLat": -17.786492,
+          "gpsLon": -63.174233,
+          "podStatus": "CAPTURED",
+          "capturedAt": "2026-07-16T08:34:00.000Z",
+          "uploadedAt": "2026-07-16T08:36:12.000Z"
+        },
+        "historial": [
+          {
+            "historyId": 77010,
+            "status": "PENDING",
+            "reason": null,
+            "createdAt": "2026-07-16T08:00:00.000Z"
+          },
+          {
+            "historyId": 77019,
+            "status": "DELIVERED",
+            "reason": null,
+            "createdAt": "2026-07-16T08:34:00.000Z"
+          }
+        ]
+      },
+      {
+        "...": "una por parada"
+      }
+    ]
+  }
+}
+// publish(eventName: string, scope: string, payload: object): void
+{
+  "routeId": 512,
+  "latitude": -17.783412,
+  "longitude": -63.181245,
+  "battery": 74,
+  "trackedAt": "2026-07-16T08:24:39.000Z",
+  "receivedAt": "2026-07-16T08:24:40.180Z"
+}
+
+{
+  "routeId": 512,
+  "transportOrderId": 4471,
+  "transportStatus": "EN_RUTA",
+  "departureDate": "2026-07-16T08:00:00.000Z",
+  "completedDate": null,
+  "licensePlate": "3456-ABC",
+  "driverName": "Carlos Mamani"
+}
+
+{
+  "routeId": 512,
+  "transportOrderId": 4471,
+  "transportStatus": "COMPLETED",
+  "departureDate": "2026-07-16T08:00:00.000Z",
+  "completedDate": "2026-07-16T16:00:00.000Z",
+  "licensePlate": "3456-ABC",
+  "driverName": "Carlos Mamani"
+}
+
+{
+  "deliveryOrderId": 90113,
+  "status": "ENROUTE",
+  "changedAt": "2026-07-16T08:52:00.000Z",
+  "etaTime": "09:02"
+}
+
+{
+  "routeId": 512,
+  "transportOrderId": 4471,
+  "transportStatus": "EN_RUTA",
+  "departureDate": "2026-07-16T08:00:00.000Z",
+  "completedDate": null,
+  "licensePlate": "3456-ABC",
+  "driverName": "Carlos Mamani"
+}
+
+{
+  "routeId": 512,
+  "transportOrderId": 4471,
+  "transportStatus": "COMPLETED",
+  "departureDate": "2026-07-16T08:00:00.000Z",
+  "completedDate": "2026-07-16T16:00:00.000Z",
+  "licensePlate": "3456-ABC",
+  "driverName": "Carlos Mamani"
+}
+
+{
+  "deliveryOrderId": 90113,
+  "status": "ENROUTE",
+  "changedAt": "2026-07-16T08:52:00.000Z",
+  "etaTime": "09:02"
+}
+
+{
+  "deliveryOrderId": 90113,
+  "status": "ARRIVED",
+  "arrivedAt": "2026-07-16T09:02:00.000Z",
+  "arrivalLatitude": -17.771002,
+  "arrivalLongitude": -63.160877,
+  "outOfWindow": false
+}
+
+{
+  "deliveryOrderId": 90112,
+  "status": "DELIVERED",
+  "deliveredAt": "2026-07-16T08:34:00.000Z",
+  "deliveryResultCode": null,
+  "receiverName": "Lic. Roberto Gómez",
+  "hasProof": true,
+  "hasIncident": false
+}
+
+{
+  "deliveryOrderId": 90113,
+  "status": "INCIDENT",
+  "deliveredAt": "2026-07-16T09:11:00.000Z",
+  "deliveryResultCode": "CLIENTE_AUSENTE",
+  "receiverName": null,
+  "hasProof": false,
+  "hasIncident": true
+}
+{
+  "deliveryOrderId": 90112,
+  "paymentId": "pay-90112-1",
+  "collectionPaymentId": 1052,
+  "paymentMethod": "QR",
+  "amount": 200.00,
+  "currency": "BOB",
+  "status": "PENDING",
+  "reference": "25051501009100893840",
+  "registeredAt": "2026-07-16T08:31:00.000Z",
+  "summary": {
+    "aCobrar": 1000.00,
+    "cobrado": 300.00,
+    "enProceso": 200.00,
+    "saldo": 500.00
+  }
+}
+{
+  "deliveryOrderId": 90112,
+  "paymentId": "pay-90112-2",
+  "collectionPaymentId": 2041,
+  "paymentMethod": "CASH",
+  "amount": 300.00,
+  "currency": "BOB",
+  "status": "COMPLETED",
+  "reference": "REC-90123",
+  "registeredAt": "2026-07-16T08:29:00.000Z",
+  "summary": {
+    "aCobrar": 1000.00,
+    "cobrado": 300.00,
+    "enProceso": 0.00,
+    "saldo": 700.00
+  }
+}
+{
+  "transportOrderId": 4471,
+  "progress": {
+    "total": 12,
+    "delivered": 7,
+    "failed": 1,
+    "returned": 0,
+    "pending": 4,
+    "progressPct": 67,
+    "incidents": 1,
+    "outOfWindow": 0
+  }
+}
+
+{
+  "transportOrderId": 4471,
+  "progress": {
+    "total": 12,
+    "delivered": 7,
+    "failed": 1,
+    "returned": 0,
+    "pending": 4,
+    "progressPct": 67,
+    "incidents": 1,
+    "outOfWindow": 0
+  },
+  "times": {
+    "avgAttentionS": 540,
+    "avgTransitS": 1020,
+    "onRoadS": 7920
+  }
+}

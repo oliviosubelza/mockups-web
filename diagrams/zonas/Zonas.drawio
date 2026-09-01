@@ -1,0 +1,302 @@
+<mxfile host="Electron" pages="2">
+  <diagram id="zonas-28" name="P1 Crear zona de reparto (28)">
+    <mxGraphModel dx="3197" dy="1756" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p28-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Operador de logística" vertex="1">
+          <mxGeometry height="1035" width="150" x="-120" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-7" parent="p28-1" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="815" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Frontend" vertex="1">
+          <mxGeometry height="1000" width="150" x="200" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-8" parent="p28-2" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="760" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="1000" width="150" x="470" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-9" parent="p28-3" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="665" width="10" x="70" y="135" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Zones Controller" vertex="1">
+          <mxGeometry height="1000" width="150" x="740" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-10" parent="p28-4" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="575" width="10" x="70" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Zones Service" vertex="1">
+          <mxGeometry height="1000" width="150" x="1010" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-11" parent="p28-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="485" width="10" x="70" y="225" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="zones" vertex="1">
+          <mxGeometry height="1000" width="150" x="1280" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-12" parent="p28-6" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="185" width="10" x="70" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-13" edge="1" parent="1" source="p28-7" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="Dibujar el polígono en el mapa y Guardar">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="120" as="sourcePoint" />
+            <mxPoint x="270" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-14" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="POST /zones&lt;br&gt;{ name, cityId, polygonGeojson } 28.1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="280" y="170" as="sourcePoint" />
+            <mxPoint x="540" y="170" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-15" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="createZone(CreateZoneDto) 28.2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550" y="215" as="sourcePoint" />
+            <mxPoint x="810" y="215" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-16" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="create(CreateZoneDto) 28.3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="260" as="sourcePoint" />
+            <mxPoint x="1080" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-17" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="validateRing(polygonGeojson) 28.4&lt;br&gt;anillo cerrado, &amp;gt;= 4 posiciones, sin auto-intersección">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="305" />
+              <mxPoint x="1180" y="345" />
+            </Array>
+            <mxPoint x="1090" y="305" as="sourcePoint" />
+            <mxPoint x="1090" y="345" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-18" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="alt [polígono válido] / [polígono inválido]" vertex="1">
+          <mxGeometry height="375" width="900" x="680" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-19" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT id, name, polygon_geojson FROM zones&lt;br&gt;WHERE city_id = :cityId AND is_active&lt;br&gt;AND deleted_at IS NULL 28.5">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="430" as="sourcePoint" />
+            <mxPoint x="1350" y="430" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-20" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="List&amp;lt;Zone&amp;gt; de la ciudad">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1350" y="475" as="sourcePoint" />
+            <mxPoint x="1090" y="475" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-21" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="findOverlaps(polygonGeojson, zonasCiudad) 28.5a&lt;br&gt;devuelve warnings, NO bloquea">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="510" />
+              <mxPoint x="1180" y="550" />
+            </Array>
+            <mxPoint x="1090" y="510" as="sourcePoint" />
+            <mxPoint x="1090" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-22" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="INSERT INTO zones (name, polygon_geojson, city_id,&lt;br&gt;created_by, is_active) RETURNING id 28.6">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="590" as="sourcePoint" />
+            <mxPoint x="1350" y="590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-23" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="{ id }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1350" y="635" as="sourcePoint" />
+            <mxPoint x="1090" y="635" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-24" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[válido] ZoneResponse + warnings[]">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="680" as="sourcePoint" />
+            <mxPoint x="820" y="680" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-25" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[inválido] 422 { code: INVALID_POLYGON, detail }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="730" as="sourcePoint" />
+            <mxPoint x="820" y="730" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-26" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="201 Created | 422 Unprocessable Entity">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="790" as="sourcePoint" />
+            <mxPoint x="550" y="790" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-27" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="{ id, name, cityId, polygonGeojson, warnings[] }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="835" as="sourcePoint" />
+            <mxPoint x="280" y="835" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-28" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p28-1" value="Zona creada — aviso en pantalla si solapa con otra">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="270" y="880" as="sourcePoint" />
+            <mxPoint x="10" y="880" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p28-29" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="28.1 — polygonGeojson viaja en el MISMO formato que la&lt;br&gt;columna polygon_geojson (JSONB): anillo en [lng, lat],&lt;br&gt;cerrado. Leaflet trabaja en [lat, lng]; la conversión&lt;br&gt;es del Frontend y no cruza el endpoint." vertex="1">
+          <mxGeometry height="130" width="350" x="1620" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-30" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="28.4 — polygon_geojson es JSONB, no geometry:&lt;br&gt;la base NO valida nada. Anillo abierto, 3 posiciones o&lt;br&gt;un polígono en moño pasan el INSERT y rompen recién&lt;br&gt;en el 29.5. La validación es obligatoria acá." vertex="1">
+          <mxGeometry height="120" width="350" x="1620" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="p28-31" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="28.5a — el solapamiento es AVISO, no error:&lt;br&gt;bloquearlo haría imposible corregir un borde compartido.&lt;br&gt;El 29.5a define el desempate en lectura.&lt;br&gt;Hueco: no hay UNIQUE (city_id, name) ni tabla cities,&lt;br&gt;así que city_id no tiene FK." vertex="1">
+          <mxGeometry height="130" width="350" x="1620" y="620" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="zonas-29" name="P2 Resolver la zona de un punto — MS Ventas (29)">
+    <mxGraphModel dx="2738" dy="563" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1740" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p29-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="MS Ventas / SAP" vertex="1">
+          <mxGeometry height="1000" width="150" x="-70" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-6" parent="p29-1" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="750" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="1000" width="150" x="200" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-7" parent="p29-2" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="750" width="10" x="70" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Zones Controller" vertex="1">
+          <mxGeometry height="1000" width="150" x="470" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-8" parent="p29-3" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="660" width="10" x="70" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Zones Service" vertex="1">
+          <mxGeometry height="1000" width="150" x="740" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-9" parent="p29-4" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="550" width="10" x="70" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="zones" vertex="1">
+          <mxGeometry height="1000" width="150" x="1010" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-10" parent="p29-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="305" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-11" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="POST /zones/resolve&lt;br&gt;{ latitude, longitude, cityId?, deliveryPointId? } 29.1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="120" as="sourcePoint" />
+            <mxPoint x="270" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-12" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="resolveZone(ResolveZoneDto) 29.2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="280" y="165" as="sourcePoint" />
+            <mxPoint x="540" y="165" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-13" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="resolve(ResolveZoneDto) 29.3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550" y="210" as="sourcePoint" />
+            <mxPoint x="810" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-14" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="validateCoordinates(latitude, longitude) 29.3a&lt;br&gt;fuera de rango =&amp;gt; 400, no OUT_OF_ZONE">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="240" />
+              <mxPoint x="910" y="280" />
+            </Array>
+            <mxPoint x="820" y="240" as="sourcePoint" />
+            <mxPoint x="820" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-15" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT id, name, city_id, polygon_geojson FROM zones&lt;br&gt;WHERE is_active AND deleted_at IS NULL&lt;br&gt;AND polygon_geojson IS NOT NULL [AND city_id = :cityId] 29.4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="820" y="340" as="sourcePoint" />
+            <mxPoint x="1080" y="340" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-16" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="List&amp;lt;Zone&amp;gt; candidatas">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1080" y="385" as="sourcePoint" />
+            <mxPoint x="820" y="385" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-17" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="pointInPolygon(latitude, longitude, candidatas) 29.5&lt;br&gt;ray casting, borde INCLUSIVO">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="425" />
+              <mxPoint x="910" y="465" />
+            </Array>
+            <mxPoint x="820" y="425" as="sourcePoint" />
+            <mxPoint x="820" y="465" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-18" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="alt [1 coincidencia] / [2+ coincidencias] / [0] / [sin zonas]" vertex="1">
+          <mxGeometry height="280" width="560" x="410" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-19" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[1] { status: IN_ZONE, zone: { id, name, cityId } }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="545" as="sourcePoint" />
+            <mxPoint x="550" y="545" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-20" edge="1" parent="1" style="endArrow=block;endSize=9;edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);align=left;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="pickSmallestArea(coincidencias) 29.5a">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="580" />
+              <mxPoint x="910" y="610" />
+            </Array>
+            <mxPoint x="820" y="580" as="sourcePoint" />
+            <mxPoint x="820" y="610" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-21" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[2+] { status: IN_ZONE, zone, ambiguous: true,&lt;br&gt;overlappingZoneIds: [...] }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="655" as="sourcePoint" />
+            <mxPoint x="550" y="655" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-22" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[0] { status: OUT_OF_ZONE, zone: null }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="710" as="sourcePoint" />
+            <mxPoint x="550" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-23" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="[sin zonas] { status: NO_ZONES_DEFINED, zone: null }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="760" as="sourcePoint" />
+            <mxPoint x="550" y="760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-24" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="200 OK — ResolveZoneResult">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="825" as="sourcePoint" />
+            <mxPoint x="280" y="825" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-25" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="{ status, zone }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="270" y="870" as="sourcePoint" />
+            <mxPoint x="10" y="870" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p29-26" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="29.1 — Ventas manda latitude/longitude con NOMBRE,&lt;br&gt;nunca un par posicional: GeoJSON guarda [lng, lat] y el&lt;br&gt;swap es el bug clásico. deliveryPointId es solo para el&lt;br&gt;log de trazabilidad — no se escribe en ninguna tabla&lt;br&gt;nuestra (no tenemos delivery_points)." vertex="1">
+          <mxGeometry height="145" width="360" x="1360" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-27" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="Los 4 status son SIEMPRE 200, nunca 404:&lt;br&gt;OUT_OF_ZONE es un dato de negocio, no un error, y un 404&lt;br&gt;termina reintentado y alarmado por el cliente.&lt;br&gt;NO_ZONES_DEFINED es un hueco de configuración NUESTRO:&lt;br&gt;Ventas no debe bloquear el pedido por eso." vertex="1">
+          <mxGeometry height="130" width="360" x="1360" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="p29-28" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=13;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;align=left;verticalAlign=top;spacingLeft=6;" value="29.5a — dos zonas pueden solaparse (el 28.5a solo avisa),&lt;br&gt;así que la lectura necesita un desempate DETERMINISTA:&lt;br&gt;gana la de menor área y, si empatan, el id más bajo.&lt;br&gt;Sin regla, el mismo punto devuelve zonas distintas entre&lt;br&gt;llamadas y Ventas ve un sistema que se contradice." vertex="1">
+          <mxGeometry height="150" width="360" x="1360" y="610" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

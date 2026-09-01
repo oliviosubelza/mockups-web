@@ -1,0 +1,60 @@
+@startuml
+skinparam lifelineStrategy solid
+autonumber
+title Diagrama Devoluciones 4: POST /api/v1/refunds/:id/levels/current/view (Sellar la primera apertura del nivel)
+
+actor "Aprobador del nivel" as Approver
+participant "App Web" as Web
+participant "Gateway Controller" as Gateway
+participant "Refund Workflow Service" as Service
+participant "Transaction Manager\n(QueryRunner)" as TX
+participant "refund_workflow_instance_levels DB" as LevelsDB
+participant "refund_workflow_actions DB" as ActionsDB
+
+Approver -> Web: Abre el detalle de la nota estando en su bandeja
+Web -> Gateway: POST /api/v1/refunds/2001/levels/current/view
+note right of Web
+  El FE lo llama una sola vez al montar
+  el detalle, y solo si el usuario es
+  aprobador del nivel activo.
+end note
+Gateway -> Service: registerLevelFirstView(refundOrderId: 2001, actor)
+
+Service -> LevelsDB: 1. findCurrentLevel(instanceId)
+LevelsDB --> Service: level { id: 201, status: 'IN_PROGRESS',\nfirst_viewed_at: NULL }
+
+Service -> Service: 2. assertViewerIsApprover(level, actor)
+note right of Service
+  403 si el actor no pertenece al rol del nivel.
+  Que un tercero mire el detalle NO sella nada.
+end note
+
+alt first_viewed_at IS NULL
+    Service -> TX: 3. startTransaction()
+    activate TX
+
+    Service -> LevelsDB: 4. sealFirstView(201, actor.employeeCode, NOW())
+    note right of LevelsDB
+      - first_viewed_at = NOW()
+      - first_viewed_by = actor
+      Se sella una sola vez: las aperturas
+      siguientes no lo mueven.
+    end note
+    LevelsDB --> Service: ok
+
+    Service -> ActionsDB: 5. insertWorkflowAction(instanceId, 201, 'VIEWED')
+    ActionsDB --> Service: ok
+
+    Service -> TX: 6. commitTransaction()
+    deactivate TX
+else Ya estaba sellado
+    Service -> Service: 7. skipWrite()
+    note right of Service
+      Idempotente: responde 200 sin escribir.
+    end note
+end
+
+Service --> Gateway: 200 OK (LevelViewResult: { firstViewedAt, firstViewedBy })
+Gateway --> Web: 200 OK
+Web --> Approver: Renderiza el detalle con el plazo (SLA) corriendo
+@enduml

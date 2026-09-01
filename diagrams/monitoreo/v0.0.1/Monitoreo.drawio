@@ -1,0 +1,631 @@
+<mxfile host="Electron" pages="4">
+  <diagram id="mon1" name="M1 Obtener el listado de monitoreo">
+    <mxGraphModel dx="1197" dy="2056" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3340" pageHeight="1380" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p18-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Planificador" vertex="1">
+          <mxGeometry height="1190" width="150" x="60" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-12" parent="p18-1" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="70" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Frontend" vertex="1">
+          <mxGeometry height="1180" width="150" x="300" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-13" parent="p18-2" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="895" width="10" x="70" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="1180" width="150" x="540" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-14" parent="p18-3" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="850" width="10" x="70" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Monitoring Controller" vertex="1">
+          <mxGeometry height="1180" width="150" x="780" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-15" parent="p18-4" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="800" width="10" x="70" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Monitoring Service" vertex="1">
+          <mxGeometry height="1180" width="150" x="1020" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-16" parent="p18-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="490" width="10" x="70" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-34" parent="p18-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="80" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-35" edge="1" parent="p18-5" style="html=1;align=left;spacingLeft=2;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;rounded=0;fontSize=14;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="mergeTrackingByTripId(orders, items) 18.9">
+          <mxGeometry relative="1" x="0.0053" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="165.05" y="635" />
+              <mxPoint x="165.05" y="665" />
+            </Array>
+            <mxPoint x="79.99736842105249" y="635.0000000000002" as="sourcePoint" />
+            <mxPoint x="90.05" y="665.0000000000002" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Transport Order DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1260" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-17" parent="p18-6" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="70" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-7" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Trip,Truck DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1500" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-18" parent="p18-7" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="70" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-8" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Order DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1790" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-19" parent="p18-8" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="70" y="455" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-9" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Truck Tracking&#xa;(DynamoDB)" vertex="1">
+          <mxGeometry height="1180" width="150" x="2090" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-20" parent="p18-9" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="55" width="10" x="70" y="562.5" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-10" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="SSE Bus" vertex="1">
+          <mxGeometry height="1180" width="150" x="2460" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-21" parent="p18-10" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="45" width="10" x="70" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-11" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=#FFFF00;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="opt [pantalla abierta]" vertex="1">
+          <mxGeometry height="230" width="2350" x="250" y="890" as="geometry" />
+        </mxCell>
+        <mxCell id="p18-22" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-2" value="Abrir vista de monitoreo">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135" y="160" as="sourcePoint" />
+            <mxPoint x="335" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-23" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="GET /monitoring/orders?{distributorId} 18.1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="210" as="sourcePoint" />
+            <mxPoint x="575" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-24" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-15" value="getMonitoringOrders(distributorId) 18.2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="260" as="sourcePoint" />
+            <mxPoint x="815" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-25" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="getMonitoringOrders(distributorId) 18.3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="310" as="sourcePoint" />
+            <mxPoint x="1055" y="310" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-26" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-6" value="findDispatchedOrders(distributorId) 18.4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100" y="310" as="sourcePoint" />
+            <mxPoint x="1310" y="315" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-27" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-16" value="return listTransportOrder 18.5">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1330" y="350" as="sourcePoint" />
+            <mxPoint x="1130" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-28" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-18" value="getTripsByIds(tripIds) 18.6">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100" y="420" as="sourcePoint" />
+            <mxPoint x="1540" y="420" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-29" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-5" value="return listTrip (truck, driver, departure_date, status)&amp;nbsp;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1575" y="460" as="sourcePoint" />
+            <mxPoint x="1130" y="458.47" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-30" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="countStatusesByOrder(orderIds) 18.7">
+          <mxGeometry relative="1" x="-0.2146" y="-1" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1100" y="500" as="sourcePoint" />
+            <mxPoint x="1863.9999999999995" y="500.1799999999998" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-31" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="return progreso / paradas / incidencias">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1864.0000000000005" y="540.337894736842" as="sourcePoint" />
+            <mxPoint x="1100" y="540" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-32" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;entryX=0;entryY=0;entryDx=0;entryDy=5;entryPerimeter=0;" target="p18-20" value="findQuery (PK=FLEET#{distributorId}) 18.8">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100" y="600" as="sourcePoint" />
+            <mxPoint x="2140" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-33" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="return listItemActual [ ]">
+          <mxGeometry relative="1" x="0.3045" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="2164.0000000000005" y="650.1584210526316" as="sourcePoint" />
+            <mxPoint x="1100" y="650.1584210526316" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-36" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="return listMonitoringOrder">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="794.4699999999999" as="sourcePoint" />
+            <mxPoint x="854.9473684210529" y="794.6815789473685" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-37" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-3" value="listMonitoringOrder">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="820.16" as="sourcePoint" />
+            <mxPoint x="655" y="820.16" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-38" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-2" value="listMonitoringOrder">
+          <mxGeometry relative="1" x="-0.0414" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="615" y="850" as="sourcePoint" />
+            <mxPoint x="415" y="850" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-39" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-14" value="get /monitoring/stream?distributorId={id} 18.10">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="970" as="sourcePoint" />
+            <mxPoint x="575" y="970" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-40" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-15" value="openStream(distributorId) 18.11">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="1015" as="sourcePoint" />
+            <mxPoint x="815" y="1015" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-41" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p18-10" value="subscribe(FLEET#{distributorId}) 18.12">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="1060" as="sourcePoint" />
+            <mxPoint x="2495" y="1060" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p18-42" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;entryX=1;entryY=0.983;entryDx=0;entryDy=0;entryPerimeter=0;" target="p18-13" value="conexion SSE abierta">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2540" y="1090.16" as="sourcePoint" />
+            <mxPoint x="420" y="1090.16" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="0iEvE1Qbu6UNXQjyMLt4-1" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;autosizeText=1;fontColor=#000000;darkOpacity=0.05;fillColor=#FFF9B2;strokeColor=none;fillStyle=solid;fontSize=30;direction=west;gradientDirection=north;gradientColor=#FFF2A1;shadow=1;size=20;pointerEvents=1;" value="Vista: Monitoreo de entregas" vertex="1">
+          <mxGeometry height="60" width="400" x="80" y="-80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="mon2" name="M2 Tracking del camion">
+    <mxGraphModel dx="1496" dy="845" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2560" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p19-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Chofer" vertex="1">
+          <mxGeometry height="910" width="150" x="60" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-10" parent="p19-1" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="70" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="App Chofer" vertex="1">
+          <mxGeometry height="900" width="150" x="300" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-11" parent="p19-2" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="100" width="10" x="70" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="900" width="150" x="540" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-12" parent="p19-3" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="50" width="10" x="70" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Tracking Controller" vertex="1">
+          <mxGeometry height="900" width="150" x="780" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-13" parent="p19-4" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="50" width="10" x="70" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Tracking Service" vertex="1">
+          <mxGeometry height="900" width="150" x="1020" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-14" parent="p19-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="230" width="10" x="70" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-22" parent="p19-5" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="60" width="10" x="80" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-23" edge="1" parent="p19-5" source="p19-22" style="html=1;align=left;spacingLeft=2;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;rounded=0;fontSize=14;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p19-22" value="stampReceivedAt(track) 24.4">
+          <mxGeometry relative="1" x="-0.6469" y="10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="159.96" y="360" />
+              <mxPoint x="159.96" y="390" />
+            </Array>
+            <mxPoint x="90" y="360" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Truck Tracking&#xa;(DynamoDB)" vertex="1">
+          <mxGeometry height="900" width="150" x="1260" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-15" parent="p19-6" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="90" width="10" x="70" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-7" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="SSE Bus" vertex="1">
+          <mxGeometry height="900" width="150" x="1500" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-16" parent="p19-7" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="120" width="10" x="70" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-8" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);size=65;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Frontend" vertex="1">
+          <mxGeometry height="900" width="150" x="1740" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-17" parent="p19-8" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="200" width="10" x="70" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-29" parent="p19-8" style="html=1;points=[[0,0,0,0,5],[0,1,0,0,-5],[1,0,0,0,5],[1,1,0,0,-5]];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;portConstraint=eastwest;newEdgeStyle={&quot;curved&quot;:0,&quot;rounded&quot;:0};" value="" vertex="1">
+          <mxGeometry height="40" width="10" x="75" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-30" edge="1" parent="p19-8" source="p19-8" style="html=1;align=left;spacingLeft=2;endArrow=block;rounded=0;edgeStyle=orthogonalEdgeStyle;curved=0;rounded=0;fontSize=14;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p19-29" value="patchByTripId(item) 19.10">
+          <mxGeometry relative="1" x="0.0053" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="160" y="710" />
+              <mxPoint x="160" y="740" />
+            </Array>
+            <mxPoint x="85" y="700" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-9" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=#FF66FF;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="loop [cada 15-30" vertex="1">
+          <mxGeometry height="520" width="1610" x="280" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="p19-18" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="(automatico)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135" y="160" as="sourcePoint" />
+            <mxPoint x="335" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-19" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="post /monitoring/tracks 24.1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="250" as="sourcePoint" />
+            <mxPoint x="575" y="250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-20" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="saveTrack(trackDto) 24.2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="300" as="sourcePoint" />
+            <mxPoint x="815" y="300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-21" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="saveTrack(trackDto) 24.3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="350" as="sourcePoint" />
+            <mxPoint x="1055" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-24" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p19-15" value="putItem(expiresAt)&amp;nbsp;&lt;span style=&quot;text-align: left; background-color: rgb(255, 255, 255);&quot;&gt;24&lt;/span&gt;.5">
+          <mxGeometry relative="1" x="-0.0201" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1095" y="470" as="sourcePoint" />
+            <mxPoint x="1295" y="470" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-25" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="putItem()&amp;nbsp;&lt;span style=&quot;text-align: left; background-color: rgb(255, 255, 255);&quot;&gt;24&lt;/span&gt;.6&lt;br&gt;(overwrite)">
+          <mxGeometry relative="1" x="-0.0017" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1095" y="520" as="sourcePoint" />
+            <mxPoint x="1330" y="520" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-26" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p19-16" value="publish(tracking, tripId)&amp;nbsp;&lt;span style=&quot;text-align: left; background-color: rgb(255, 255, 255);&quot;&gt;24&lt;/span&gt;.7">
+          <mxGeometry relative="1" x="-0.557" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1095" y="570" as="sourcePoint" />
+            <mxPoint x="1550" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-27" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fillColor=#FFFF66;" target="p19-17" value="event: tracking (ping por ping)&amp;nbsp;&lt;span style=&quot;text-align: left; background-color: rgb(255, 255, 255);&quot;&gt;24&lt;/span&gt;.8&lt;br&gt;stream del DETALLE: get /monitoring/orders/{transportOrderId}/stream">
+          <mxGeometry relative="1" x="-0.956" y="10" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1575" y="620" as="sourcePoint" />
+            <mxPoint x="1775" y="620" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p19-28" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" target="p19-17" value="event: tracking (agrupado ~30 s)&amp;nbsp;&lt;span style=&quot;text-align: left; background-color: rgb(255, 255, 255);&quot;&gt;24&lt;/span&gt;.9&lt;br&gt;stream de FLOTA/listado: get /monitoring/stream">
+          <mxGeometry relative="1" x="-0.7843" y="5" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="1575" y="675" as="sourcePoint" />
+            <mxPoint x="1775" y="675" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="mon3" name="M3 Detalle del viaje (snapshot + SSE)">
+    <mxGraphModel dx="998" dy="563" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3100" pageHeight="1380" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mon-1755-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Planificador" vertex="1">
+          <mxGeometry height="1180" width="150" x="60" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Frontend" vertex="1">
+          <mxGeometry height="1180" width="150" x="300" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="1180" width="150" x="540" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Monitoring Controller" vertex="1">
+          <mxGeometry height="1180" width="150" x="780" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Monitoring Service" vertex="1">
+          <mxGeometry height="1180" width="150" x="1020" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Route DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1260" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-7" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Route Delivery Point DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1500" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-8" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Dispatch Delivery Point DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1740" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-9" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Order DB" vertex="1">
+          <mxGeometry height="1180" width="150" x="1980" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-10" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Truck Tracking&#xa;(DynamoDB)" vertex="1">
+          <mxGeometry height="1180" width="150" x="2220" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-11" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="SSE Hub" vertex="1">
+          <mxGeometry height="1180" width="150" x="2460" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-12" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="Abre una orden del listado">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135" y="160" as="sourcePoint" />
+            <mxPoint x="375" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-13" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M3.1 SNAPSHOT (una sola vez)" vertex="1">
+          <mxGeometry height="530" width="2110" x="280" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-14" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="GET /monitoring/orders/{transportOrderId}">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="250" as="sourcePoint" />
+            <mxPoint x="615" y="250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-15" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="getOrderDetail(id)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="615" y="300" as="sourcePoint" />
+            <mxPoint x="855" y="300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-16" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="buildDetail(id)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="350" as="sourcePoint" />
+            <mxPoint x="1095" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-17" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT encode_polyline WHERE is_selected">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="400" as="sourcePoint" />
+            <mxPoint x="1335" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-18" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT sequence de cada parada">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="450" as="sourcePoint" />
+            <mxPoint x="1575" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-19" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT cliente, ventana, peso, volumen">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="500" as="sourcePoint" />
+            <mxPoint x="1815" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-20" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="SELECT status, arrived_at, delivered_at&#xa;+ items, incidencias, POD, historial">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="550" as="sourcePoint" />
+            <mxPoint x="2055" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-21" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="Query PK=TRIP#{tripId}&#xa;ScanIndexForward=false  Limit=1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="600" as="sourcePoint" />
+            <mxPoint x="2295" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-22" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="viaje completo: recorrido, paradas, estados, posicion">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1095" y="660" as="sourcePoint" />
+            <mxPoint x="375" y="660" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-23" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M3.2 DELTAS (SSE mientras la pantalla este abierta)" vertex="1">
+          <mxGeometry height="380" width="2350" x="280" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-1755-24" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="GET /monitoring/orders/{id}/stream&#xa;Accept: text/event-stream">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="750" as="sourcePoint" />
+            <mxPoint x="855" y="750" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-25" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="subscribe(tripId)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="800" as="sourcePoint" />
+            <mxPoint x="2535" y="800" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-26" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="event: tracking&#xa;{ latitude, longitude, trackedAt, battery }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2535" y="860" as="sourcePoint" />
+            <mxPoint x="375" y="860" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-27" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="event: delivery_started&#xa;{ deliveryOrderId, arrivedAt }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2535" y="920" as="sourcePoint" />
+            <mxPoint x="375" y="920" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-28" edge="1" parent="1" style="endArrow=open;endSize=12;dashed=1;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="event: delivery_closed&#xa;{ deliveryOrderId, status, deliveredAt, resultCode }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2535" y="980" as="sourcePoint" />
+            <mxPoint x="375" y="980" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-29" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="parchea POR ID contra su estado local">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375" y="1040" as="sourcePoint" />
+            <mxPoint x="435" y="1040" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-1755-30" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M3.3 Reconexion: se RE-PIDE el snapshot (no Last-Event-ID)" vertex="1">
+          <mxGeometry height="80" width="670" x="280" y="1100" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="mon4" name="M4 Entrega en el punto (app del chofer)">
+    <mxGraphModel dx="2355" dy="1111" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2860" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mon-4810-1" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Chofer&#xa;(app movil)" vertex="1">
+          <mxGeometry height="900" width="150" x="60" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-2" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Gateway Controller" vertex="1">
+          <mxGeometry height="900" width="150" x="300" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-3" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Controller" vertex="1">
+          <mxGeometry height="900" width="150" x="540" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-4" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Service" vertex="1">
+          <mxGeometry height="900" width="150" x="780" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-5" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Order DB" vertex="1">
+          <mxGeometry height="900" width="150" x="1020" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-6" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Order Item DB" vertex="1">
+          <mxGeometry height="900" width="150" x="1260" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-7" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Proof Of Delivery DB" vertex="1">
+          <mxGeometry height="900" width="150" x="1500" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-8" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Incident DB" vertex="1">
+          <mxGeometry height="900" width="150" x="1740" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-9" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="Delivery Order History DB" vertex="1">
+          <mxGeometry height="900" width="150" x="1980" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-10" parent="1" style="html=1;shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;lifelineDashed=0;strokeWidth=2;rounded=1;absoluteArcSize=1;arcSize=6;lifelineColor=light-dark(#9370DB,#cccccc);participant=seqActorStick;verticalAlign=bottom;align=center;spacingBottom=4;size=90;lifelineMirror=1;fillColor=light-dark(#ECECFF,#1f2020);strokeColor=light-dark(#9370DB,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontSize=16;" value="SSE Hub" vertex="1">
+          <mxGeometry height="900" width="150" x="2220" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-11" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M4.1 Iniciar entrega  (arrived_at)" vertex="1">
+          <mxGeometry height="230" width="2350.0" x="40.0" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-12" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="POST /delivery-orders/{id}/start">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135.0" y="200" as="sourcePoint" />
+            <mxPoint x="375.0" y="200" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-13" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="startDelivery(id, gps)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375.0" y="250" as="sourcePoint" />
+            <mxPoint x="855.0" y="250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-14" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="UPDATE arrived_at, status=&#39;ARRIVED&#39;,&#xa;arrival_latitude, arrival_longitude">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="300" as="sourcePoint" />
+            <mxPoint x="1095.0" y="300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-15" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="INSERT (status, created_by)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="345" as="sourcePoint" />
+            <mxPoint x="2055.0" y="345" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-16" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="publish(tripId, &#39;delivery_started&#39;)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="375" as="sourcePoint" />
+            <mxPoint x="2295.0" y="375" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-17" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M4.2 Entregar pedido  (detalle, NO emite evento)" vertex="1">
+          <mxGeometry height="130" width="2350.0" x="40.0" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-18" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="PATCH /delivery-orders/{id}/items">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135.0" y="460" as="sourcePoint" />
+            <mxPoint x="615.0" y="460" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-19" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="UPDATE delivered_qty, returned_qty, item_status">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="510" as="sourcePoint" />
+            <mxPoint x="1335.0" y="510" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-20" parent="1" style="html=1;shape=umlFrame;dashed=1;fixDash=1;dashPattern=2 2;strokeWidth=2;pointerEvents=0;dropTarget=0;fillColor=none;strokeColor=light-dark(#9370DB,#cccccc);fontSize=14;fontStyle=2;align=left;verticalAlign=top;fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;fontColor=light-dark(#333333,#cccccc);width=380;" value="M4.3 Finalizar  (delivered_at + delivery_result_code)" vertex="1">
+          <mxGeometry height="290" width="2350.0" x="40.0" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-4810-21" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="POST /delivery-orders/{id}/finish">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135.0" y="610" as="sourcePoint" />
+            <mxPoint x="375.0" y="610" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-22" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="finishDelivery(id, resultado)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="375.0" y="655" as="sourcePoint" />
+            <mxPoint x="855.0" y="655" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-23" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="UPDATE delivered_at, status,&#xa;delivery_result_code, receiver_name">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="700" as="sourcePoint" />
+            <mxPoint x="1095.0" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-24" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="INSERT  (solo si se entrego)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="745" as="sourcePoint" />
+            <mxPoint x="1575.0" y="745" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-25" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="INSERT  (si hubo incidencia)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="780" as="sourcePoint" />
+            <mxPoint x="1815.0" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-26" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="INSERT (status, reason)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="815" as="sourcePoint" />
+            <mxPoint x="2055.0" y="815" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-27" edge="1" parent="1" style="endArrow=block;endSize=9;html=1;verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;fontSize=14;labelBackgroundColor=none;strokeWidth=1.5;strokeColor=light-dark(#333333,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="publish(tripId, &#39;delivery_closed&#39;)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855.0" y="845" as="sourcePoint" />
+            <mxPoint x="2295.0" y="845" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mon-4810-28" parent="1" style="shape=note;whiteSpace=wrap;html=1;size=14;verticalAlign=top;align=left;spacingLeft=6;fontSize=12;fillColor=light-dark(#FFF6DD,#2a2a2a);strokeColor=light-dark(#D6B656,#cccccc);fontColor=light-dark(#333333,#cccccc);fontFamily=Trebuchet MS,Verdana,Arial,sans-serif;" value="DOS acciones de viaje, no tres. NO hay boton de &#39;salgo hacia el proximo punto&#39;: el estado &#39;en camino&#39; es DERIVADO — la primera entrega no cerrada por route_delivery_points.sequence.&#xa;&#xa;&#39;Entregar pedido&#39; escribe detalle, no un momento del viaje: por eso no emite evento." vertex="1">
+          <mxGeometry height="180" width="480" x="2550" y="150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
