@@ -1,0 +1,79 @@
+"Tabla"	"Vista Dynamo / CQRS (pegar tal cual en la celda)"
+"Products_ref"	"NO se proyecta"
+"distributors_ref"	"ITEM META (campo copiado):
+""distributorId"": 1, ""gsi1pk"": ""DIST#1#2026-07-16"""
+"orders_ref"	"NO se proyecta"
+"delivery_point_ref"	"ITEM DO#<id> (campos copiados):
+""deliveryPointId"": 45, ""customerName"": ""Casa La Ramada"", ""latitude"": ""-17.786510"", ""longitude"": ""-63.174220"""
+"employee_ref"	"ITEM META (campos copiados):
+""driverEmployeeId"": 456, ""driverName"": ""Carlos Mamani"", ""supervisorEmployeeId"": 98"
+"customer/owner_ref"	"ITEM DO#<id> (campos copiados):
+""ownerId"": 4, ""customerName"": ""Casa La Ramada"""
+"sale_channel_restrictions"	"NO se proyecta"
+"zones"	"NO se proyecta"
+"distribution_zones"	"NO se proyecta"
+"plan_status"	"NO se proyecta"
+"logistic_assets"	"NO se proyecta"
+"planning_restrictions"	"NO se proyecta"
+"planning_restriction_schedules"	"NO se proyecta"
+"planning_restriction_vehicle_rules"	"NO se proyecta"
+"trucks"	"ITEM META (campos copiados):
+""truckId"": 880012, ""licensePlate"": ""3456-ABC"""
+"dispatch_plans"	"ITEM META (campo copiado):
+""dispatchPlanId"": 899"
+"planning_trucks"	"ITEM ROUTE#<id> (campo copiado):
+""planningTruckId"": 9201"
+"dispatch_delivery_points"	"ITEM DO#<id> (campos copiados):
+""dispatchDeliveryPointId"": 4021, ""deliveryWindowStart"": ""08:00"", ""deliveryWindowEnd"": ""12:00"", ""totalWeightKg"": ""620.40"", ""totalVolumeM3"": ""2.30"", ""totalNeto"": ""1592.67"""
+"image_delivery_points"	"NO se proyecta"
+"candidate_orders"	"NO se proyecta"
+"routes"	"ITEM PROPIO:
+{ ""pk"": ""TO#103"", ""sk"": ""ROUTE#3344"", ""entityType"": ""ROUTE"", ""routeId"": 3344, ""name"": ""Ruta Norte 01"", ""planningTruckId"": 9201, ""engine"": ""GOOGLE_ROUTE_OPTIMIZATION"", ""encodePolyline"": ""}_o~F~ps|U..."", ""etaTotalDistanceM"": ""48250.00"", ""etaTotalTimeS"": ""9600.00"", ""totalCost"": ""64.04"", ""colorHex"": ""2E86DE"", ""isSelected"": true }"
+"route_delivery_points"	"ITEM DO#<id> (campos copiados):
+""sequence"": 1, ""estimatedDistanceM"": ""5400.00"", ""estimatedTravelS"": ""780.00"""
+"transport_orders"	"RAIZ DEL AGREGADO - ITEM PROPIO:
+{ ""pk"": ""TO#103"", ""sk"": ""META"", ""entityType"": ""TRANSPORT_ORDER"", ""transportOrderId"": 103, ""code"": 1000456, ""status"": ""COMPLETED"", ""distributorId"": 1, ""dispatchPlanId"": 899, ""routeId"": 3344, ""truckId"": 880012, ""licensePlate"": ""3456-ABC"", ""driverEmployeeId"": 456, ""driverName"": ""Carlos Mamani"", ""helperEmployeeId"": null, ""supervisorEmployeeId"": 98, ""checkedBy"": ""driver_78"", ""departureDate"": ""2026-07-16T08:00:00.000Z"", ""completedDate"": ""2026-07-16T16:00:00.000Z"", ""totalKm"": ""70.50"", ""assignedWeightKg"": ""3480.50"", ""assignedVolumeM3"": ""14.20"", ""totalStopsCount"": 2, ""completedStopsCount"": 1, ""totalRevenueExpected"": ""3692.67"", ""totalRevenueCollected"": ""1592.67"", ""gsi1pk"": ""DIST#1#2026-07-16"", ""gsi1sk"": ""TO#103"", ""createdAt"": ""..."", ""updatedAt"": ""..."" }"
+"transport_order_histories"	"ITEM PROPIO (uno por evento):
+{ ""pk"": ""TO#103"", ""sk"": ""HIST#2026-07-16T08:00:00.000Z"", ""entityType"": ""TO_HISTORY"", ""status"": ""ENROUTE"", ""description"": ""Chofer inicio el recorrido de la hoja de ruta"", ""captureHour"": ""08:00:00"", ""createdBy"": ""driver_78"" }"
+"transport_order_sales"	"ITEM PROPIO (uno por pedido cargado):
+{ ""pk"": ""TO#103"", ""sk"": ""SALE#7781"", ""entityType"": ""TO_SALE"", ""transportOrderSalesId"": 7781, ""salesOrderId"": 88213, ""salesOrderSplitId"": 10272, ""documentId"": 1000026565, ""invoiceId"": 5001, ""invoiceAmount"": ""1592.67"", ""totalWeightKg"": ""620.40"", ""totalVolumeM3"": ""2.30"", ""items"": [ ... ] }"
+"transport_order_sales_items"	"ANIDADO dentro de SALE#<id>:
+""items"": [ { ""productId"": 30201, ""quantityMin"": ""12.00"", ""equivalenceBoxUnit"": ""12.00"" }, { ""productId"": 30204, ""quantityMin"": ""20.00"", ""equivalenceBoxUnit"": ""10.00"" } ]"
+"truck_inventories"	"ITEM PROPIO (uno por producto):
+{ ""pk"": ""TO#103"", ""sk"": ""INV#PROD#30201"", ""entityType"": ""INVENTORY_ITEM"", ""truckId"": 880012, ""productId"": 30201, ""productName"": ""Ketchup 900ml"", ""isRefrigerated"": false, ""equivalenceBoxUnit"": ""12.00"", ""expectedQty"": ""24.00"", ""expectedBoxes"": ""2.00"", ""loadedQty"": ""24.00"", ""loadedBoxes"": ""2.00"", ""varianceQty"": ""0.00"", ""damagedQty"": ""0.00"", ""temperatureCelsius"": null, ""status"": ""APPROVED"", ""verifiedSupervisorId"": 98, ""observation"": ""..."" }"
+"transport_order_count_sessions"	"NO se proyecta"
+"transport_order_count_session_items"	"NO se proyecta"
+"transport_order_assets"	"PENDIENTE de decidir (hoy ninguna pantalla del monitor lo pide)"
+"delivery_orders"	"ITEM PROPIO (uno por parada):
+{ ""pk"": ""TO#103"", ""sk"": ""DO#90112"", ""entityType"": ""DELIVERY_ORDER"", ""deliveryOrderId"": 90112, ""dispatchDeliveryPointId"": 4021, ""deliveryPointId"": 45, ""sequence"": 1, ""executedSequence"": 1, ""customerName"": ""Casa La Ramada"", ""ownerId"": 4, ""latitude"": ""-17.786510"", ""longitude"": ""-63.174220"", ""deliveryWindowStart"": ""08:00"", ""deliveryWindowEnd"": ""12:00"", ""totalWeightKg"": ""620.40"", ""totalVolumeM3"": ""2.30"", ""totalNeto"": ""1592.67"", ""estimatedDistanceM"": ""5400.00"", ""estimatedTravelS"": ""780.00"", ""status"": ""DELIVERED"", ""deliveryResultCode"": ""EXITOSO"", ""arrivedAt"": ""..."", ""deliveredAt"": ""..."", ""arrivalLatitude"": ""-17.786498"", ""arrivalLongitude"": ""-63.174241"", ""serviceTimeSeconds"": 960, ""sales"": [ ... ], ""proofOfDelivery"": { ... }, ""incidents"": [ ... ] }"
+"delivery_order_sales"	"ANIDADO dentro de DO#<id>:
+""sales"": [ { ""deliveryOrderSaleId"": 88021, ""saleOrderId"": 88213, ""companyCode"": 2, ""invoiceId"": 5001, ""totalInvoice"": ""1592.67"", ""items"": [ ... ], ""payments"": [ ... ] } ]"
+"delivery_payment_references"	"ANIDADO dentro de DO#<id>.sales[]:
+""payments"": [ { ""deliveryPaymentReferenceId"": 801, ""collectionPaymentId"": 1052, ""paymentMethod"": ""QR"", ""referenceNumber"": ""25051501009100893840"", ""bankName"": null, ""authorizationCode"": ""TRX-880192"", ""amount"": ""592.67"", ""currency"": ""BOB"", ""status"": ""COMPLETED"", ""registeredAt"": ""..."", ""paidAt"": ""..."" } ]"
+"delivery_order_items"	"ANIDADO dentro de DO#<id>.sales[]:
+""items"": [ { ""deliveryOrderItemId"": 55201, ""productId"": 30201, ""plannedQty"": ""12.00"", ""deliveredQty"": ""12.00"", ""returnedQty"": ""0.00"", ""unitPriceSnapshot"": ""66.36"", ""itemStatus"": ""DELIVERED"" } ]"
+"proof_of_deliveries"	"ANIDADO dentro de DO#<id>:
+""proofOfDelivery"": { ""podId"": 12044, ""receiverName"": ""Lic. Roberto Gomez"", ""receiverDocument"": ""4829102 SC"", ""receiverRelationship"": ""ENCARGADO_ALMACEN"", ""signatureUrl"": ""https://.../sig_90112.png"", ""imageUrl"": ""https://.../pod_90112.jpg"", ""latitude"": ""-17.786492"", ""longitude"": ""-63.174233"", ""status"": ""CAPTURED"", ""capturedAt"": ""..."", ""uploadedAt"": ""..."" }"
+"delivery_incidents"	"ANIDADO dentro de DO#<id>:
+""incidents"": [ { ""incidentId"": 4012, ""productId"": null, ""incidentCode"": ""CLIENTE_AUSENTE"", ""severity"": ""ALTA"", ""description"": ""Local cerrado en horario comercial"", ""imageUrl"": ""https://.../inc_4012.jpg"", ""requiresReturn"": true, ""resolutionStatus"": ""PENDING"", ""resolvedAt"": null, ""createdAt"": ""..."" } ]"
+"delivery_order_histories"	"ITEM PROPIO (uno por evento de la parada):
+{ ""pk"": ""TO#103"", ""sk"": ""DO#90112#HIST#2026-07-16T09:02:00.000Z"", ""entityType"": ""DO_HISTORY"", ""deliveryOrderId"": 90112, ""status"": ""ARRIVED"", ""reason"": ""Llegada fisica al cliente registrada con coordenadas GPS"", ""capturedAt"": ""2026-07-16T09:02:00.000Z"" }"
+"transport_order_warehouse_closings"	"NO se proyecta"
+"transport_order_collection_closings"	"NO se proyecta"
+"refund_approval_levels"	"NO se proyecta"
+"refund_reasons"	"NO se proyecta"
+"refund_orders"	"NO se proyecta"
+"refund_order_details"	"NO se proyecta"
+"refund_order_detail_sources"	"NO se proyecta"
+"refund_order_detail_photos"	"NO se proyecta"
+"refund_workflow_instances"	"NO se proyecta"
+"refund_workflow_instance_levels"	"NO se proyecta"
+"refund_workflow_actions"	"NO se proyecta"
+"refund_order_detail_decisions"	"NO se proyecta"
+"--- AGREGAR ESTAS DOS FILAS ---"	""
+"distributors"	"ITEM META (campo copiado):
+""distributorId"": 1
+OJO: es tabla PROPIA (lat, lng, city_id, is_default), distinta de distributors_ref"
+"truck_tracking"	"TABLA DYNAMO APARTE (no existe en Postgres). Dos items por ping:
+TRAZA:  { ""pk"": ""TO#103"", ""sk"": ""TS#2026-07-16T08:24:39.000Z"", ""latitude"": ""-17.783412"", ""longitude"": ""-63.181245"", ""battery"": 74, ""employeeId"": 456, ""receivedAt"": ""2026-07-16T08:24:40.180Z"", ""expiresAt"": 1786782279 }
+ACTUAL: { ""pk"": ""FLEET#1"", ""sk"": ""TO#103"", ""latitude"": ""-17.783412"", ""longitude"": ""-63.181245"", ""battery"": 74, ""trackedAt"": ""2026-07-16T08:24:39.000Z"", ""receivedAt"": ""2026-07-16T08:24:40.180Z"" }"

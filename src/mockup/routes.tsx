@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert } from 'lucide-react'
+import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Tags } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -36,7 +36,12 @@ import { DetalleOrdenTransporteView } from './views/DetalleOrdenTransporteView'
 import { HistorialRevisionesView } from './views/HistorialRevisionesView'
 import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
 import { CierreLogisticoView } from './views/CierreLogisticoView'
-import { DevolucionDetalleScreen, DevolucionesListaScreen } from './devoluciones/rutas'
+import {
+  DevolucionDetalleScreen,
+  DevolucionesListaScreen,
+  MotivoDevolucionFormScreen,
+  MotivosDevolucionScreen,
+} from './devoluciones/rutas'
 import { CAMIONES, PARADAS } from './mock-data'
 import { useUnifyStore } from './unify-store'
 import { useDispatchPlanStore } from './dispatch-plan-store'
@@ -314,6 +319,41 @@ export const routes: MockRoute[] = [
     label: 'Detalle de devolución',
     component: DevolucionDetalleScreen,
     order: 5,
+    showInSidebar: false,
+  },
+  // DATO MAESTRO de devoluciones: el catálogo de MOTIVOS (`refund_reasons`).
+  //
+  // Va dentro de la sección «Devoluciones» y no junto a los otros datos maestros (Activos logísticos,
+  // Zonas) porque el motivo no significa nada fuera de una devolución: quien entra a configurarlo
+  // viene de mirar la bandeja, y ahí es donde lo va a buscar.
+  {
+    id: 'motivos-devolucion',
+    path: '/motivos-devolucion',
+    label: 'Motivos de devolución',
+    icon: Tags,
+    component: MotivosDevolucionScreen,
+    // 6 y no 5: la sección hereda el MENOR `order` de sus hijos, así que el 5 de «Devoluciones» sigue
+    // ubicando el módulo donde estaba y este cae segundo ADENTRO.
+    order: 6,
+    group: MODULOS.devoluciones,
+  },
+  {
+    // Alta y edición van a la MISMA pantalla, igual que en zonas y restricciones: `/nuevo` entra
+    // vacío y `/:code/editar` con la fila cargada. No son ítems del sidebar —se llega por el botón
+    // del catálogo—, pero son URLs reales: sobreviven un F5 y se pueden compartir.
+    id: 'motivo-devolucion-nuevo',
+    path: '/motivos-devolucion/nuevo',
+    label: 'Nuevo motivo de devolución',
+    component: MotivoDevolucionFormScreen,
+    order: 6,
+    showInSidebar: false,
+  },
+  {
+    id: 'motivo-devolucion-editar',
+    path: '/motivos-devolucion/:code/editar',
+    label: 'Editar motivo de devolución',
+    component: MotivoDevolucionFormScreen,
+    order: 6,
     showInSidebar: false,
   },
   {

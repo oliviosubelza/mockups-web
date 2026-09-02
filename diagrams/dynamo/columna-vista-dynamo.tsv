@@ -1,0 +1,53 @@
+Tabla	Vista Dynamo / CQRS	Donde cae en el item	Notas
+Products_ref	NO		Maestro. Sus campos se congelan como snapshot en la fila transaccional (unit_price_snapshot, equivalence_box_unit), no se proyectan.
+distributors_ref	DESNORMALIZADO	META.distributorId + gsi1pk	distributorId es la clave del GSI1: sin el, el listado del monitor es un Scan.
+orders_ref	NO		El pedido de venta se proyecta a traves de SALE# y de DO#.sales[], no como entidad propia.
+delivery_point_ref	DESNORMALIZADO	DO#<id>	Copia customerName, latitude, longitude y deliveryPointId dentro de la parada.
+employee_ref	DESNORMALIZADO	META.driverName / supervisorEmployeeId	Nombre congelado al crear la OT. Si el empleado se renombra, el viaje historico NO cambia.
+customer/owner_ref	DESNORMALIZADO	DO#<id>.customerName / ownerId	Owner y customer son la misma entidad (padre/hijo): una sola tabla con FK a si misma.
+sale_channel_restrictions	NO		Catalogo de planificacion. Muere antes de que exista la OT.
+zones	NO		Point-in-polygon con PostGIS. DynamoDB no resuelve geometria.
+distribution_zones	NO		Idem: PostGIS.
+plan_status	NO		Catalogo de 4 filas. Se resuelve al proyectar.
+logistic_assets	NO		Dato maestro de activos.
+planning_restrictions	NO		Solo se consulta en planificacion.
+planning_restriction_schedules	NO		
+planning_restriction_vehicle_rules	NO		
+trucks	DESNORMALIZADO	META.truckId + META.licensePlate	La placa se congela. El camion es maestro y no se disuelve.
+dispatch_plans	DESNORMALIZADO	META.dispatchPlanId	Solo el id, como referencia de trazabilidad.
+planning_trucks	DESNORMALIZADO	ROUTE#<id>.planningTruckId	Solo el id.
+dispatch_delivery_points	DESNORMALIZADO	DO#<id>	Copia sequence, ventana horaria, totalWeightKg, totalVolumeM3, totalNeto y coordenadas. Es la mitad del item DO#.
+image_delivery_points	NO		Solo URLs a S3; la galeria las pide al maestro.
+candidate_orders	NO		Artefacto de planificacion. Se disuelve al crear la OT.
+routes	ITEM	SK = ROUTE#<routeId>	Un solo item: exige UNIQUE(transport_orders.route_id). Sin ese UNIQUE la ruta se duplica en cada OT que la comparta.
+route_delivery_points	DESNORMALIZADO	DO#<id>.sequence / estimatedDistanceM / estimatedTravelS	No es un item propio: la secuencia planificada vive en la parada.
+transport_orders	RAIZ DEL AGREGADO	PK = TO#<id>, SK = META	Es la particion entera. Unico item con gsi1pk/gsi1sk.
+transport_order_histories	ITEM (N)	SK = HIST#<ISO-8601>	Append-only. Fuera de META para no reescribir la cabecera en cada evento.
+transport_order_sales	ITEM (N)	SK = SALE#<transportOrderSalesId>	Snapshot de la carga. Nace en la fase 1 y no cambia nunca mas.
+transport_order_sales_items	ANIDADO	SALE#<id>.items[]	Cardinalidad baja y acotada: no justifica items propios.
+truck_inventories	ITEM (N)	SK = INV#PROD#<productId>	Item propio porque se muta uno por uno en el conteo (fases 2-4). Exige UNIQUE(transport_order_id, product_id).
+transport_order_count_sessions	NO		Auditoria de rampa. No la lee ninguna pantalla del read-model.
+transport_order_count_session_items	NO		Idem.
+transport_order_assets	PENDIENTE		Bandeo y accesorios por OT. No aparece hoy en ninguna pantalla del monitor: decidir si se proyecta como SK = ASSET#<id> o queda solo en Postgres.
+delivery_orders	ITEM (N)	SK = DO#<deliveryOrderId>	La parada. El item mas mutado del ciclo: cambia en las fases 8 a 14.
+delivery_order_sales	ANIDADO	DO#<id>.sales[]	NIVEL OBLIGATORIO: con dos empresas (company_code) en la misma parada, aplanar items y pagos pierde a que factura pertenece cada uno.
+delivery_payment_references	ANIDADO	DO#<id>.sales[].payments[]	Cuelga de delivery_order_sales, no de delivery_orders. El polling por referenceId (44) NO tiene camino aqui: se lee de Postgres.
+delivery_order_items	ANIDADO	DO#<id>.sales[].items[]	Cuelga de delivery_order_sales. Lleva unit_price_snapshot: es snapshot, no cache.
+proof_of_deliveries	ANIDADO	DO#<id>.proofOfDelivery	1 a 1 con la parada. Solo URLs; los binarios viven en S3.
+delivery_incidents	ANIDADO	DO#<id>.incidents[]	Cardinalidad baja.
+delivery_order_histories	ITEM (N)	SK = DO#<id>#HIST#<ISO-8601>	Ordena pegado a su DO#: un begins_with('DO#90112') trae la parada Y su timeline.
+transport_order_warehouse_closings	NO		Escritura pura de cierre. El faltante fisico se calcula comparando INV#PROD#.loadedQty contra la suma de deliveredQty: ese calculo es SQL.
+transport_order_collection_closings	NO		Idem: arqueo.
+refund_approval_levels	NO		Devoluciones es otro agregado. Si algun dia necesita read-model, va en su propia particion (REF#<id>), nunca colgado de TO#.
+refund_reasons	NO		
+refund_orders	NO		
+refund_order_details	NO		
+refund_order_detail_sources	NO		
+refund_order_detail_photos	NO		
+refund_workflow_instances	NO		
+refund_workflow_instance_levels	NO		
+refund_workflow_actions	NO		
+refund_order_detail_decisions	NO		
+--- FILAS QUE FALTAN EN LA PLANILLA ---			
+distributors	DESNORMALIZADO	META.distributorId	OJO: en db_script.sql distributors es tabla PROPIA (lat, lng, city_id, is_default), no un *_ref puro. Son dos filas distintas.
+truck_tracking	TABLA DYNAMO PROPIA	PK = TO#<id> SK = TS#<ts> (traza) / PK = FLEET#<distributorId> SK = TO#<id> (actual)	No existe en Postgres: nace y muere en DynamoDB. Traza con TTL 30d; el actual se borra al cerrar la salida.

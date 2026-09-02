@@ -1,0 +1,106 @@
+@startuml
+' Fuente: db_script.sql:L915-L1172
+' Fecha: 2026-09-02
+' Base HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 worktree: 2c62523505a864bc84c44db70d5f195f74a9b1b99f626399efcce1f41437f185
+title Devoluciones - workflow persistido y certeza de reglas
+
+top to bottom direction
+skinparam shadowing false
+skinparam linetype ortho
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontColor #0F172A
+}
+
+rectangle "refund_orders\nstatus\ncurrent_workflow_instance_id" as orders
+rectangle "refund_approval_levels\napproval_policy ANY/ALL\nrequired_approvals\non_reject\nmin_amount / max_amount" as configuration
+rectangle "refund_workflow_instances\nattempt / status\ncurrent_level_order\nstarted_at / finished_at" as instances
+rectangle "refund_workflow_instance_levels\nlevel_order / level_name / role_code\nmin_amount / max_amount\ndecision_mode / status\nfirst_viewed_* / started_at / finished_at" as levels
+rectangle "refund_workflow_actions\naction / actor_*\nprevious_status / new_status\namount_before / amount_after\ncomment / reason / system_summary" as actions
+rectangle "refund_order_detail_decisions\ndecision" as decisions
+rectangle "refund_order_details" as details
+
+instances -[#16A34A]-> orders : [DDL] refund_order_id FK
+levels -[#16A34A]-> instances : [DDL] workflow_instance_id FK
+actions -[#16A34A]-> instances : [DDL] workflow_instance_id FK
+actions -[#16A34A]-> levels : [DDL] workflow_instance_level_id FK nullable
+decisions -[#16A34A]-> actions : [DDL] workflow_action_id FK
+decisions -[#16A34A]-> details : [DDL] refund_order_detail_id FK
+
+orders -[#94A3B8,dashed]-> instances : current_workflow_instance_id = id\n[sin FK]
+configuration -[#94A3B8,dashed]-> levels : campos compatibles, sin FK\nni versión en el nivel materializado
+
+note right of configuration #DCFCE7
+  [DDL] CHECK válidos:
+  policy ANY/ALL; on_reject;
+  nivel 1; order >= 1; min_amount >= 0.
+end note
+
+note left of configuration #FEE2E2
+  [INCONSISTENCIA]
+  max_amount no permite expresar con NULL
+  la intención de último nivel sin techo.
+end note
+
+note bottom of configuration #FFFFFF
+  [PENDIENTE]
+  required_approvals permanece con DEFAULT 1,
+  sin semántica adicional definida para ANY/ALL.
+end note
+
+note right of instances #FEF3C7
+  [COMENTARIO]
+  Estados: EDITING, IN_APPROVAL, APPROVED,
+  REJECTED y CANCELLED.
+end note
+
+note left of instances #FFFFFF
+  [DDL] Sin CHECK de status, attempt,
+  current_level_order o coherencia temporal.
+end note
+
+note right of levels #FEF3C7
+  [COMENTARIO]
+  Modos de decisión y estados del nivel;
+  solo nivel 1 selecciona items.
+end note
+
+note left of levels #FFFFFF
+  [DDL] Sin CHECK para esos catálogos.
+  El snapshot no conserva la política completa.
+end note
+
+note right of actions #FEF3C7
+  [COMENTARIO]
+  Catálogo de acciones y motivo obligatorio
+  según el tipo de acción.
+end note
+
+note left of actions #FFFFFF
+  [DDL] action no tiene CHECK; updated_*
+  y deleted_at impiden afirmar append-only.
+end note
+
+note right of decisions #FEF3C7
+  [COMENTARIO]
+  SELECTED o DISSOCIATED en nivel 1.
+end note
+
+note left of decisions #FFFFFF
+  [DDL] Sin CHECK ni UNIQUE por línea.
+end note
+
+note bottom of orders #DBEAFE
+  [APLICACIÓN / CONTRATO]
+  Creación materializa niveles, registra CREATED
+  y mantiene el puntero de instancia vigente.
+end note
+
+legend bottom
+  <color:#16A34A>Verde continuo</color>: FK o DDL válido
+  <color:#94A3B8>Gris discontinuo</color>: vínculo sin FK
+  Amarillo: COMENTARIO; azul: APLICACIÓN/CONTRATO; rojo: inconsistencia.
+endlegend
+@enduml

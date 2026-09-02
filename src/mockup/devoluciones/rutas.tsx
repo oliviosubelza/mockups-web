@@ -21,6 +21,8 @@ import { QueryClientProvider } from './lib/query-lite'
 import { queryClient } from './lib/query-client'
 import { ReturnsPage } from './features/returns/pages/returns-page'
 import { ReturnViewPage } from './features/returns/pages/return-view-page'
+import { RefundReasonsPage } from './features/refund-reasons/pages/refund-reasons-page'
+import { RefundReasonFormPage } from './features/refund-reasons/pages/refund-reason-form-page'
 
 function conContexto(Pagina: ComponentType): ComponentType {
   return function PantallaDeDevoluciones() {
@@ -40,3 +42,14 @@ function conContexto(Pagina: ComponentType): ComponentType {
 export const DevolucionesListaScreen = conContexto(ReturnsPage)
 /** Detalle y decisión (aprobar/rechazar) son la MISMA pantalla: ver ítems y decidir es un solo paso. */
 export const DevolucionDetalleScreen = conContexto(ReturnViewPage)
+
+// DATO MAESTRO del módulo: el catálogo de MOTIVOS (`refund_reasons`). No es parte del workflow de una
+// devolución —se configura una vez y lo usan todas—, pero vive acá porque la tabla es del módulo y el
+// catálogo sembrado sale de las constantes que ya usa el formulario del vendedor.
+//
+// Pasan por `conContexto` como las otras dos aunque no usen el kit de queries (leen un store de
+// zustand): un solo lugar donde se envuelven las pantallas del módulo vale más que la línea que se
+// ahorra, y el día que el catálogo pase a un servicio no hay que acordarse de esto.
+export const MotivosDevolucionScreen = conContexto(RefundReasonsPage)
+/** Alta y edición son la MISMA pantalla: el `code` del path decide el modo. */
+export const MotivoDevolucionFormScreen = conContexto(RefundReasonFormPage)

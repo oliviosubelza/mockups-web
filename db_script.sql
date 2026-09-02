@@ -914,14 +914,11 @@
 
     -- ================== DEVOLUTIONS ===================
     CREATE TABLE refund_reasons (
-        code VARCHAR(100) PRIMARY KEY,                                  -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
-        name VARCHAR(150) NOT NULL,                                     -- Etiqueta visible
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,                                      -- Etiqueta visible del motivo.
+        description VARCHAR(300) NOT NULL,                               -- Explicación breve del motivo.
         lot_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL',        -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
-        due_date_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL',   -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
-        requires_photo BOOLEAN NOT NULL DEFAULT TRUE,                   -- Sin foto no se acepta la lìnea
-        requires_notes BOOLEAN NOT NULL DEFAULT TRUE,                   -- Sin observaciòn no se acepta la lìnea
-        sort_order SMALLINT NOT NULL DEFAULT 0,                         -- Orden en el selector
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,                        -- Inactivo deja de ofrecerse sin romper el històrico
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,                        -- Inactivo ya no aparece en el selector/ activar de nuevo aparece
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -929,8 +926,7 @@
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP NULL,
 
-        CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN')),
-        CONSTRAINT ck_refund_reason_due_date CHECK (due_date_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
+        CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
     );
 
 
@@ -947,7 +943,7 @@
         min_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,                -- Monto desde el que el nivel entra en juego
         max_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,                -- Monto de techo max
         approval_policy VARCHAR(20) NOT NULL DEFAULT 'ANY',             -- 'ANY', 'ALL'
-        required_approvals SMALLINT NOT NULL DEFAULT 1,                 -- Solo tiene sentido con 'QUORUM'
+        required_approvals SMALLINT NOT NULL DEFAULT 1,                 -- Campo conservado; las políticas vigentes son 'ANY', 'ALL'
         on_reject VARCHAR(30) NOT NULL DEFAULT 'TERMINATE',             -- 'TERMINATE', 'RETURN_PREVIOUS'
         -- sla_hours SMALLINT NULL,                                        -- Plazo del nivel. NULL = sin plazo
         is_active BOOLEAN NOT NULL DEFAULT TRUE,                        -- Una sola versiòn activa por vez
@@ -958,23 +954,18 @@
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP NULL,
 
-        CONSTRAINT ck_refund_level_policy CHECK (approval_policy IN ('ANY', 'ALL', 'QUORUM')),
+        CONSTRAINT ck_refund_level_policy CHECK (approval_policy IN ('ANY', 'ALL')),
         CONSTRAINT ck_refund_level_on_reject CHECK (on_reject IN ('TERMINATE', 'RETURN_PREVIOUS')),
-        CONSTRAINT ck_refund_level_required_approvals CHECK (
-            (approval_policy = 'QUORUM' AND required_approvals >= 1) OR
-            (approval_policy <> 'QUORUM' AND required_approvals = 1)
-        ),
         -- El nivel 1 no tiene anterior al que volver
         CONSTRAINT ck_refund_level_return_previous CHECK (NOT (level_order = 1 AND on_reject = 'RETURN_PREVIOUS')),
         CONSTRAINT ck_refund_level_order CHECK (level_order >= 1),
-        CONSTRAINT ck_refund_level_min_amount CHECK (activation_min_amount >= 0),
-        CONSTRAINT ck_refund_level_sla CHECK (sla_hours IS NULL OR sla_hours > 0)
+        CONSTRAINT ck_refund_level_min_amount CHECK (min_amount >= 0)
     );
 
 
     CREATE TABLE refund_orders (
         id BIGSERIAL PRIMARY KEY,
-        note_number VARCHAR(50) NOT NULL, -- NÙMERO DE NOTA 1001
+        note_number VARCHAR(50) NOT NULL, -- NÙMERO DE NOTA NRO#1001
         split_sequence SMALLINT NOT NULL DEFAULT 0, -- NOTA ORIGINAL / DISOCIADA
 
         source_refund_order_id BIGINT NULL, -- NULL en la ORIGINAL / la fuente a la nota de la que salió
@@ -1013,8 +1004,7 @@
 
         price_unit DECIMAL(12, 2) NOT NULL, -- Precio unitario congelado al momento del reclamo
         line_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'DISSOCIATED'
-
-        reason VARCHAR(100), -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'
+        reason_id BIGINT NOT NULL, -- Motivo clasificado del reclamo
         notes TEXT, -- Observación libre del vendedor sobre este producto
 
         created_by VARCHAR(255),
@@ -1025,6 +1015,7 @@
 
         CONSTRAINT fk_refund_order_detail_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
         CONSTRAINT fk_refund_order_detail_source FOREIGN KEY (source_detail_id) REFERENCES refund_order_details(id),
+        CONSTRAINT fk_refund_order_detail_reason FOREIGN KEY (reason_id) REFERENCES refund_reasons(id),
         CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity)
     );
 
@@ -1037,11 +1028,13 @@
         refund_order_detail_id BIGINT NOT NULL,
 
         invoice_number VARCHAR(50) NULL,                                -- 'F-100'
-        invoice_sap_doc VARCHAR(50) NULL,                               -- Documento SAP. Referencia lògica: SAP no es nuestra base
+        -- invoice_sap_doc VARCHAR(50) NULL,                               -- Documento SAP. Referencia lògica: SAP no es nuestra base
         invoiced_at DATE NULL,                                          -- Fecha de la factura, congelada al crear
+        quantity DECIMAL(12, 2) NOT NULL,                               -- Cuànto de la lìnea sale de este origen
+        
+        
         lot VARCHAR(50) NULL,                                           -- Lote
         due_date DATE NULL,                                             -- Vencimiento del lote
-        quantity DECIMAL(12, 2) NOT NULL,                               -- Cuànto de la lìnea sale de este origen
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -1053,7 +1046,7 @@
         CONSTRAINT ck_refund_source_qty CHECK (quantity > 0),
         -- Un origen sin factura y sin lote no identifica nada
         CONSTRAINT ck_refund_source_identified CHECK (
-            invoice_number IS NOT NULL OR invoice_sap_doc IS NOT NULL OR lot IS NOT NULL
+            invoice_number IS NOT NULL OR lot IS NOT NULL
         )
     );
 
@@ -1061,18 +1054,12 @@
         id BIGSERIAL PRIMARY KEY,
         refund_order_detail_id BIGINT NOT NULL,
 
-        storage_key VARCHAR(500) NOT NULL,                              -- Clave en el bucket. Es la fuente: la url se puede derivar
-        content_type VARCHAR(100) NULL,                                 -- 'image/jpeg', 'image/png'
-        size_bytes BIGINT NULL,
-        sort_order SMALLINT NOT NULL DEFAULT 0,                         -- Orden en la galerìa
-        taken_at TIMESTAMP NULL,                                        -- Cuàndo se sacò, si el mòvil lo informa
-        uploaded_by VARCHAR(255) NULL,                                  -- Quièn la subiò
+        url VARCHAR(255) NULL,                                  -- path image
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP NULL,
 
-        CONSTRAINT fk_refund_photo_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id),
-        CONSTRAINT ck_refund_photo_size CHECK (size_bytes IS NULL OR size_bytes > 0)
+        CONSTRAINT fk_refund_photo_detail FOREIGN KEY (refund_order_detail_id) REFERENCES refund_order_details(id)
     );
 
 

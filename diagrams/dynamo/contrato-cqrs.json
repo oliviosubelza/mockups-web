@@ -1,0 +1,329 @@
+{
+  "documento": "Contrato de proyeccion CQRS: tabla relacional -> item de DynamoDB",
+  "version": "1.0.0",
+  "fecha": "2026-09-01",
+  "queEsLaColumna": "La columna 'Vista Dynamo / CQRS' responde una sola pregunta por fila: esta tabla de Postgres, se proyecta al read-model y con que forma. Es el CONTRATO. Los archivos final-logistics-operations.json y ciclo-vida-ot.json son la INSTANCIA: el mismo contrato con datos adentro.",
+  "vocabulario": {
+    "RAIZ DEL AGREGADO": "La tabla define la particion. Una sola: transport_orders -> PK = TO#<id>.",
+    "ITEM": "La fila se proyecta como un item propio con su SK. Se usa cuando la fila se muta sola o se lee sola.",
+    "ANIDADO": "La fila viaja dentro del atributo de otro item. Se usa cuando la cardinalidad es baja y siempre se lee junto al padre.",
+    "DESNORMALIZADO": "La tabla no se proyecta como entidad; algunos de sus campos se COPIAN dentro de otro item para evitar un JOIN en lectura.",
+    "NO": "No se proyecta. Se lee de Postgres cuando hace falta.",
+    "PENDIENTE": "Sin decidir."
+  },
+  "criterioDeCorte": [
+    "ITEM si la fila se ESCRIBE sola (truck_inventories en el conteo) o se LEE sola (histories).",
+    "ANIDADO si la cardinalidad esta acotada y nunca se lee sin el padre (items de una factura).",
+    "DESNORMALIZADO si es un maestro y lo unico que se necesita es el nombre o el id (placa, chofer).",
+    "NO si la consulta que la usa agrega (SUM, COUNT, GROUP BY) o resuelve geometria: DynamoDB no hace ninguna de las dos."
+  ],
+  "reglaDeEscritura": "Toda mutacion entra por Postgres. La proyeccion se escribe despues, por outbox transaccional o CDC. Nunca dual-write desde el servicio: con 15 tablas proyectadas, diverge.",
+  "filas": [
+    {
+      "tabla": "Products_ref",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Maestro. Sus campos se congelan como snapshot en la fila transaccional (unit_price_snapshot, equivalence_box_unit), no se proyectan."
+    },
+    {
+      "tabla": "distributors_ref",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "META.distributorId + gsi1pk",
+      "notas": "distributorId es la clave del GSI1: sin el, el listado del monitor es un Scan."
+    },
+    {
+      "tabla": "orders_ref",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "El pedido de venta se proyecta a traves de SALE# y de DO#.sales[], no como entidad propia."
+    },
+    {
+      "tabla": "delivery_point_ref",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "DO#<id>",
+      "notas": "Copia customerName, latitude, longitude y deliveryPointId dentro de la parada."
+    },
+    {
+      "tabla": "employee_ref",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "META.driverName / supervisorEmployeeId",
+      "notas": "Nombre congelado al crear la OT. Si el empleado se renombra, el viaje historico NO cambia."
+    },
+    {
+      "tabla": "customer/owner_ref",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "DO#<id>.customerName / ownerId",
+      "notas": "Owner y customer son la misma entidad (padre/hijo): una sola tabla con FK a si misma."
+    },
+    {
+      "tabla": "sale_channel_restrictions",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Catalogo de planificacion. Muere antes de que exista la OT."
+    },
+    {
+      "tabla": "zones",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Point-in-polygon con PostGIS. DynamoDB no resuelve geometria."
+    },
+    {
+      "tabla": "distribution_zones",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Idem: PostGIS."
+    },
+    {
+      "tabla": "plan_status",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Catalogo de 4 filas. Se resuelve al proyectar."
+    },
+    {
+      "tabla": "logistic_assets",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Dato maestro de activos."
+    },
+    {
+      "tabla": "planning_restrictions",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Solo se consulta en planificacion."
+    },
+    {
+      "tabla": "planning_restriction_schedules",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "planning_restriction_vehicle_rules",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "trucks",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "META.truckId + META.licensePlate",
+      "notas": "La placa se congela. El camion es maestro y no se disuelve."
+    },
+    {
+      "tabla": "dispatch_plans",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "META.dispatchPlanId",
+      "notas": "Solo el id, como referencia de trazabilidad."
+    },
+    {
+      "tabla": "planning_trucks",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "ROUTE#<id>.planningTruckId",
+      "notas": "Solo el id."
+    },
+    {
+      "tabla": "dispatch_delivery_points",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "DO#<id>",
+      "notas": "Copia sequence, ventana horaria, totalWeightKg, totalVolumeM3, totalNeto y coordenadas. Es la mitad del item DO#."
+    },
+    {
+      "tabla": "image_delivery_points",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Solo URLs a S3; la galeria las pide al maestro."
+    },
+    {
+      "tabla": "candidate_orders",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Artefacto de planificacion. Se disuelve al crear la OT."
+    },
+    {
+      "tabla": "routes",
+      "vistaDynamo": "ITEM",
+      "dondeCae": "SK = ROUTE#<routeId>",
+      "notas": "Un solo item: exige UNIQUE(transport_orders.route_id). Sin ese UNIQUE la ruta se duplica en cada OT que la comparta."
+    },
+    {
+      "tabla": "route_delivery_points",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "DO#<id>.sequence / estimatedDistanceM / estimatedTravelS",
+      "notas": "No es un item propio: la secuencia planificada vive en la parada."
+    },
+    {
+      "tabla": "transport_orders",
+      "vistaDynamo": "RAIZ DEL AGREGADO",
+      "dondeCae": "PK = TO#<id>, SK = META",
+      "notas": "Es la particion entera. Unico item con gsi1pk/gsi1sk."
+    },
+    {
+      "tabla": "transport_order_histories",
+      "vistaDynamo": "ITEM (N)",
+      "dondeCae": "SK = HIST#<ISO-8601>",
+      "notas": "Append-only. Fuera de META para no reescribir la cabecera en cada evento."
+    },
+    {
+      "tabla": "transport_order_sales",
+      "vistaDynamo": "ITEM (N)",
+      "dondeCae": "SK = SALE#<transportOrderSalesId>",
+      "notas": "Snapshot de la carga. Nace en la fase 1 y no cambia nunca mas."
+    },
+    {
+      "tabla": "transport_order_sales_items",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "SALE#<id>.items[]",
+      "notas": "Cardinalidad baja y acotada: no justifica items propios."
+    },
+    {
+      "tabla": "truck_inventories",
+      "vistaDynamo": "ITEM (N)",
+      "dondeCae": "SK = INV#PROD#<productId>",
+      "notas": "Item propio porque se muta uno por uno en el conteo (fases 2-4). Exige UNIQUE(transport_order_id, product_id)."
+    },
+    {
+      "tabla": "transport_order_count_sessions",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Auditoria de rampa. No la lee ninguna pantalla del read-model."
+    },
+    {
+      "tabla": "transport_order_count_session_items",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Idem."
+    },
+    {
+      "tabla": "transport_order_assets",
+      "vistaDynamo": "PENDIENTE",
+      "dondeCae": null,
+      "notas": "Bandeo y accesorios por OT. No aparece hoy en ninguna pantalla del monitor: decidir si se proyecta como SK = ASSET#<id> o queda solo en Postgres."
+    },
+    {
+      "tabla": "delivery_orders",
+      "vistaDynamo": "ITEM (N)",
+      "dondeCae": "SK = DO#<deliveryOrderId>",
+      "notas": "La parada. El item mas mutado del ciclo: cambia en las fases 8 a 14."
+    },
+    {
+      "tabla": "delivery_order_sales",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "DO#<id>.sales[]",
+      "notas": "NIVEL OBLIGATORIO: con dos empresas (company_code) en la misma parada, aplanar items y pagos pierde a que factura pertenece cada uno."
+    },
+    {
+      "tabla": "delivery_payment_references",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "DO#<id>.sales[].payments[]",
+      "notas": "Cuelga de delivery_order_sales, no de delivery_orders. El polling por referenceId (44) NO tiene camino aqui: se lee de Postgres."
+    },
+    {
+      "tabla": "delivery_order_items",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "DO#<id>.sales[].items[]",
+      "notas": "Cuelga de delivery_order_sales. Lleva unit_price_snapshot: es snapshot, no cache."
+    },
+    {
+      "tabla": "proof_of_deliveries",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "DO#<id>.proofOfDelivery",
+      "notas": "1 a 1 con la parada. Solo URLs; los binarios viven en S3."
+    },
+    {
+      "tabla": "delivery_incidents",
+      "vistaDynamo": "ANIDADO",
+      "dondeCae": "DO#<id>.incidents[]",
+      "notas": "Cardinalidad baja."
+    },
+    {
+      "tabla": "delivery_order_histories",
+      "vistaDynamo": "ITEM (N)",
+      "dondeCae": "SK = DO#<id>#HIST#<ISO-8601>",
+      "notas": "Ordena pegado a su DO#: un begins_with('DO#90112') trae la parada Y su timeline."
+    },
+    {
+      "tabla": "transport_order_warehouse_closings",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Escritura pura de cierre. El faltante fisico se calcula comparando INV#PROD#.loadedQty contra la suma de deliveredQty: ese calculo es SQL."
+    },
+    {
+      "tabla": "transport_order_collection_closings",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Idem: arqueo."
+    },
+    {
+      "tabla": "refund_approval_levels",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": "Devoluciones es otro agregado. Si algun dia necesita read-model, va en su propia particion (REF#<id>), nunca colgado de TO#."
+    },
+    {
+      "tabla": "refund_reasons",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_orders",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_order_details",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_order_detail_sources",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_order_detail_photos",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_workflow_instances",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_workflow_instance_levels",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_workflow_actions",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "refund_order_detail_decisions",
+      "vistaDynamo": "NO",
+      "dondeCae": null,
+      "notas": null
+    },
+    {
+      "tabla": "distributors",
+      "vistaDynamo": "DESNORMALIZADO",
+      "dondeCae": "META.distributorId",
+      "notas": "OJO: en db_script.sql distributors es tabla PROPIA (lat, lng, city_id, is_default), no un *_ref puro. Son dos filas distintas."
+    },
+    {
+      "tabla": "truck_tracking",
+      "vistaDynamo": "TABLA DYNAMO PROPIA",
+      "dondeCae": "PK = TO#<id> SK = TS#<ts> (traza) / PK = FLEET#<distributorId> SK = TO#<id> (actual)",
+      "notas": "No existe en Postgres: nace y muere en DynamoDB. Traza con TTL 30d; el actual se borra al cerrar la salida."
+    }
+  ]
+}

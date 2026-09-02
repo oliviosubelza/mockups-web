@@ -1,0 +1,39 @@
+@startuml
+' Fuente: db_script.sql:L915-L1172
+' Fecha: 2026-09-02
+' Base HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 worktree: 2c62523505a864bc84c44db70d5f195f74a9b1b99f626399efcce1f41437f185
+title GET /api/v1/refund-reasons - contrato vigente
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Sales" as Sales #E2E8F0
+participant "API devoluciones" as API #DBEAFE
+database "PostgreSQL\nrefund_reasons" as DB #DCFCE7
+
+Sales -[#2563EB]> API : GET /api/v1/refund-reasons
+
+note over API #DBEAFE
+  [CONTRATO]
+  Sin filtros, paginación ni CRUD adicional.
+end note
+
+API -[#2563EB]> DB : SELECT id, name, description, lot_requirement\nWHERE is_active = TRUE\nAND deleted_at IS NULL\nORDER BY name, id
+
+note over DB #DCFCE7
+  [DDL]
+  id, name, description,
+  lot_requirement e is_active
+  pertenecen a refund_reasons.
+end note
+
+DB -[#16A34A]> API : filas activas y no borradas
+API -[#2563EB]> API : [APLICACIÓN] validar name 1..150,\ndescription 1..300 y mapear lotRequirement
+API -[#2563EB]> Sales : 200 OK\n[{ id, name, description, lotRequirement }]
+
+note over Sales,API #DBEAFE
+  [CONTRATO]
+  El orden estable es name, luego id.
+end note
+@enduml
