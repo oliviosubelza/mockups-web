@@ -1,0 +1,96 @@
+@startuml
+' Fuente: db_script.sql:L915-L1172
+' Fecha: 2026-09-02
+' Base HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 worktree: 2c62523505a864bc84c44db70d5f195f74a9b1b99f626399efcce1f41437f185
+title Devoluciones - trazabilidad persistida sin cardinalidades inferidas
+
+left to right direction
+skinparam shadowing false
+skinparam linetype ortho
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontColor #0F172A
+}
+
+rectangle "Nota fuente\nrefund_orders" as source_order
+rectangle "Nota disociada\nrefund_orders" as split_order
+rectangle "Línea fuente\nrefund_order_details" as source_detail
+rectangle "Línea copiada\nrefund_order_details" as copied_detail
+rectangle "Intento de la nota fuente\nrefund_workflow_instances" as source_instance
+rectangle "Acción puente\nrefund_workflow_actions" as bridge_action
+rectangle "Decisión de línea\nrefund_order_detail_decisions" as detail_decision
+rectangle "Intento anterior\nrefund_workflow_instances" as previous_instance
+rectangle "Intento reactivado\nrefund_workflow_instances" as reactivated_instance
+
+split_order -[#16A34A]-> source_order : [DDL] source_refund_order_id\nFK nullable
+copied_detail -[#16A34A]-> source_detail : [DDL] source_detail_id\nFK nullable
+source_detail -[#16A34A]-> source_order : [DDL] refund_order_id\nFK NOT NULL
+copied_detail -[#16A34A]-> split_order : [DDL] refund_order_id\nFK NOT NULL
+source_instance -[#16A34A]-> source_order : [DDL] refund_order_id\nFK NOT NULL
+bridge_action -[#16A34A]-> source_instance : [DDL] workflow_instance_id\nFK NOT NULL
+bridge_action -[#16A34A]-> split_order : [DDL] related_refund_order_id\nFK nullable
+detail_decision -[#16A34A]-> bridge_action : [DDL] workflow_action_id\nFK NOT NULL
+detail_decision -[#16A34A]-> source_detail : [DDL] refund_order_detail_id\nFK NOT NULL
+reactivated_instance -[#16A34A]-> previous_instance : [DDL] reactivated_from_instance_id\nFK nullable
+reactivated_instance -[#16A34A]-> source_order : [DDL] refund_order_id\nFK NOT NULL
+
+source_order -[#94A3B8,dashed]-> source_instance : current_workflow_instance_id = id\n[sin FK]
+
+note top of split_order #FEF3C7
+  [COMENTARIO]
+  document_type menciona ORIGINAL y DISSOCIATED;
+  split_sequence distingue original/disociada.
+end note
+
+note left of split_order #FFFFFF
+  [DDL] No hay CHECK que vincule
+  tipo, secuencia y fuente.
+end note
+
+note bottom of bridge_action #FEF3C7
+  [COMENTARIO]
+  related_refund_order_id guarda la disociada;
+  DISSOCIATED_CREATED es una acción comentada.
+end note
+
+note left of bridge_action #FFFFFF
+  [DDL] La FK solo garantiza existencia.
+  No condiciona el campo por acción.
+end note
+
+note bottom of detail_decision #FEF3C7
+  [COMENTARIO]
+  La decisión se atribuye a la selección de nivel 1.
+end note
+
+note left of detail_decision #FFFFFF
+  [DDL] Sin CHECK, UNIQUE ni garantía de que
+  acción, línea e instancia sean de la misma nota.
+end note
+
+note bottom of reactivated_instance #FEF3C7
+  [COMENTARIO]
+  attempt numera intentos y la referencia
+  identifica la reactivación anterior.
+end note
+
+note right of reactivated_instance #FFFFFF
+  [DDL] No exige incremento, misma nota,
+  aciclicidad, unicidad ni cierre previo.
+end note
+
+note right of copied_detail #DBEAFE
+  [APLICACIÓN]
+  La consistencia completa de copias, decisiones
+  y acciones puente debe validarse fuera de estas FK.
+end note
+
+legend bottom
+  <color:#16A34A>Verde continuo</color>: FK declarada [DDL]
+  <color:#94A3B8>Gris discontinuo</color>: relación sin FK
+  Amarillo: COMENTARIO; azul: APLICACIÓN/CONTRATO; rojo: inconsistencia.
+  No se muestran cardinalidades de negocio no impuestas por el DDL.
+endlegend
+@enduml

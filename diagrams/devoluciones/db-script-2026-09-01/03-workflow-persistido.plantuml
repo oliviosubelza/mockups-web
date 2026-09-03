@@ -1,0 +1,113 @@
+@startuml
+' Fuente: db_script.sql:L915-L1185
+' Fecha: 2026-09-01
+' Commit del archivo y HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 completo: 2f9936f8450a9a8fd8acfc6b308de6378a24b1253ef0a75aa50ab416538e7405
+title Devoluciones - workflow persistido y certeza de sus reglas
+
+top to bottom direction
+skinparam shadowing false
+skinparam linetype ortho
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontColor #0F172A
+}
+
+rectangle "refund_orders\nstatus\ncurrent_workflow_instance_id" as orders
+rectangle "refund_approval_levels\napproval_policy\nrequired_approvals\non_reject\nmin_amount / max_amount" as configuration
+rectangle "refund_workflow_instances\nattempt / status\ncurrent_level_order\nstarted_at / finished_at" as instances
+rectangle "refund_workflow_instance_levels\nlevel_order / level_name / role_code\nmin_amount / max_amount\ndecision_mode / status\nfirst_viewed_* / started_at / finished_at" as levels
+rectangle "refund_workflow_actions\naction / actor_*\nprevious_status / new_status\namount_before / amount_after\ncomment / reason / system_summary" as actions
+rectangle "refund_order_detail_decisions\ndecision" as decisions
+rectangle "refund_order_details" as details
+
+instances -[#16A34A]-> orders : [DDL] refund_order_id FK
+levels -[#16A34A]-> instances : [DDL] workflow_instance_id FK
+actions -[#16A34A]-> instances : [DDL] workflow_instance_id FK
+actions -[#16A34A]-> levels : [DDL] workflow_instance_level_id FK nullable
+decisions -[#16A34A]-> actions : [DDL] workflow_action_id FK
+decisions -[#16A34A]-> details : [DDL] refund_order_detail_id FK
+
+orders -[#94A3B8,dashed]-> instances : current_workflow_instance_id = id\n[sin FK]
+configuration -[#94A3B8,dashed]-> levels : campos de nivel compatibles,\npero sin FK ni workflow_version_id en el snapshot
+
+note right of configuration #DCFCE7
+  [DDL] CHECK de configuración con columnas existentes:
+  - approval_policy: ANY, ALL o QUORUM
+  - on_reject: TERMINATE o RETURN_PREVIOUS
+  - coherencia de required_approvals
+  - level_order >= 1
+  - nivel 1 no RETURN_PREVIOUS
+end note
+
+note left of configuration #FEE2E2
+  [DDL] Declaraciones inválidas:
+  - ck_refund_level_min_amount usa activation_min_amount
+  - ck_refund_level_sla usa sla_hours
+
+  Esas columnas no existen en la tabla literal.
+end note
+
+note right of instances #FEF3C7
+  [COMENTARIO] Catálogo de status:
+  EDITING, IN_APPROVAL, APPROVED,
+  REJECTED, CANCELLED.
+end note
+
+note left of instances #FFFFFF
+  [DDL] No hay CHECK de status, attempt,
+  current_level_order ni coherencia temporal.
+end note
+
+note right of levels #FEF3C7
+  [COMENTARIO]
+  decision_mode: ITEM_SELECTION o DOCUMENT_DECISION;
+  status: PENDING, IN_PROGRESS, APPROVED,
+  REJECTED o SKIPPED; solo nivel 1 selecciona.
+end note
+
+note left of levels #FFFFFF
+  [DDL]
+  No hay CHECK para esos catálogos. El nivel persistido
+  no conserva approval_policy, required_approvals,
+  on_reject ni sla_hours.
+end note
+
+note right of actions #FEF3C7
+  [COMENTARIO] Acciones enumeradas:
+  CREATED, VIEWED, LEVEL1_ITEM_SELECTION,
+  DISSOCIATED_CREATED, CLOSED, APPROVE,
+  SELLER_RESUBMITTED, REJECT, AUTO_ROUTED,
+  REACTIVATE y CANCEL.
+end note
+
+note left of actions #FFFFFF
+  [DDL] action no tiene CHECK. La tabla incluye
+  updated_* y deleted_at: no es append-only por DDL.
+end note
+
+note right of decisions #FEF3C7
+  [COMENTARIO] SELECTED o DISSOCIATED;
+  selección binaria de nivel 1.
+end note
+
+note left of decisions #FFFFFF
+  [DDL] No hay CHECK de decision ni UNIQUE por línea.
+end note
+
+note bottom of orders #DBEAFE
+  [APLICACIÓN]
+  Mantener la instancia vigente, aplicar transiciones,
+  materializar niveles y respetar catálogos requiere
+  lógica fuera de este bloque. El DDL no prueba que exista.
+end note
+
+legend bottom
+  <color:#16A34A>Continua verde</color>: FK declarada [DDL]
+  <color:#94A3B8>Discontinua gris</color>: vínculo sin FK
+  Verde: DDL válido; amarillo: COMENTARIO; azul claro: APLICACIÓN.
+  Gris claro: entidad/referencia sin FK; rojo: inconsistencia.
+  [DDL] identifica texto declarado; no se verificó una base desplegada.
+endlegend
+@enduml

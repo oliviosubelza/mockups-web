@@ -1,0 +1,246 @@
+@startuml
+' Fuente: db_script.sql:L915-L1185
+' Fecha: 2026-09-01
+' Commit del archivo y HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 completo: 2f9936f8450a9a8fd8acfc6b308de6378a24b1253ef0a75aa50ab416538e7405
+title Devoluciones - modelo relacional literal (db_script.sql:L915-L1185)
+
+left to right direction
+hide methods
+hide stereotypes
+skinparam shadowing false
+skinparam linetype ortho
+skinparam entity {
+  BackgroundColor #FFFFFF
+  BorderColor #334155
+  FontColor #0F172A
+}
+
+entity "refund_reasons" as reasons {
+  * code : VARCHAR(100) [PK]
+  --
+  name : VARCHAR(150) NOT NULL
+  lot_requirement : VARCHAR(20) NOT NULL = OPTIONAL
+  due_date_requirement : VARCHAR(20) NOT NULL = OPTIONAL
+  requires_photo : BOOLEAN NOT NULL = TRUE
+  requires_notes : BOOLEAN NOT NULL = TRUE
+  sort_order : SMALLINT NOT NULL = 0
+  is_active : BOOLEAN NOT NULL = TRUE
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_approval_levels" as approval_levels {
+  * id : BIGSERIAL [PK]
+  --
+  workflow_version_id : BIGINT NOT NULL
+  level_order : SMALLINT NOT NULL
+  name : VARCHAR(100) NOT NULL
+  role_code : VARCHAR(50) NOT NULL
+  min_amount : DECIMAL(12,2) NOT NULL = 0.00
+  max_amount : DECIMAL(12,2) NOT NULL = 0.00
+  approval_policy : VARCHAR(20) NOT NULL = ANY
+  required_approvals : SMALLINT NOT NULL = 1
+  on_reject : VARCHAR(30) NOT NULL = TERMINATE
+  is_active : BOOLEAN NOT NULL = TRUE
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_orders" as orders {
+  * id : BIGSERIAL [PK]
+  --
+  note_number : VARCHAR(50) NOT NULL
+  split_sequence : SMALLINT NOT NULL = 0
+  source_refund_order_id : BIGINT NULL [FK]
+  document_type : VARCHAR(20) NOT NULL = ORIGINAL
+  status : VARCHAR(20) NOT NULL = OPEN
+  current_workflow_instance_id : BIGINT NULL [sin FK]
+  distributor_id : BIGINT NOT NULL [sin FK]
+  employee_id : BIGINT NOT NULL [sin FK]
+  owner_id : BIGINT NOT NULL [sin FK]
+  customer_id : BIGINT NOT NULL [sin FK]
+  replacement_date : DATE NULL
+  justification : TEXT NULL
+  total : DECIMAL(12,2) NOT NULL = 0.00
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_order_details" as details {
+  * id : BIGSERIAL [PK]
+  --
+  refund_order_id : BIGINT NOT NULL [FK]
+  source_detail_id : BIGINT NULL [FK]
+  product_id : BIGINT NOT NULL [sin FK]
+  source_quantity : DECIMAL(12,2) NOT NULL
+  quantity : DECIMAL(12,2) NOT NULL
+  price_unit : DECIMAL(12,2) NOT NULL
+  line_status : VARCHAR(20) NOT NULL = ACTIVE
+  reason : VARCHAR(100) NULL [sin FK]
+  notes : TEXT NULL
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_order_detail_sources" as detail_sources {
+  * id : BIGSERIAL [PK]
+  --
+  refund_order_detail_id : BIGINT NOT NULL [FK]
+  invoice_number : VARCHAR(50) NULL
+  invoice_sap_doc : VARCHAR(50) NULL [sin FK]
+  invoiced_at : DATE NULL
+  lot : VARCHAR(50) NULL
+  due_date : DATE NULL
+  quantity : DECIMAL(12,2) NOT NULL
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_order_detail_image" as detail_image {
+  * id : BIGSERIAL [PK]
+  --
+  refund_order_detail_id : BIGINT NOT NULL [FK]
+  storage_key : VARCHAR(500) NOT NULL
+  content_type : VARCHAR(100) NULL
+  size_bytes : BIGINT NULL
+  sort_order : SMALLINT NOT NULL = 0
+  taken_at : TIMESTAMP NULL
+  uploaded_by : VARCHAR(255) NULL [sin FK]
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_workflow_instances" as instances {
+  * id : BIGSERIAL [PK]
+  --
+  refund_order_id : BIGINT NOT NULL [FK]
+  attempt : SMALLINT NOT NULL = 1
+  status : VARCHAR(20) NOT NULL = IN_APPROVAL
+  current_level_order : SMALLINT NULL
+  reactivated_from_instance_id : BIGINT NULL [FK]
+  started_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  finished_at : TIMESTAMP NULL
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_workflow_instance_levels" as instance_levels {
+  * id : BIGSERIAL [PK]
+  --
+  workflow_instance_id : BIGINT NOT NULL [FK]
+  level_order : SMALLINT NOT NULL
+  level_name : VARCHAR(100) NOT NULL
+  role_code : VARCHAR(50) NOT NULL [sin FK]
+  min_amount : DECIMAL(12,2) NOT NULL
+  max_amount : DECIMAL(12,2) NOT NULL
+  decision_mode : VARCHAR(20) NOT NULL = DOCUMENT_DECISION
+  status : VARCHAR(20) NOT NULL = PENDING
+  first_viewed_at : TIMESTAMP NULL
+  first_viewed_by : VARCHAR(255) NULL [sin FK]
+  started_at : TIMESTAMP NULL
+  finished_at : TIMESTAMP NULL
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_workflow_actions" as actions {
+  * id : BIGSERIAL [PK]
+  --
+  workflow_instance_id : BIGINT NOT NULL [FK]
+  workflow_instance_level_id : BIGINT NULL [FK]
+  related_refund_order_id : BIGINT NULL [FK]
+  action : VARCHAR(30) NOT NULL
+  actor_employee_code : BIGINT NULL [sin FK]
+  actor_role_code : VARCHAR(50) NULL [sin FK]
+  system_summary : TEXT NULL
+  comment : TEXT NULL
+  reason : TEXT NULL
+  previous_status : VARCHAR(20) NULL
+  new_status : VARCHAR(20) NULL
+  amount_before : DECIMAL(12,2) NULL
+  amount_after : DECIMAL(12,2) NULL
+  created_by : VARCHAR(255) NULL
+  updated_by : VARCHAR(255) NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  updated_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+  deleted_at : TIMESTAMP NULL
+}
+
+entity "refund_order_detail_decisions" as decisions {
+  * id : BIGSERIAL [PK]
+  --
+  workflow_action_id : BIGINT NOT NULL [FK]
+  refund_order_detail_id : BIGINT NOT NULL [FK]
+  decision : VARCHAR(20) NOT NULL
+  created_at : TIMESTAMP NULL = CURRENT_TIMESTAMP
+}
+
+rectangle "distributors\n(entidad externa)" as distributors #E2E8F0
+rectangle "empleados / clientes / productos\n(entidades no identificadas por FK)" as externals #E2E8F0
+rectangle "directorio de roles\n(no identificado por FK)" as roles #E2E8F0
+rectangle "SAP\n(sistema externo)" as sap #E2E8F0
+
+details "0..*" -[#16A34A]-> "1" orders : refund_order_id [DDL]
+detail_sources "0..*" -[#16A34A]-> "1" details : refund_order_detail_id [DDL]
+detail_image "0..*" -[#16A34A]-> "1" details : refund_order_detail_id [DDL]
+instances "0..*" -[#16A34A]-> "1" orders : refund_order_id [DDL]
+instance_levels "0..*" -[#16A34A]-> "1" instances : workflow_instance_id [DDL]
+actions "0..*" -[#16A34A]-> "1" instances : workflow_instance_id [DDL]
+actions "0..*" -[#16A34A]-> "0..1" instance_levels : workflow_instance_level_id [DDL]
+actions "0..*" -[#16A34A]-> "0..1" orders : related_refund_order_id [DDL]
+decisions "0..*" -[#16A34A]-> "1" actions : workflow_action_id [DDL]
+decisions "0..*" -[#16A34A]-> "1" details : refund_order_detail_id [DDL]
+
+orders -[#16A34A]-> orders : source_refund_order_id [DDL, FK NULL]
+details -[#16A34A]-> details : source_detail_id [DDL, FK NULL]
+instances -[#16A34A]-> instances : reactivated_from_instance_id [DDL, FK NULL]
+
+details -[#94A3B8,dashed]-> reasons : reason = code [sin FK]
+orders -[#94A3B8,dashed]-> instances : current_workflow_instance_id = id [sin FK]
+orders -[#94A3B8,dashed]-> distributors : distributor_id = id [FK comentada]
+orders -[#94A3B8,dashed]-> externals : employee_id / owner_id / customer_id
+details -[#94A3B8,dashed]-> externals : product_id
+approval_levels -[#94A3B8,dashed]-> roles : role_code
+instance_levels -[#94A3B8,dashed]-> roles : role_code
+actions -[#94A3B8,dashed]-> roles : actor_role_code
+actions -[#94A3B8,dashed]-> externals : actor_employee_code
+detail_sources -[#94A3B8,dashed]-> sap : invoice_sap_doc
+
+note right of approval_levels #FEE2E2
+  [DDL] Dos CHECK no pueden resolverse:
+  activation_min_amount no existe;
+  sla_hours está comentada.
+end note
+
+legend bottom
+  |= Trazo |= Significado |
+  | <color:#16A34A>línea verde continua</color> | FK declarada [DDL] |
+  | <color:#94A3B8>línea gris discontinua</color> | relación escalar sin FK |
+  Verde: DDL válido; amarillo: COMENTARIO; azul claro: APLICACIÓN.
+  Gris claro: entidad/referencia sin FK; rojo: inconsistencia.
+  Todas las tablas tienen PK. No hay UNIQUE ni índices adicionales en el bloque.
+  [DDL] identifica texto declarado; no se verificó una base desplegada.
+endlegend
+@enduml

@@ -322,8 +322,9 @@ export function ReturnsPage() {
         searchable
         searchPlaceholder="Buscar por cliente…"
         onSearchChange={setBusqueda}
-        exportable
+        // exportable
         exportFilename="devoluciones"
+    
         bodyMinHeight={560}
         pagination={{
           page: pagina,

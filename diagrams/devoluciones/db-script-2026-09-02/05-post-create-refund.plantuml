@@ -1,0 +1,113 @@
+@startuml
+' Fuente: db_script.sql:L915-L1172
+' Fecha: 2026-09-02
+' Base HEAD: dd4b92db5509efd2b3800235a665fad90139cf27
+' SHA-256 worktree: 2c62523505a864bc84c44db70d5f195f74a9b1b99f626399efcce1f41437f185
+title POST /api/v1/refunds - creación atómica desde Sales
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Sales" as Sales #E2E8F0
+participant "API devoluciones" as API #DBEAFE
+database "PostgreSQL\nrefund_*" as DB #DCFCE7
+
+Sales -[#2563EB]> API : POST /api/v1/refunds\n{ cabecera, items[], sources[], images[]? }
+API -[#2563EB]> API : [APLICACIÓN] validar forma, IDs BIGINT,\nDECIMAL(12,2), longitudes y cardinalidades
+
+note over Sales,API #DBEAFE
+  [CONTRATO]
+  1..50 items; 1..50 sources por item.
+  Sales garantiza elegibilidad, producto,
+  cliente/factura, precio y cantidad devolvible.
+  Refunds no consulta esos datos externos.
+end note
+
+alt JSON malformado, tipo incompatible o campo estructural ausente
+  API -[#2563EB]> Sales : 400 Bad Request
+else límite, rango, escala o longitud inválidos
+  API -[#2563EB]> Sales : 422 Unprocessable Entity
+else estructura inicial válida
+  API -[#16A34A]> DB : BEGIN ISOLATION LEVEL REPEATABLE READ
+  DB -[#16A34A]> API : fotografía transaccional iniciada
+  API -[#2563EB]> DB : SELECT motivos solicitados\nactivos y no borrados
+  DB -[#16A34A]> API : id, lot_requirement
+  API -[#2563EB]> API : [APLICACIÓN] validar reasonId, suma de sources\ny lotRequirement por cada source
+
+  note over API #DBEAFE
+    [CONTRATO]
+    REQUIRED: lot obligatorio.
+    OPTIONAL: invoiceNumber o lot.
+    HIDDEN: lot prohibido e invoiceNumber obligatorio.
+  end note
+
+  alt motivo, suma, source, lote o imagen inválidos
+    API -[#16A34A]> DB : ROLLBACK
+    DB -[#16A34A]> API : transacción revertida
+    API -[#2563EB]> Sales : 422 Unprocessable Entity
+  else payload válido
+    API -[#2563EB]> DB : SELECT niveles activos y no borrados\nuna sola vez en la transacción
+    DB -[#16A34A]> API : fotografía de configuración
+    API -[#2563EB]> API : [APLICACIÓN] exigir un workflow_version_id,\nórdenes 1..N únicas y min_amount >= 0
+
+    alt configuración ausente, múltiple o inválida
+      API -[#16A34A]> DB : ROLLBACK
+      DB -[#16A34A]> API : transacción revertida
+      API -[#2563EB]> Sales : 503 Service Unavailable
+    else configuración válida
+      note over API #FEE2E2
+        [INCONSISTENCIA / PENDIENTE]
+        max_amount no representa un último nivel sin techo.
+      end note
+
+      note over API #FFFFFF
+        [LÍMITE DEL SNAPSHOT]
+        El runtime no conserva workflow_version_id,
+        approval_policy, required_approvals ni on_reject.
+      end note
+
+      note over API #DBEAFE
+        [APLICACIÓN]
+        Generar noteNumber <= 50; source_quantity = quantity;
+        calcular total dentro de DECIMAL(12,2);
+        ORIGINAL / split 0 / OPEN; attempt 1 / IN_APPROVAL.
+      end note
+
+      API -[#16A34A]> DB : INSERT refund_orders RETURNING id
+      loop por item
+        API -[#16A34A]> DB : INSERT refund_order_details
+        loop por source
+          API -[#16A34A]> DB : INSERT refund_order_detail_sources
+        end
+        opt images incluidas
+          API -[#16A34A]> DB : INSERT refund_order_detail_image
+        end
+      end
+      API -[#16A34A]> DB : INSERT refund_workflow_instances RETURNING id
+      loop por nivel validado
+        API -[#16A34A]> DB : INSERT refund_workflow_instance_levels
+      end
+      API -[#16A34A]> DB : INSERT refund_workflow_actions\naction = CREATED
+      API -[#16A34A]> DB : UPDATE refund_orders\nSET current_workflow_instance_id
+      API -[#2563EB]> API : [APLICACIÓN] verificar cardinalidad\nde todas las escrituras esperadas
+
+      alt fallo o cardinalidad incompleta
+        API -[#16A34A]> DB : ROLLBACK
+        DB -[#16A34A]> API : transacción revertida
+        API -[#2563EB]> Sales : 500 Internal Server Error
+      else agregado completo
+        API -[#16A34A]> DB : COMMIT
+        DB -[#16A34A]> API : transacción confirmada
+        API -[#2563EB]> Sales : 201 Created\n{ id, noteNumber, splitSequence, documentType,\nstatus, total, workflow }
+      end
+    end
+  end
+end
+
+note over Sales,API #FFFFFF
+  [PENDIENTE]
+  Sin idempotency key ni unicidad de negocio,
+  un reintento puede crear otra devolución.
+  El algoritmo de noteNumber tampoco está definido.
+end note
+@enduml
