@@ -28,27 +28,27 @@ end note
 Gateway -> Service: createRefundOrder(payload)
 
 Service -> ReasonsDB: 1. findActiveReasons(payload.items.reason)
-note right of ReasonsDB
-  El catálogo dice qué evidencia exige cada
-  motivo: lot_requirement y
-  due_date_requirement en REQUIRED / OPTIONAL
-  / HIDDEN, más requires_photo y
-  requires_notes.
-  reason es FK: un motivo inventado no entra.
-end note
+' note right of ReasonsDB
+'   El catálogo dice qué evidencia exige cada
+'   motivo: lot_requirement y
+'   due_date_requirement en REQUIRED / OPTIONAL
+'   / HIDDEN, más requires_photo y
+'   requires_notes.
+'   reason es FK: un motivo inventado no entra.
+' end note
 ReasonsDB --> Service: reasons[]
 
 Service -> Service: 2. validatePayload(payload, reasons)
-note right of Service
-  - al menos una línea y quantity > 0
-  - price_unit congelado al momento del reclamo
-  - reason existe y está activo
-  - lote y vencimiento según el motivo:
-    REQUIRED exige el dato, HIDDEN lo descarta
-  - al menos una foto si requires_photo
-  - la suma de sources[].quantity es
-    EXACTAMENTE items[].quantity
-end note
+' note right of Service
+'   - al menos una línea y quantity > 0
+'   - price_unit congelado al momento del reclamo
+'   - reason existe y está activo
+'   - lote y vencimiento según el motivo:
+'     REQUIRED exige el dato, HIDDEN lo descarta
+'   - al menos una foto si requires_photo
+'   - la suma de sources[].quantity es
+'     EXACTAMENTE items[].quantity
+' end note
 
 Service -> Service: 3. computeTotal(payload.items)
 note right of Service
@@ -57,38 +57,38 @@ note right of Service
 end note
 
 Service -> LevelsCfgDB: 4. findActiveApprovalLadder(total)
-note right of LevelsCfgDB
-  SELECT de la versión publicada:
-  is_active = TRUE AND deleted_at IS NULL,
-  ORDER BY level_order.
-  El techo de cada nivel es el piso del
-  siguiente; el último no tiene techo.
-  El nivel 1 SIEMPRE entra. Los niveles cuyo
-  piso quedó por encima del total nacen
-  'SKIPPED': el monto nunca los alcanza.
-end note
+' note right of LevelsCfgDB
+'   SELECT de la versión publicada:
+'   is_active = TRUE AND deleted_at IS NULL,
+'   ORDER BY level_order.
+'   El techo de cada nivel es el piso del
+'   siguiente; el último no tiene techo.
+'   El nivel 1 SIEMPRE entra. Los niveles cuyo
+'   piso quedó por encima del total nacen
+'   'SKIPPED': el monto nunca los alcanza.
+' end note
 LevelsCfgDB --> Service: ladder[] (level_order, name, role_code,\nmin_amount, max_amount, approval_policy,\nrequired_approvals, on_reject, sla_hours)
 
 Service -> TX: 5. startTransaction()
 activate TX
 
 Service -> OrdersDB: 6. insertRefundOrder(payload, total)
-note right of OrdersDB
-  - external_sales_id = id de la nota en Ventas
-    (idempotencia: el UNIQUE con split_sequence
-    corta el reintento del POST)
-  - note_number = correlativo de Ventas
-  - split_sequence = 0
-  - document_type = 'ORIGINAL'
-  - status = 'OPEN'
-  - source_refund_order_id = NULL
-  - distributor_id, employee_id,
-    owner_id, customer_id
-  - replacement_date, justification
-  - edit_count = 0
-  - approved_total, rejected_total y
-    settlement_type quedan NULL hasta el cierre
-end note
+' note right of OrdersDB
+'   - external_sales_id = id de la nota en Ventas
+'     (idempotencia: el UNIQUE con split_sequence
+'     corta el reintento del POST)
+'   - note_number = correlativo de Ventas
+'   - split_sequence = 0
+'   - document_type = 'ORIGINAL'
+'   - status = 'OPEN'
+'   - source_refund_order_id = NULL
+'   - distributor_id, employee_id,
+'     owner_id, customer_id
+'   - replacement_date, justification
+'   - edit_count = 0
+'   - approved_total, rejected_total y
+'     settlement_type quedan NULL hasta el cierre
+' end note
 OrdersDB --> Service: refundOrderId: 2001
 
 Service -> DetailsDB: 7. insertRefundOrderDetails(2001, payload.items)
@@ -128,18 +128,18 @@ Service -> OrdersDB: 11. updateCurrentWorkflowInstance(2001, 90)
 OrdersDB --> Service: ok
 
 Service -> LevelsDB: 12. insertInstanceLevelsSnapshot(90, ladder)
-note right of LevelsDB
-  Congela la escalera de ESTE intento:
-  banda (min_amount / max_amount),
-  approval_policy, required_approvals,
-  on_reject y sla_hours.
-  - nivel 1: decision_mode = 'ITEM_SELECTION',
-    status = 'IN_PROGRESS', started_at = NOW()
-  - niveles 2..N: 'DOCUMENT_DECISION',
-    status = 'PENDING'
-  Republicar la configuración no
-  reescribe la historia.
-end note
+' note right of LevelsDB
+'   Congela la escalera de ESTE intento:
+'   banda (min_amount / max_amount),
+'   approval_policy, required_approvals,
+'   on_reject y sla_hours.
+'   - nivel 1: decision_mode = 'ITEM_SELECTION',
+'     status = 'IN_PROGRESS', started_at = NOW()
+'   - niveles 2..N: 'DOCUMENT_DECISION',
+'     status = 'PENDING'
+'   Republicar la configuración no
+'   reescribe la historia.
+' end note
 LevelsDB --> Service: levelIds[]: [200, 201]
 
 Service -> ActionsDB: 13. insertWorkflowAction(90, level: NULL, 'CREATED')

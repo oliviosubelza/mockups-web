@@ -23,14 +23,14 @@ Service -> LevelsDB: 1. findCurrentLevel(instanceId)
 LevelsDB --> Service: level { id: 210, level_order: 1,\ndecision_mode: 'ITEM_SELECTION', status: 'IN_PROGRESS' }
 
 Service -> Service: 2. assertSelectionAllowed(level, actor)
-note right of Service
-  409 si decision_mode != 'ITEM_SELECTION'
-  (solo el nivel 1 del PRIMER intento
-  selecciona; después nunca más hay casillas)
-  403 si actor.roleCode != level.role_code
-  422 si la selección no cubre todas las
-  líneas ACTIVE, o si deja cero seleccionadas
-end note
+' note right of Service
+'   409 si decision_mode != 'ITEM_SELECTION'
+'   (solo el nivel 1 del PRIMER intento
+'   selecciona; después nunca más hay casillas)
+'   403 si actor.roleCode != level.role_code
+'   422 si la selección no cubre todas las
+'   líneas ACTIVE, o si deja cero seleccionadas
+' end note
 
 Service -> TX: 3. startTransaction()
 activate TX
@@ -106,15 +106,6 @@ else Selección parcial (al menos una línea disociada)
     OrdersDB --> Service: ok
 
     Service -> ActionsDB: 14. insertWorkflowAction(instanceId: 55, level: NULL, 'DISSOCIATED_CREATED')
-    note right of ActionsDB
-      Fila puente: vive en la instancia de la
-      ORIGINAL y apunta a la disociada.
-      - related_refund_order_id = 1004
-      - amount_before = 1000.00
-      - amount_after = 600.00
-      - system_summary = 'Se disoció 1 de 2 ítems
-        por Bs 400,00.'
-    end note
     ActionsDB --> Service: ok
 end
 

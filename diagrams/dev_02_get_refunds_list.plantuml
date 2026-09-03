@@ -32,17 +32,6 @@ note right of Service
 end note
 
 Service -> OrdersDB: 2. findRefundOrdersPage(filters)
-note right of OrdersDB
-  WHERE deleted_at IS NULL
-  AND distributor_id = :distributorId
-  AND (:status IS NULL OR status = :status)
-  AND (:employeeId IS NULL OR employee_id = :employeeId)
-  AND created_at::date BETWEEN :from AND :to
-  ORDER BY created_at DESC, id DESC
-  LIMIT :pageSize OFFSET (:page - 1) * :pageSize
-  La búsqueda por cliente exige JOIN al
-  maestro de clientes (hoy sin FK).
-end note
 OrdersDB --> Service: rows[] + totalItems
 
 Service -> InstanceDB: 3. findCurrentInstances(currentWorkflowInstanceIds)

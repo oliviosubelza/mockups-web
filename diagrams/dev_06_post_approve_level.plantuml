@@ -33,14 +33,7 @@ end note
 RoleDir --> Service: employees[]
 
 Service -> Service: 4. assertCanApprove(order, currentLevel, actor, employees)
-note right of Service
-  409 si order.status != 'OPEN' o
-  instance.status != 'IN_APPROVAL'
-  403 si el actor no pertenece al rol del
-  nivel activo
-  409 si el nivel exige selección de ítems
-  y todavía no se registró
-end note
+
 
 Service -> ActionsDB: 5. countLevelApprovals(instanceId: 90, levelId: 201)
 note right of ActionsDB
@@ -78,15 +71,7 @@ alt La política del nivel quedó satisfecha
     LevelsDB --> Service: ok
 
     Service -> Service: 10. resolveNextLevel(levels, order.total)
-note right of Service
-  El nivel activo es el que contiene al monto
-  en su banda [min_amount, max_amount].
-  - Si order.total <= max_amount del nivel que
-    acaba de aprobar, la nota SE CIERRA ACÁ y
-    los niveles de arriba pasan a 'SKIPPED'.
-  - Si no, se abre el nivel siguiente.
-  El flujo solo sube o se detiene: nunca baja.
-end note
+
 
     alt El monto excede el techo del nivel (queda escalera por delante)
         Service -> LevelsDB: 11. openLevel(nextLevelId, 'IN_PROGRESS', startedAt: NOW())
@@ -118,14 +103,7 @@ end note
         InstanceDB --> Service: ok
 
         Service -> OrdersDB: 16. closeRefundOrder(2001, 'APPROVED')
-        note right of OrdersDB
-          Al cerrar se escribe el resultado
-          comercial, que antes no se guardaba:
-          - approved_total = monto autorizado
-          - rejected_total = total - approved_total
-          - settlement_type = 'NOTA_CREDITO'
-            o 'CAMBIO_STOCK'
-        end note
+     
         OrdersDB --> Service: ok
 
         Service -> ActionsDB: 17. insertWorkflowAction(90, NULL, 'CLOSED')

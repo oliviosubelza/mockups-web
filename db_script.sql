@@ -2,22 +2,66 @@
     CREATE SCHEMA public;
     CREATE EXTENSION postgis;
 
-    CREATE TABLE distributors (
-        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        name VARCHAR(50) NOT NULL, -- Nombre comercial de la distribuidora/agencia
-        latitude NUMERIC(9,6) NOT NULL, -- Coordenada GPS de la planta/centro
-        longitude NUMERIC(9,6) NOT NULL,
+-----------------------##################------------------- referencias:
+    
+CREATE TABLE distributors_ref
+(
+    id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_ref BIGINT NOT NULL,
+    name      VARCHAR(50)   NOT NULL, -- Nombre comercial de la distribuidora/agencia
+    latitude  NUMERIC(9, 6) NOT NULL, -- Coordenada GPS de la planta/centro
+    longitude NUMERIC(9, 6) NOT NULL,
     --     department_id BIGINT NOT NULL, -- Departamento/Estado geográfico
-        city_id BIGINT NOT NULL,
-        code_sap BIGINT, -- Código de distribuidora en SAP/Ventas
-        is_active BOOLEAN NOT NULL DEFAULT TRUE
+    city_id   BIGINT        NOT NULL,
+    code_sap  BIGINT,                 -- Código de distribuidora en SAP/Ventas
+    is_active BOOLEAN       NOT NULL DEFAULT TRUE
 
-        created_by VARCHAR(255),
-        updated_by VARCHAR(255),
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP,
-    );
+--         created_by VARCHAR(255),
+--         updated_by VARCHAR(255),
+--         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--         deleted_at TIMESTAMP
+);
+
+CREATE TABLE products_ref
+(
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_ref BIGINT NOT NULL,
+    name                 VARCHAR(255) NOT NULL,
+    sku                  VARCHAR(255) NOT NULL,
+    quantity_min         DECIMAL(12, 2), -- Cantidad total esperada en unidad mínima
+    equivalence_box_unit DECIMAL(12, 2)  -- Unidad de equivalencia por caja
+);
+
+CREATE TABLE sale_orders_ref
+(
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_ref BIGINT NOT NULL,
+    document_id         BIGINT NOT NULL, -- Documento de necesidad SAP
+    sale_order_split_id BIGINT NOT NULL,
+    distributor_id      BIGINT NOT NULL,
+    total_weight_kg     DECIMAL(12, 2),
+    total_volume_m3     DECIMAL(12, 2),
+    invoice_id          BIGINT,
+    invoice_amount      DECIMAL(12, 2) DEFAULT 0.00
+);
+
+    -- CREATE TABLE distributors (
+    --     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    --     name VARCHAR(50) NOT NULL, -- Nombre comercial de la distribuidora/agencia
+    --     latitude NUMERIC(9,6) NOT NULL, -- Coordenada GPS de la planta/centro
+    --     longitude NUMERIC(9,6) NOT NULL,
+    -- --     department_id BIGINT NOT NULL, -- Departamento/Estado geográfico
+    --     city_id BIGINT NOT NULL,
+    --     code_sap BIGINT, -- Código de distribuidora en SAP/Ventas
+    --     is_active BOOLEAN NOT NULL DEFAULT TRUE
+
+    --     created_by VARCHAR(255),
+    --     updated_by VARCHAR(255),
+    --     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    --     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    --     deleted_at TIMESTAMP,
+    -- );
 
     CREATE TABLE sale_channel_restrictions(
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -913,25 +957,27 @@
 
 
     -- ================== DEVOLUTIONS ===================
-    CREATE TABLE refund_reasons (
-        code VARCHAR(100) PRIMARY KEY,                                  -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
-        name VARCHAR(150) NOT NULL,                                     -- Etiqueta visible
-        lot_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL',        -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
-        due_date_requirement VARCHAR(20) NOT NULL DEFAULT 'OPTIONAL',   -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
-        requires_photo BOOLEAN NOT NULL DEFAULT TRUE,                   -- Sin foto no se acepta la lìnea
-        requires_notes BOOLEAN NOT NULL DEFAULT TRUE,                   -- Sin observaciòn no se acepta la lìnea
-        sort_order SMALLINT NOT NULL DEFAULT 0,                         -- Orden en el selector
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,                        -- Inactivo deja de ofrecerse sin romper el històrico
+CREATE TABLE refund_reasons
+(
+    id                   BIGSERIAL PRIMARY KEY,
+    code                 VARCHAR(100) PRIMARY KEY,                 -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
+    name                 VARCHAR(150) NOT NULL,                    -- Etiqueta visible
+    lot_requirement      VARCHAR(20)  NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
+    due_date_requirement VARCHAR(20)  NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
+    requires_photo       BOOLEAN      NOT NULL DEFAULT TRUE,       -- Sin foto no se acepta la lìnea
+    requires_notes       BOOLEAN      NOT NULL DEFAULT TRUE,       -- Sin observaciòn no se acepta la lìnea
+    sort_order           SMALLINT     NOT NULL DEFAULT 0,          -- Orden en el selector
+    is_active            BOOLEAN      NOT NULL DEFAULT TRUE,       -- Inactivo deja de ofrecerse sin romper el històrico
 
-        created_by VARCHAR(255),
-        updated_by VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP NULL,
+    created_by           VARCHAR(255),
+    updated_by           VARCHAR(255),
+    created_at           TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
+    deleted_at           TIMESTAMP    NULL,
 
-        CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN')),
-        CONSTRAINT ck_refund_reason_due_date CHECK (due_date_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
-    );
+    CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN')),
+    CONSTRAINT ck_refund_reason_due_date CHECK (due_date_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
+);
 
 
     -- La escalera configurable. Un piso por nivel: el techo es el piso del
@@ -1002,31 +1048,34 @@
         -- CONSTRAINT fk_refund_order_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
     );
 
-    CREATE TABLE refund_order_details (
-        id BIGSERIAL PRIMARY KEY,
-        refund_order_id BIGINT NOT NULL, -- Devoluciòn a la que pertenece esta fila/detalle
-        source_detail_id BIGINT NULL, -- Hace referencia al item original por trazabilidad
-        product_id BIGINT NOT NULL, -- ID del producto
+CREATE TABLE refund_order_details
+(
+    id               BIGSERIAL PRIMARY KEY,
+    refund_order_id  BIGINT         NOT NULL,                  -- Devoluciòn a la que pertenece esta fila/detalle
+    source_detail_id BIGINT         NULL,                      -- Hace referencia al item original por trazabilidad
+    refund_reason_id BIGINT         NOT NULL,
+    product_id       BIGINT         NOT NULL,                  -- ID del producto
 
-        source_quantity DECIMAL(12, 2) NOT NULL, -- Cantidad original cuando se crea/ nunca cambia.
-        quantity DECIMAL(12, 2) NOT NULL, -- Cantidad vigente. Puede que se haya reducido en una nota/EDITING
+    source_quantity  DECIMAL(12, 2) NOT NULL,                  -- Cantidad original cuando se crea/ nunca cambia.
+    quantity         DECIMAL(12, 2) NOT NULL,                  -- Cantidad vigente. Puede que se haya reducido en una nota/EDITING
 
-        price_unit DECIMAL(12, 2) NOT NULL, -- Precio unitario congelado al momento del reclamo
-        line_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'DISSOCIATED'
+    price_unit       DECIMAL(12, 2) NOT NULL,                  -- Precio unitario congelado al momento del reclamo
+    line_status      VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'DISSOCIATED'
 
-        reason VARCHAR(100), -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'
-        notes TEXT, -- Observación libre del vendedor sobre este producto
+--     reason           VARCHAR(100),                             -- Motivo clasificado del reclamo 'CONTAMINACION_FISICA'
+    notes            TEXT,                                     -- Observación libre del vendedor sobre este producto
 
-        created_by VARCHAR(255),
-        updated_by VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP NULL,
+    created_by       VARCHAR(255),
+    updated_by       VARCHAR(255),
+    created_at       TIMESTAMP               DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP               DEFAULT CURRENT_TIMESTAMP,
+    deleted_at       TIMESTAMP      NULL,
 
-        CONSTRAINT fk_refund_order_detail_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders(id),
-        CONSTRAINT fk_refund_order_detail_source FOREIGN KEY (source_detail_id) REFERENCES refund_order_details(id),
-        CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity)
-    );
+    CONSTRAINT fk_refund_order_detail_order FOREIGN KEY (refund_order_id) REFERENCES refund_orders (id),
+    CONSTRAINT fk_refund_order_detail_refund_reason_id FOREIGN KEY (refund_reason_id) REFERENCES refund_reasons (id),
+    CONSTRAINT fk_refund_order_detail_source FOREIGN KEY (source_detail_id) REFERENCES refund_order_details (id),
+    CONSTRAINT ck_refund_order_detail_qty CHECK (quantity >= 0 AND quantity <= source_quantity)
+);
 
     -- De què factura y de què lote sale cada unidad. En el contrato HTTP es un
     -- array dentro de la lìnea; acà es una fila por origen.

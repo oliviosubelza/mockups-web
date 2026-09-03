@@ -27,17 +27,6 @@ Service -> DetailsDB: 3. findActiveDetails(1004)
 DetailsDB --> Service: details[] (source_quantity, quantity, price_unit)
 
 Service -> Service: 4. assertEditable(order, instance, actor, payload)
-note right of Service
-  409 si instance.status != 'EDITING':
-  una nota en aprobación no se edita
-  409 si order.edit_count >= 1: el tope de
-  negocio es una sola corrección por nota
-  403 si el actor no es el vendedor dueño
-  de la nota ni de su distribuidora
-  422 si quantity > source_quantity — el CHECK
-  de la tabla exige 0 <= quantity <= source_quantity
-  422 si todas las líneas quedan en 0
-end note
 
 Service -> Service: 5. recomputeTotal(payload.items)
 note right of Service
