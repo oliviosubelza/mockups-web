@@ -1291,15 +1291,34 @@ export type WorkflowLevelStatus =
  *
  * `COMMENT` is not a decision and can be left any number of times; the other
  * kinds are each an approver's single answer for a round.
+ *
+ * `REACTIVATE` is the odd one out: it is not an answer to a level but the event
+ * that reopens a document a level already refused, and it is written on the
+ * *new* instance because that is the one whose existence it explains.
  */
 export type WorkflowActionKind =
   | "APPROVE"
   | "REJECT"
   | "RETURN"
+  | "REACTIVATE"
   | "COMMENT"
   | "CANCEL"
   | "REASSIGN"
   | "MIGRATE";
+
+/**
+ * What a level is allowed to decide: the items one by one, or the document as a
+ * whole.
+ *
+ * The selection is made once and never again — the first desk of the first pass
+ * says which products come back, and every desk above it answers a single
+ * question about what that desk left standing. Storing the mode on the level
+ * rather than deriving it in each screen is what stops a second screen deriving
+ * it differently: it is snapshotted like the policy and the band, so what an
+ * approver was allowed to do is readable from the row long after the rules
+ * changed.
+ */
+export type WorkflowDecisionMode = "ITEM_SELECTION" | "DOCUMENT_DECISION";
 
 /** An approver resolved onto a running level, and whether they answered yet. */
 export interface WorkflowAssignee {
@@ -1322,6 +1341,15 @@ export interface WorkflowInstanceLevel {
   attempt: number;
   /** Frozen copy of the level name, so renaming the template never rewrites history. */
   name: string;
+  /**
+   * Whether this round of this level selects items or answers for the whole
+   * document.
+   *
+   * Only the first level of the first pass ever selects. Frozen onto the row for
+   * the same reason the policy is: a screen must be able to say what this desk
+   * was allowed to do without re-deriving the rule that put it there.
+   */
+  decisionMode: WorkflowDecisionMode;
   status: WorkflowLevelStatus;
   approvalPolicy: ApprovalPolicy;
   requiredApprovals: number;
@@ -1366,6 +1394,20 @@ export interface WorkflowAction {
    */
   amountBefore: number | null;
   amountAfter: number | null;
+  /**
+   * Evidence attached to the action itself, as URLs.
+   *
+   * Only a reactivation carries any today, and it is not decoration: reopening a
+   * note a desk refused overrides a signature, and the photo of the signed
+   * authorisation is what gives that override an owner outside the system. It is
+   * on the *action* and not on the document because it justifies this one event
+   * — a second reactivation is a second authorisation, and the trail has to show
+   * which paper backed which pass.
+   *
+   * Empty on every other kind. The DDL equivalent is a child table hanging off
+   * `refund_workflow_actions`, the same shape `refund_order_detail_image` has.
+   */
+  photos: string[];
 }
 
 /**
@@ -1378,6 +1420,16 @@ export interface WorkflowAction {
 export interface WorkflowInstance {
   id: string;
   status: WorkflowInstanceStatus;
+  /**
+   * Which pass over the document this instance is, from 1.
+   *
+   * It counts reactivations and nothing else: an instance opened because
+   * somebody reopened a refused document is pass 2, and the number is what says
+   * the item selection already happened and must not be asked for again. A
+   * correction is *not* a new pass — it wipes every ruling, so its level 1 has
+   * to select all over again and starts back at 1.
+   */
+  attempt: number;
   /** Level currently waiting for signatures. `null` once the instance closed. */
   currentLevelOrder: number | null;
   targetCode: WorkflowTargetCode;
@@ -1398,6 +1450,15 @@ export interface WorkflowInstance {
   selectionContext: { amount: number };
   /** Instance this one replaces, when a correction superseded it. */
   supersededInstanceId: string | null;
+  /**
+   * Instance this one reopens, when a refused document was reactivated.
+   *
+   * Deliberately not the same field as `supersededInstanceId`: a superseded
+   * instance was replaced because the claim behind it changed, and a
+   * reactivated one was not replaced at all — it stays `REJECTED`, because it
+   * really was rejected and that is what an audit reads.
+   */
+  reactivatedFromInstanceId: string | null;
   startedAt: string;
   finishedAt: string | null;
   levels: WorkflowInstanceLevel[];

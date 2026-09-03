@@ -4,14 +4,22 @@
 // entra en el historial del browser y se puede pasar por chat; un diálogo se cierra con un click al
 // costado y no se puede compartir.
 //
-// UN FORMULARIO PLANO, no tarjetas ni panel de vista previa. Son DOS campos —nombre y descripción—:
-// etiqueta a la izquierda, campo a la derecha, «Volver» y «Guardar» abajo a la derecha — el mismo
-// esqueleto del sistema que esta pantalla reemplaza, que es donde el usuario ya sabe mirar.
+// UN FORMULARIO PLANO, no tarjetas ni panel de vista previa. Son CUATRO campos —nombre, descripción,
+// centro de costo y tipo de proceso—: etiqueta a la izquierda, campo a la derecha, «Volver» y
+// «Guardar» abajo a la derecha — el mismo esqueleto del sistema que esta pantalla reemplaza, que es
+// donde el usuario ya sabe mirar.
+//
+// EL TIPO DE PROCESO ES EL ÚNICO CAMPO CON CONSECUENCIA CONTABLE, y por eso es el que lleva la nota
+// bajo el campo: REGULAR emite la nota de crédito o débito, REPOSICIÓN es un intercambio —entran 10,
+// salen 10, no sale ningún documento de plata— y SAP se procesa del otro lado. Desde el depósito los
+// dos primeros se ven igual, así que la diferencia hay que decirla en la pantalla y no suponerla.
+//
+// LA DESCRIPCIÓN ES EL ÚNICO CAMPO OPCIONAL. Los otros tres son obligatorios.
 //
 // LO QUE SE FUE Y POR QUÉ. El código, el requisito de vencimiento, las banderas de foto y observación
 // y el orden del selector dejaron de ser columnas de `refund_reasons`, así que dejaron de ser campos.
-// El «Centro de Costo» y el «Tipo de Proceso» del sistema viejo tampoco se agregaron: no tienen
-// columna adonde ir.
+// El «Centro de Costo» y el «Tipo de Proceso» del sistema viejo SÍ VOLVIERON: se les agregó columna
+// (`cost_center` y `process_type`) porque el negocio los necesita.
 //
 // UN SOLO COMPONENTE PARA CREAR Y EDITAR: los campos y las reglas son los mismos, y dos componentes
 // serían dos lugares donde arreglar la misma validación. Lo que decide el modo es el `id` del path.
@@ -26,47 +34,25 @@ import { useRouteParams } from '@/core/routing/active-route'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { FormRow } from '../../../components/common/form-row'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { useRefundReasonsStore, type MotivoDevolucion } from '../../../stores/refund-reasons-store'
-
-/**
- * Una fila del formulario: etiqueta a la izquierda, campo a la derecha.
- *
- * La etiqueta va alineada a la derecha y pegada al campo, como en el sistema viejo: el ojo baja por
- * el borde de los campos y las etiquetas quedan del lado de lo que nombran. En una pantalla angosta
- * la grilla se cae a una sola columna sola (`sm:`), así que la etiqueta se pone arriba y nada se
- * aprieta.
- */
-function Fila({
-  label,
-  htmlFor,
-  requerido,
-  ayuda,
-  children,
-}: {
-  label: string
-  htmlFor?: string
-  requerido?: boolean
-  ayuda?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="grid gap-1.5 sm:grid-cols-[minmax(0,160px)_minmax(0,1fr)] sm:items-baseline sm:gap-x-4">
-      <Label htmlFor={htmlFor} className="pt-1.5 text-xs font-semibold sm:justify-end sm:text-right">
-        {label}
-        {requerido && <span className="text-destructive">*</span>}
-      </Label>
-      <div className="min-w-0 space-y-1">
-        {children}
-        {ayuda && <p className="text-[11px] leading-snug text-muted-foreground">{ayuda}</p>}
-      </div>
-    </div>
-  )
-}
+import {
+  PROCESO_META,
+  TIPOS_PROCESO,
+  useRefundReasonsStore,
+  type MotivoDevolucion,
+  type TipoProceso,
+} from '../../../stores/refund-reasons-store'
 
 export function RefundReasonFormPage() {
   const navigate = useNavigate()
@@ -93,6 +79,10 @@ export function RefundReasonFormPage() {
   // diferencia con un diálogo, que sobrevive cerrado y necesita el efecto para no mostrar lo anterior.
   const [name, setName] = useState(enEdicion?.name ?? '')
   const [description, setDescription] = useState(enEdicion?.description ?? '')
+  const [costCenter, setCostCenter] = useState(enEdicion?.costCenter ?? '')
+  // Un alta arranca SIN tipo elegido y no en REGULAR: el tipo decide si sale una nota de crédito o
+  // sale producto, y un valor puesto por el formulario se firma sin haberlo mirado.
+  const [processType, setProcessType] = useState<TipoProceso | ''>(enEdicion?.processType ?? '')
 
   const volver = () => navigate('/motivos-devolucion')
 
@@ -119,17 +109,23 @@ export function RefundReasonFormPage() {
     )
   }
 
+  // La descripción NO bloquea: es el único campo opcional del formulario.
   const motivoBloqueo: string | null = !name.trim()
     ? 'Poné el nombre del motivo'
-    : !description.trim()
-      ? 'Poné la descripción del motivo'
-      : null
+    : !costCenter.trim()
+      ? 'Poné el centro de costo'
+      : !processType
+        ? 'Elegí el tipo de proceso'
+        : null
 
   const guardar = () => {
     if (motivoBloqueo) return
+    if (!processType) return
     const input = {
       name,
       description,
+      costCenter,
+      processType,
       // OPEN QUESTION: `lot_requirement` is not on this form — the request was name + description
       // only — so a brand-new motivo always takes the DDL default 'OPTIONAL'. Nobody can currently
       // create a motivo that REQUIRES a lot (a RECALL) or one where the lot does not apply (HIDDEN);
@@ -170,7 +166,7 @@ export function RefundReasonFormPage() {
       <Separator />
 
       <div className="space-y-3.5">
-        <Fila label="Nombre" htmlFor="motivo-name" requerido>
+        <FormRow label="Nombre" htmlFor="motivo-name" requerido>
           <Input
             id="motivo-name"
             value={name}
@@ -180,17 +176,17 @@ export function RefundReasonFormPage() {
             className="h-9"
             autoFocus
           />
-        </Fila>
+        </FormRow>
 
-        {/* LLEVA ASTERISCO aunque la pantalla vieja mostrara la descripción como opcional: la columna
-            es `VARCHAR(300) NOT NULL`, así que una fila sin descripción no entra en la tabla.
+        {/* SIN ASTERISCO: es el único campo opcional del formulario, como en la pantalla vieja. La
+            columna hoy es `VARCHAR(300) NOT NULL`, así que una descripción vacía se guarda como ''
+            y el DDL tiene que dejar de exigirla (o admitir la cadena vacía) antes de que esto suba.
             Va en un `Textarea` y no en un `Input`: 300 caracteres es una frase larga, y en una línea
             de 9 px de alto el final queda fuera de la vista mientras se escribe. Crece con el
             contenido (`field-sizing-content`), así que un motivo de media línea no ocupa un párrafo. */}
-        <Fila
+        <FormRow
           label="Descripción"
           htmlFor="motivo-description"
-          requerido
           ayuda="Para qué es el motivo, en una frase. Es lo que lee quien tiene que decidir la devolución."
         >
           <Textarea
@@ -202,10 +198,61 @@ export function RefundReasonFormPage() {
             rows={2}
             className="text-sm"
           />
-        </Fila>
+        </FormRow>
+
+        <FormRow
+          label="Centro de costo"
+          htmlFor="motivo-cost-center"
+          requerido
+          ayuda="Contra qué centro se imputa la devolución. Es texto libre: el maestro de centros de costo es de contabilidad y no vive en esta base."
+        >
+          <Input
+            id="motivo-cost-center"
+            value={costCenter}
+            onChange={(e) => setCostCenter(e.target.value)}
+            placeholder="Centro de costo"
+            maxLength={50}
+            className="h-9"
+          />
+        </FormRow>
+
+        {/* La nota cambia con lo elegido y no lista los tres casos de una: lo que hay que entender es
+            qué va a pasar con ESTE motivo, y un párrafo con las tres opciones se lee como relleno. */}
+        <FormRow
+          label="Tipo de proceso"
+          htmlFor="motivo-process-type"
+          requerido
+          ayuda={processType ? PROCESO_META[processType].nota : undefined}
+        >
+          <Select
+            value={processType}
+            onValueChange={(v) => setProcessType(v as TipoProceso)}
+          >
+            {/* `SelectValue` con children: Base UI, sin render explícito, escribe el valor crudo
+                («REPLACEMENT») en vez de la etiqueta. */}
+            <SelectTrigger id="motivo-process-type" className="h-9 w-full">
+              <SelectValue>
+                {() =>
+                  processType ? (
+                    PROCESO_META[processType].label
+                  ) : (
+                    <span className="text-muted-foreground">Elegí el tipo de proceso</span>
+                  )
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TIPOS_PROCESO.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {PROCESO_META[t].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormRow>
 
         {enEdicion && (
-          <Fila label="Estado" ayuda="Apagado deja de ofrecerse en devoluciones nuevas; el histórico lo sigue mostrando.">
+          <FormRow label="Estado" ayuda="Apagado deja de ofrecerse en devoluciones nuevas; el histórico lo sigue mostrando.">
             <label className="flex items-center gap-2 pt-1.5 text-xs">
               <Switch
                 checked={enEdicion.isActive}
@@ -216,7 +263,7 @@ export function RefundReasonFormPage() {
               />
               Se ofrece en la lista del vendedor
             </label>
-          </Fila>
+          </FormRow>
         )}
       </div>
 

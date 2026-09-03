@@ -91,3 +91,28 @@ export function useRejectReturn() {
     onError: (e) => toast.error("No se pudo registrar la decisión", { description: e.message }),
   });
 }
+
+/**
+ * Reactivar una devolución rechazada: la misma nota vuelve a subir la escalera.
+ *
+ * No es la corrección (`update`): el reclamo no cambia, así que no hay pantalla de edición de por
+ * medio y el vendedor no interviene. Por eso alcanza con el motivo.
+ */
+export function useReactivateReturn() {
+  const qc = useQueryClient();
+  return useMutation<
+    Return,
+    Error,
+    { id: number; actor: ApprovalActor; reason: string; photos: string[] }
+  >({
+    mutationFn: (input) => returnsService.reactivate(input),
+    onSuccess: (ret) => {
+      qc.invalidateQueries({ queryKey: queryKeys.returns });
+      const next = pendingLevelOf(ret);
+      toast.success(next ? `Reactivada, vuelve a ${next.name}` : "Devolución reactivada", {
+        description: `Código ${ret.id}`,
+      });
+    },
+    onError: (e) => toast.error("No se pudo reactivar la devolución", { description: e.message }),
+  });
+}

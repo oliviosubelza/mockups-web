@@ -21,7 +21,7 @@
 // forma que una tabla sabe manejar.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Eye } from "lucide-react";
+import { Eye, MoreVertical, RotateCcw } from "lucide-react";
 import type { Return, ReturnStatus, ReturnWorkflowState } from "../../../types";
 import {
   ALL_RETURN_STATUSES,
@@ -40,11 +40,21 @@ import { amount, formatDay } from "../../../lib/format";
 import { dateKeyOffset } from "../../../lib/frequency";
 import { RETURN_DISTRIBUTOR_NAMES } from "../../../data/distributors-data";
 import { isOverdue } from "../../../lib/workflow";
-import { pendingLevelOf, workflowStateOf } from "../../../lib/return-workflow";
+import { pendingLevelOf, reactivateBlockedReason, workflowStateOf } from "../../../lib/return-workflow";
 import { useAllSellers } from "../../../hooks/use-sellers";
 import { useReturnsPaged } from "../../../hooks/use-returns";
 import { seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
 import { ReturnStatusBadge } from "../components/return-status-badge";
+import { ReactivateDialog } from "../components/reactivate-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { canApproveReturns } from "../../../stores/session-store";
+import { useReactivateReturn } from "../../../hooks/use-returns";
 
 /** Días corridos desde el registro — lo que la columna «Tiempo Logístico» lee. */
 function diasTranscurridos(createdAt: string): number {
@@ -75,6 +85,12 @@ export function ReturnsPage() {
   const navigate = useNavigate();
   const user = useCurrentUser();
   const soloPropias = seesOwnDocumentsOnly(user.role);
+  // Reactivar es reabrir una decisión, así que lo puede hacer quien firma decisiones. Un vendedor
+  // que ve sus propias notas no reabre la que le rechazaron: para eso está la corrección.
+  const puedeReactivar = canApproveReturns(user.role) && !!user.employeeCode;
+  const reactivar = useReactivateReturn();
+  /** La devolución cuyo diálogo de reactivación está abierto. `null` = cerrado. */
+  const [reactivando, setReactivando] = useState<Return | null>(null);
 
   const columns = useMemo(
     () =>
@@ -196,22 +212,58 @@ export function ReturnsPage() {
           minSize: 48,
           enableSorting: false,
           meta: { align: "center" },
-          cell: (ret) => (
-            <button
-              type="button"
-              aria-label="Ver devolución"
-              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/devoluciones/${ret.id}`);
-              }}
-            >
-              <Eye className="size-4" />
-            </button>
-          ),
+          // UN MENÚ DE TRES PUNTOS Y NO UNA FILA DE ÍCONOS. Las acciones por documento van a crecer
+          // —ver, reactivar, y lo que venga— y una columna que suma un ícono por cada una termina
+          // siendo una barra de herramientas de 24 px de ancho donde nada se distingue de nada. El
+          // menú además puede DECIR por qué algo no se puede hacer; un ícono apagado no dice nada.
+          cell: (ret) => {
+            const bloqueoReactivar = reactivateBlockedReason(ret);
+            return (
+              <DropdownMenu>
+                {/* El ícono va como CHILD del trigger y el `render` es un botón vacío: es el patrón
+                    que ya usa `PerfilMenu`, y Base UI compone el elemento del `render` con los
+                    children del trigger. El `stopPropagation` es lo que evita que abrir el menú
+                    dispare el `onRowClick` de la fila y navegue al detalle. */}
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Acciones de la devolución ${ret.id}`}
+                      className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                >
+                  <MoreVertical className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => navigate(`/devoluciones/${ret.id}`)}>
+                    <Eye className="size-4" />
+                    Ver devolución
+                  </DropdownMenuItem>
+                  {puedeReactivar && (
+                    <>
+                      <DropdownMenuSeparator />
+                      {/* Deshabilitado CON el motivo en el title, y no escondido: quien busca
+                          reactivar una nota que todavía se está evaluando tiene que enterarse de que
+                          no fue rechazada, no quedarse buscando el botón. */}
+                      <DropdownMenuItem
+                        disabled={bloqueoReactivar !== null}
+                        title={bloqueoReactivar ?? undefined}
+                        onClick={() => setReactivando(ret)}
+                      >
+                        <RotateCcw className="size-4" />
+                        Reactivar
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          },
         },
       ]),
-    [navigate],
+    [navigate, puedeReactivar],
   );
 
   const [filtros, setFiltros] = useState<Partial<FiltrosDevoluciones>>(() => ({
@@ -351,6 +403,29 @@ export function ReturnsPage() {
           />
         }
       />
+
+      {/* El diálogo vive en la PANTALLA y no en la celda: una fila que se desmonta —un refetch, un
+          cambio de página, un filtro— se llevaría puesto un diálogo abierto y lo escrito adentro. */}
+      {reactivando && (
+        <ReactivateDialog
+          open
+          onOpenChange={(abierto) => !abierto && setReactivando(null)}
+          ret={reactivando}
+          loading={reactivar.isPending}
+          onConfirm={({ reason, photos }) => {
+            if (!user.employeeCode) return;
+            reactivar.mutate(
+              {
+                id: reactivando.id,
+                actor: { employeeCode: user.employeeCode, employeeName: user.name },
+                reason,
+                photos,
+              },
+              { onSuccess: () => setReactivando(null) },
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

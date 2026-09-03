@@ -19,9 +19,12 @@ import { awaitsDecisionFrom, currentLevelOf, isClosed, isOverdue } from "./workf
  * partial approval is worth, and how the document's own status is read off the
  * approval running over it.
  *
- * The rule that governs the whole file: **every** level decides items. A desk
- * can cut quantities and refuse products, and what it leaves standing is what
- * the next rung of the amount ladder is measured against.
+ * The rule that governs the whole file: the items are selected **once**. The
+ * first desk of the first pass says which products come back and in what
+ * quantity, and what it leaves standing is what the next rung of the amount
+ * ladder is measured against — every desk above it answers a single question
+ * about that selection and cannot touch it. Which of the two a level is allowed
+ * to do is on the level itself (`decisionMode`), never re-derived per screen.
  */
 
 /** Only one correction is ever allowed. A second one would re-open signed approvals indefinitely. */
@@ -256,6 +259,18 @@ export const canDecide = (ret: Return, employeeCode: number): boolean =>
   decisionBlockedReason(ret, employeeCode) === null;
 
 /**
+ * Whether this level is the one that picks the products, or answers for the
+ * whole note.
+ *
+ * The single reading of `decisionMode`, so the screen that draws the checkboxes
+ * and the service that accepts the rulings cannot disagree about who was
+ * allowed to tick them. `null` — no open level at all — selects nothing: there
+ * is nobody to select.
+ */
+export const selectsItems = (level: WorkflowInstanceLevel | null): boolean =>
+  level?.decisionMode === "ITEM_SELECTION";
+
+/**
  * Why a return cannot be corrected, or `null` when it can.
  *
  * The edit budget is the business rule — one correction, ever, because every
@@ -286,6 +301,44 @@ export function editBlockedReason(ret: Return): string | null {
 }
 
 export const isEditable = (ret: Return): boolean => editBlockedReason(ret) === null;
+
+/**
+ * Why a rejected return cannot be reactivated, or `null` when it can.
+ *
+ * Reactivating is the opposite of correcting: nothing about the claim changes —
+ * the products, the quantities and the level-1 selection all stand — and the
+ * only thing that happens is that the document starts climbing again from the
+ * first desk. That is why the single admissible starting point is `CERRADO`, a
+ * claim a desk actually refused. Every other status is either still moving
+ * (nothing to reopen), already granted (a reopen would reverse a signature), or
+ * waiting on the seller, which is the correction path and not this one.
+ *
+ * There is deliberately **no cap** on how many times the same note can be
+ * reopened. `MAX_RETURN_EDITS` bounds corrections because each one rewrites the
+ * claim under signatures already given; a reactivation rewrites nothing, so the
+ * argument for a limit is a business one nobody has settled yet — open question,
+ * not an oversight.
+ */
+export function reactivateBlockedReason(ret: Return): string | null {
+  const status = statusOf(ret);
+  if (status === "CERRADO") return null;
+  if (status === "PROCESADO" || status === "EDITADO") {
+    return "La devolución ya fue aprobada: no hay nada que reactivar.";
+  }
+  if (status === "ANULADA") return "La devolución fue anulada.";
+  if (status === "PROCESANDO" || status === "DEVOLUCION_DEMORADA") {
+    return "La devolución está siendo evaluada: todavía no fue rechazada.";
+  }
+  if (status === "REVERTIDO") {
+    return "La devolución volvió al vendedor para corrección: se corrige, no se reactiva.";
+  }
+  if (status === "DISOCIADO") {
+    return "La nota disociada espera la corrección del vendedor: se corrige, no se reactiva.";
+  }
+  return "La devolución todavía no fue enviada a aprobación.";
+}
+
+export const isReactivatable = (ret: Return): boolean => reactivateBlockedReason(ret) === null;
 
 // ---- Item decisions ----------------------------------------------------------
 

@@ -12,8 +12,13 @@
 // etiqueta técnica más— dejó de existir como columna. Acá se emula con un contador monótono: los
 // sembrados quedan con ids estables (1..N) y cada alta toma el siguiente.
 //
-// LO QUE QUEDÓ DE LA FILA son cuatro datos: `name`, `description`, `lot_requirement` y `is_active`.
-// `due_date_requirement`, `requires_photo`, `requires_notes` y `sort_order` ya no tienen columna.
+// LO QUE QUEDÓ DE LA FILA son seis datos: `name`, `description`, `cost_center`, `process_type`,
+// `lot_requirement` y `is_active`. `due_date_requirement`, `requires_photo`, `requires_notes` y
+// `sort_order` ya no tienen columna.
+//
+// EL TIPO DE PROCESO ES LO QUE DECIDE SI SALE PLATA O SALE PRODUCTO. REGULAR emite la nota de crédito
+// o débito; REPLACEMENT (reposición) es un intercambio —entran 10, salen 10— y no emite ningún documento de plata;
+// SAP se procesa del otro lado. Es la única columna del catálogo con consecuencia contable.
 //
 // EL REQUISITO DE LOTE ES EL ÚNICO QUE SOBREVIVIÓ, y sigue teniendo TRES estados y no dos. La
 // diferencia entre dos de ellos es la que hace que el formulario del vendedor no mienta:
@@ -34,7 +39,10 @@ import { create } from 'zustand'
 import { ALL_RETURN_REASONS, RETURN_REASON_LABELS, type ReturnReason } from '../types'
 import { rulesFor, type FieldRule } from '../features/returns/lib/return-reason-rules'
 
-const STORAGE_KEY = 'mockups-web:motivos-devolucion'
+// v2: la fila ganó `cost_center` y `process_type`. Un catálogo guardado con la forma vieja no los
+// tiene, y un motivo sin tipo de proceso no sabe si genera nota de crédito o reposición: se resiembra
+// en vez de rellenarse con un valor inventado.
+const STORAGE_KEY = 'mockups-web:motivos-devolucion:v2'
 const USUARIO_MOCK = 'Juan Pérez'
 
 /** Los tres valores de `lot_requirement`, tal como los escribe el CHECK. */
@@ -66,14 +74,60 @@ export const REQUISITO_META: Record<RequisitoCampo, { label: string; corto: stri
   },
 }
 
+/**
+ * Los tres tipos de proceso, tal como los escribe el CHECK de `process_type`.
+ *
+ * Los valores son los del sistema que esta pantalla reemplaza —`REGULAR`, `REPLACEMENT`, `SAP`, tal
+ * cual salen del select de `refundmotive_create.jsf`— y no una traducción nuestra: el día que esto
+ * hable con el backend, un enum propio sería una tabla de equivalencias que alguien tiene que
+ * mantener. La etiqueta en español vive en `PROCESO_META`, que es donde corresponde.
+ */
+export type TipoProceso = 'REGULAR' | 'REPLACEMENT' | 'SAP'
+
+export const TIPOS_PROCESO: TipoProceso[] = ['REGULAR', 'REPLACEMENT', 'SAP']
+
+/**
+ * Cómo se dice cada tipo de proceso, y QUÉ PASA con la mercadería.
+ *
+ * `nota` es lo que diferencia los dos primeros, que desde el depósito se ven igual —entran 10
+ * unidades— y terminan distinto: en la REGULAR el cliente recibe una nota de crédito o débito por lo
+ * devuelto; en la de REPOSICIÓN no hay documento de plata, se le entregan las mismas 10 unidades en
+ * producto. Elegir mal el tipo es emitir una nota que no correspondía, o no emitir la que sí.
+ */
+export const PROCESO_META: Record<TipoProceso, { label: string; corto: string; nota: string }> = {
+  REGULAR: {
+    label: 'Devolución regular',
+    corto: 'Regular',
+    nota: 'Se recoge la mercadería y se genera la nota de crédito o débito. No vuelve producto al cliente.',
+  },
+  REPLACEMENT: {
+    label: 'Devolución con reposición',
+    corto: 'Reposición',
+    nota: 'Es un intercambio: se recogen 10 y se entregan 10. No hay nota de crédito ni de débito.',
+  },
+  SAP: {
+    label: 'Devolución SAP',
+    corto: 'SAP',
+    nota: 'La devolución se procesa del lado de SAP; acá solo queda registrada.',
+  },
+}
+
 /** Una fila de `refund_reasons`. */
 export interface MotivoDevolucion {
   /** PK. `BIGSERIAL`: es el número que queda escrito en `refund_order_details.reason_id`. */
   id: number
   /** Etiqueta visible. `VARCHAR(150) NOT NULL`. */
   name: string
-  /** Para qué es el motivo, en una frase. `VARCHAR(300) NOT NULL`: la columna no admite vacío. */
+  /**
+   * Para qué es el motivo, en una frase. OPCIONAL en la pantalla por pedido del usuario: un motivo
+   * cuyo nombre ya se explica solo no necesita repetirlo. Se guarda '' cuando se deja vacía, así que
+   * la columna tiene que pasar a admitir vacío o a ser NULL —hoy el DDL la tiene NOT NULL—.
+   */
   description: string
+  /** Contra qué centro de costo se imputa la devolución. Texto libre: el catálogo es de contabilidad. */
+  costCenter: string
+  /** Qué pasa con la mercadería y con la plata. Ver `PROCESO_META`. */
+  processType: TipoProceso
   lotRequirement: RequisitoCampo
   isActive: boolean
   createdBy: string
@@ -84,7 +138,10 @@ export interface MotivoDevolucion {
 }
 
 /** Lo que el formulario decide. El id, la auditoría y las bajas las pone el store. */
-export type MotivoDevolucionInput = Pick<MotivoDevolucion, 'name' | 'description' | 'lotRequirement'>
+export type MotivoDevolucionInput = Pick<
+  MotivoDevolucion,
+  'name' | 'description' | 'costCenter' | 'processType' | 'lotRequirement'
+>
 
 const nowIso = () => new Date().toISOString()
 
@@ -126,6 +183,28 @@ const DESCRIPCIONES: Record<ReturnReason, string> = {
 }
 
 /**
+ * El tipo de proceso de cada motivo sembrado.
+ *
+ * Solo se listan las EXCEPCIONES: el resto es REGULAR, que es el caso normal —entra la mercadería y
+ * sale la nota de crédito o débito—. Las que están acá son las que se resuelven entregando producto
+ * en lugar de plata: un canje de vencidos y las dos correcciones de entrega, donde el cliente ya pagó
+ * lo que pidió y lo que falta es que le llegue.
+ */
+const PROCESOS: Partial<Record<ReturnReason, TipoProceso>> = {
+  cambio_bebidas_vencidas: 'REPLACEMENT',
+  error_entrega: 'REPLACEMENT',
+  faltante_caja_cerrada: 'REPLACEMENT',
+}
+
+/**
+ * El centro de costo de los motivos sembrados.
+ *
+ * Es un valor de demo y no un catálogo: el maestro de centros de costo es de contabilidad y no está
+ * en nuestra base, por eso el formulario lo pide como texto libre y no como selector.
+ */
+const CENTRO_COSTO_SEED = '5110'
+
+/**
  * El catálogo sembrado son los 22 motivos que el módulo ya tenía hardcodeados, con el requisito de
  * lote que ya tenían.
  *
@@ -144,6 +223,8 @@ function seedMotivos(): MotivoDevolucion[] {
     id: i + 1,
     name: RETURN_REASON_LABELS[reason],
     description: DESCRIPCIONES[reason],
+    costCenter: CENTRO_COSTO_SEED,
+    processType: PROCESOS[reason] ?? 'REGULAR',
     lotRequirement: aRequisito(rulesFor(reason).lot),
     isActive: true,
     createdBy: USUARIO_MOCK,
@@ -216,6 +297,7 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
       id: siguienteId(),
       name: input.name.trim(),
       description: input.description.trim(),
+      costCenter: input.costCenter.trim(),
       isActive: true,
       createdBy: USUARIO_MOCK,
       updatedBy: USUARIO_MOCK,
@@ -239,6 +321,7 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
             id: m.id,
             name: input.name.trim(),
             description: input.description.trim(),
+            costCenter: input.costCenter.trim(),
             updatedBy: USUARIO_MOCK,
             updatedAt: nowIso(),
           }

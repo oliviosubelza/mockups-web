@@ -962,6 +962,9 @@ CREATE TABLE refund_reasons
     id                   BIGSERIAL PRIMARY KEY,
     code                 VARCHAR(100) PRIMARY KEY,                 -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
     name                 VARCHAR(150) NOT NULL,                    -- Etiqueta visible
+    description          VARCHAR(300) NULL,                        -- Para què es el motivo, en una frase. Opcional en la pantalla
+    cost_center          VARCHAR(50)  NOT NULL,                    -- Contra què centro de costo se imputa. El maestro es de contabilidad
+    process_type         VARCHAR(20)  NOT NULL,                    -- 'REGULAR' (nota de crédito/débito), 'REPLACEMENT' (reposiciòn, intercambio 10x10), 'SAP'
     lot_requirement      VARCHAR(20)  NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
     due_date_requirement VARCHAR(20)  NOT NULL DEFAULT 'OPTIONAL', -- 'REQUIRED', 'OPTIONAL', 'HIDDEN'
     requires_photo       BOOLEAN      NOT NULL DEFAULT TRUE,       -- Sin foto no se acepta la lìnea
@@ -975,9 +978,155 @@ CREATE TABLE refund_reasons
     updated_at           TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
     deleted_at           TIMESTAMP    NULL,
 
+    CONSTRAINT ck_refund_reason_process CHECK (process_type IN ('REGULAR', 'REPLACEMENT', 'SAP')),
     CONSTRAINT ck_refund_reason_lot CHECK (lot_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN')),
     CONSTRAINT ck_refund_reason_due_date CHECK (due_date_requirement IN ('REQUIRED', 'OPTIONAL', 'HIDDEN'))
 );
+
+
+    -- ── PARÁMETROS DEL MOTIVO ────────────────────────────────────────────────
+    -- El motivo dice QUÉ es una devoluciòn. El paràmetro dice DESDE CUÀNDO,
+    -- HASTA CUÀNDO y SOBRE QUÈ se puede usar. Son dos tablas y no columnas mas
+    -- de refund_reasons porque un motivo se define UNA vez y sobre èl se dan de
+    -- alta MUCHAS ventanas: el recall de un lote dura lo que dura el recall.
+    --
+    -- SE COPIAN process_type Y cost_center DEL MOTIVO al crear la fila, y no se
+    -- leen del motivo al vuelo. Una ventana con fecha de fin es un documento
+    -- vigente: editar el motivo el aòo que viene no puede reescribir lo que una
+    -- ventana ya cerrada dijo. Es la misma razòn por la que el workflow congela
+    -- el nombre del nivel.
+    --
+    -- DOS VENTANAS DEL MISMO MOTIVO PUEDEN SOLAPARSE, a propòsito: la regla
+    -- general de la empresa y el recall de tres lotes conviven. Por eso NO hay
+    -- constraint de exclusiòn sobre (refund_reason_id, rango de fechas); cuàl
+    -- gana cuando dos aplican es una regla de resoluciòn de la aplicaciòn — la
+    -- màs especìfica—, no algo que la base pueda decidir.
+    CREATE TABLE refund_reason_params (
+        id BIGSERIAL PRIMARY KEY,                   -- PK. Es el id al que apuntan las seis tablas de alcance
+        refund_reason_id BIGINT NOT NULL,           -- De què motivo es esta ventana. Un motivo tiene muchas
+
+        process_type VARCHAR(20) NOT NULL,          -- Copiado del motivo. 'REGULAR' | 'REPLACEMENT' | 'SAP'
+        cost_center VARCHAR(50) NULL,               -- Copiado del motivo. Opcional, como en la pantalla
+
+        start_date DATE NOT NULL,                   -- La ventana. Es la razòn de ser de la fila:
+        end_date DATE NOT NULL,                     -- sin fechas esto serìa una columna mas del motivo
+
+        status VARCHAR(20) NOT NULL DEFAULT 'ENABLE',
+            -- OJO: el estado NO es la vigencia. Una fila 'ENABLE' con la ventana
+            -- vencida no rige, y esa es la confusiòn que una sola columna traerìa.
+            -- 'ENABLE'   -> aplica
+            -- 'DISABLED' -> deja de aplicar sin borrarse; las devoluciones que se
+            --               aprobaron bajo esta ventana siguen explicadas
+            -- 'DELETED'  -> baja lògica, sale de la lista
+
+        created_by VARCHAR(255),                    -- Quièn dio de alta la ventana. Es la columna «Registrado Por» de la lista
+        updated_by VARCHAR(255),                    -- Quièn la modificò por ùltima vez
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,                  -- Acompaòa a status='DELETED'. La fila se conserva
+
+        CONSTRAINT fk_refund_reason_param_reason FOREIGN KEY (refund_reason_id) REFERENCES refund_reasons(id),
+        CONSTRAINT ck_refund_reason_param_process CHECK (process_type IN ('REGULAR', 'REPLACEMENT', 'SAP')),
+        CONSTRAINT ck_refund_reason_param_status CHECK (status IN ('ENABLE', 'DISABLED', 'DELETED')),
+        -- Una ventana al revès no se puede cumplir nunca. Es la ùnica validaciòn
+        -- cruzada de la fila y va en la base porque ninguna pantalla es la ùnica
+        -- puerta de entrada.
+        CONSTRAINT ck_refund_reason_param_window CHECK (end_date >= start_date)
+    );
+
+    -- Los clientes alcanzados. Una fila ACOTA la ventana a ese cliente; ninguna
+    -- fila la deja abierta a todos.
+    CREATE TABLE refund_reason_param_clients (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+        customer_id BIGINT NOT NULL,                -- Id del cliente en Ventas. Sin FK: el maestro de clientes no es nuestro
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_client_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT uq_refund_param_client UNIQUE (refund_reason_param_id, customer_id)
+    );
+
+    -- Los productos alcanzados. Mismo criterio: `product_id` es el SKU del
+    -- catàlogo de SAP, sin FK, igual que en refund_order_details.
+    CREATE TABLE refund_reason_param_products (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+        product_id BIGINT NOT NULL,                 -- SKU del catàlogo. Sin FK, igual que en refund_order_details
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_product_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT uq_refund_param_product UNIQUE (refund_reason_param_id, product_id)
+    );
+
+    -- Los lotes alcanzados. NO hay maestro de lotes: el nùmero se escribe a
+    -- mano, y por eso acà es texto y no una FK. `lot_type` es la numeraciòn de
+    -- planta con la que ese nùmero se lee.
+    --
+    -- ES UNA TABLA Y NO DOS COLUMNAS DEL PARÀMETRO porque son VARIOS lotes por
+    -- ventana —un recall persigue todos los lotes del turno, no uno—, y porque
+    -- la pregunta que se hace es «què paràmetros alcanzan al lote SC L-24810»:
+    -- eso se une y se indexa contra filas, no contra un array.
+    CREATE TABLE refund_reason_param_lots (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+
+        lot_type VARCHAR(10) NOT NULL,              -- Numeraciòn de planta: 'SC' | 'LP' | 'IMP' | 'S' | 'L' | 'F'
+        lot_number VARCHAR(20) NOT NULL,            -- El nùmero tal como està impreso en el envase
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_lot_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT ck_refund_param_lot_type CHECK (lot_type IN ('SC', 'LP', 'IMP', 'S', 'L', 'F')),
+        -- El mismo tipo y el mismo nùmero dos veces no acota nada.
+        CONSTRAINT uq_refund_param_lot UNIQUE (refund_reason_param_id, lot_type, lot_number)
+    );
+
+    -- Familia, categorìa y marca EN UNA SOLA TABLA y no en tres iguales.
+    -- Las tres son atributos de TEXTO del catàlogo de SAP —no tenemos tabla de
+    -- familias ni de marcas—, así que tres tablas serìan tres veces la misma
+    -- fila con otro nombre, y agregar un cuarto agrupador el dìa que SAP lo
+    -- invente serìa una migraciòn en vez de una fila.
+    CREATE TABLE refund_reason_param_product_groups (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+
+        group_type VARCHAR(20) NOT NULL,            -- Què agrupador es: 'FAMILY' | 'CATEGORY' | 'BRAND'
+        group_value VARCHAR(150) NOT NULL,          -- 'SALSAS', 'KRIS'… el valor tal como lo escribe SAP
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_group_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT ck_refund_param_group_type CHECK (group_type IN ('FAMILY', 'CATEGORY', 'BRAND')),
+        CONSTRAINT uq_refund_param_group UNIQUE (refund_reason_param_id, group_type, group_value)
+    );
+
+    -- Los canales de venta alcanzados. `sale_channel_id` va sin FK, igual que en
+    -- dispatch_delivery_points y sale_channel_restrictions.
+    CREATE TABLE refund_reason_param_sale_channels (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+        sale_channel_id BIGINT NOT NULL,            -- Canal de venta. Sin FK, igual que en sale_channel_restrictions
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_channel_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT uq_refund_param_channel UNIQUE (refund_reason_param_id, sale_channel_id)
+    );
+
+    -- Las distribuidoras alcanzadas. Esta SÌ apunta a un maestro nuestro.
+    CREATE TABLE refund_reason_param_distributors (
+        id BIGSERIAL PRIMARY KEY,
+        refund_reason_param_id BIGINT NOT NULL,     -- La ventana que esta fila acota
+        distributor_id BIGINT NOT NULL,             -- La distribuidora. La ùnica dimensiòn con FK real
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT fk_refund_param_distributor_param FOREIGN KEY (refund_reason_param_id) REFERENCES refund_reason_params(id),
+        CONSTRAINT fk_refund_param_distributor FOREIGN KEY (distributor_id) REFERENCES distributors_ref(id),
+        CONSTRAINT uq_refund_param_distributor UNIQUE (refund_reason_param_id, distributor_id)
+    );
 
 
     -- La escalera configurable. Un piso por nivel: el techo es el piso del
@@ -1209,6 +1358,33 @@ CREATE TABLE refund_order_details
         CONSTRAINT fk_refund_wf_action_instance FOREIGN KEY (workflow_instance_id) REFERENCES refund_workflow_instances(id),
         CONSTRAINT fk_refund_wf_action_level FOREIGN KEY (workflow_instance_level_id) REFERENCES refund_workflow_instance_levels(id),
         CONSTRAINT fk_refund_wf_action_related_order FOREIGN KEY (related_refund_order_id) REFERENCES refund_orders(id)
+    );
+
+
+    -- LA EVIDENCIA DE UNA ACCIÒN, y hoy solo la de la REACTIVACIÒN.
+    -- Reabrir una nota que un escritorio rechazò es pasar por encima de una
+    -- firma: la foto de la autorizaciòn firmada es lo que le da dueòo a esa
+    -- decisiòn fuera del sistema, y por eso la aplicaciòn exige al menos UNA
+    -- para poder reactivar (el sistema viejo pide lo mismo: «1 Fotografìas
+    -- (min.)» en su modal de Revertir).
+    --
+    -- CUELGA DE LA ACCIÒN Y NO DE LA NOTA: una segunda reactivaciòn es una
+    -- segunda autorizaciòn, y el historial tiene que poder decir què papel
+    -- respaldò cada vuelta. Misma forma que refund_order_detail_image.
+    --
+    -- EL MÌNIMO DE UNA FOTO NO ES UN CHECK: una fila hija no puede existir antes
+    -- que su padre, así que la regla se cumple en la transacciòn que inserta la
+    -- acciòn y sus imàgenes, no en la tabla.
+    CREATE TABLE refund_workflow_action_images (
+        id BIGSERIAL PRIMARY KEY,
+        workflow_action_id BIGINT NOT NULL,                     -- La acciòn que esta foto respalda. Hoy siempre un 'REACTIVATE'
+
+        url VARCHAR(255) NOT NULL,                              -- path image
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL,                              -- Baja lògica: la evidencia de una acciòn firmada no se borra
+
+        CONSTRAINT fk_refund_wf_action_image_action FOREIGN KEY (workflow_action_id) REFERENCES refund_workflow_actions(id)
     );
 
 

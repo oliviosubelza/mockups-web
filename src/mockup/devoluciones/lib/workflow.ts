@@ -4,8 +4,10 @@ import type {
   WorkflowAction,
   WorkflowApprover,
   WorkflowAssignee,
+  WorkflowDecisionMode,
   WorkflowInstance,
   WorkflowInstanceLevel,
+  WorkflowInstanceStatus,
   WorkflowLevel,
   WorkflowVersion,
 } from "../types";
@@ -246,6 +248,12 @@ export const isClosed = (instance: WorkflowInstance): boolean =>
  * tomorrow must not rewrite what an approver was shown today. That snapshot is
  * the whole reason instances and definitions are separate tables.
  *
+ * `attempt` is which pass over the document this is, and it decides which desk
+ * gets to select items: only the first level of the first pass does, everything
+ * else answers for the document as a whole. A later pass exists precisely
+ * because the selection already happened, so re-offering it would let a second
+ * desk quietly redo the first desk's work.
+ *
  * `relevantValue` is the figure the ladder is read against — the caller's to
  * compute, never the engine's. A level whose lower bound already sits at or
  * above it is born `SKIPPED`: it was never needed, and a document that visited
@@ -263,8 +271,13 @@ export function startInstance(input: {
   /** Value the ladder is compared against. Omit for entities with no ladder. */
   relevantValue?: number;
   supersededInstanceId?: string | null;
+  /** Pass over the document, from 1. Only a reactivation ever passes more. */
+  attempt?: number;
+  /** Instance this one reopens, when it was born of a reactivation. */
+  reactivatedFromInstanceId?: string | null;
   at?: string;
 }): WorkflowInstance {
+  const attempt = input.attempt ?? 1;
   const at = input.at ?? new Date().toISOString();
   const ordered = [...input.version.levels].sort((a, b) => a.order - b.order);
 
@@ -312,11 +325,24 @@ export function startInstance(input: {
       return [];
     });
 
+  /**
+   * Who selects the items, and the answer is always the same desk: the first
+   * level of the first pass.
+   *
+   * It is always reachable, which is what makes the rule safe to state this
+   * baldly — the skip guard above refuses to skip `index > 0` only, so level 1
+   * is born active no matter what the ladder says, and a document whose
+   * selection nobody could make cannot exist.
+   */
+  const decisionModeOf = (level: WorkflowLevel): WorkflowDecisionMode =>
+    attempt === 1 && level.order === 1 ? "ITEM_SELECTION" : "DOCUMENT_DECISION";
+
   const levels: WorkflowInstanceLevel[] = ordered.map((level, index) => ({
-    id: `${input.id}_l${level.order}_a1`,
+    id: `${input.id}_l${level.order}_a${attempt}`,
     order: level.order,
-    attempt: 1,
+    attempt,
     name: level.name,
+    decisionMode: decisionModeOf(level),
     status: skipped(level, index) ? "SKIPPED" : index === firstActive ? "IN_PROGRESS" : "PENDING",
     approvalPolicy: level.approvalPolicy,
     requiredApprovals: level.requiredApprovals,
@@ -331,6 +357,7 @@ export function startInstance(input: {
   return {
     id: input.id,
     status: "IN_PROGRESS",
+    attempt,
     currentLevelOrder: ordered[firstActive]?.order ?? null,
     targetCode: input.targetCode,
     targetId: input.targetId,
@@ -341,6 +368,7 @@ export function startInstance(input: {
     initiatedByName: input.initiatedByName,
     selectionContext: { amount: input.amount },
     supersededInstanceId: input.supersededInstanceId ?? null,
+    reactivatedFromInstanceId: input.reactivatedFromInstanceId ?? null,
     startedAt: at,
     finishedAt: null,
     levels,
@@ -443,6 +471,7 @@ export function approveCurrentLevel(
     at,
     amountBefore: null,
     amountAfter: null,
+    photos: [],
   };
 
   return {
@@ -520,6 +549,7 @@ export function rejectCurrentLevel(
     at,
     amountBefore: null,
     amountAfter: null,
+    photos: [],
   };
 
   return {
@@ -534,6 +564,51 @@ export function rejectCurrentLevel(
     nextLevelOrder,
     finished: !handedBack,
   };
+}
+
+/**
+ * Write the reactivation onto the instance it opened.
+ *
+ * The entry belongs to the new instance and not to the refused one: the refused
+ * instance is closed and append-only, and what the reader is asking when they
+ * see a second pass is "why is this open again", which is a question about the
+ * pass in front of them. `previousStatus` is therefore the *document's* status
+ * before the reopen — the refused instance's — while `newStatus` is the status
+ * the fresh instance is born with.
+ *
+ * The reason lands on `rejectReason` because that is this model's single
+ * "why" column, the one the DDL calls `reason` and marks mandatory for exactly
+ * this action; the amounts stay null because a reactivation moves no money.
+ */
+export function recordReactivation(
+  instance: WorkflowInstance,
+  actor: { employeeCode: number; employeeName: string },
+  reason: string,
+  previousStatus: WorkflowInstanceStatus,
+  /** The authorisation photos. Mandatory upstream: a reactivation with none is not authorised. */
+  photos: string[],
+  at = new Date().toISOString(),
+): WorkflowInstance {
+  const level = currentLevelOf(instance);
+  const action: WorkflowAction = {
+    id: `wfa_${instance.id}_${instance.actions.length + 1}`,
+    action: "REACTIVATE",
+    comment: null,
+    rejectReason: reason,
+    previousStatus,
+    newStatus: instance.status,
+    levelId: level?.id ?? null,
+    levelOrder: level?.order ?? null,
+    levelName: level?.name ?? null,
+    attempt: level?.attempt ?? instance.attempt,
+    byEmployeeCode: actor.employeeCode,
+    byEmployeeName: actor.employeeName,
+    at,
+    amountBefore: null,
+    amountAfter: null,
+    photos,
+  };
+  return { ...instance, actions: [...instance.actions, action] };
 }
 
 /** Leave a note on an instance without deciding anything. */
@@ -560,6 +635,7 @@ export function commentOn(
     at,
     amountBefore: null,
     amountAfter: null,
+    photos: [],
   };
   return { ...instance, actions: [...instance.actions, action] };
 }
