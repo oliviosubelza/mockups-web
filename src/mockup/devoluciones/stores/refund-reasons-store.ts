@@ -1,15 +1,22 @@
 // Store del CATÁLOGO DE MOTIVOS DE DEVOLUCIÓN (tabla `refund_reasons`).
 //
-// QUÉ ES. El motivo es lo que clasifica cada LÍNEA de una devolución: `refund_order_detail.reason`
-// es una FK a `refund_reasons(code)`, así que dejó de ser texto libre. Sumar un motivo o cambiar lo
-// que exige es dato maestro, no código: hasta ahora vivía en dos constantes del módulo
+// QUÉ ES. El motivo es lo que clasifica cada LÍNEA de una devolución: `refund_order_details.reason_id`
+// es un BIGINT con FK a `refund_reasons(id)`, así que dejó de ser texto libre. Sumar un motivo o
+// cambiar lo que exige es dato maestro, no código: hasta ahora vivía en dos constantes del módulo
 // (`RETURN_REASON_LABELS` y la tabla de `return-reason-rules.ts`, con el comentario de que las
 // reglas son fijas) y esta pantalla lo vuelve editable. Mismo camino que ya hizo el bandeo:
 // `accesorios.ts` era una constante y pasó a ser `logistic_assets` con su pantalla.
 //
-// EL CORAZÓN DEL MODELO SON LOS DOS REQUISITOS, no el nombre. `lot_requirement` y
-// `due_date_requirement` tienen TRES estados y no dos, y la diferencia entre dos de ellos es la que
-// hace que el formulario del vendedor no mienta:
+// LA PK ES UN BIGSERIAL. Antes esta fila se apuntaba por `code` y el código era la PK; el DDL vigente
+// tiene `id BIGSERIAL PRIMARY KEY` y la línea lo referencia por id, así que el código —que era una
+// etiqueta técnica más— dejó de existir como columna. Acá se emula con un contador monótono: los
+// sembrados quedan con ids estables (1..N) y cada alta toma el siguiente.
+//
+// LO QUE QUEDÓ DE LA FILA son cuatro datos: `name`, `description`, `lot_requirement` y `is_active`.
+// `due_date_requirement`, `requires_photo`, `requires_notes` y `sort_order` ya no tienen columna.
+//
+// EL REQUISITO DE LOTE ES EL ÚNICO QUE SOBREVIVIÓ, y sigue teniendo TRES estados y no dos. La
+// diferencia entre dos de ellos es la que hace que el formulario del vendedor no mienta:
 //   · REQUIRED → sin ese dato el reclamo no se puede evaluar (un RECALL se persigue por lote).
 //   · OPTIONAL → está impreso en el envase y se puede anotar, pero nada de lo que se decide
 //     depende de él (un cierre de negocio, un error de pedido).
@@ -17,24 +24,20 @@
 //     no puede traer un lote, y un campo obligatorio ahí solo consigue que alguien invente un
 //     número para pasar el botón. Por eso no se pregunta y se limpia si venía cargado.
 // El día que alguien ponga REQUIRED donde va HIDDEN, el formulario del vendedor queda imposible de
-// completar con la verdad. Es la columna que manda de la pantalla.
-//
-// LA PK ES `code` Y NO UN SERIAL. Es lo que quedó escrito en las líneas ya registradas
-// (`refund_order_detail.reason`), así que en una edición NO se toca: renombrar el código dejaría
-// huérfano el histórico. Lo que se corrige es el `name`, que es la etiqueta visible.
+// completar con la verdad.
 //
 // BAJA EN DOS NIVELES, como en `logistic_assets` y por lo mismo:
 //   · `is_active = false` → deja de ofrecerse en el selector del vendedor; el histórico que ya lo
-//     usó sigue mostrándolo. Reversible con un click.
+//     usó sigue mostrándolo. Reversible con un click. El comentario del DDL lo dice explícito.
 //   · `deleted_at` → sale del catálogo. La fila se conserva porque las líneas viejas la apuntan.
 import { create } from 'zustand'
-import { ALL_RETURN_REASONS, RETURN_REASON_LABELS } from '../types'
+import { ALL_RETURN_REASONS, RETURN_REASON_LABELS, type ReturnReason } from '../types'
 import { rulesFor, type FieldRule } from '../features/returns/lib/return-reason-rules'
 
 const STORAGE_KEY = 'mockups-web:motivos-devolucion'
 const USUARIO_MOCK = 'Juan Pérez'
 
-/** Los tres valores de `lot_requirement` / `due_date_requirement`, tal como los escribe el CHECK. */
+/** Los tres valores de `lot_requirement`, tal como los escribe el CHECK. */
 export type RequisitoCampo = 'REQUIRED' | 'OPTIONAL' | 'HIDDEN'
 
 export const REQUISITOS: RequisitoCampo[] = ['REQUIRED', 'OPTIONAL', 'HIDDEN']
@@ -65,16 +68,13 @@ export const REQUISITO_META: Record<RequisitoCampo, { label: string; corto: stri
 
 /** Una fila de `refund_reasons`. */
 export interface MotivoDevolucion {
-  /** PK. Mayúsculas y guiones bajos: es lo que queda escrito en las líneas ya registradas. */
-  code: string
-  /** Etiqueta visible. Es lo único renombrable de la fila. */
+  /** PK. `BIGSERIAL`: es el número que queda escrito en `refund_order_details.reason_id`. */
+  id: number
+  /** Etiqueta visible. `VARCHAR(150) NOT NULL`. */
   name: string
+  /** Para qué es el motivo, en una frase. `VARCHAR(300) NOT NULL`: la columna no admite vacío. */
+  description: string
   lotRequirement: RequisitoCampo
-  dueDateRequirement: RequisitoCampo
-  requiresPhoto: boolean
-  requiresNotes: boolean
-  /** Orden en el selector del vendedor. */
-  sortOrder: number
   isActive: boolean
   createdBy: string
   updatedBy: string
@@ -83,11 +83,8 @@ export interface MotivoDevolucion {
   deletedAt: string | null
 }
 
-/** Lo que el formulario decide. La auditoría y las bajas las pone el store. */
-export type MotivoDevolucionInput = Pick<
-  MotivoDevolucion,
-  'code' | 'name' | 'lotRequirement' | 'dueDateRequirement' | 'requiresPhoto' | 'requiresNotes' | 'sortOrder'
->
+/** Lo que el formulario decide. El id, la auditoría y las bajas las pone el store. */
+export type MotivoDevolucionInput = Pick<MotivoDevolucion, 'name' | 'description' | 'lotRequirement'>
 
 const nowIso = () => new Date().toISOString()
 
@@ -95,45 +92,84 @@ const nowIso = () => new Date().toISOString()
 const aRequisito = (regla: FieldRule): RequisitoCampo =>
   regla === 'required' ? 'REQUIRED' : regla === 'hidden' ? 'HIDDEN' : 'OPTIONAL'
 
-/** `bajo_rendimiento` → `BAJO_RENDIMIENTO`. La clave del union ES el código de la tabla. */
-export const codigoDeMotivo = (reason: string) => reason.trim().toUpperCase().replace(/[\s-]+/g, '_')
+/**
+ * La descripción de cada motivo sembrado.
+ *
+ * Va acá y no en `types/`: `description` es una columna de ESTE catálogo y no algo que el formulario
+ * del vendedor use, así que no hay una constante previa de la que leerla. El nombre y el requisito de
+ * lote sí se siguen leyendo de las constantes del módulo, que son la fuente única mientras el
+ * formulario del vendedor las use.
+ */
+const DESCRIPCIONES: Record<ReturnReason, string> = {
+  bajo_rendimiento: 'El producto no rinde lo esperado en el punto de venta y el cliente pide retirarlo.',
+  cambio_bebidas_vencidas: 'Canje de bebidas vencidas en el punto de venta por producto vigente.',
+  cierre_negocio: 'El cliente cierra o suspende su actividad y devuelve el stock que le quedó.',
+  contaminacion_fisica: 'Se encontró un cuerpo extraño dentro del envase. Requiere seguimiento por lote.',
+  danos_manejo_cliente: 'El envase se dañó por manipulación o almacenamiento en el punto de venta.',
+  error_pedido: 'El pedido se cargó con un producto o una cantidad que el cliente no pidió.',
+  error_entrega: 'La entrega no coincide con lo pedido: producto cambiado, faltante o de más.',
+  excepcional: 'Devolución autorizada por excepción comercial, fuera de los motivos habituales.',
+  envases_sin_contenido: 'El envase llegó vacío o con un llenado muy por debajo del declarado.',
+  fallas_envase: 'Defecto de envase o empaque: tapa, etiqueta, film o caja en mal estado.',
+  faltante_caja_cerrada: 'La caja llegó cerrada pero con menos unidades de las que declara.',
+  fuga_mal_sellado: 'El envase pierde producto por un sellado defectuoso.',
+  menor_contenido_neto: 'El contenido neto medido está por debajo del declarado en la etiqueta.',
+  muestras_laboratorio: 'Producto retirado del mercado para análisis de calidad en laboratorio.',
+  producto_hinchado: 'Envase deformado o inflado por fermentación o alteración del contenido.',
+  sin_lote_ni_vencimiento: 'El envase llegó sin lote o sin fecha de vencimiento legibles.',
+  vigente_buen_estado: 'Producto vigente y en buen estado que el cliente devuelve sin defecto.',
+  recall: 'Retiro de mercado dispuesto por la empresa. Se persigue lote por lote.',
+  variacion_sensorial: 'Cambio de sabor, olor, color o aspecto respecto del producto esperado.',
+  vencimiento_baja_rotacion: 'El producto venció en el punto de venta por rotación insuficiente.',
+  vencimiento_corta_vida_util: 'Se entregó producto con muy poca vida útil y venció antes de venderse.',
+  vencimiento_sobre_stock: 'El producto venció por un exceso de stock cargado al cliente.',
+}
 
 /**
- * El catálogo sembrado son los 22 motivos que el módulo ya tenía hardcodeados, con las reglas que
- * ya tenían.
+ * El catálogo sembrado son los 22 motivos que el módulo ya tenía hardcodeados, con el requisito de
+ * lote que ya tenían.
  *
- * Se lee de `RETURN_REASON_LABELS` y de `rulesFor` en vez de copiarse acá: mientras el formulario
- * del vendedor siga leyendo esas constantes, un segundo listado escrito a mano se desincroniza el
- * día que alguien agregue un motivo del lado del código. El store importa de `features/` —al revés
- * de lo habitual— justamente por eso: una sola fuente de la verdad vale más que la capa prolija.
+ * El nombre y el requisito se leen de `RETURN_REASON_LABELS` y de `rulesFor` en vez de copiarse acá:
+ * mientras el formulario del vendedor siga leyendo esas constantes, un segundo listado escrito a mano
+ * se desincroniza el día que alguien agregue un motivo del lado del código. El store importa de
+ * `features/` —al revés de lo habitual— justamente por eso: una sola fuente de la verdad vale más
+ * que la capa prolija.
  *
- * `requiresPhoto` y `requiresNotes` arrancan en `true` para todos, que es el DEFAULT de la tabla y
- * lo que el módulo hace hoy (foto y observación se piden siempre, para todos los motivos). Ahora son
- * columnas, así que se pueden aflojar por motivo — pero el catálogo no lo hace por su cuenta.
+ * Los ids son 1..22 en el orden de `ALL_RETURN_REASONS`, que es alfabético por etiqueta. Son estables
+ * entre reinicios del demo porque el histórico simulado los apunta por número.
  */
 function seedMotivos(): MotivoDevolucion[] {
   const creado = nowIso()
-  return ALL_RETURN_REASONS.map((reason, i) => {
-    const reglas = rulesFor(reason)
-    return {
-      code: codigoDeMotivo(reason),
-      name: RETURN_REASON_LABELS[reason],
-      lotRequirement: aRequisito(reglas.lot),
-      dueDateRequirement: aRequisito(reglas.dueDate),
-      requiresPhoto: true,
-      requiresNotes: true,
-      // De diez en diez: intercalar un motivo nuevo entre dos existentes no obliga a renumerar los
-      // 22. `sort_order` es SMALLINT, así que hay lugar de sobra.
-      sortOrder: (i + 1) * 10,
-      isActive: true,
-      createdBy: USUARIO_MOCK,
-      updatedBy: USUARIO_MOCK,
-      createdAt: creado,
-      updatedAt: creado,
-      deletedAt: null,
-    }
-  })
+  return ALL_RETURN_REASONS.map((reason, i) => ({
+    id: i + 1,
+    name: RETURN_REASON_LABELS[reason],
+    description: DESCRIPCIONES[reason],
+    lotRequirement: aRequisito(rulesFor(reason).lot),
+    isActive: true,
+    createdBy: USUARIO_MOCK,
+    updatedBy: USUARIO_MOCK,
+    createdAt: creado,
+    updatedAt: creado,
+    deletedAt: null,
+  }))
 }
+
+/**
+ * El contador que emula el `BIGSERIAL`.
+ *
+ * Vive en el módulo y no en el estado porque un serial no se reinicia al filtrar ni al re-renderizar:
+ * arranca en el mayor id que haya en el catálogo cargado y solo sube. Reusar un id de una fila
+ * eliminada dejaría al histórico apuntando a otro motivo, que es exactamente lo que la baja lógica
+ * evita.
+ */
+let ultimoId = 0
+
+const sellarContador = (motivos: MotivoDevolucion[]): MotivoDevolucion[] => {
+  ultimoId = motivos.reduce((max, m) => Math.max(max, m.id), 0)
+  return motivos
+}
+
+const siguienteId = () => ++ultimoId
 
 function readStored(): MotivoDevolucion[] {
   try {
@@ -141,12 +177,14 @@ function readStored(): MotivoDevolucion[] {
     if (!raw) {
       const seed = seedMotivos()
       writeStored(seed)
-      return seed
+      return sellarContador(seed)
     }
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as MotivoDevolucion[]) : seedMotivos()
+    return sellarContador(
+      Array.isArray(parsed) && parsed.length > 0 ? (parsed as MotivoDevolucion[]) : seedMotivos(),
+    )
   } catch {
-    return seedMotivos()
+    return sellarContador(seedMotivos())
   }
 }
 
@@ -162,9 +200,9 @@ function writeStored(motivos: MotivoDevolucion[]): void {
 interface RefundReasonsState {
   motivos: MotivoDevolucion[]
   addMotivo: (input: MotivoDevolucionInput) => MotivoDevolucion
-  updateMotivo: (code: string, input: MotivoDevolucionInput) => void
-  setMotivoActivo: (code: string, isActive: boolean) => void
-  removeMotivo: (code: string) => void
+  updateMotivo: (id: number, input: MotivoDevolucionInput) => void
+  setMotivoActivo: (id: number, isActive: boolean) => void
+  removeMotivo: (id: number) => void
   restaurarSeed: () => void
 }
 
@@ -175,8 +213,9 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
     const ahora = nowIso()
     const nuevo: MotivoDevolucion = {
       ...input,
-      code: codigoDeMotivo(input.code),
+      id: siguienteId(),
       name: input.name.trim(),
+      description: input.description.trim(),
       isActive: true,
       createdBy: USUARIO_MOCK,
       updatedBy: USUARIO_MOCK,
@@ -190,12 +229,19 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
     return nuevo
   },
 
-  // El `code` que llega en el input se ignora a propósito: es la PK y las líneas ya registradas la
-  // apuntan. El formulario lo muestra deshabilitado en edición; esto es el cierre por si acaso.
-  updateMotivo: (code, input) => {
+  // El id no se toca: es la PK y las líneas ya registradas la apuntan.
+  updateMotivo: (id, input) => {
     const updated = get().motivos.map((m) =>
-      m.code === code
-        ? { ...m, ...input, code: m.code, name: input.name.trim(), updatedBy: USUARIO_MOCK, updatedAt: nowIso() }
+      m.id === id
+        ? {
+            ...m,
+            ...input,
+            id: m.id,
+            name: input.name.trim(),
+            description: input.description.trim(),
+            updatedBy: USUARIO_MOCK,
+            updatedAt: nowIso(),
+          }
         : m,
     )
     writeStored(updated)
@@ -204,20 +250,20 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
 
   // `is_active` es «se sigue ofreciendo», NO «existe». Un motivo apagado desaparece del selector del
   // vendedor y sigue nombrado en las devoluciones que ya lo usaron.
-  setMotivoActivo: (code, isActive) => {
+  setMotivoActivo: (id, isActive) => {
     const updated = get().motivos.map((m) =>
-      m.code === code ? { ...m, isActive, updatedBy: USUARIO_MOCK, updatedAt: nowIso() } : m,
+      m.id === id ? { ...m, isActive, updatedBy: USUARIO_MOCK, updatedAt: nowIso() } : m,
     )
     writeStored(updated)
     set({ motivos: updated })
   },
 
   // Baja lógica, como la columna: sale de la pantalla y la fila queda, porque
-  // `refund_order_detail.reason` de una devolución vieja sigue apuntando a este código.
-  removeMotivo: (code) => {
+  // `refund_order_details.reason_id` de una devolución vieja sigue apuntando a este id.
+  removeMotivo: (id) => {
     const ahora = nowIso()
     const updated = get().motivos.map((m) =>
-      m.code === code ? { ...m, isActive: false, deletedAt: ahora, updatedBy: USUARIO_MOCK, updatedAt: ahora } : m,
+      m.id === id ? { ...m, isActive: false, deletedAt: ahora, updatedBy: USUARIO_MOCK, updatedAt: ahora } : m,
     )
     writeStored(updated)
     set({ motivos: updated })
@@ -225,19 +271,8 @@ export const useRefundReasonsStore = create<RefundReasonsState>((set, get) => ({
 
   /** Vuelve a los 22 motivos sembrados. Botón de demo, igual que en activos logísticos. */
   restaurarSeed: () => {
-    const seed = seedMotivos()
+    const seed = sellarContador(seedMotivos())
     writeStored(seed)
     set({ motivos: seed })
   },
 }))
-
-/** `true` si otro motivo VIVO ya usa ese código. La PK es el código, así que el choque es duro. */
-export function codigoDeMotivoEnUso(motivos: MotivoDevolucion[], code: string, exceptCode?: string): boolean {
-  const buscado = codigoDeMotivo(code)
-  return motivos.some((m) => !m.deletedAt && m.code !== exceptCode && m.code === buscado)
-}
-
-/** El siguiente hueco de `sort_order`, para que un motivo nuevo caiga al final del selector. */
-export function siguienteOrden(motivos: MotivoDevolucion[]): number {
-  return motivos.reduce((max, m) => Math.max(max, m.sortOrder), 0) + 10
-}

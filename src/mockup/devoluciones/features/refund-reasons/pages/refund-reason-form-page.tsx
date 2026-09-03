@@ -4,53 +4,42 @@
 // entra en el historial del browser y se puede pasar por chat; un diálogo se cierra con un click al
 // costado y no se puede compartir.
 //
-// UN FORMULARIO PLANO, no tarjetas ni panel de vista previa. Son siete campos: etiqueta a la
-// izquierda, campo a la derecha, «Volver» y «Guardar» abajo a la derecha — el mismo esqueleto del
-// sistema que esta pantalla reemplaza, que es donde el usuario ya sabe mirar. Antes esto tenía tres
-// cards y una vista previa en vivo: explicaba bien el modelo y hacía parecer difícil algo que es
-// llenar un nombre y elegir dos opciones.
+// UN FORMULARIO PLANO, no tarjetas ni panel de vista previa. Son DOS campos —nombre y descripción—:
+// etiqueta a la izquierda, campo a la derecha, «Volver» y «Guardar» abajo a la derecha — el mismo
+// esqueleto del sistema que esta pantalla reemplaza, que es donde el usuario ya sabe mirar.
 //
-// LO QUE SÍ SE QUEDA ES LA AYUDA DE UNA LÍNEA debajo de los dos requisitos. No es decoración: es lo
-// único que distingue «No aplica» de «Opcional», y esa confusión es el error que este catálogo puede
-// meter en el formulario del vendedor.
+// LO QUE SE FUE Y POR QUÉ. El código, el requisito de vencimiento, las banderas de foto y observación
+// y el orden del selector dejaron de ser columnas de `refund_reasons`, así que dejaron de ser campos.
+// El «Centro de Costo» y el «Tipo de Proceso» del sistema viejo tampoco se agregaron: no tienen
+// columna adonde ir.
 //
 // UN SOLO COMPONENTE PARA CREAR Y EDITAR: los campos y las reglas son los mismos, y dos componentes
-// serían dos lugares donde arreglar la misma validación. Lo que decide el modo es el `code` del path.
+// serían dos lugares donde arreglar la misma validación. Lo que decide el modo es el `id` del path.
 //
-// EL CÓDIGO NO SE EDITA. Es la PK y quedó escrito en `refund_order_detail.reason` de cada línea ya
-// registrada: cambiarlo dejaría al histórico apuntando a un motivo que no existe. En un alta se
-// propone solo desde el nombre y se puede corregir; en una edición va deshabilitado.
+// EL ID NO SE MUESTRA. Es un `BIGSERIAL` que pone la base y queda escrito en
+// `refund_order_details.reason_id`: no es un dato que alguien elija ni corrija, a diferencia del
+// código que este formulario pedía cuando la PK era el código.
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertTriangle, ArrowLeft, ChevronRight, Save, Tags } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Save, Tags } from 'lucide-react'
 import { useRouteParams } from '@/core/routing/active-route'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
-import {
-  codigoDeMotivo,
-  codigoDeMotivoEnUso,
-  REQUISITO_META,
-  REQUISITOS,
-  siguienteOrden,
-  useRefundReasonsStore,
-  type MotivoDevolucion,
-  type RequisitoCampo,
-} from '../../../stores/refund-reasons-store'
+import { useRefundReasonsStore, type MotivoDevolucion } from '../../../stores/refund-reasons-store'
 
 /**
  * Una fila del formulario: etiqueta a la izquierda, campo a la derecha.
  *
- * La etiqueta va alineada a la derecha y pegada al campo, como en el sistema viejo: con siete filas,
- * el ojo baja por el borde de los campos y las etiquetas quedan del lado de lo que nombran. En una
- * pantalla angosta la grilla se cae a una sola columna sola (`sm:`), así que la etiqueta se pone
- * arriba y nada se aprieta.
+ * La etiqueta va alineada a la derecha y pegada al campo, como en el sistema viejo: el ojo baja por
+ * el borde de los campos y las etiquetas quedan del lado de lo que nombran. En una pantalla angosta
+ * la grilla se cae a una sola columna sola (`sm:`), así que la etiqueta se pone arriba y nada se
+ * aprieta.
  */
 function Fila({
   label,
@@ -79,39 +68,11 @@ function Fila({
   )
 }
 
-/** Los tres valores del requisito en un desplegable, como el «Tipo de Proceso» del sistema viejo. */
-function SelectRequisito({
-  id,
-  valor,
-  onChange,
-}: {
-  id: string
-  valor: RequisitoCampo
-  onChange: (v: RequisitoCampo) => void
-}) {
-  return (
-    <Select value={valor} onValueChange={(v) => onChange(v as RequisitoCampo)}>
-      <SelectTrigger id={id} className="h-9 w-full">
-        {/* Base UI muestra el VALOR CRUDO si no se le da un render explícito: sin esto el trigger
-            diría «REQUIRED». Mismo tropiezo que ya tuvieron `MockupShell` y las restricciones. */}
-        <SelectValue>{(v) => REQUISITO_META[v as RequisitoCampo]?.label ?? String(v)}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {REQUISITOS.map((opcion) => (
-          <SelectItem key={opcion} value={opcion}>
-            {REQUISITO_META[opcion].label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
 export function RefundReasonFormPage() {
   const navigate = useNavigate()
   // `useRouteParams` y no `useParams`: el shell de este mockup renderiza la pantalla a mano, fuera de
   // un <Route element>, así que `useParams()` devolvería {} y la pantalla no sabría a quién edita.
-  const { code: codeParam } = useRouteParams()
+  const { id: idParam } = useRouteParams()
 
   const motivos = useRefundReasonsStore((s) => s.motivos)
   const addMotivo = useRefundReasonsStore((s) => s.addMotivo)
@@ -119,37 +80,33 @@ export function RefundReasonFormPage() {
   const setMotivoActivo = useRefundReasonsStore((s) => s.setMotivoActivo)
 
   const vivos = useMemo(() => motivos.filter((m) => !m.deletedAt), [motivos])
-  const enEdicion: MotivoDevolucion | undefined = codeParam
-    ? vivos.find((m) => m.code === codeParam)
-    : undefined
+  // El path trae texto: un id que no es número (link roto, alguien escribiendo en la barra) tiene que
+  // caer en el mismo cartel que un id inexistente y no en un `NaN` que no matchea nada en silencio.
+  const idBuscado = idParam !== undefined ? Number(idParam) : undefined
+  const enEdicion: MotivoDevolucion | undefined =
+    idBuscado !== undefined && Number.isInteger(idBuscado)
+      ? vivos.find((m) => m.id === idBuscado)
+      : undefined
 
   // El estado arranca DESDE la fila (o vacío en un alta) y no se sincroniza con un efecto: esta
   // pantalla se monta de nuevo en cada navegación, así que el valor inicial ya es el correcto. Es la
   // diferencia con un diálogo, que sobrevive cerrado y necesita el efecto para no mostrar lo anterior.
   const [name, setName] = useState(enEdicion?.name ?? '')
-  const [code, setCode] = useState(enEdicion?.code ?? '')
-  /** Mientras nadie toque el código a mano, en un alta lo propone el nombre. */
-  const [codeManual, setCodeManual] = useState(false)
-  const [lotRequirement, setLotRequirement] = useState<RequisitoCampo>(enEdicion?.lotRequirement ?? 'REQUIRED')
-  const [dueDateRequirement, setDueDateRequirement] = useState<RequisitoCampo>(
-    enEdicion?.dueDateRequirement ?? 'REQUIRED',
-  )
-  const [requiresPhoto, setRequiresPhoto] = useState(enEdicion?.requiresPhoto ?? true)
-  const [requiresNotes, setRequiresNotes] = useState(enEdicion?.requiresNotes ?? true)
-  const [ordenTexto, setOrdenTexto] = useState(String(enEdicion?.sortOrder ?? siguienteOrden(vivos)))
+  const [description, setDescription] = useState(enEdicion?.description ?? '')
 
   const volver = () => navigate('/motivos-devolucion')
 
-  // El path trae un código que no existe (link viejo, o el motivo se eliminó). Cartel y salida, no un
-  // formulario vacío que al guardar crearía una fila nueva sin que nadie lo haya pedido.
-  if (codeParam && !enEdicion) {
+  // El path trae un id que no existe o que no es un número (link viejo, o el motivo se eliminó).
+  // Cartel y salida, no un formulario vacío que al guardar crearía una fila nueva sin que nadie lo
+  // haya pedido.
+  if (idParam !== undefined && !enEdicion) {
     return (
       <Card className="mx-auto w-full max-w-2xl">
         <CardHeader>
           <CardTitle>Motivo no disponible</CardTitle>
           <CardDescription>
-            No hay ningún motivo con el código <span className="font-mono">{codeParam}</span> en el
-            catálogo, o fue eliminado.
+            No hay ningún motivo con el identificador <span className="font-mono">{idParam}</span> en
+            el catálogo, o fue eliminado.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -162,33 +119,25 @@ export function RefundReasonFormPage() {
     )
   }
 
-  const codigoFinal = codigoDeMotivo(enEdicion ? enEdicion.code : codeManual ? code : name)
-  const codigoDuplicado = !enEdicion && codigoFinal.length > 0 && codigoDeMotivoEnUso(vivos, codigoFinal)
-
   const motivoBloqueo: string | null = !name.trim()
     ? 'Poné el nombre del motivo'
-    : !codigoFinal
-      ? 'Poné el código del motivo'
-      : codigoDuplicado
-        ? `El código ${codigoFinal} ya está en uso`
-        : null
+    : !description.trim()
+      ? 'Poné la descripción del motivo'
+      : null
 
   const guardar = () => {
     if (motivoBloqueo) return
     const input = {
-      code: codigoFinal,
       name,
-      lotRequirement,
-      dueDateRequirement,
-      requiresPhoto,
-      requiresNotes,
-      // `sort_order` es SMALLINT: lo que no es número es el final de la lista, no `NaN`.
-      sortOrder: Number.isFinite(Number(ordenTexto))
-        ? Math.max(0, Math.trunc(Number(ordenTexto)))
-        : siguienteOrden(vivos),
+      description,
+      // OPEN QUESTION: `lot_requirement` is not on this form — the request was name + description
+      // only — so a brand-new motivo always takes the DDL default 'OPTIONAL'. Nobody can currently
+      // create a motivo that REQUIRES a lot (a RECALL) or one where the lot does not apply (HIDDEN);
+      // only the seeded rows carry those values. Needs a product decision before this ships.
+      lotRequirement: enEdicion ? enEdicion.lotRequirement : ('OPTIONAL' as const),
     }
     if (enEdicion) {
-      updateMotivo(enEdicion.code, input)
+      updateMotivo(enEdicion.id, input)
       toast.success(`«${input.name.trim()}» actualizado`)
     } else {
       addMotivo(input)
@@ -233,81 +182,25 @@ export function RefundReasonFormPage() {
           />
         </Fila>
 
+        {/* LLEVA ASTERISCO aunque la pantalla vieja mostrara la descripción como opcional: la columna
+            es `VARCHAR(300) NOT NULL`, así que una fila sin descripción no entra en la tabla.
+            Va en un `Textarea` y no en un `Input`: 300 caracteres es una frase larga, y en una línea
+            de 9 px de alto el final queda fuera de la vista mientras se escribe. Crece con el
+            contenido (`field-sizing-content`), así que un motivo de media línea no ocupa un párrafo. */}
         <Fila
-          label="Código"
-          htmlFor="motivo-code"
+          label="Descripción"
+          htmlFor="motivo-description"
           requerido
-          ayuda={
-            enEdicion
-              ? 'No se puede cambiar: las devoluciones ya registradas apuntan a este código.'
-              : 'Se propone desde el nombre.'
-          }
+          ayuda="Para qué es el motivo, en una frase. Es lo que lee quien tiene que decidir la devolución."
         >
-          <Input
-            id="motivo-code"
-            value={codigoFinal}
-            onChange={(e) => {
-              setCodeManual(true)
-              setCode(e.target.value)
-            }}
-            disabled={Boolean(enEdicion)}
-            placeholder="CONTAMINACION_FISICA"
-            maxLength={100}
-            className={cn('h-9 font-mono text-xs uppercase', codigoDuplicado && 'border-destructive')}
-            aria-invalid={codigoDuplicado}
-          />
-          {codigoDuplicado && (
-            <p className="flex items-center gap-1.5 text-[11px] font-medium text-destructive">
-              <AlertTriangle size={12} className="shrink-0" />
-              Ya hay un motivo con el código {codigoFinal}.
-            </p>
-          )}
-        </Fila>
-
-        <Fila
-          label="Número de lote"
-          htmlFor="motivo-lote"
-          requerido
-          ayuda={REQUISITO_META[lotRequirement].nota}
-        >
-          <SelectRequisito id="motivo-lote" valor={lotRequirement} onChange={setLotRequirement} />
-        </Fila>
-
-        <Fila
-          label="Vencimiento"
-          htmlFor="motivo-vencimiento"
-          requerido
-          ayuda={REQUISITO_META[dueDateRequirement].nota}
-        >
-          <SelectRequisito
-            id="motivo-vencimiento"
-            valor={dueDateRequirement}
-            onChange={setDueDateRequirement}
-          />
-        </Fila>
-
-        {/* Foto y observación son dos banderas y van en UNA fila: son la misma pregunta —qué evidencia
-            se le exige— y separarlas en dos filas haría el formulario más largo sin decir más. */}
-        <Fila label="Evidencia">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1.5">
-            <label className="flex items-center gap-2 text-xs">
-              <Switch checked={requiresPhoto} onCheckedChange={setRequiresPhoto} />
-              Foto obligatoria
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              <Switch checked={requiresNotes} onCheckedChange={setRequiresNotes} />
-              Observación obligatoria
-            </label>
-          </div>
-        </Fila>
-
-        <Fila label="Orden" htmlFor="motivo-orden" ayuda="Menor primero, en la lista del vendedor.">
-          <Input
-            id="motivo-orden"
-            value={ordenTexto}
-            onChange={(e) => setOrdenTexto(e.target.value.replace(/[^0-9]/g, ''))}
-            inputMode="numeric"
-            className="h-9 w-24 tabular-nums"
+          <Textarea
+            id="motivo-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="En qué caso se usa este motivo"
+            maxLength={300}
+            rows={2}
+            className="text-sm"
           />
         </Fila>
 
@@ -317,7 +210,7 @@ export function RefundReasonFormPage() {
               <Switch
                 checked={enEdicion.isActive}
                 onCheckedChange={(v) => {
-                  setMotivoActivo(enEdicion.code, v)
+                  setMotivoActivo(enEdicion.id, v)
                   toast.success(v ? 'El motivo vuelve a ofrecerse' : 'El motivo ya no se ofrece')
                 }}
               />

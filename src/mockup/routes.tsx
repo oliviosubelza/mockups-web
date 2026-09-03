@@ -339,7 +339,7 @@ export const routes: MockRoute[] = [
   },
   {
     // Alta y edición van a la MISMA pantalla, igual que en zonas y restricciones: `/nuevo` entra
-    // vacío y `/:code/editar` con la fila cargada. No son ítems del sidebar —se llega por el botón
+    // vacío y `/:id/editar` con la fila cargada. No son ítems del sidebar —se llega por el botón
     // del catálogo—, pero son URLs reales: sobreviven un F5 y se pueden compartir.
     id: 'motivo-devolucion-nuevo',
     path: '/motivos-devolucion/nuevo',
@@ -350,7 +350,7 @@ export const routes: MockRoute[] = [
   },
   {
     id: 'motivo-devolucion-editar',
-    path: '/motivos-devolucion/:code/editar',
+    path: '/motivos-devolucion/:id/editar',
     label: 'Editar motivo de devolución',
     component: MotivoDevolucionFormScreen,
     order: 6,

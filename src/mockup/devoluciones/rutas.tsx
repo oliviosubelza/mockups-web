@@ -51,5 +51,5 @@ export const DevolucionDetalleScreen = conContexto(ReturnViewPage)
 // zustand): un solo lugar donde se envuelven las pantallas del módulo vale más que la línea que se
 // ahorra, y el día que el catálogo pase a un servicio no hay que acordarse de esto.
 export const MotivosDevolucionScreen = conContexto(RefundReasonsPage)
-/** Alta y edición son la MISMA pantalla: el `code` del path decide el modo. */
+/** Alta y edición son la MISMA pantalla: el `id` del path decide el modo. */
 export const MotivoDevolucionFormScreen = conContexto(RefundReasonFormPage)
