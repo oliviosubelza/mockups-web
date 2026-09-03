@@ -25,7 +25,7 @@ import { useNavigate } from "react-router";
 // `useRouteParams` y no `useParams`: el shell de este mockup renderiza la pantalla a mano, fuera de
 // un <Route element>, así que `useParams()` devolvería {} y la página se quedaría sin su id.
 import { useRouteParams } from "@/core/routing/active-route";
-import { ArrowLeft, Check, PackageX, X } from "lucide-react";
+import { ArrowLeft, Check, PackageX, RotateCcw, X } from "lucide-react";
 import type { ReturnLine, WorkflowInstanceLevel } from "../../../types";
 import {
   CLIENT_TYPE_LABELS,
@@ -40,6 +40,7 @@ import {
   isSettled,
   itemDecisionBlockedReason,
   pendingLevelOf,
+  reactivateBlockedReason,
   workflowStateOf,
 } from "../../../lib/return-workflow";
 import {
@@ -51,7 +52,12 @@ import {
   signaturesMissing,
 } from "../../../lib/workflow";
 import { lineMinUnits, round2 } from "../../../lib/order-math";
-import { useApproveReturn, useReturn, useRejectReturn } from "../../../hooks/use-returns";
+import {
+  useApproveReturn,
+  useReactivateReturn,
+  useReturn,
+  useRejectReturn,
+} from "../../../hooks/use-returns";
 import { useOrderClientDetails } from "../../../hooks/use-orders";
 import { seesOwnDocumentsOnly, canApproveReturns, useCurrentUser } from "../../../stores/session-store";
 import { EmptyState } from "../../../components/common/empty-state";
@@ -62,6 +68,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { bs, formatDay } from "../../../lib/format";
 import { ReturnItemsTable, type ItemDraft } from "../components/return-items-table";
 import { DecisionImpactDialog } from "../components/decision-impact-dialog";
+import { ReactivateDialog } from "../components/reactivate-dialog";
 import { ReturnTimeline } from "../components/return-timeline";
 import { InfoCard, InfoField } from "../components/info-grid";
 
@@ -105,12 +112,18 @@ export function ReturnViewPage() {
   const user = useCurrentUser();
   const approve = useApproveReturn();
   const reject = useRejectReturn();
+  const reactivar = useReactivateReturn();
 
   const [drafts, setDrafts] = useState<Map<string, ItemDraft>>(new Map());
   const [confirmando, setConfirmando] = useState<"aprobado" | "rechazado" | null>(null);
+  const [reactivando, setReactivando] = useState(false);
   const [tab, setTab] = useState<"productos" | "historial">("productos");
 
   const puedeFirmar = canApproveReturns(user.role) && !!user.employeeCode;
+  // Reactivar convive con la ficha de una devolución CERRADA, que es justo cuando el panel de
+  // decisión no está: por eso el botón va en la cabecera y no en ese panel.
+  const bloqueoReactivar = ret ? reactivateBlockedReason(ret) : "";
+  const puedeReactivar = puedeFirmar && bloqueoReactivar === null;
   const isNivel1 = user.role === "analista_cx";
   const isEvaluating = !!ret && (ret.status === "PROCESANDO" || (ret.workflow !== null && !isSettled(ret)));
   const decidiendo = !!ret && puedeFirmar && (canDecide(ret, user.employeeCode as number) || isEvaluating);
@@ -277,6 +290,11 @@ export function ReturnViewPage() {
           {ret.clientName}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {puedeReactivar && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setReactivando(true)}>
+              <RotateCcw className="h-4 w-4" /> Reactivar
+            </Button>
+          )}
           <Button type="button" variant="outline" size="sm" onClick={() => navigate("/devoluciones")}>
             <ArrowLeft className="h-4 w-4" /> Volver
           </Button>
@@ -454,6 +472,27 @@ export function ReturnViewPage() {
             {bloqueoConfirmar && <p className="w-full text-xs text-destructive">{bloqueoConfirmar}</p>}
           </CardContent>
         </Card>
+      )}
+
+      {reactivando && (
+        <ReactivateDialog
+          open
+          onOpenChange={setReactivando}
+          ret={ret}
+          loading={reactivar.isPending}
+          onConfirm={({ reason, photos }) => {
+            if (!user.employeeCode) return;
+            reactivar.mutate(
+              {
+                id: ret.id,
+                actor: { employeeCode: user.employeeCode, employeeName: user.name },
+                reason,
+                photos,
+              },
+              { onSuccess: () => setReactivando(false) },
+            );
+          }}
+        />
       )}
 
       {confirmando && (

@@ -7,7 +7,7 @@
 // entra en el historial del browser (back/forward).
 import { useMemo, type ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, Tags } from 'lucide-react'
+import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileClock, Flag, LandPlot, Map as MapIcon, PackageX, Radar, Receipt, Route, ShieldAlert, SlidersHorizontal, Tags } from 'lucide-react'
 import { RouteRegistry } from '@/core/routing/route-registry'
 import { openRoute } from '@/core/routing/open-route'
 import type { RouteConfig } from '@/core/routing/types'
@@ -42,6 +42,8 @@ import {
   DevolucionReservarScreen,
   DevolucionesListaScreen,
   MotivoDevolucionFormScreen,
+  ParametroMotivoDevolucionFormScreen,
+  ParametrosMotivoDevolucionScreen,
   MotivosDevolucionScreen,
 } from './devoluciones/rutas'
 import { CAMIONES, PARADAS } from './mock-data'
@@ -357,7 +359,7 @@ export const routes: MockRoute[] = [
   },
   {
     // Alta y edición van a la MISMA pantalla, igual que en zonas y restricciones: `/nuevo` entra
-    // vacío y `/:code/editar` con la fila cargada. No son ítems del sidebar —se llega por el botón
+    // vacío y `/:id/editar` con la fila cargada. No son ítems del sidebar —se llega por el botón
     // del catálogo—, pero son URLs reales: sobreviven un F5 y se pueden compartir.
     id: 'motivo-devolucion-nuevo',
     path: '/motivos-devolucion/nuevo',
@@ -368,10 +370,38 @@ export const routes: MockRoute[] = [
   },
   {
     id: 'motivo-devolucion-editar',
-    path: '/motivos-devolucion/:code/editar',
+    path: '/motivos-devolucion/:id/editar',
     label: 'Editar motivo de devolución',
     component: MotivoDevolucionFormScreen,
     order: 6,
+    showInSidebar: false,
+  },
+  // Los PARÁMETROS del motivo: su ventana de vigencia y su alcance. Van pegados al catálogo de
+  // motivos (order 7, justo después del 6) porque se configuran de a dos — se da de alta el motivo y
+  // enseguida la ventana en la que rige— y buscarlos en otra sección sería buscarlos dos veces.
+  {
+    id: 'parametros-motivo-devolucion',
+    path: '/parametros-motivo-devolucion',
+    label: 'Parámetros de motivo',
+    icon: SlidersHorizontal,
+    component: ParametrosMotivoDevolucionScreen,
+    order: 7,
+    group: MODULOS.devoluciones,
+  },
+  {
+    id: 'parametro-motivo-devolucion-nuevo',
+    path: '/parametros-motivo-devolucion/nuevo',
+    label: 'Nuevo parámetro de motivo',
+    component: ParametroMotivoDevolucionFormScreen,
+    order: 7,
+    showInSidebar: false,
+  },
+  {
+    id: 'parametro-motivo-devolucion-editar',
+    path: '/parametros-motivo-devolucion/:id/editar',
+    label: 'Editar parámetro de motivo',
+    component: ParametroMotivoDevolucionFormScreen,
+    order: 7,
     showInSidebar: false,
   },
   {

@@ -25,6 +25,8 @@ import { ReturnProcessPage } from './features/returns/pages/return-process-page'
 import { ReturnReservePage } from './features/returns/pages/return-reserve-page'
 import { RefundReasonsPage } from './features/refund-reasons/pages/refund-reasons-page'
 import { RefundReasonFormPage } from './features/refund-reasons/pages/refund-reason-form-page'
+import { RefundMotiveParamsPage } from './features/refund-motive-params/pages/refund-motive-params-page'
+import { RefundMotiveParamFormPage } from './features/refund-motive-params/pages/refund-motive-param-form-page'
 
 function conContexto(Pagina: ComponentType): ComponentType {
   return function PantallaDeDevoluciones() {
@@ -57,5 +59,13 @@ export const DevolucionReservarScreen = conContexto(ReturnReservePage)
 // zustand): un solo lugar donde se envuelven las pantallas del módulo vale más que la línea que se
 // ahorra, y el día que el catálogo pase a un servicio no hay que acordarse de esto.
 export const MotivosDevolucionScreen = conContexto(RefundReasonsPage)
-/** Alta y edición son la MISMA pantalla: el `code` del path decide el modo. */
+/** Alta y edición son la MISMA pantalla: el `id` del path decide el modo. */
 export const MotivoDevolucionFormScreen = conContexto(RefundReasonFormPage)
+
+// EL OTRO DATO MAESTRO: los PARÁMETROS de cada motivo. El motivo dice QUÉ es una devolución; el
+// parámetro dice desde cuándo, hasta cuándo y sobre qué se puede usar. Son dos pantallas y no una
+// porque son dos preguntas: el catálogo se define una vez, y sobre un mismo motivo se dan de alta
+// muchas ventanas de vigencia.
+export const ParametrosMotivoDevolucionScreen = conContexto(RefundMotiveParamsPage)
+/** Alta y edición son la MISMA pantalla, como en motivos: el `id` del path decide el modo. */
+export const ParametroMotivoDevolucionFormScreen = conContexto(RefundMotiveParamFormPage)

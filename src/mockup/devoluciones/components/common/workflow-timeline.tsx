@@ -6,6 +6,7 @@ import {
   ChevronUp,
   CornerUpLeft,
   FilePlus2,
+  RotateCcw,
   GitBranch,
   MessageSquare,
   Users,
@@ -17,6 +18,7 @@ import { roundsOf } from "../../lib/workflow";
 import { Button } from "@/components/ui/button";
 import { cn } from "../../lib/utils";
 import { bs, formatDateTime, formatTime } from "../../lib/format";
+import { PhotoStack } from "./photo-viewer";
 
 /**
  * Everything that happened to an approval, in the order it happened.
@@ -44,6 +46,9 @@ const ACTION_META: Record<
     label: "Devolvió al vendedor",
     tone: "text-orange-600 dark:text-orange-400",
   },
+  // Reactivar no es una decisión de nivel: es el evento que explica por qué un documento cerrado
+  // volvió a moverse. Va en ámbar y no en verde justamente para que no se lea como una aprobación.
+  REACTIVATE: { icon: RotateCcw, label: "Reactivó", tone: "text-amber-600 dark:text-amber-400" },
   COMMENT: { icon: MessageSquare, label: "Comentó", tone: "text-muted-foreground" },
   CANCEL: { icon: Ban, label: "Anuló", tone: "text-muted-foreground" },
   REASSIGN: { icon: Users, label: "Reasignó", tone: "text-sky-600 dark:text-sky-400" },
@@ -107,7 +112,7 @@ function ActionEvent({
   const [open, setOpen] = useState(false);
   const meta = ACTION_META[action.action];
   const movedAmount = action.amountBefore !== null && action.amountAfter !== null;
-  const hasDetail = !!detail || movedAmount || !!action.rejectReason;
+  const hasDetail = !!detail || movedAmount || !!action.rejectReason || action.photos.length > 0;
 
   return (
     <li className="relative pl-6">
@@ -158,6 +163,14 @@ function ActionEvent({
               />
             )}
             {action.rejectReason && <Field label="Motivo" value={action.rejectReason} />}
+            {/* La autorización de una reactivación. Va acá y no colapsada arriba porque es prueba
+                que se consulta cuando alguien pregunta quién autorizó, no algo que se lea de paso. */}
+            {action.photos.length > 0 && (
+              <div className="flex items-start gap-2">
+                <span className="w-24 shrink-0 text-muted-foreground">Autorización</span>
+                <PhotoStack photos={action.photos} />
+              </div>
+            )}
             {movedAmount && (
               <Field
                 label="Monto"

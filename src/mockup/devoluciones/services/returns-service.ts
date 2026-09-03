@@ -23,8 +23,10 @@ import {
   editBlockedReason,
   itemDecisionBlockedReason,
   pendingLevelOf,
+  reactivateBlockedReason,
   relevantAmountOf,
   reopenLinesBlockedReason,
+  selectsItems,
   sourcesBlockedReason,
   statusOf,
   workflowStateOf,
@@ -34,6 +36,7 @@ import {
   approveCurrentLevel,
   commentOn,
   currentVersionOf,
+  recordReactivation,
   rejectCurrentLevel,
   startInstance,
 } from "../lib/workflow";
@@ -154,7 +157,14 @@ function linesBlockedReason(lines: ReturnLine[]): string | null {
 // The rules live in `lib/return-workflow` so the seed, the services and the
 // screens all read the same copy. Re-exported here because callers reach for
 // them alongside the resource they belong to.
-export { canDecide, decisionBlockedReason, editBlockedReason, isEditable } from "../lib/return-workflow";
+export {
+  canDecide,
+  decisionBlockedReason,
+  editBlockedReason,
+  isEditable,
+  isReactivatable,
+  reactivateBlockedReason,
+} from "../lib/return-workflow";
 
 /** The totals of a set of returned lines. A return has no discount. */
 export function totalsOf(lines: ReturnLine[]) {
@@ -531,9 +541,10 @@ export const returnsService = {
     actor: { employeeCode: number; employeeName: string };
     comment: string;
     /**
-     * Per-item rulings. Accepted at every level: each desk of the ladder can cut
-     * quantities and refuse products, and what it leaves standing is what decides
-     * whether the level above it is needed at all.
+     * Per-item rulings. Accepted **only** on a level whose `decisionMode` is
+     * `ITEM_SELECTION` — the first desk of the first pass. What that desk leaves
+     * standing is what decides whether the level above it is needed at all, and
+     * every level above answers for the note as a whole.
      */
     itemDecisions?: ItemDecisionInput[];
   }): Promise<Return> => {
@@ -545,7 +556,24 @@ export const returnsService = {
     if (!instance) return Promise.reject(new Error("La devolución no tiene un flujo en curso"));
 
     const at = new Date().toISOString();
-    const decided = !!itemDecisions && itemDecisions.length > 0;
+    // A screen cannot be the only thing standing between a level and a
+    // selection it is not allowed to make: hiding the checkboxes is a courtesy,
+    // refusing the payload is the rule. Rulings that arrive against a
+    // `DOCUMENT_DECISION` level are rejected outright rather than dropped
+    // silently — a caller that thought it was cutting quantities has to hear
+    // that it did not.
+    const decidesItems = selectsItems(pendingLevelOf(current));
+    if (!decidesItems && !!itemDecisions && itemDecisions.length > 0) {
+      return Promise.reject(
+        new Error(
+          "Este nivel aprueba o rechaza la nota completa: la selección de productos la hizo el Nivel 1.",
+        ),
+      );
+    }
+    // In `DOCUMENT_DECISION` mode the standing selection is approved exactly as
+    // it is: nothing is recomputed, so the amount the next rung is measured
+    // against is the one level 1 left behind.
+    const decided = decidesItems && !!itemDecisions && itemDecisions.length > 0;
     let lines = current.lines;
 
     if (decided) {
@@ -762,6 +790,121 @@ export const returnsService = {
         editCount: current.editCount,
         originReturnId: current.originReturnId,
       }),
+    };
+
+    RETURNS = RETURNS.map((r) => (r.id === id ? updated : r));
+    return delay(updated, 500);
+  },
+
+  /**
+   * Reopen a refused return: the same claim climbs the ladder again.
+   *
+   * NOTHING ABOUT THE CLAIM CHANGES. The lines are carried over untouched —
+   * including level 1's rulings — because a reactivation is not a correction:
+   * there is no new set of goods, so there is nothing to re-select. That is the
+   * whole difference between this and `update`, which wipes every ruling and
+   * bumps `editCount`. This one leaves `editCount` alone: it did not correct
+   * anything.
+   *
+   * THE NEW INSTANCE IS PASS 2, and that is what makes the carry-over safe.
+   * `startInstance` reads `attempt` to decide the levels' `decisionMode`, so on
+   * a second pass no desk — not even level 1 — is offered the checkboxes again.
+   *
+   * THE REFUSED INSTANCE IS FILED AS IT DIED, `REJECTED` and not `CANCELLED`. A
+   * correction supersedes the instance it replaces; a reactivation replaces
+   * nothing, and rewriting that status would erase the refusal this document is
+   * being reopened *from*.
+   *
+   * The reason is mandatory for the same reason it is on a rejection: the trail
+   * has to answer why a closed document is moving again.
+   */
+  reactivate: ({
+    id,
+    actor,
+    reason,
+    photos,
+  }: {
+    id: number;
+    actor: { employeeCode: number; employeeName: string };
+    reason: string;
+    /** The authorisation photos. At least one — see the rule below. */
+    photos: string[];
+  }): Promise<Return> => {
+    const current = RETURNS.find((r) => r.id === id);
+    if (!current) return Promise.reject(new Error("La devolución ya no existe"));
+    const blocked = reactivateBlockedReason(current);
+    if (blocked) return Promise.reject(new Error(blocked));
+    if (!reason.trim()) {
+      return Promise.reject(
+        new Error("Indicá por qué se reactiva: es lo que explica que un documento cerrado vuelva a moverse."),
+      );
+    }
+    // The photo is the authorisation, not an attachment: reopening a note a desk
+    // refused overrides a signature, and the signed paper is what gives that
+    // override an owner outside the system. The screen hides the button without
+    // one; the service refuses the call, because a screen is not a rule.
+    if (photos.length === 0) {
+      return Promise.reject(
+        new Error("Adjuntá la fotografía de la autorización: sin ella la reactivación no queda respaldada."),
+      );
+    }
+    const route = returnRoute();
+    if (!route) return Promise.reject(new Error(NO_TEMPLATE));
+
+    const refused = current.workflow;
+    const at = new Date().toISOString();
+    // The ladder is measured against what is still standing after level 1 cut,
+    // not against the original claim: sending the note up against a total that
+    // no desk approved would wake up rungs the surviving amount never reaches.
+    const relevant = relevantAmountOf(current.lines);
+
+    const started = startInstance({
+      id: uid("wfi"),
+      definition: route.definition,
+      version: route.version,
+      targetCode: "RETURN",
+      targetId: id,
+      initiatedByName: current.sellerName,
+      amount: current.total,
+      relevantValue: relevant,
+      attempt: (refused?.attempt ?? 1) + 1,
+      reactivatedFromInstanceId: refused?.id ?? null,
+      at,
+    });
+    // The entry goes on the NEW instance: it is the one whose existence it
+    // explains. `previousStatus` is where the document was — refused.
+    const workflow = recordReactivation(
+      started,
+      actor,
+      reason.trim(),
+      refused?.status ?? "REJECTED",
+      photos,
+      at,
+    );
+
+    // Filed with its own status intact, and with the lines exactly as that round
+    // left them, so the histórico of the refused pass keeps showing what it
+    // decided even though `current.lines` now belong to the pass in front.
+    const retired = refused ? [refused] : [];
+    const retiredSnapshot = refused
+      ? [{ workflowId: refused.id, lines: cloneLines(current.lines) }]
+      : [];
+
+    const updated: Return = {
+      ...current,
+      workflow,
+      pastWorkflows: [...retired, ...current.pastWorkflows],
+      pastLineSnapshots: [...retiredSnapshot, ...current.pastLineSnapshots],
+      status: statusOf({
+        workflow,
+        lines: current.lines,
+        editCount: current.editCount,
+        originReturnId: current.originReturnId,
+      }),
+      // Undecided again: how this ends is what the reopened ladder is for.
+      settlement: null,
+      approvedTotal: null,
+      rejectedTotal: null,
     };
 
     RETURNS = RETURNS.map((r) => (r.id === id ? updated : r));

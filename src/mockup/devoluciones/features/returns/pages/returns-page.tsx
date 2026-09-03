@@ -21,7 +21,7 @@
 // forma que una tabla sabe manejar.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { CheckCircle2, Eye, PackageCheck } from "lucide-react";
+import { CheckCircle2, Eye, PackageCheck, MoreVertical, RotateCcw } from "lucide-react";
 import type { Return, ReturnSettlement, ReturnStatus, ReturnWorkflowState } from "../../../types";
 import {
   ALL_RETURN_STATUSES,
@@ -41,11 +41,21 @@ import { amount, formatDay } from "../../../lib/format";
 import { dateKeyOffset } from "../../../lib/frequency";
 import { RETURN_DISTRIBUTOR_NAMES } from "../../../data/distributors-data";
 import { isOverdue } from "../../../lib/workflow";
-import { pendingLevelOf, workflowStateOf } from "../../../lib/return-workflow";
+import { pendingLevelOf, reactivateBlockedReason, workflowStateOf } from "../../../lib/return-workflow";
 import { useAllSellers } from "../../../hooks/use-sellers";
 import { useReturnsPaged } from "../../../hooks/use-returns";
 import { seesOwnDocumentsOnly, useCurrentUser } from "../../../stores/session-store";
 import { ReturnStatusBadge } from "../components/return-status-badge";
+import { ReactivateDialog } from "../components/reactivate-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { canApproveReturns } from "../../../stores/session-store";
+import { useReactivateReturn } from "../../../hooks/use-returns";
 
 /** Días corridos desde el registro — lo que la columna «Tiempo Logístico» lee. */
 function diasTranscurridos(createdAt: string): number {
@@ -78,6 +88,12 @@ export function ReturnsPage() {
   const soloPropias = seesOwnDocumentsOnly(user.role);
   const isFacturador = user.role === "facturador";
   const isAlmacen = user.role === "almacen";
+  // Reactivar es reabrir una decisión, así que lo puede hacer quien firma decisiones. Un vendedor
+  // que ve sus propias notas no reabre la que le rechazaron: para eso está la corrección.
+  const puedeReactivar = canApproveReturns(user.role) && !!user.employeeCode;
+  const reactivar = useReactivateReturn();
+  /** La devolución cuyo diálogo de reactivación está abierto. `null` = cerrado. */
+  const [reactivando, setReactivando] = useState<Return | null>(null);
 
   const columns = useMemo(
     () =>
@@ -250,7 +266,7 @@ export function ReturnsPage() {
           },
         },
       ]),
-    [navigate, isFacturador, isAlmacen],
+    [navigate, puedeReactivar, isFacturador, isAlmacen],
   );
 
   const [filtros, setFiltros] = useState<Partial<FiltrosDevoluciones>>(() => ({
@@ -429,6 +445,29 @@ export function ReturnsPage() {
           />
         }
       />
+
+      {/* El diálogo vive en la PANTALLA y no en la celda: una fila que se desmonta —un refetch, un
+          cambio de página, un filtro— se llevaría puesto un diálogo abierto y lo escrito adentro. */}
+      {reactivando && (
+        <ReactivateDialog
+          open
+          onOpenChange={(abierto) => !abierto && setReactivando(null)}
+          ret={reactivando}
+          loading={reactivar.isPending}
+          onConfirm={({ reason, photos }) => {
+            if (!user.employeeCode) return;
+            reactivar.mutate(
+              {
+                id: reactivando.id,
+                actor: { employeeCode: user.employeeCode, employeeName: user.name },
+                reason,
+                photos,
+              },
+              { onSuccess: () => setReactivando(null) },
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
