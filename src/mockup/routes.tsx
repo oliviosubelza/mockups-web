@@ -38,6 +38,8 @@ import { MonitoreoEHistorialOTView } from './views/MonitoreoEHistorialOTView'
 import { CierreLogisticoView } from './views/CierreLogisticoView'
 import {
   DevolucionDetalleScreen,
+  DevolucionProcesarScreen,
+  DevolucionReservarScreen,
   DevolucionesListaScreen,
   MotivoDevolucionFormScreen,
   MotivosDevolucionScreen,
@@ -318,6 +320,22 @@ export const routes: MockRoute[] = [
     path: '/devoluciones/:id',
     label: 'Detalle de devolución',
     component: DevolucionDetalleScreen,
+    order: 5,
+    showInSidebar: false,
+  },
+  {
+    id: 'devolucion-procesar',
+    path: '/devoluciones/:id/procesar',
+    label: 'Procesar facturación de devolución',
+    component: DevolucionProcesarScreen,
+    order: 5,
+    showInSidebar: false,
+  },
+  {
+    id: 'devolucion-reservar',
+    path: '/devoluciones/:id/reservar',
+    label: 'Reserva de almacén de devolución',
+    component: DevolucionReservarScreen,
     order: 5,
     showInSidebar: false,
   },

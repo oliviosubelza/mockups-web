@@ -53,6 +53,7 @@ export interface ListReturnsParams {
   status?: ReturnStatus | "all";
   distributorName?: string | "all";
   workflowState?: ReturnWorkflowState | "all";
+  settlement?: ReturnSettlement | "all";
   /**
    * Narrow to returns waiting on this employee's signature.
    *
@@ -94,6 +95,7 @@ function filterReturns({
   status = "all",
   distributorName = "all",
   workflowState = "all",
+  settlement = "all",
   awaitingEmployeeCode,
 }: ListReturnsParams): Return[] {
   const q = search.trim().toLowerCase();
@@ -105,6 +107,7 @@ function filterReturns({
     if (status !== "all" && ret.status !== status) return false;
     if (distributorName !== "all" && ret.distributorName !== distributorName) return false;
     if (workflowState !== "all" && workflowStateOf(ret) !== workflowState) return false;
+    if (settlement !== "all" && ret.settlement !== settlement) return false;
     if (q && !ret.clientName.toLowerCase().includes(q)) return false;
     if (awaitingEmployeeCode !== undefined) {
       // Waiting on this person specifically: assigned to the open level and not
@@ -170,7 +173,7 @@ export function totalsOf(lines: ReturnLine[]) {
  * is no stock to give back.
  */
 function settlementFor(id: number): ReturnSettlement {
-  return seededRandom(id * 31 + 7)() < 0.7 ? "CAMBIO_STOCK" : "NOTA_CREDITO";
+  return seededRandom(id * 31 + 7)() < 0.5 ? "NOTA_CREDITO" : "CAMBIO_STOCK";
 }
 
 /** `YYYY-MM-DD`, `days` back from today. */

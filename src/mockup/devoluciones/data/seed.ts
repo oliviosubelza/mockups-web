@@ -1907,15 +1907,16 @@ function buildReturnSources(lineId: string, minUnits: number): ReturnItemSource[
    */
   function source(id: string, units: number): ReturnItemSource {
     const batch = pick(RETURN_LOTS);
+    const isImported = batch === "IMPORTADO";
     return {
       id,
       invoiceNumber: `F-${String(89000 + Math.floor(rand() * 999))}`,
       invoiceSapDoc: `4500${String(100 + Math.floor(rand() * 899))}`,
-      batch,
-      batchNumber: `L-${2409 + Math.floor(rand() * 4)}-${batch}`,
+      batch: isImported ? null : batch,
+      batchNumber: isImported ? null : `L-${2409 + Math.floor(rand() * 4)}-${batch}`,
       // Some already expired, most about to: that spread is what makes the
       // column worth reading at all.
-      dueDate: dayKeyFrom(Math.floor(between(-90, 240))),
+      dueDate: isImported ? null : dayKeyFrom(Math.floor(between(-90, 240))),
       minUnits: units,
     };
   }
@@ -2064,9 +2065,8 @@ const grantInFull = (lines: ReturnLine[], actorName: string, at: string): Return
 const SEED_SIMPLE_RETURN_STATES: boolean = true;
 
 function buildReturns(): Return[] {
-  // Eighteen and not sixteen: three bands times three exit rungs is nine
-  // combinations, and the list has to be long enough for each of them to appear.
-  const clients = SEED_CLIENTS.slice(0, 18);
+  // Thirty-six combinations: broad representation across amount bands and exit rungs.
+  const clients = SEED_CLIENTS.slice(0, 36);
   // One template, always. Which of its levels run is the amount's business.
   const definition = SEED_WORKFLOWS.find((wf) => wf.targetCode === "RETURN" && wf.isActive);
   const version = definition ? currentVersionOf(definition.versions) : null;
@@ -2074,8 +2074,8 @@ function buildReturns(): Return[] {
 
   return clients.map((client, index) => {
     const id = 4_500_000 + index;
-    const daysAgo = Math.floor(between(0, 12));
-    const createdAt = new Date(Date.now() - daysAgo * 86_400_000 - index * 1_800_000);
+    const daysAgo = Math.floor(between(0, 11));
+    const createdAt = new Date(Date.now() - daysAgo * 86_400_000 - (index % 12) * 1_800_000);
 
     // Claims spread across the three bands so every rung of the ladder is born
     // active on some of the list and skipped on the rest.
@@ -2355,11 +2355,8 @@ function buildReturns(): Return[] {
       total: currentTotal,
       editCount,
       status: statusOf({ workflow: instance, lines: currentLines, editCount, originReturnId: null }),
-      // How it is settled is only known once it is: a claim still crossing desks
-      // has no answer yet, and a rejected one never gets one. The swap is the
-      // common case — a credit note is what is issued when there is no stock to
-      // give back — so the draw is weighted rather than even.
-      settlement: settled ? (rand() < 0.7 ? "CAMBIO_STOCK" : "NOTA_CREDITO") : null,
+      // Balanced distribution: half nota de crédito/débito and half cambio de stock.
+      settlement: settled ? (index % 2 === 0 ? "NOTA_CREDITO" : "CAMBIO_STOCK") : null,
       workflow: instance,
       pastWorkflows,
       pastLineSnapshots,

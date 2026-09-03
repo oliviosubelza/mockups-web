@@ -37,6 +37,7 @@ import type { ItemDecisionInput } from "../../../lib/return-workflow";
 import {
   canDecide,
   decisionBlockedReason,
+  isSettled,
   itemDecisionBlockedReason,
   pendingLevelOf,
   workflowStateOf,
@@ -110,7 +111,10 @@ export function ReturnViewPage() {
   const [tab, setTab] = useState<"productos" | "historial">("productos");
 
   const puedeFirmar = canApproveReturns(user.role) && !!user.employeeCode;
-  const decidiendo = !!ret && puedeFirmar && canDecide(ret, user.employeeCode as number);
+  const isNivel1 = user.role === "analista_cx";
+  const isEvaluating = !!ret && (ret.status === "PROCESANDO" || (ret.workflow !== null && !isSettled(ret)));
+  const decidiendo = !!ret && puedeFirmar && (canDecide(ret, user.employeeCode as number) || isEvaluating);
+  const canSelectItems = decidiendo && isNivel1;
 
   // Se recargan las respuestas en curso cuando cambia la devolución o cuando pasa a ser decidible.
   // Va por id para que un refetch en segundo plano no descarte una decisión a medio escribir.
@@ -128,21 +132,34 @@ export function ReturnViewPage() {
     for (const line of ret.lines) {
       const lineClaimed = lineMinUnits(line);
       claimed += lineClaimed * line.priceUnit;
-      const draft = drafts.get(line.productId);
-      if (!draft || draft.status === "REJECTED") {
-        rejected += 1;
-        continue;
+
+      if (canSelectItems) {
+        const draft = drafts.get(line.productId);
+        if (!draft || draft.status === "REJECTED") {
+          rejected += 1;
+          continue;
+        }
+        approved += draft.approvedMinUnits * line.priceUnit;
+        approvedCount += 1;
+        if (draft.approvedMinUnits < lineClaimed) partial += 1;
+      } else {
+        // Para Niveles 2, 3 y 4 (sin selección de ítems): evalúan la devolución completa
+        if (line.itemStatus === "REJECTED") {
+          rejected += 1;
+        } else {
+          const units = line.approvedMinUnits ?? lineClaimed;
+          approved += units * line.priceUnit;
+          approvedCount += 1;
+          if (units < lineClaimed) partial += 1;
+        }
       }
-      approved += draft.approvedMinUnits * line.priceUnit;
-      approvedCount += 1;
-      if (draft.approvedMinUnits < lineClaimed) partial += 1;
     }
     return {
       claimed: round2(claimed),
       approved: round2(approved),
       counts: { total: ret.lines.length, approved: approvedCount, partial, rejected },
     };
-  }, [ret, drafts]);
+  }, [ret, drafts, canSelectItems]);
 
   if (isLoading) {
     return (
@@ -155,7 +172,11 @@ export function ReturnViewPage() {
 
   // La devolución de otro, leída por un rol que solo ve las suyas, se contesta igual que un código
   // equivocado: no con "no puede verla" —eso confirmaría que existe— sino con el no-encontrada.
-  const fueraDeAlcance = !!ret && seesOwnDocumentsOnly(user.role) && ret.sellerCode !== user.sellerCode;
+  const fueraDeAlcance =
+    !!ret &&
+    ((seesOwnDocumentsOnly(user.role) && ret.sellerCode !== user.sellerCode) ||
+      (user.role === "facturador" && (ret.settlement !== "NOTA_CREDITO" || workflowStateOf(ret) !== "APROBADA")) ||
+      (user.role === "almacen" && (ret.settlement !== "CAMBIO_STOCK" || workflowStateOf(ret) !== "APROBADA")));
 
   if (!ret || fueraDeAlcance) {
     return (
@@ -183,6 +204,7 @@ export function ReturnViewPage() {
 
   /** Por qué la decisión todavía no se puede confirmar, o `null`. */
   const confirmBlocked = (): string | null => {
+    if (!canSelectItems) return null; // Para niveles 2, 3 y 4 deciden la devolución completa
     for (const line of ret.lines) {
       const draft = drafts.get(line.productId);
       if (!draft) return "Falta decidir un producto.";
@@ -215,10 +237,18 @@ export function ReturnViewPage() {
       return;
     }
     const itemDecisions: ItemDecisionInput[] = ret.lines.map((line) => {
-      const draft = drafts.get(line.productId)!;
-      return draft.status === "REJECTED"
-        ? { productId: line.productId, status: "REJECTED" as const, rejectReason: draft.rejectReason }
-        : { productId: line.productId, status: "APPROVED" as const, approvedMinUnits: draft.approvedMinUnits };
+      const draft = drafts.get(line.productId);
+      if (canSelectItems && draft) {
+        return draft.status === "REJECTED"
+          ? { productId: line.productId, status: "REJECTED" as const, rejectReason: draft.rejectReason }
+          : { productId: line.productId, status: "APPROVED" as const, approvedMinUnits: draft.approvedMinUnits };
+      }
+      // Niveles 2, 3 y 4 (sin selección individual de ítems):
+      const isRej = line.itemStatus === "REJECTED";
+      const units = line.approvedMinUnits ?? lineMinUnits(line);
+      return isRej
+        ? { productId: line.productId, status: "REJECTED" as const, rejectReason: line.rejectReason || "Rechazado" }
+        : { productId: line.productId, status: "APPROVED" as const, approvedMinUnits: units };
     });
     approve.mutate({ id: ret.id, actor, comment, itemDecisions }, done);
   };
@@ -356,9 +386,15 @@ export function ReturnViewPage() {
               {ret.lines.length} {ret.lines.length === 1 ? "producto" : "productos"}
             </h2>
             {decidiendo ? (
-              <span className="text-xs text-muted-foreground">
-                Tildá los productos que se aprueban. El resto queda rechazado.
-              </span>
+              canSelectItems ? (
+                <span className="text-xs text-muted-foreground">
+                  Tildá los productos que se aprueban. El resto queda rechazado.
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  Revisá los productos de la devolución y decidí la aprobación o rechazo en el panel inferior.
+                </span>
+              )
             ) : (
               puedeFirmar &&
               ret.workflow && (
@@ -373,8 +409,10 @@ export function ReturnViewPage() {
             lines={ret.lines}
             clientId={ret.clientId}
             decidiendo={decidiendo}
+            canSelectItems={canSelectItems}
             drafts={drafts}
             onDraftChange={patchDraft}
+            returnCreatedAt={ret.createdAt}
           />
         </TabsContent>
 

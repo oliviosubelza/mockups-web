@@ -97,6 +97,20 @@ export const USERS: User[] = [
     sellerCode: AGENCY_SESSION_SELLER?.code ?? AGENCY_SESSION_SELLER_CODE,
     agencyId: AGENCY_SESSION_AGENCY_ID,
   },
+  {
+    id: 'u_facturador',
+    name: 'Carlos Mendoza Aguilera',
+    email: 'carlosmendoza@grupovenado.com',
+    role: 'facturador',
+    distributor: OPERATING_DISTRIBUTOR,
+  },
+  {
+    id: 'u_almacen',
+    name: 'Jorge Rivera Siles',
+    email: 'jorgerivera@grupovenado.com',
+    role: 'almacen',
+    distributor: OPERATING_DISTRIBUTOR,
+  },
 ]
 
 interface SessionState {
@@ -143,4 +157,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   gerente_general: 'Gerente general',
   vendedor: 'Vendedor',
   vendedor_agencia: 'Vendedor de agencia',
+  facturador: 'Facturador',
+  almacen: 'Almacén',
 }

@@ -21,6 +21,8 @@ import { QueryClientProvider } from './lib/query-lite'
 import { queryClient } from './lib/query-client'
 import { ReturnsPage } from './features/returns/pages/returns-page'
 import { ReturnViewPage } from './features/returns/pages/return-view-page'
+import { ReturnProcessPage } from './features/returns/pages/return-process-page'
+import { ReturnReservePage } from './features/returns/pages/return-reserve-page'
 import { RefundReasonsPage } from './features/refund-reasons/pages/refund-reasons-page'
 import { RefundReasonFormPage } from './features/refund-reasons/pages/refund-reason-form-page'
 
@@ -42,6 +44,10 @@ function conContexto(Pagina: ComponentType): ComponentType {
 export const DevolucionesListaScreen = conContexto(ReturnsPage)
 /** Detalle y decisión (aprobar/rechazar) son la MISMA pantalla: ver ítems y decidir es un solo paso. */
 export const DevolucionDetalleScreen = conContexto(ReturnViewPage)
+/** Vista de facturación para el rol de Facturador (Nota de Crédito/Débito) */
+export const DevolucionProcesarScreen = conContexto(ReturnProcessPage)
+/** Vista de gestión de almacén para el rol de Almacén (Cambio de Stock) */
+export const DevolucionReservarScreen = conContexto(ReturnReservePage)
 
 // DATO MAESTRO del módulo: el catálogo de MOTIVOS (`refund_reasons`). No es parte del workflow de una
 // devolución —se configura una vez y lo usan todas—, pero vive acá porque la tabla es del módulo y el

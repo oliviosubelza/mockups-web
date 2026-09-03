@@ -21,8 +21,8 @@
 // forma que una tabla sabe manejar.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Eye } from "lucide-react";
-import type { Return, ReturnStatus, ReturnWorkflowState } from "../../../types";
+import { CheckCircle2, Eye, PackageCheck } from "lucide-react";
+import type { Return, ReturnSettlement, ReturnStatus, ReturnWorkflowState } from "../../../types";
 import {
   ALL_RETURN_STATUSES,
   ALL_RETURN_WORKFLOW_STATES,
@@ -36,6 +36,7 @@ import {
   defineColumns,
   defineFilters,
 } from "@/components/data-table";
+import { Button } from "@/components/ui/button";
 import { amount, formatDay } from "../../../lib/format";
 import { dateKeyOffset } from "../../../lib/frequency";
 import { RETURN_DISTRIBUTOR_NAMES } from "../../../data/distributors-data";
@@ -75,6 +76,8 @@ export function ReturnsPage() {
   const navigate = useNavigate();
   const user = useCurrentUser();
   const soloPropias = seesOwnDocumentsOnly(user.role);
+  const isFacturador = user.role === "facturador";
+  const isAlmacen = user.role === "almacen";
 
   const columns = useMemo(
     () =>
@@ -192,26 +195,62 @@ export function ReturnsPage() {
         {
           id: "acciones",
           header: "Acciones",
-          size: 56,
-          minSize: 48,
+          size: isFacturador || isAlmacen ? 165 : 56,
+          minSize: isFacturador || isAlmacen ? 145 : 48,
           enableSorting: false,
           meta: { align: "center" },
-          cell: (ret) => (
-            <button
-              type="button"
-              aria-label="Ver devolución"
-              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/devoluciones/${ret.id}`);
-              }}
-            >
-              <Eye className="size-4" />
-            </button>
-          ),
+          cell: (ret) => {
+            if (isFacturador) {
+              return (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs font-medium border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 gap-1.5 shadow-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/devoluciones/${ret.id}/procesar`);
+                  }}
+                >
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Listo para procesar</span>
+                </Button>
+              );
+            }
+            if (isAlmacen) {
+              return (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs font-medium border-blue-600/30 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 gap-1.5 shadow-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/devoluciones/${ret.id}/reservar`);
+                  }}
+                >
+                  <PackageCheck className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Listo para reservar</span>
+                </Button>
+              );
+            }
+            return (
+              <button
+                type="button"
+                aria-label="Ver devolución"
+                className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/devoluciones/${ret.id}`);
+                }}
+              >
+                <Eye className="size-4" />
+              </button>
+            );
+          },
         },
       ]),
-    [navigate],
+    [navigate, isFacturador, isAlmacen],
   );
 
   const [filtros, setFiltros] = useState<Partial<FiltrosDevoluciones>>(() => ({
@@ -256,21 +295,36 @@ export function ReturnsPage() {
           label: "Estado",
           options: ALL_RETURN_STATUSES.map((s) => ({ label: RETURN_STATUS_LABELS[s], value: s })),
         },
-        {
-          type: "select",
-          id: "estadoWorkflow",
-          label: "Estado Workflow",
-          options: ALL_RETURN_WORKFLOW_STATES.map((s) => ({
-            label: RETURN_WORKFLOW_STATE_LABELS[s],
-            value: s,
-          })),
-        },
+        ...(isFacturador || isAlmacen
+          ? []
+          : [
+              {
+                type: "select" as const,
+                id: "estadoWorkflow" as const,
+                label: "Estado Workflow",
+                options: ALL_RETURN_WORKFLOW_STATES.map((s) => ({
+                  label: RETURN_WORKFLOW_STATE_LABELS[s],
+                  value: s,
+                })),
+              },
+            ]),
       ]),
-    [soloPropias, opcionesRegistradoPor],
+    [soloPropias, isFacturador, isAlmacen, opcionesRegistradoPor],
   );
 
   // Filtrado del lado del servicio: cualquier cambio de filtro o de búsqueda vuelve a la página 1.
   useEffect(() => setPagina(1), [filtros, busqueda, tamanoPagina]);
+
+  // Si cambia el rol de usuario, reiniciar página y limpiar filtros que ya no aplican.
+  useEffect(() => {
+    setPagina(1);
+    if (isFacturador || isAlmacen) {
+      setFiltros((prev) => ({
+        ...prev,
+        estadoWorkflow: undefined,
+      }));
+    }
+  }, [user.role, isFacturador, isAlmacen]);
 
   // El código del propio vendedor no es un filtro que el usuario eligió, así que pisa lo que sea que
   // tenga el control (que además está oculto para ese rol).
@@ -280,6 +334,17 @@ export function ReturnsPage() {
       ? Number(filtros.registradoPor)
       : "all";
 
+  const workflowStateEfectivo: ReturnWorkflowState | "all" =
+    isFacturador || isAlmacen
+      ? "APROBADA"
+      : (filtros.estadoWorkflow as ReturnWorkflowState | undefined) ?? "all";
+
+  const settlementEfectivo: ReturnSettlement | "all" = isFacturador
+    ? "NOTA_CREDITO"
+    : isAlmacen
+      ? "CAMBIO_STOCK"
+      : "all";
+
   const { data, isLoading, isFetching } = useReturnsPaged({
     from: filtros.desde?.slice(0, 10),
     to: filtros.hasta?.slice(0, 10),
@@ -287,7 +352,8 @@ export function ReturnsPage() {
     sellerCode: registradoPorEfectivo,
     status: (filtros.estado as ReturnStatus | undefined) ?? "all",
     distributorName: filtros.distribuidora ?? "all",
-    workflowState: (filtros.estadoWorkflow as ReturnWorkflowState | undefined) ?? "all",
+    workflowState: workflowStateEfectivo,
+    settlement: settlementEfectivo,
     page: pagina,
     limit: tamanoPagina,
   });
@@ -308,7 +374,11 @@ export function ReturnsPage() {
         <span className="text-sm text-muted-foreground">
           {soloPropias
             ? "Las devoluciones que registraste, con su evidencia y en qué escritorio está parada cada una."
-            : "Mercadería que vuelve del cliente. El alta la registra Ventas contra nuestro servicio; de acá en adelante es el flujo de aprobación."}
+            : isFacturador
+              ? "Devoluciones aprobadas con tipo Nota Crédito/Débito listas para facturación y procesamiento."
+              : isAlmacen
+                ? "Devoluciones aprobadas con tipo Hay Stock para Cambio listas para reposición física en almacén."
+                : "Mercadería que vuelve del cliente. El alta la registra Ventas contra nuestro servicio; de acá en adelante es el flujo de aprobación."}
         </span>
       </div>
 
@@ -333,7 +403,15 @@ export function ReturnsPage() {
           onPageChange: setPagina,
           onLimitChange: setTamanoPagina,
         }}
-        onRowClick={(ret) => navigate(`/devoluciones/${ret.id}`)}
+        onRowClick={(ret) => {
+          if (isFacturador) {
+            navigate(`/devoluciones/${ret.id}/procesar`);
+          } else if (isAlmacen) {
+            navigate(`/devoluciones/${ret.id}/reservar`);
+          } else {
+            navigate(`/devoluciones/${ret.id}`);
+          }
+        }}
         rowClassName={(ret) => {
           const level = pendingLevelOf(ret);
           const base = isFetching && !isLoading ? "cursor-pointer opacity-70" : "cursor-pointer";

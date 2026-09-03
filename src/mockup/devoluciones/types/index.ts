@@ -36,7 +36,9 @@ export type Role =
   | "gerente_comercial"
   | "gerente_general"
   | "vendedor"
-  | "vendedor_agencia";
+  | "vendedor_agencia"
+  | "facturador"
+  | "almacen";
 
 /** A signed-in user (mocked). Supervisors carry the sales channel they oversee. */
 export interface User {

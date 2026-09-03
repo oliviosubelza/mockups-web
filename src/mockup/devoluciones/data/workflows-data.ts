@@ -21,6 +21,8 @@ const APPROVER_ROLE_LABELS: Record<Role, string> = {
   gerente_general: "Gerente general",
   vendedor: "Vendedor",
   vendedor_agencia: "Vendedor de agencia",
+  facturador: "Facturador",
+  almacen: "Almacén",
 };
 
 /**

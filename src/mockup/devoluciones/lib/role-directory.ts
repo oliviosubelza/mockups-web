@@ -27,6 +27,8 @@ const ROLE_ROSTER: Record<Role, { code: number; name: string }[]> = {
   // Ningún rol de venta firma jamás una aprobación — ver `RETURN_APPROVER_ROLES`.
   vendedor: [],
   vendedor_agencia: [],
+  facturador: [],
+  almacen: [],
 };
 
 export function employeesForRole(role: Role): { code: number; name: string }[] {
