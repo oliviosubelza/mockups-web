@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useRouteParams } from "@/core/routing/active-route";
 import {
-  AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Package,
@@ -166,49 +165,50 @@ export function ReturnReservePage() {
           meta: { align: "right" },
           cell: (line) => {
             const req = line.approvedMinUnits ?? lineMinUnits(line);
-            return <span className="tabular-nums text-xs font-medium text-foreground">{req} u</span>;
+            return <span className="tabular-nums text-xs font-medium text-foreground">{req}</span>;
           },
         },
         {
           id: "reserved",
           header: "Reservado",
-          size: 140,
-          minSize: 105,
+          size: 130,
+          minSize: 100,
           meta: { align: "center" },
           cell: (line) => {
-            // Inicialmente antes de reservar la columna debe estar en CERO (0 u)
+            // Inicialmente antes de reservar la columna debe estar en CERO (0)
             if (!isReserved) {
-              return <span className="font-mono text-xs text-muted-foreground tabular-nums">0 u</span>;
+              return <span className="tabular-nums text-xs text-muted-foreground">0</span>;
             }
 
             const res = reservations[line.productId];
             if (!res) {
-              return <span className="font-mono text-xs text-muted-foreground tabular-nums">0 u</span>;
+              return <span className="tabular-nums text-xs text-muted-foreground">0</span>;
             }
 
             // Si está completo: verde
             if (res.isComplete) {
               return (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold gap-1 text-xs py-0.5 px-2 tabular-nums"
+                <span
+                  className="tabular-nums text-xs font-semibold text-emerald-600 dark:text-emerald-400"
+                  title="Stock completo"
                 >
-                  <CheckCircle2 className="size-3 shrink-0" />
-                  {res.reserved} u
-                </Badge>
+                  {res.reserved}
+                </span>
               );
             }
 
             // Si hay faltante: rojo
             const missing = res.required - res.reserved;
             return (
-              <Badge
-                variant="outline"
-                className="border-rose-600/30 bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold gap-1 text-xs py-0.5 px-2 tabular-nums"
+              <span
+                className="tabular-nums text-xs font-semibold text-rose-600 dark:text-rose-400"
+                title={`Faltante: ${missing}`}
               >
-                <AlertCircle className="size-3 shrink-0" />
-                {res.reserved} u (faltan {missing})
-              </Badge>
+                {res.reserved}{" "}
+                <span className="text-[11px] font-normal">
+                  ({missing === 1 ? "falta 1" : `faltan ${missing}`})
+                </span>
+              </span>
             );
           },
         },
