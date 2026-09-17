@@ -273,7 +273,6 @@ CREATE TABLE sale_orders_ref
 
         CONSTRAINT fk_truck_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
     );
-
     CREATE TABLE plan_status (
         id BIGSERIAL PRIMARY KEY,
         name VARCHAR(50) NOT NULL, -- Nombre del estado (DRAFT, IN_OPTIMIZATION, APPROVED)
@@ -1200,6 +1199,7 @@ CREATE TABLE refund_order_details
     refund_reason_id BIGINT         NOT NULL,
     product_id       BIGINT         NOT NULL,                  -- ID del producto
 
+    -- Faltaria unidad minima
     source_quantity  DECIMAL(12, 2) NOT NULL,                  -- Cantidad original cuando se crea/ nunca cambia.
     quantity         DECIMAL(12, 2) NOT NULL,                  -- Cantidad vigente. Puede que se haya reducido en una nota/EDITING
 
