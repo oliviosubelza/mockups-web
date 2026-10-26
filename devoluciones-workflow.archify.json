@@ -1,0 +1,365 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Flujo de Devoluciones — registro y escalera de aprobación",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "camino-feliz",
+        "label": "Del registro al despacho",
+        "focus": [
+          "nota",
+          "instancia",
+          "nivel1",
+          "niveles",
+          "aprobada",
+          "despacho"
+        ],
+        "note": "Sigue la nota aprobada desde que el vendedor la registra hasta que entra a planificación de despacho."
+      },
+      {
+        "id": "vuelta-nivel1",
+        "label": "El rechazo vuelve al Nivel 1",
+        "focus": [
+          "niveles",
+          "rechazo",
+          "reintento",
+          "nivel1"
+        ],
+        "note": "Un rechazo en cualquier nivel superior no baja un piso: abre una instancia nueva y devuelve el trámite al Nivel 1."
+      },
+      {
+        "id": "congelado",
+        "label": "Configuración congelada",
+        "focus": [
+          "config",
+          "instancia",
+          "bitacora"
+        ],
+        "note": "Motivos, ventanas y escalera se copian al trámite para que el historial no dependa de la configuración actual."
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "Registro del vendedor"
+        },
+        "backend": {
+          "label": "Trámite y firmas"
+        },
+        "security": {
+          "label": "Rechazo"
+        },
+        "messagebus": {
+          "label": "Ramas y reintento"
+        },
+        "database": {
+          "label": "Configuración y bitácora"
+        },
+        "cloud": {
+          "label": "Logística"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "venta",
+      "label": "Registro · vendedor"
+    },
+    {
+      "id": "motor",
+      "label": "Motor de workflow"
+    },
+    {
+      "id": "tramite",
+      "label": "Escalera de aprobación y cierre"
+    },
+    {
+      "id": "ramas",
+      "label": "Ramas, rechazo y reintento",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "alta",
+      "label": "Alta de la nota",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "aprobacion",
+      "label": "Revisión y aprobación",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "desenlace",
+      "label": "Desenlace",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "grp_escalera",
+      "label": "Niveles de firma",
+      "lane": "tramite",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "grp_reintento",
+      "label": "Reintento del trámite",
+      "lane": "ramas",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "nota",
+    "instancia",
+    "nivel1",
+    "niveles",
+    "aprobada",
+    "despacho"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "config",
+      "nota"
+    ],
+    "allowedTerminals": [
+      "despacho",
+      "disociada",
+      "bitacora"
+    ],
+    "requiredEdges": [
+      {
+        "from": "reintento",
+        "to": "nivel1"
+      }
+    ],
+    "requiredPaths": [
+      {
+        "from": "rechazo",
+        "to": "nivel1"
+      },
+      {
+        "from": "nota",
+        "to": "despacho"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "config",
+      "lane": "motor",
+      "col": 0,
+      "type": "database",
+      "label": "Configuración",
+      "sublabel": "motivos y escalera",
+      "width": 130
+    },
+    {
+      "id": "nota",
+      "lane": "venta",
+      "col": 0,
+      "type": "frontend",
+      "label": "Registro de nota",
+      "sublabel": "refund_orders · OPEN",
+      "width": 130
+    },
+    {
+      "id": "instancia",
+      "lane": "motor",
+      "col": 1,
+      "type": "backend",
+      "label": "Instancia #1",
+      "sublabel": "refund_workflow_instances",
+      "width": 130
+    },
+    {
+      "id": "bitacora",
+      "lane": "motor",
+      "col": 4,
+      "type": "database",
+      "label": "Bitácora",
+      "sublabel": "refund_workflow_actions",
+      "width": 130
+    },
+    {
+      "id": "nivel1",
+      "lane": "tramite",
+      "col": 2,
+      "type": "backend",
+      "label": "Nivel 1 · Analista",
+      "sublabel": "ITEM_SELECTION",
+      "width": 130
+    },
+    {
+      "id": "niveles",
+      "lane": "tramite",
+      "col": 3,
+      "type": "backend",
+      "label": "Niveles 2 a 4",
+      "sublabel": "DOCUMENT_DECISION",
+      "width": 130
+    },
+    {
+      "id": "aprobada",
+      "lane": "tramite",
+      "col": 4,
+      "type": "backend",
+      "label": "Nota aprobada",
+      "sublabel": "status = APPROVED",
+      "width": 130
+    },
+    {
+      "id": "despacho",
+      "lane": "tramite",
+      "col": 5,
+      "type": "cloud",
+      "label": "Planificación",
+      "sublabel": "candidate_orders",
+      "width": 130
+    },
+    {
+      "id": "disociada",
+      "lane": "ramas",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Nota disociada",
+      "sublabel": "DISSOCIATED",
+      "width": 130
+    },
+    {
+      "id": "rechazo",
+      "lane": "ramas",
+      "col": 3,
+      "type": "security",
+      "label": "Rechazo",
+      "sublabel": "REJECT + reason",
+      "width": 130
+    },
+    {
+      "id": "reintento",
+      "lane": "ramas",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Nueva instancia",
+      "sublabel": "attempt + 1",
+      "width": 130
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_config",
+      "from": "config",
+      "to": "instancia",
+      "label": "copia congelada",
+      "variant": "dashed"
+    },
+    {
+      "id": "e_alta",
+      "from": "nota",
+      "to": "instancia",
+      "label": "action CREATED",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_arranque",
+      "from": "instancia",
+      "to": "nivel1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_seleccion",
+      "from": "nivel1",
+      "to": "niveles",
+      "label": "ítems seleccionados",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_disocia",
+      "from": "nivel1",
+      "to": "disociada",
+      "label": "ítems descartados",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e_firma",
+      "from": "niveles",
+      "to": "aprobada",
+      "label": "última firma",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_despacho",
+      "from": "aprobada",
+      "to": "despacho",
+      "label": "retiro físico",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_rechazo",
+      "from": "niveles",
+      "to": "rechazo",
+      "label": "REJECT",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e_reintento",
+      "from": "rechazo",
+      "to": "reintento",
+      "label": "attempt + 1",
+      "variant": "security"
+    },
+    {
+      "id": "e_vuelta",
+      "from": "reintento",
+      "to": "nivel1",
+      "label": "vuelve siempre al Nivel 1",
+      "variant": "security",
+      "role": "error",
+      "width": 1.6
+    },
+    {
+      "id": "e_log",
+      "from": "niveles",
+      "to": "bitacora",
+      "label": "registra cada acción",
+      "variant": "dashed",
+      "role": "async"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "El rechazo vuelve al Nivel 1",
+      "items": [
+        "Un rechazo en el nivel 3 no baja al 2: vuelve al 1",
+        "Solo el Nivel 1 puede rehacer la selección de ítems",
+        "Se abre una instancia nueva con attempt + 1, no se recicla la anterior"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Todo lo que se congela",
+      "items": [
+        "instance_levels copia nombre, rol y montos de la escalera",
+        "refund_reason_params copia process_type y cost_center del motivo",
+        "price_unit y source_quantity quedan fijos al crear la línea"
+      ]
+    }
+  ]
+}

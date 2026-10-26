@@ -46,6 +46,23 @@ CREATE TABLE sale_orders_ref
     invoice_amount      DECIMAL(12, 2) DEFAULT 0.00
 );
 
+    CREATE TABLE distributors (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        name VARCHAR(50) NOT NULL, -- Nombre comercial de la distribuidora/agencia
+        latitude NUMERIC(9,6) NOT NULL, -- Coordenada GPS de la planta/centro
+        longitude NUMERIC(9,6) NOT NULL,
+    --     department_id BIGINT NOT NULL, -- Departamento/Estado geográfico
+        city_id BIGINT NOT NULL,
+        code_sap BIGINT, -- Código de distribuidora en SAP/Ventas
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+        created_by VARCHAR(255),
+        updated_by VARCHAR(255),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+    );
+
     CREATE TABLE sale_channel_restrictions(
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
@@ -152,7 +169,7 @@ CREATE TABLE sale_orders_ref
         description VARCHAR(100), -- Detalle libre: ordenanza, motivo de la obra, etc.
         restriction_type VARCHAR(30) NOT NULL, -- 'RESTRICTED_AREA', 'CLOSED_ROAD', 'PLATE_ROTATION'
         effect VARCHAR(30) NOT NULL, -- Qué prohíbe: 'NO_TRANSIT', 'NO_DELIVERY', 'NO_VEHICLE'
-        severity VARCHAR(20) NOT NULL DEFAULT 'WARNING', -- 'BLOCKING', 'WARNING'
+        -- severity VARCHAR(20) NOT NULL DEFAULT 'WARNING', -- 'BLOCKING', 'WARNING'
         -- Geometría INLINE y no en tabla satélite: una restricción tiene exactamente una geometría
         -- o ninguna (1:1). Polygon para un área, LineString para un tramo de vía, NULL en
         -- PLATE_ROTATION, que no es geográfica. Mismo formato que `zones.polygon_geojson`.
@@ -256,7 +273,6 @@ CREATE TABLE sale_orders_ref
 
         CONSTRAINT fk_truck_distributor FOREIGN KEY (distributor_id) REFERENCES distributors(id)
     );
-
     CREATE TABLE plan_status (
         id BIGSERIAL PRIMARY KEY,
         name VARCHAR(50) NOT NULL, -- Nombre del estado (DRAFT, IN_OPTIMIZATION, APPROVED)
@@ -349,7 +365,7 @@ CREATE TABLE sale_orders_ref
     CREATE TABLE image_delivery_points(
         id BIGSERIAL PRIMARY KEY,
         dispatch_delivery_point_id BIGINT NULL,
-        path_url TEXT, -- URL de fotos o fachadas del punto de entrega
+        image_url TEXT, -- URL de fotos o fachadas del punto de entrega
 
         created_by VARCHAR(255),
         updated_by VARCHAR(255),
@@ -682,8 +698,8 @@ CREATE TABLE sale_orders_ref
         transport_order_id BIGINT NOT NULL, -- OT contenedora del viaje
         dispatch_delivery_point_id BIGINT NOT NULL, -- Punto de entrega unificado del plan
         executed_sequence INTEGER, -- Orden real de visita ejecutado por el chofer
-        delivery_note_number VARCHAR(100), -- Número de Nota de Entrega/Remisión
-        delivery_result_code VARCHAR(50), -- Resultado (EXITOSO, RECHAZO_TOTAL, RECHAZO_PARCIAL)
+        delivery_note_code VARCHAR(100), -- Número de Nota de Entrega/Remisión ???? Analizarlo 
+        -- delivery_result_code VARCHAR(50), -- Resultado (EXITOSO, RECHAZO_TOTAL, RECHAZO_PARCIAL) - Sera en tabla maestra
         status VARCHAR(50) NOT NULL, -- Estado (PENDING, ENROUTE, ARRIVED, DELIVERED, REJECTED)
         arrival_latitude DECIMAL(12, 6), -- Coordenada GPS de llegada al cliente
         arrival_longitude DECIMAL(12, 6),
@@ -943,7 +959,7 @@ CREATE TABLE sale_orders_ref
 CREATE TABLE refund_reasons
 (
     id                   BIGSERIAL PRIMARY KEY,
-    code                 VARCHAR(100) PRIMARY KEY,                 -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
+    code                 VARCHAR(100) NOT NULL UNIQUE,                 -- 'VENCIDO', 'CONTAMINACION_FISICA', 'RECALL'…
     name                 VARCHAR(150) NOT NULL,                    -- Etiqueta visible
     description          VARCHAR(300) NULL,                        -- Para què es el motivo, en una frase. Opcional en la pantalla
     cost_center          VARCHAR(50)  NOT NULL,                    -- Contra què centro de costo se imputa. El maestro es de contabilidad
@@ -1183,6 +1199,7 @@ CREATE TABLE refund_order_details
     refund_reason_id BIGINT         NOT NULL,
     product_id       BIGINT         NOT NULL,                  -- ID del producto
 
+    -- Faltaria unidad minima
     source_quantity  DECIMAL(12, 2) NOT NULL,                  -- Cantidad original cuando se crea/ nunca cambia.
     quantity         DECIMAL(12, 2) NOT NULL,                  -- Cantidad vigente. Puede que se haya reducido en una nota/EDITING
 
@@ -1239,7 +1256,7 @@ CREATE TABLE refund_order_details
         id BIGSERIAL PRIMARY KEY,
         refund_order_detail_id BIGINT NOT NULL,
 
-        url VARCHAR(255) NULL,                                  -- path image
+        image_url VARCHAR(255) NULL,                                  -- path image
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP NULL,
@@ -1362,7 +1379,7 @@ CREATE TABLE refund_order_details
         id BIGSERIAL PRIMARY KEY,
         workflow_action_id BIGINT NOT NULL,                     -- La acciòn que esta foto respalda. Hoy siempre un 'REACTIVATE'
 
-        url VARCHAR(255) NOT NULL,                              -- path image
+        image_url VARCHAR(255) NOT NULL,                              -- path image
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP NULL,                              -- Baja lògica: la evidencia de una acciòn firmada no se borra
