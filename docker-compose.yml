@@ -1,0 +1,31 @@
+# Base de datos local para probar db_script.sql
+#
+#   docker compose up -d          # arranca y corre el script (solo la primera vez)
+#   docker compose down           # para el contenedor, conserva los datos
+#   docker compose down -v        # borra el volumen: el script se vuelve a ejecutar
+#
+# Conexión:  postgresql://mockups:mockups@localhost:55433/mockups
+
+services:
+  db:
+    image: postgis/postgis:16-3.4   # postgis, porque el script hace CREATE EXTENSION postgis
+    container_name: mockups-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mockups
+      POSTGRES_USER: mockups
+      POSTGRES_PASSWORD: mockups
+    ports:
+      - "55433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Los .sql de esta carpeta se ejecutan al crear la base, en orden alfabético.
+      - ./db_script.sql:/docker-entrypoint-initdb.d/01_db_script.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mockups -d mockups"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
