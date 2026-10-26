@@ -141,6 +141,7 @@ export interface FilaPedidoMonitoreo {
   estadoViaje: EstadoViaje
   estadoEntrega: EntregaMonitoreo['estado']
   canal: CanalId
+  vendedor: string
   formaPago: string
   pesoKg: number
   volumenM3: number
@@ -289,6 +290,7 @@ export function pedidosDeFila(fila: FilaMonitoreo): FilaPedidoMonitoreo[] {
       estadoViaje: fila.estadoViaje,
       estadoEntrega: entrega.estado,
       canal: pedido.canal,
+      vendedor: pedido.vendedor || 'Sin asignar',
       formaPago: pedido.formaPago,
       pesoKg: pedido.pesoKg,
       volumenM3: pedido.volumenM3,

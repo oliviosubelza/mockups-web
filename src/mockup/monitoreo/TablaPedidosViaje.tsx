@@ -61,6 +61,7 @@ interface FilaPedido {
   puntoEntrega: string
   canal: CanalId
   canalLabel: string
+  vendedor: string
   formaPago: string
   entrega: string
   pesoKg: number
@@ -87,6 +88,7 @@ export function filasDePedidos(linea: LineaTiempo): FilaPedido[] {
       // El canal se toma de la PARADA y no del pedido: es donde vive en el esquema.
       canal: hito.entrega.canal,
       canalLabel: CANAL_META[hito.entrega.canal].label,
+      vendedor: pedido.vendedor || 'Sin asignar',
       formaPago: pedido.formaPago,
       entrega: hito.realCierre === null ? '—' : horaDeEje(hito.realCierre),
       pesoKg: pedido.pesoKg,
@@ -240,8 +242,8 @@ export function TablaPedidosViaje({
         fillHeight
         stickyHeader
         searchable
-        searchPlaceholder="Buscar pedido, documento o cliente…"
-        searchKeys={['salesOrder', 'documento', 'cliente', 'puntoEntrega', 'canalLabel']}
+        searchPlaceholder="Buscar pedido, documento, cliente o vendedor…"
+        searchKeys={['salesOrder', 'documento', 'cliente', 'puntoEntrega', 'canalLabel', 'vendedor']}
         exportable
         exportFilename="pedidos-del-viaje"
         emptyTitle="Sin pedidos"

@@ -1,0 +1,1175 @@
+@startuml
+
+hide circle
+top to bottom direction
+
+skinparam linetype polyline
+skinparam nodesep 65
+skinparam ranksep 75
+
+skinparam class {
+    BackgroundColor White
+    ArrowColor #2C3E50
+    BorderColor #34495E
+    FontSize 11
+    FontName "Segoe UI", Arial, sans-serif
+}
+
+skinparam note {
+    BackgroundColor #FEF9E7
+    BorderColor #F1C40F
+    FontSize 10
+}
+
+skinparam package {
+    BorderColor #7F8C8D
+    FontColor #1A5276
+    FontStyle bold
+    FontSize 13
+}
+
+title DIAGRAMA DE CLASES DE BASE DE DATOS - ARQUITECTURA MODULAR BACKEND\n(Flujo Desacoplado & Alta Legibilidad)
+
+' ==============================================================================
+' 01. REFERENCIAS & INTEGRACIONES EXTERNAS (CORE EXTERNAL DATA)
+' ==============================================================================
+package "01. Referencias & Integraciones (External Data)" #FDEDEC {
+    entity "distributors_ref" as distributors_ref <<SAP / Ventas>> {
+        * id : BIGINT <<PK>>
+        --
+        id_ref : BIGINT
+        name : VARCHAR(50)
+        latitude : NUMERIC(9,6)
+        longitude : NUMERIC(9,6)
+        city_id : BIGINT
+        code_sap : BIGINT
+        is_active : BOOLEAN
+    }
+
+    entity "products_ref" as products_ref <<SAP / Catálogo>> {
+        * id : BIGINT <<PK>>
+        --
+        id_ref : BIGINT
+        name : VARCHAR(255)
+        sku : VARCHAR(255)
+        quantity_min : DECIMAL(12,2)
+        equivalence_box_unit : DECIMAL(12,2)
+    }
+
+    entity "sale_orders_ref" as sale_orders_ref <<SAP / Pedidos Comerciales>> {
+        * id : BIGINT <<PK>>
+        --
+        id_ref : BIGINT
+        document_id : BIGINT
+        sale_order_split_id : BIGINT
+        distributor_id : BIGINT
+        total_weight_kg : DECIMAL(12,2)
+        total_volume_m3 : DECIMAL(12,2)
+        invoice_id : BIGINT
+        invoice_amount : DECIMAL(12,2)
+    }
+
+    note bottom of distributors_ref
+        <b>Referencias Maestras (SAP/Ventas):</b>
+        Estas tablas maestras son referenciadas por ID en
+        las entidades operativas (distributor_id, product_id, sale_order_id)
+        sin trazar cables diagonales para evitar superposición de líneas.
+    end note
+}
+
+' ==============================================================================
+' 02. TERRITORIO, ZONIFICACIÓN & RESTRICCIONES DE CIRCULACIÓN
+' ==============================================================================
+package "02. Territorio & Restricciones (Territory & Restrictions)" #F4F6F7 {
+    entity "zones" as zones <<PostGIS Reparto>> {
+        * id : BIGINT <<PK>>
+        --
+        name : VARCHAR(50)
+        polygon : GEOMETRY(Polygon, 4326)
+        city_id : BIGINT
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "distribution_zones" as distribution_zones <<PostGIS Jurisdicción>> {
+        * id : BIGINT <<PK>>
+        --
+        distributor_id : BIGINT <<FK distributors_ref>>
+        polygon : GEOMETRY(Polygon, 4326)
+        city_id : VARCHAR(255)
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "sale_channel_restrictions" as sale_channel_restrictions <<Límites Comerciales>> {
+        * id : BIGINT <<PK>>
+        --
+        distributor_id : BIGINT <<FK distributors_ref>>
+        name : VARCHAR(50)
+        description : VARCHAR(100)
+        sale_channel_id : BIGINT
+        cut_off_time : TIME
+        -- Auditoría --
+        created_by : VARCHAR(50)
+        updated_by : VARCHAR(50)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "planning_restrictions" as planning_restrictions <<Límites de Tránsito>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        distributor_id : BIGINT <<FK distributors_ref>>
+        name : VARCHAR(50)
+        description : VARCHAR(100)
+        restriction_type : VARCHAR(30)
+        effect : VARCHAR(30)
+        severity : VARCHAR(20)
+        geometry_geojson : JSONB
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "planning_restriction_schedules" as planning_restriction_schedules <<Vigencias Horarias>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        planning_restriction_id : BIGINT <<FK>>
+        valid_from : DATE
+        valid_to : DATE
+        day_of_week : SMALLINT
+        start_time : TIME
+        end_time : TIME
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "planning_restriction_vehicle_rules" as planning_restriction_vehicle_rules <<Reglas Flota / Placa>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        planning_restriction_id : BIGINT <<FK>>
+        plate_last_digit : SMALLINT
+        min_capacity_weight_kg : DECIMAL(12,2)
+        truck_type : VARCHAR(50)
+        plate : VARCHAR(20)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 03. GESTIÓN DE FLOTA Y ACTIVOS LOGÍSTICOS
+' ==============================================================================
+package "03. Gestión de Flota y Activos (Fleet & Assets)" #EBF5FB {
+    entity "trucks" as trucks <<Flota Operativa>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        distributor_id : BIGINT <<FK distributors_ref | NULL>>
+        code : VARCHAR(100)
+        plate : VARCHAR(20)
+        capacity_weight_kg : DECIMAL(12,2)
+        capacity_volume_m3 : DECIMAL(12,2)
+        status : VARCHAR(50)
+        truck_type : VARCHAR(50)
+        is_refrigerated : BOOLEAN
+        is_external : BOOLEAN
+        shift_start : TIME
+        shift_end : TIME
+        break_start : TIME
+        break_end : TIME
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "logistic_assets" as logistic_assets <<Activos Reutilizables>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        distributor_id : BIGINT <<FK distributors_ref | NULL>>
+        code : VARCHAR(50)
+        name : VARCHAR(100)
+        asset_type : VARCHAR(50)
+        is_serialized : BOOLEAN
+        tare_weight_kg : DECIMAL(12,2)
+        tare_volume_m3 : DECIMAL(12,2)
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 04. PLANIFICACIÓN DE DESPACHOS (DISPATCH PLANNING)
+' ==============================================================================
+package "04. Planificación de Despachos (Dispatch Planning)" #EAF2F8 {
+    entity "plan_status" as plan_status <<Estados del Plan>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        name : VARCHAR(50)
+        description : VARCHAR(100)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "dispatch_plans" as dispatch_plans <<Plan Diario>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        plan_status_id : BIGINT <<FK>>
+        distributor_id : BIGINT <<FK distributors_ref>>
+        plan_date : DATE
+        planned_order_count : INTEGER
+        planned_truck_count : INTEGER
+        employee_id : BIGINT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "planning_trucks" as planning_trucks <<Camiones Asignados al Plan>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        dispatch_plan_id : BIGINT <<FK>>
+        truck_id : BIGINT <<FK>>
+        assigned_weight_kg : DECIMAL(12,2)
+        assigned_volume_m3 : DECIMAL(12,2)
+        is_included_in_routing : BOOLEAN
+        exclusion_reason : VARCHAR(50)
+        excluded_by_restriction_id : BIGINT <<FK | NULL>>
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "dispatch_delivery_points" as dispatch_delivery_points <<Parada Unificada>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        dispatch_plan_id : BIGINT <<FK>>
+        sale_channel_id : BIGINT
+        delivery_point_id : BIGINT
+        zone_id : BIGINT <<FK | NULL>>
+        owner_id : BIGINT
+        owner_name : VARCHAR(50)
+        customer_id : BIGINT
+        customer_name : VARCHAR(50)
+        phone_number : VARCHAR(20)
+        address : VARCHAR(255)
+        warehouse_destination_id : BIGINT
+        priority : INTEGER
+        delivery_window_start : TIME
+        delivery_window_end : TIME
+        total_weight_kg : DECIMAL(12,2)
+        total_volume_m3 : DECIMAL(12,2)
+        total_neto : DECIMAL(12,2)
+        forced_planning_truck_id : BIGINT <<FK | NULL>>
+        observations : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "image_delivery_points" as image_delivery_points <<Fachadas / Evidencias>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        dispatch_delivery_point_id : BIGINT <<FK | NULL>>
+        path_url : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "candidate_orders" as candidate_orders <<Pedidos Candidatos>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        dispatch_delivery_point_id : BIGINT <<FK | NULL>>
+        sales_order_id : BIGINT <<FK sale_orders_ref>>
+        document_id : BIGINT
+        distributor_id : BIGINT <<FK distributors_ref>>
+        total_weight_kg : DECIMAL(12,2)
+        total_volume_m3 : DECIMAL(12,2)
+        type_movement : VARCHAR(50)
+        is_included : BOOLEAN
+        refund_order_id : BIGINT <<FK | NULL>>
+        transfer_id : BIGINT <<NULL>>
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 05. RUTEO & OPTIMIZACIÓN (ROUTING & OPTIMIZATION)
+' ==============================================================================
+package "05. Ruteo & Optimización (Routing & Optimization)" #E9F7EF {
+    entity "routes" as routes <<Rutas Calculadas>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        name : VARCHAR(100)
+        planning_truck_id : BIGINT <<FK | NULL>>
+        dispatch_plan_id : BIGINT <<FK | NULL>>
+        employee_id : BIGINT
+        driver_employee_id : BIGINT <<NULL>>
+        name_driver_employee : VARCHAR(100)
+        helper_employee_id : BIGINT <<NULL>>
+        name_helper_employee : VARCHAR(100)
+        engine : VARCHAR(100)
+        executed_at : TIMESTAMP
+        eta_total_distance_m : DECIMAL(12,2)
+        eta_total_time_s : DECIMAL(12,2)
+        score : DECIMAL(12,2)
+        total_cost : DECIMAL(12,2)
+        is_selected : BOOLEAN
+        encode_polyline : TEXT
+        color_hex : VARCHAR(6)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "route_delivery_points" as route_delivery_points <<Secuencia de Visita>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        route_id : BIGINT <<FK>>
+        dispatch_delivery_point_id : BIGINT <<FK>>
+        sequence : INTEGER
+        estimated_distance_m : DECIMAL(12,2)
+        estimated_travel_s : DECIMAL(12,2)
+        is_active : BOOLEAN
+        estimated_total_cost : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 06. EJECUCIÓN DE TRANSPORTE & CONTROL DE CARGA (RAMP & TRANSPORT ORDERS)
+' ==============================================================================
+package "06. Ejecución de Transporte & Rampa (Transport Execution & Ramp)" #FEF9E7 {
+    entity "transport_orders" as transport_orders <<Viaje / Orden de Transporte>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        dispatch_plan_id : BIGINT <<FK | NULL>>
+        distributor_id : BIGINT <<FK distributors_ref>>
+        route_id : BIGINT <<FK | NULL>>
+        truck_id : BIGINT <<FK | NULL>>
+        driver_employee_id : BIGINT <<NULL>>
+        name_driver_employee : VARCHAR(100)
+        helper_employee_id : BIGINT <<NULL>>
+        name_helper_employee : VARCHAR(100)
+        supervisor_employee_id : BIGINT <<NULL>>
+        name_supervisor_employee : VARCHAR(100)
+        code : BIGINT
+        status : VARCHAR(50)
+        checked_by : VARCHAR(255)
+        departure_date : TIMESTAMP | NULL
+        completed_date : TIMESTAMP | NULL
+        total_km : DECIMAL(12,2)
+        assigned_weight_kg : DECIMAL(12,2)
+        assigned_volume_m3 : DECIMAL(12,2)
+        total_stops_count : INTEGER
+        completed_stops_count : INTEGER
+        total_revenue_expected : DECIMAL(12,2)
+        total_revenue_collected : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_histories" as transport_order_histories <<Trazabilidad OT>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK>>
+        status : VARCHAR(50)
+        description : VARCHAR(150)
+        capture_hour : TIME
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_sales" as transport_order_sales <<Ventas Asignadas al Viaje>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK>>
+        sales_order_id : BIGINT <<FK sale_orders_ref>>
+        sales_order_split_id : BIGINT
+        invoice_id : BIGINT
+        invoice_amount : DECIMAL(12,2)
+        document_id : BIGINT
+        total_weight_kg : DECIMAL(12,2)
+        total_volume_m3 : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_sales_items" as transport_order_sales_items <<Ítems de Venta en Viaje>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_sales_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        quantity_min : DECIMAL(12,2)
+        equivalence_box_unit : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "truck_inventories" as truck_inventories <<Inventario Consolidado en Camión>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        truck_id : BIGINT <<FK>>
+        transport_order_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        equivalence_box_unit : DECIMAL(12,2)
+        expected_qty : DECIMAL(12,2)
+        expected_boxes : DECIMAL(12,2)
+        loaded_qty : DECIMAL(12,2)
+        loaded_boxes : DECIMAL(12,2)
+        variance_qty : DECIMAL(12,2)
+        damaged_qty : DECIMAL(12,2)
+        returned_warehouse_qty : DECIMAL(12,2)
+        temperature_celsius : DECIMAL(4,1) | NULL
+        status : VARCHAR(50)
+        verified_supervisor_id : BIGINT | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_count_sessions" as transport_order_count_sessions <<Sesiones de Conteo en Rampa>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK>>
+        session_type : VARCHAR(50)
+        review_scope : VARCHAR(20)
+        status : VARCHAR(30)
+        executor_id : BIGINT
+        executor_role : VARCHAR(50)
+        duration_minutes : INTEGER | NULL
+        signature_svg : TEXT | NULL
+        device_metadata : JSONB | NULL
+        started_at : TIMESTAMP
+        completed_at : TIMESTAMP | NULL
+        notes : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_count_session_items" as transport_order_count_session_items <<Detalle Ítems Contados>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_count_session_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        expected_qty : DECIMAL(12,2)
+        counted_qty : DECIMAL(12,2)
+        counted_boxes : DECIMAL(12,2)
+        counted_loose_units : DECIMAL(12,2)
+        variance_qty : DECIMAL(12,2)
+        equivalence_box_unit : DECIMAL(12,2) | NULL
+        is_damaged : BOOLEAN
+        damage_reason_code : VARCHAR(50) | NULL
+        item_status : VARCHAR(30)
+        observation : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_assets" as transport_order_assets <<Control Salida/Retorno Activos>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK>>
+        logistic_asset_id : BIGINT <<FK>>
+        asset_serial_number : VARCHAR(100) | NULL
+        planned_qty : DECIMAL(12,2)
+        dispatched_qty : DECIMAL(12,2)
+        returned_qty : DECIMAL(12,2) | NULL
+        variance_qty : DECIMAL(12,2)
+        status : VARCHAR(50)
+        discrepancy_reason : VARCHAR(100) | NULL
+        customer_custody_id : BIGINT | NULL
+        receipt_voucher_code : VARCHAR(100) | NULL
+        checked_out_by : VARCHAR(255) | NULL
+        checked_out_at : TIMESTAMP | NULL
+        checked_in_by : VARCHAR(255) | NULL
+        checked_in_at : TIMESTAMP | NULL
+        notes : TEXT | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 07. ÚLTIMA MILLA & ENTREGAS (LAST MILE DELIVERY & MOBILE)
+' ==============================================================================
+package "07. Última Milla & Entregas (Last Mile Delivery)" #E8F8F5 {
+    entity "delivery_orders" as delivery_orders <<Parada de Entrega>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK>>
+        dispatch_delivery_point_id : BIGINT <<FK>>
+        executed_sequence : INTEGER
+        delivery_note_number : VARCHAR(100)
+        delivery_result_code : VARCHAR(50)
+        status : VARCHAR(50)
+        arrival_latitude : DECIMAL(12,6)
+        arrival_longitude : DECIMAL(12,6)
+        arrived_at : TIMESTAMP
+        delivered_at : TIMESTAMP | NULL
+        departure_at : TIMESTAMP | NULL
+        service_time_seconds : INTEGER | NULL
+        travel_time_seconds : INTEGER | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "delivery_order_sales" as delivery_order_sales <<Facturas por Parada>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_id : BIGINT <<FK>>
+        sale_order_id : BIGINT <<FK sale_orders_ref>>
+        company_code : BIGINT
+        invoice_id : BIGINT
+        total_invoice : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "delivery_payment_references" as delivery_payment_references <<Cobranzas en Calle>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_sale_id : BIGINT <<FK>>
+        collection_payment_id : BIGINT
+        payment_method : VARCHAR(20)
+        reference_number : VARCHAR(100)
+        bank_name : VARCHAR(100) | NULL
+        authorization_code : VARCHAR(100) | NULL
+        amount : DECIMAL(12,2)
+        currency : VARCHAR(10)
+        status : VARCHAR(30)
+        cash_breakdown : JSONB | NULL
+        metadata : JSONB | NULL
+        notes : VARCHAR(100)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "delivery_order_items" as delivery_order_items <<Productos Descargados>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_sale_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        planned_qty : DECIMAL(12,2)
+        delivered_qty : DECIMAL(12,2)
+        returned_qty : DECIMAL(12,2)
+        unit_price_snapshot : DECIMAL(12,2)
+        rejection_reason_code : VARCHAR(50) | NULL
+        item_status : VARCHAR(50)
+        notes : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "proof_of_deliveries" as proof_of_deliveries <<POD Digital (Firma/Foto/GPS)>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_id : BIGINT <<FK>>
+        receiver_name : VARCHAR(255)
+        receiver_document : VARCHAR(100)
+        receiver_relationship : VARCHAR(100)
+        signature_url : TEXT | NULL
+        image_url : TEXT | NULL
+        latitude : DECIMAL(12,6)
+        longitude : DECIMAL(12,6)
+        status : VARCHAR(50)
+        device_id : BIGINT
+        captured_at : TIMESTAMP
+        uploaded_at : TIMESTAMP | NULL
+        notes : TEXT
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "delivery_incidents" as delivery_incidents <<Incidencias en Ruta>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref | NULL>>
+        incident_code : VARCHAR(50)
+        severity : VARCHAR(50)
+        description : TEXT
+        image_url : TEXT | NULL
+        requires_return : BOOLEAN
+        resolution_status : VARCHAR(50)
+        resolved_at : TIMESTAMP | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "delivery_order_histories" as delivery_order_histories <<Trazabilidad de Parada>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        delivery_order_id : BIGINT <<FK>>
+        status : VARCHAR(100)
+        reason : TEXT
+        captured_at : TIMESTAMP
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 08. LIQUIDACIÓN & CIERRES DE RUTA (SETTLEMENT & CLOSINGS)
+' ==============================================================================
+package "08. Liquidación & Cierres de Ruta (Settlement & Closings)" #F5EEF8 {
+    entity "transport_order_warehouse_closings" as transport_order_warehouse_closings <<Liquidación Física Almacén>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK UNIQUE>>
+        closing_date : TIMESTAMP
+        status : VARCHAR(50)
+        total_dispatch_qty : DECIMAL(12,2)
+        total_invoiced_qty : DECIMAL(12,2)
+        total_bonus_qty : DECIMAL(12,2)
+        total_delivered_qty : DECIMAL(12,2)
+        total_returned_qty : DECIMAL(12,2)
+        total_shortage_qty : DECIMAL(12,2)
+        total_surplus_qty : DECIMAL(12,2)
+        total_dispatch_amount : DECIMAL(12,2)
+        total_invoiced_amount : DECIMAL(12,2)
+        total_bonus_amount : DECIMAL(12,2)
+        total_returned_amount : DECIMAL(12,2)
+        driver_employee_id : BIGINT | NULL
+        driver_signature_svg : TEXT | NULL
+        warehouse_responsible_id : BIGINT | NULL
+        warehouse_responsible_name : VARCHAR(255) | NULL
+        warehouse_signature_svg : TEXT | NULL
+        notes : TEXT | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "transport_order_collection_closings" as transport_order_collection_closings <<Liquidación Financiera Caja>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        transport_order_id : BIGINT <<FK UNIQUE>>
+        closing_date : TIMESTAMP
+        status : VARCHAR(50)
+        total_invoiced_amount : DECIMAL(12,2)
+        total_bonus_amount : DECIMAL(12,2)
+        total_delivered_amount : DECIMAL(12,2)
+        total_returned_amount : DECIMAL(12,2)
+        total_dispatch_amount : DECIMAL(12,2)
+        cash_amount : DECIMAL(12,2)
+        transfer_amount : DECIMAL(12,2)
+        qr_amount : DECIMAL(12,2)
+        check_amount : DECIMAL(12,2)
+        driver_collected_amount : DECIMAL(12,2)
+        credit_amount : DECIMAL(12,2)
+        collector_amount : DECIMAL(12,2)
+        total_to_render : DECIMAL(12,2)
+        total_orders_dispatched : INTEGER
+        total_orders_invoiced : INTEGER
+        total_orders_returned : INTEGER
+        cash_bob_breakdown : JSONB | NULL
+        cash_usd_breakdown : JSONB | NULL
+        deposit_vouchers : JSONB | NULL
+        driver_signature_svg : TEXT | NULL
+        supervisor_signature_svg : TEXT | NULL
+        cashier_signature_svg : TEXT | NULL
+        admin_signature_svg : TEXT | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 09. GESTIÓN DE DEVOLUCIONES (REFUNDS MANAGEMENT)
+' ==============================================================================
+package "09. Gestión de Devoluciones (Refunds Management)" #FCE4D6 {
+    entity "refund_reasons" as refund_reasons <<Motivos de Devolución>> {
+        * id : BIGSERIAL <<PK>>
+        * code : VARCHAR(100) <<UNIQUE>>
+        --
+        name : VARCHAR(150)
+        description : VARCHAR(300) | NULL
+        cost_center : VARCHAR(50)
+        process_type : VARCHAR(20)
+        lot_requirement : VARCHAR(20)
+        due_date_requirement : VARCHAR(20)
+        requires_photo : BOOLEAN
+        requires_notes : BOOLEAN
+        sort_order : SMALLINT
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_reason_params" as refund_reason_params <<Parámetros y Vigencia>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_id : BIGINT <<FK>>
+        process_type : VARCHAR(20)
+        cost_center : VARCHAR(50) | NULL
+        start_date : DATE
+        end_date : DATE
+        status : VARCHAR(20)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_reason_param_clients" as refund_reason_param_clients <<Alcance: Clientes>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        customer_id : BIGINT
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_reason_param_products" as refund_reason_param_products <<Alcance: SKUs>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_reason_param_lots" as refund_reason_param_lots <<Alcance: Lotes>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        lot_type : VARCHAR(10)
+        lot_number : VARCHAR(20)
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_reason_param_product_groups" as refund_reason_param_product_groups <<Alcance: Categoría/Marca>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        group_type : VARCHAR(20)
+        group_value : VARCHAR(150)
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_reason_param_sale_channels" as refund_reason_param_sale_channels <<Alcance: Canales>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        sale_channel_id : BIGINT
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_reason_param_distributors" as refund_reason_param_distributors <<Alcance: Agencias>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_reason_param_id : BIGINT <<FK>>
+        distributor_id : BIGINT <<FK distributors_ref>>
+        created_at : TIMESTAMP
+    }
+
+    entity "refund_approval_levels" as refund_approval_levels <<Matriz de Aprobación>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        workflow_version_id : BIGINT
+        level_order : SMALLINT
+        name : VARCHAR(100)
+        role_code : VARCHAR(50)
+        min_amount : DECIMAL(12,2)
+        max_amount : DECIMAL(12,2)
+        approval_policy : VARCHAR(20)
+        required_approvals : SMALLINT
+        on_reject : VARCHAR(30)
+        is_active : BOOLEAN
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_orders" as refund_orders <<Nota de Devolución>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        note_number : VARCHAR(50)
+        split_sequence : SMALLINT
+        source_refund_order_id : BIGINT <<FK | NULL>>
+        document_type : VARCHAR(20)
+        status : VARCHAR(20)
+        current_workflow_instance_id : BIGINT <<FK | NULL>>
+        distributor_id : BIGINT <<FK distributors_ref>>
+        employee_id : BIGINT
+        owner_id : BIGINT
+        customer_id : BIGINT
+        replacement_date : DATE | NULL
+        justification : TEXT
+        total : DECIMAL(12,2)
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_order_details" as refund_order_details <<Línea de Devolución>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_order_id : BIGINT <<FK>>
+        source_detail_id : BIGINT <<FK | NULL>>
+        refund_reason_id : BIGINT <<FK>>
+        product_id : BIGINT <<FK products_ref>>
+        source_quantity : DECIMAL(12,2)
+        quantity : DECIMAL(12,2)
+        price_unit : DECIMAL(12,2)
+        line_status : VARCHAR(20)
+        notes : TEXT | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_order_detail_sources" as refund_order_detail_sources <<Trazabilidad Factura / Lote>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_order_detail_id : BIGINT <<FK>>
+        invoice_number : VARCHAR(50) | NULL
+        invoiced_at : DATE | NULL
+        quantity : DECIMAL(12,2)
+        lot : VARCHAR(50) | NULL
+        due_date : DATE | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_order_detail_image" as refund_order_detail_image <<Fotos de Evidencia SKU>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_order_detail_id : BIGINT <<FK>>
+        url : VARCHAR(255) | NULL
+        created_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+}
+
+' ==============================================================================
+' 10. WORKFLOW DE APROBACIONES (REFUND WORKFLOW ENGINE)
+' ==============================================================================
+package "10. Motor de Workflow & Aprobaciones (Refund Workflow Engine)" #F2F3F4 {
+    entity "refund_workflow_instances" as refund_workflow_instances <<Instancia del Flujo>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        refund_order_id : BIGINT <<FK>>
+        attempt : SMALLINT
+        status : VARCHAR(20)
+        current_level_order : SMALLINT | NULL
+        reactivated_from_instance_id : BIGINT <<FK | NULL>>
+        started_at : TIMESTAMP
+        finished_at : TIMESTAMP | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_workflow_instance_levels" as refund_workflow_instance_levels <<Nivel en Ejecución>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        workflow_instance_id : BIGINT <<FK>>
+        level_order : SMALLINT
+        level_name : VARCHAR(100)
+        role_code : VARCHAR(50)
+        min_amount : DECIMAL(12,2)
+        max_amount : DECIMAL(12,2)
+        decision_mode : VARCHAR(20)
+        status : VARCHAR(20)
+        first_viewed_at : TIMESTAMP | NULL
+        first_viewed_by : VARCHAR(255) | NULL
+        started_at : TIMESTAMP | NULL
+        finished_at : TIMESTAMP | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_workflow_actions" as refund_workflow_actions <<Historial de Decisiones>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        workflow_instance_id : BIGINT <<FK>>
+        workflow_instance_level_id : BIGINT <<FK | NULL>>
+        related_refund_order_id : BIGINT <<FK | NULL>>
+        action : VARCHAR(30)
+        actor_employee_code : BIGINT | NULL
+        actor_role_code : VARCHAR(50) | NULL
+        system_summary : TEXT
+        comment : TEXT
+        reason : TEXT
+        previous_status : VARCHAR(20) | NULL
+        new_status : VARCHAR(20) | NULL
+        amount_before : DECIMAL(12,2) | NULL
+        amount_after : DECIMAL(12,2) | NULL
+        -- Auditoría --
+        created_by : VARCHAR(255)
+        updated_by : VARCHAR(255)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_workflow_action_images" as refund_workflow_action_images <<Foto Autorización / Reactivación>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        workflow_action_id : BIGINT <<FK>>
+        url : VARCHAR(255)
+        created_at : TIMESTAMP
+        deleted_at : TIMESTAMP | NULL
+    }
+
+    entity "refund_order_detail_decisions" as refund_order_detail_decisions <<Selección Binaria L1>> {
+        * id : BIGSERIAL <<PK>>
+        --
+        workflow_action_id : BIGINT <<FK>>
+        refund_order_detail_id : BIGINT <<FK>>
+        decision : VARCHAR(20)
+        created_at : TIMESTAMP
+    }
+}
+
+' ==============================================================================
+' RELACIONES INTERNAS POR MÓDULO (INTRA-PACKAGE RELATIONSHIPS)
+' ==============================================================================
+
+' --- Módulo 02: Territorio & Restricciones ---
+planning_restrictions "1" -right-> "0..*" planning_restriction_schedules : vigencias >
+planning_restrictions "1" -down-> "0..*" planning_restriction_vehicle_rules : reglas flota >
+
+' --- Módulo 04: Planificación de Despachos ---
+plan_status "1" -right-> "0..*" dispatch_plans : clasifica >
+dispatch_plans "1" -down-> "0..*" planning_trucks : incluye camión >
+dispatch_plans "1" -right-> "1..*" dispatch_delivery_points : consolida paradas >
+dispatch_delivery_points "1" -right-> "0..*" image_delivery_points : contiene fotos >
+dispatch_delivery_points "0..1" -down-> "0..*" candidate_orders : agrupa pedidos >
+planning_trucks "0..1" -right-> "0..*" dispatch_delivery_points : asigna forzado >
+
+' --- Módulo 05: Ruteo & Optimización ---
+routes "1" -right-> "1..*" route_delivery_points : secuencia paradas >
+
+' --- Módulo 06: Ejecución de Transporte ---
+transport_orders "1" -down-> "0..*" transport_order_histories : registra evento >
+transport_orders "1" -right-> "0..*" transport_order_sales : transporta pedidos >
+transport_order_sales "1" -right-> "1..*" transport_order_sales_items : contiene ítems >
+transport_orders "1" -down-> "0..*" truck_inventories : consolida stock >
+transport_orders "1" -down-> "0..*" transport_order_count_sessions : audita conteo >
+transport_order_count_sessions "1" -right-> "1..*" transport_order_count_session_items : detalla conteo >
+transport_orders "1" -down-> "0..*" transport_order_assets : controla activo >
+
+' --- Módulo 07: Última Milla ---
+delivery_orders "1" -right-> "1..*" delivery_order_sales : entrega ventas >
+delivery_order_sales "1" -right-> "0..*" delivery_payment_references : liquida cobro >
+delivery_order_sales "1" -down-> "1..*" delivery_order_items : descarga ítems >
+delivery_orders "1" -down-> "0..1" proof_of_deliveries : respalda entrega >
+delivery_orders "1" -down-> "0..*" delivery_incidents : reporta novedad >
+delivery_orders "1" -down-> "0..*" delivery_order_histories : traza estado >
+
+' --- Módulo 09: Gestión de Devoluciones ---
+refund_reasons "1" -right-> "0..*" refund_reason_params : define reglas >
+refund_reason_params "1" -down-> "0..*" refund_reason_param_clients
+refund_reason_params "1" -down-> "0..*" refund_reason_param_products
+refund_reason_params "1" -down-> "0..*" refund_reason_param_lots
+refund_reason_params "1" -down-> "0..*" refund_reason_param_product_groups
+refund_reason_params "1" -down-> "0..*" refund_reason_param_sale_channels
+refund_reason_params "1" -down-> "0..*" refund_reason_param_distributors
+
+refund_orders "0..1" -down-> "0..*" refund_orders : disocia en >
+refund_orders "1" -right-> "1..*" refund_order_details : contiene líneas >
+refund_order_details "0..1" -down-> "0..*" refund_order_details : split >
+refund_reasons "1" -down-> "0..*" refund_order_details : clasifica motivo >
+refund_order_details "1" -right-> "1..*" refund_order_detail_sources : rastrea origen >
+refund_order_details "1" -down-> "0..*" refund_order_detail_image : foto daño >
+
+' --- Módulo 10: Workflow Engine ---
+refund_workflow_instances "0..1" -down-> "0..*" refund_workflow_instances : reactivada de >
+refund_workflow_instances "1" -right-> "1..*" refund_workflow_instance_levels : compone escalera >
+refund_workflow_instances "1" -down-> "0..*" refund_workflow_actions : registra acción >
+refund_workflow_instance_levels "0..1" -down-> "0..*" refund_workflow_actions : ocurre en nivel >
+refund_workflow_actions "1" -right-> "0..*" refund_workflow_action_images : evidencia firma >
+refund_workflow_actions "1" -down-> "0..*" refund_order_detail_decisions : decisión L1 >
+
+' ==============================================================================
+' RELACIONES ENTRE MÓDULOS (CORE WORKFLOW PIPELINE)
+' ==============================================================================
+
+' --- Territorio y Flota hacia Planificación ---
+zones "0..1" -down-> "0..*" dispatch_delivery_points : clasifica por zona >
+planning_restrictions "0..1" ..down..> "0..*" planning_trucks : excluye camión por >
+trucks "1" -down-> "0..*" planning_trucks : selecciona para plan >
+
+' --- Planificación hacia Ruteo ---
+dispatch_plans "1" -down-> "0..*" routes : genera rutas >
+dispatch_delivery_points "1" -down-> "0..*" route_delivery_points : optimizado en >
+planning_trucks "0..1" -down-> "0..*" routes : asigna a ruta >
+
+' --- Ruteo y Planificación hacia Ejecución de Transporte ---
+dispatch_plans "0..1" -down-> "0..*" transport_orders : emite viaje >
+routes "0..1" -down-> "0..*" transport_orders : ejecuta plan de ruta >
+trucks "0..1" -down-> "0..*" transport_orders : camión físico >
+trucks "1" -down-> "0..*" truck_inventories : stock físico a bordo >
+logistic_assets "1" -down-> "0..*" transport_order_assets : inventario de activo >
+
+' --- Transporte hacia Última Milla ---
+transport_orders "1" -down-> "1..*" delivery_orders : ejecuta paradas >
+dispatch_delivery_points "1" -down-> "0..*" delivery_orders : parada programada >
+
+' --- Transporte hacia Liquidación & Cierres (1 a 1 estricto) ---
+transport_orders "1" -down-> "0..1" transport_order_warehouse_closings : liquidación almacén >
+transport_orders "1" -down-> "0..1" transport_order_collection_closings : liquidación financiera >
+
+' --- Devoluciones con Planificación de Despacho (Flujo Inverso) ---
+refund_orders "0..1" ..down..> "0..*" candidate_orders : orden de reposición
+
+' --- Devoluciones con Motor de Workflow ---
+refund_orders "1" -right-> "0..*" refund_workflow_instances : somete a aprobación >
+refund_orders "0..1" -down-> "0..*" refund_workflow_actions : orden disociada generada >
+refund_approval_levels "0..1" ..right..> "0..*" refund_workflow_instance_levels : instancia matriz
+refund_order_details "1" -down-> "0..*" refund_order_detail_decisions : ítem decidido L1 >
+
+@enduml

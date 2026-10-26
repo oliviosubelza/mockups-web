@@ -4,12 +4,12 @@
 //
 // Las dos leen el MISMO stream de flota: cambia el nivel al que se lo proyecta, no el contrato.
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ChartGantt, MapPin, Package, Radio, Store, Truck, User } from 'lucide-react'
+import { AlertTriangle, ChartGantt, MapPin, Package, Radio, Store, Truck, User, UserCheck } from 'lucide-react'
 import { DataTable, defineColumns, defineFilters, FilterBar } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { openRoute } from '@/core/routing/open-route'
-import { FiltroPopover } from '../FiltroPopover'
+import { FiltroBuscableCombobox } from './FiltroBuscableCombobox'
 import { CanalGlyph } from '../canal-glyph'
 import { CANAL_META, type CanalId } from '../mock-data'
 import { EstadoEntregaBadge, EstadoViajeBadge } from './EstadoEntregaBadge'
@@ -64,7 +64,7 @@ const filterDefsOrdenes = defineFilters<MonitoreoFilters>([
 ])
 
 const filterDefsPedidos = defineFilters<MonitoreoFilters>([
-  { type: 'text', id: 'texto', label: 'Pedido, cliente o camion' },
+  { type: 'text', id: 'texto', label: 'Pedido, cliente, vendedor o camión' },
   { type: 'select', id: 'estadoViaje', label: 'Estado del viaje', options: ESTADO_VIAJE_OPCIONES },
   { type: 'select', id: 'estadoEntrega', label: 'Estado de la parada', options: ESTADO_ENTREGA_OPCIONES },
 ])
@@ -141,17 +141,17 @@ export function MonitoreoView() {
   const [filters, setFilters] = useState<MonitoreoFilters>({})
   const [vista, setVista] = useState<VistaMonitoreo>('ordenes')
   /**
-   * Canal y cliente, SOLO en la vista de pedidos.
+   * Canal, cliente y vendedor, SOLO en la vista de pedidos.
    *
-   * No entran al `FilterBar` declarativo de al lado porque su `select` es de un valor y sin buscador:
-   * los canales son seis pero los clientes son cientos, y elegir uno de una lista sin búsqueda no es
-   * un filtro. Van en el mismo `FiltroPopover` que usa el planificador — multi-select y con buscador —
-   * y por eso los dos comparten control aunque uno tenga seis opciones y el otro trescientas.
+   * Se gestionan con FiltroBuscableCombobox, un selector combobox con buscador interno,
+   * botón de borrado rápido en el trigger y metadatos de pedidos y monto en Bs,
+   * en línea con los selectores de Auditoría de Carga (camión, chofer).
    *
    * Vacío NO filtra: es la convención de narrowing del resto del mockup.
    */
   const [canales, setCanales] = useState<CanalId[]>([])
   const [clientes, setClientes] = useState<string[]>([])
+  const [vendedores, setVendedores] = useState<string[]>([])
 
   // Snapshot + SSE de flota. El scope es el `distributorId` del hook: los endpoints del monitor
   // vienen ya acotados por distribuidora y se parchean por id.
@@ -178,24 +178,26 @@ export function MonitoreoView() {
         (!filters.estadoEntrega || pedido.estadoEntrega === filters.estadoEntrega) &&
         (canales.length === 0 || canales.includes(pedido.canal)) &&
         (clientes.length === 0 || clientes.includes(pedido.cliente)) &&
+        (vendedores.length === 0 || vendedores.includes(pedido.vendedor)) &&
         (!texto ||
           pedido.pedido.toLowerCase().includes(texto) ||
           pedido.ordenCodigo.toLowerCase().includes(texto) ||
           pedido.camion.toLowerCase().includes(texto) ||
           pedido.cliente.toLowerCase().includes(texto) ||
+          pedido.vendedor.toLowerCase().includes(texto) ||
           pedido.puntoEntrega.toLowerCase().includes(texto)),
     )
-  }, [filters, pedidos, canales, clientes])
+  }, [filters, pedidos, canales, clientes, vendedores])
 
   /**
-   * Las opciones de canal y de cliente, con su peso escrito al costado y ordenadas por monto.
+   * Las opciones de canal, cliente y vendedor, con su peso escrito al costado y ordenadas por monto.
    *
    * Salen del universo COMPLETO del día y no de lo que ya quedó filtrado: si se recalcularan contra el
    * resultado, elegir un canal borraría de la lista a los demás y no habría forma de cambiar de opinión
    * sin limpiar el filtro primero.
    *
-   * El monto al costado es lo que convierte al desplegable en un resumen: se ve el reparto entero antes
-   * de elegir, que es la pregunta que trae a alguien a agrupar por canal o por cliente.
+   * El monto y cantidad al costado convierte al desplegable en un resumen: se ve el reparto entero antes
+   * de elegir.
    */
   const opcionesCanal = useMemo(() => {
     const acumulado = new Map<CanalId, { pedidos: number; total: number }>()
@@ -210,8 +212,8 @@ export function MonitoreoView() {
       .map(([canal, datos]) => ({
         value: canal,
         label: CANAL_META[canal].label,
-        glyph: <CanalGlyph canal={canal} size={13} />,
-        hint: `${datos.pedidos} · ${bs(datos.total)}`,
+        glyph: <CanalGlyph canal={canal} size={14} />,
+        subtitle: `${datos.pedidos} ped. · Bs ${bs(datos.total)}`,
       }))
   }, [pedidos])
 
@@ -228,7 +230,25 @@ export function MonitoreoView() {
       .map(([cliente, datos]) => ({
         value: cliente,
         label: cliente,
-        hint: `${datos.pedidos} · ${bs(datos.total)}`,
+        subtitle: `${datos.pedidos} ped. · Bs ${bs(datos.total)}`,
+      }))
+  }, [pedidos])
+
+  const opcionesVendedor = useMemo(() => {
+    const acumulado = new Map<string, { pedidos: number; total: number }>()
+    for (const pedido of pedidos) {
+      const v = pedido.vendedor || 'Sin asignar'
+      const actual = acumulado.get(v) ?? { pedidos: 0, total: 0 }
+      actual.pedidos += 1
+      actual.total += pedido.total
+      acumulado.set(v, actual)
+    }
+    return [...acumulado.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([vendedor, datos]) => ({
+        value: vendedor,
+        label: vendedor,
+        subtitle: `${datos.pedidos} ped. · Bs ${bs(datos.total)}`,
       }))
   }, [pedidos])
 
@@ -481,6 +501,18 @@ export function MonitoreoView() {
           ),
         },
         {
+          id: 'vendedor',
+          header: 'Vendedor',
+          accessorKey: 'vendedor',
+          size: 145,
+          cell: (row) => (
+            <span className="flex items-center gap-1.5 text-xs text-foreground truncate" title={row.vendedor}>
+              <UserCheck className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-medium">{row.vendedor}</span>
+            </span>
+          ),
+        },
+        {
           id: 'parada',
           header: 'Parada',
           size: 86,
@@ -686,15 +718,16 @@ export function MonitoreoView() {
                 values={filters}
                 onChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
               />
-              {/* Canal y cliente van DESPUÉS de los estados y separados por una línea: los de la
-                  izquierda acotan por situación del viaje, estos por a quién se le entrega. Son dos
-                  preguntas distintas y mezcladas en una fila se leen como cinco controles sueltos. */}
-              <div className="flex flex-wrap items-center gap-1.5 border-l border-border pl-3">
-                <FiltroPopover
+              {/* Canal, cliente y vendedor van DESPUÉS de los estados y separados por una línea: los de la
+                  izquierda acotan por situación del viaje, estos por a quién se le entrega o quién vendió. */}
+              <div className="flex flex-wrap items-center gap-2 border-l border-border pl-3">
+                <FiltroBuscableCombobox
                   label="Canal"
+                  placeholderTodos="Todos los canales"
+                  searchPlaceholder="Buscar canal…"
                   icon={Store}
                   options={opcionesCanal}
-                  active={canales}
+                  selectedValues={canales}
                   onToggle={(value) =>
                     setCanales((previos) =>
                       previos.includes(value as CanalId)
@@ -702,14 +735,17 @@ export function MonitoreoView() {
                         : [...previos, value as CanalId],
                     )
                   }
-                  searchPlaceholder="Buscar canal…"
-                  emptyText="Sin canales en la flota"
+                  onClear={() => setCanales([])}
+                  popoverWidth="w-72"
                 />
-                <FiltroPopover
+
+                <FiltroBuscableCombobox
                   label="Cliente"
+                  placeholderTodos="Todos los clientes"
+                  searchPlaceholder="Buscar cliente…"
                   icon={User}
                   options={opcionesCliente}
-                  active={clientes}
+                  selectedValues={clientes}
                   onToggle={(value) =>
                     setClientes((previos) =>
                       previos.includes(value)
@@ -717,20 +753,40 @@ export function MonitoreoView() {
                         : [...previos, value],
                     )
                   }
-                  searchPlaceholder="Buscar cliente…"
-                  emptyText="Sin clientes en la flota"
+                  onClear={() => setClientes([])}
+                  popoverWidth="w-80"
                 />
-                {(canales.length > 0 || clientes.length > 0) && (
+
+                <FiltroBuscableCombobox
+                  label="Vendedor"
+                  placeholderTodos="Todos los vendedores"
+                  searchPlaceholder="Buscar vendedor…"
+                  icon={UserCheck}
+                  options={opcionesVendedor}
+                  selectedValues={vendedores}
+                  onToggle={(value) =>
+                    setVendedores((previos) =>
+                      previos.includes(value)
+                        ? previos.filter((vendedor) => vendedor !== value)
+                        : [...previos, value],
+                    )
+                  }
+                  onClear={() => setVendedores([])}
+                  popoverWidth="w-72"
+                />
+
+                {(canales.length > 0 || clientes.length > 0 || vendedores.length > 0) && (
                   <button
                     type="button"
-                    title="Quitar los filtros de canal y cliente"
+                    title="Quitar todos los filtros de canal, cliente y vendedor"
                     onClick={() => {
                       setCanales([])
                       setClientes([])
+                      setVendedores([])
                     }}
-                    className="cursor-pointer px-1 text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                    className="cursor-pointer px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline font-medium"
                   >
-                    Quitar
+                    Quitar filtros
                   </button>
                 )}
               </div>

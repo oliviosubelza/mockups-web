@@ -46,23 +46,6 @@ CREATE TABLE sale_orders_ref
     invoice_amount      DECIMAL(12, 2) DEFAULT 0.00
 );
 
-    -- CREATE TABLE distributors (
-    --     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    --     name VARCHAR(50) NOT NULL, -- Nombre comercial de la distribuidora/agencia
-    --     latitude NUMERIC(9,6) NOT NULL, -- Coordenada GPS de la planta/centro
-    --     longitude NUMERIC(9,6) NOT NULL,
-    -- --     department_id BIGINT NOT NULL, -- Departamento/Estado geográfico
-    --     city_id BIGINT NOT NULL,
-    --     code_sap BIGINT, -- Código de distribuidora en SAP/Ventas
-    --     is_active BOOLEAN NOT NULL DEFAULT TRUE
-
-    --     created_by VARCHAR(255),
-    --     updated_by VARCHAR(255),
-    --     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    --     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    --     deleted_at TIMESTAMP,
-    -- );
-
     CREATE TABLE sale_channel_restrictions(
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         name VARCHAR(50) NOT NULL,

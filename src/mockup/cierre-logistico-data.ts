@@ -82,6 +82,9 @@ export interface TransferenciaItem {
   clienteNombre: string
   monto: number
   estado: string
+  factura?: string
+  fechaHora?: string
+  cuentaDestino?: string
 }
 
 export interface PagoQrItem {
@@ -91,6 +94,9 @@ export interface PagoQrItem {
   clienteNombre: string
   monto: number
   estado: string
+  factura?: string
+  fechaHora?: string
+  referenciaQr?: string
 }
 
 export interface ChequeItem {
@@ -99,6 +105,19 @@ export interface ChequeItem {
   clienteCodigo: string
   clienteNombre: string
   monto: number
+  estado: string
+  factura?: string
+  fechaCobro?: string
+  tipoCheque?: string
+}
+
+export interface FacturaEfectivoItem {
+  factura: string
+  reciboChofer: string
+  clienteCodigo: string
+  clienteNombre: string
+  monto: number
+  hora: string
   estado: string
 }
 
@@ -378,6 +397,73 @@ function generarCortesBsParaMonto(montoTotal: number): CorteMonedaItem[] {
   })
 }
 
+const CLIENTES_RUTA_BASE = [
+  { codigo: 'CLI-10110', nombre: 'Abarrotes Doña Rosa' },
+  { codigo: 'CLI-10115', nombre: 'Comercial El Cristo' },
+  { codigo: 'CLI-10122', nombre: 'Pulpería San José' },
+  { codigo: 'CLI-10134', nombre: 'Micromercado Los Pinos' },
+  { codigo: 'CLI-10148', nombre: 'Minimarket Santa Ana' },
+  { codigo: 'CLI-10155', nombre: 'Snack & Abarrotes Central' },
+  { codigo: 'CLI-10162', nombre: 'Tienda La Pascana' },
+  { codigo: 'CLI-10170', nombre: 'Abarrotes El Carmen' },
+  { codigo: 'CLI-10178', nombre: 'Mercado Mutualista Puesto #42' },
+  { codigo: 'CLI-10185', nombre: 'Comercial Los Pozos Express' },
+  { codigo: 'CLI-10191', nombre: 'Bodega San Antonio' },
+  { codigo: 'CLI-10204', nombre: 'Super Tienda La Villa' },
+  { codigo: 'CLI-10212', nombre: 'Pulpería Don Carlos' },
+  { codigo: 'CLI-10220', nombre: 'Distribuidora Minorista Cañoto' },
+  { codigo: 'CLI-10228', nombre: 'Abarrotes Tres Hermanos' },
+  { codigo: 'CLI-10235', nombre: 'Micromercado San Jorge' },
+  { codigo: 'CLI-10242', nombre: 'Almacén El Progreso' },
+  { codigo: 'CLI-10250', nombre: 'Tienda El Oasis' },
+]
+
+export function generarFacturasEfectivoParaMonto(
+  orderCode: string,
+  totalEfectivo: number
+): FacturaEfectivoItem[] {
+  const montoRedondeado = Math.max(0, Math.round(totalEfectivo * 100) / 100)
+  if (montoRedondeado <= 0) return []
+
+  const numFacturas = Math.min(CLIENTES_RUTA_BASE.length, Math.max(6, Math.min(18, Math.round(montoRedondeado / 750))))
+  const pesos = [14, 8, 16, 6, 10, 15, 7, 12, 5, 13, 9, 11, 6, 12, 8, 7, 10, 8].slice(0, numFacturas)
+  const sumaPesos = pesos.reduce((a, b) => a + b, 0)
+
+  let acumulado = 0
+  const facturas: FacturaEfectivoItem[] = []
+  const orderDigits = orderCode.replace(/\D/g, '')
+  const orderSuffix = orderDigits.length >= 4 ? orderDigits.slice(-4) : '1001'
+
+  for (let i = 0; i < numFacturas; i++) {
+    const isUltimo = i === numFacturas - 1
+    const cliente = CLIENTES_RUTA_BASE[i]
+    let montoItem = 0
+
+    if (isUltimo) {
+      montoItem = Math.max(0, Math.round((montoRedondeado - acumulado) * 100) / 100)
+    } else {
+      montoItem = Math.round(((pesos[i] / sumaPesos) * montoRedondeado) * 100) / 100
+      acumulado = Math.round((acumulado + montoItem) * 100) / 100
+    }
+
+    const horaH = 8 + Math.floor(i / 2)
+    const horaM = (i * 23) % 60
+    const horaStr = `${String(horaH).padStart(2, '0')}:${String(horaM).padStart(2, '0')} ${horaH < 12 ? 'AM' : 'PM'}`
+
+    facturas.push({
+      factura: `FAC-${orderSuffix}-${String(i + 101).padStart(3, '0')}`,
+      reciboChofer: `REC-${orderSuffix}${String(i + 1).padStart(2, '0')}`,
+      clienteCodigo: cliente.codigo,
+      clienteNombre: cliente.nombre,
+      monto: montoItem,
+      hora: horaStr,
+      estado: 'Cobrado en Efectivo',
+    })
+  }
+
+  return facturas
+}
+
 // ── CONSTRUCCIÓN DE LAS 8 ÓRDENES CON 30 A 50 PRODUCTOS CADA UNA ──
 
 const itemsOT1 = generarItemsAlmacen(42, 101, true, false) // 42 SKUs
@@ -457,7 +543,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT1.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT1.totalValorFacturado - 1400.0,
+        efectivo: totalesOT1.totalValorFacturado - 950.0,
         transferencia: 300.0,
         qr: 250.0,
         cheque: 400.0,
@@ -468,18 +554,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 32, facturado: 30, bonificado: 5, anulado: 0, noEntregado: 2 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco BCP', numeroComprobante: 'DEP-99410', monto: 450.0, hora: '15:30', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT1.totalValorFacturado - 1400.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT1.totalValorFacturado - 950.0),
       transferencias: [
-        { transaccion: 'TR-102948', banco: 'Banco BCP', clienteCodigo: '10101', clienteNombre: 'Hipermaxi Norte', monto: 300.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-102948',
+          banco: 'Banco BCP',
+          clienteCodigo: '10101',
+          clienteNombre: 'Hipermaxi Norte',
+          monto: 300.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0002-081',
+          fechaHora: '10:15 AM',
+          cuentaDestino: 'Cta. Recaudadora BCP #201-5092182',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-990182', banco: 'BISA', clienteCodigo: '10102', clienteNombre: 'Supermercado Fidalga', monto: 250.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-990182',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '10102',
+          clienteNombre: 'Supermercado Fidalga',
+          monto: 250.0,
+          estado: 'Validado',
+          factura: 'FAC-0002-085',
+          fechaHora: '11:20 AM',
+          referenciaQr: 'BISA-SIMPLE-990182',
+        },
       ],
       cheques: [
-        { banco: 'Banco Mercantil', nroCheque: 'CHQ-001928', clienteCodigo: '10105', clienteNombre: 'Distribuidora San Martín', monto: 400.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Mercantil Santa Cruz',
+          nroCheque: 'CHQ-001928',
+          clienteCodigo: '10105',
+          clienteNombre: 'Distribuidora San Martín',
+          monto: 400.0,
+          estado: 'Al Día',
+          factura: 'FAC-0002-092',
+          fechaCobro: '12/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -543,7 +656,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT2.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT2.totalValorFacturado - 1750.0,
+        efectivo: totalesOT2.totalValorFacturado - 1150.0,
         transferencia: 500.0,
         qr: 300.0,
         cheque: 350.0,
@@ -554,18 +667,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 28, facturado: 27, bonificado: 4, anulado: 0, noEntregado: 1 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco Ganadero', numeroComprobante: 'DEP-77312', monto: 600.0, hora: '14:20', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT2.totalValorFacturado - 1750.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT2.totalValorFacturado - 1150.0),
       transferencias: [
-        { transaccion: 'TR-440192', banco: 'Banco BCP', clienteCodigo: '10201', clienteNombre: 'Agencia Santos Dumont', monto: 500.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-440192',
+          banco: 'Banco BCP',
+          clienteCodigo: '10201',
+          clienteNombre: 'Agencia Santos Dumont',
+          monto: 500.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0819-081',
+          fechaHora: '09:40 AM',
+          cuentaDestino: 'Cta. Recaudadora BCP #201-5092182',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-110294', banco: 'BISA', clienteCodigo: '10202', clienteNombre: 'Comercial La Pascana', monto: 300.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-110294',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '10202',
+          clienteNombre: 'Comercial La Pascana',
+          monto: 300.0,
+          estado: 'Validado',
+          factura: 'FAC-0819-086',
+          fechaHora: '11:05 AM',
+          referenciaQr: 'BISA-SIMPLE-110294',
+        },
       ],
       cheques: [
-        { banco: 'Banco Unión', nroCheque: 'CHQ-883190', clienteCodigo: '10208', clienteNombre: 'Abarrotes Santos Dumont', monto: 350.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Unión',
+          nroCheque: 'CHQ-883190',
+          clienteCodigo: '10208',
+          clienteNombre: 'Abarrotes Santos Dumont',
+          monto: 350.0,
+          estado: 'Al Día',
+          factura: 'FAC-0819-093',
+          fechaCobro: '19/08/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -629,7 +769,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT3.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT3.totalValorFacturado - 2550.0,
+        efectivo: totalesOT3.totalValorFacturado - 1750.0,
         transferencia: 700.0,
         qr: 500.0,
         cheque: 550.0,
@@ -640,18 +780,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 45, facturado: 43, bonificado: 8, anulado: 0, noEntregado: 2 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco BCP', numeroComprobante: 'DEP-66201', monto: 800.0, hora: '16:00', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT3.totalValorFacturado - 2550.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT3.totalValorFacturado - 1750.0),
       transferencias: [
-        { transaccion: 'TR-772019', banco: 'Banco Ganadero', clienteCodigo: '10301', clienteNombre: 'Hipermaxi Equipetrol', monto: 700.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-772019',
+          banco: 'Banco Ganadero',
+          clienteCodigo: '10301',
+          clienteNombre: 'Hipermaxi Equipetrol',
+          monto: 700.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0010-082',
+          fechaHora: '10:30 AM',
+          cuentaDestino: 'Cta. Recaudadora Ganadero #105-88219',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-551029', banco: 'BISA', clienteCodigo: '10302', clienteNombre: 'Farmacias Chávez', monto: 500.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-551029',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '10302',
+          clienteNombre: 'Farmacias Chávez Sirari',
+          monto: 500.0,
+          estado: 'Validado',
+          factura: 'FAC-0010-087',
+          fechaHora: '12:15 PM',
+          referenciaQr: 'BISA-SIMPLE-551029',
+        },
       ],
       cheques: [
-        { banco: 'Banco BISA', nroCheque: 'CHQ-55201', clienteCodigo: '10310', clienteNombre: 'Restaurante Sirari Gourmet', monto: 550.0, estado: 'Al Día' },
+        {
+          banco: 'Banco BISA',
+          nroCheque: 'CHQ-55201',
+          clienteCodigo: '10310',
+          clienteNombre: 'Restaurante Sirari Gourmet',
+          monto: 550.0,
+          estado: 'Al Día',
+          factura: 'FAC-0010-094',
+          fechaCobro: '15/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -715,7 +882,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT4.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT4.totalValorFacturado - 1450.0,
+        efectivo: totalesOT4.totalValorFacturado - 950.0,
         transferencia: 350.0,
         qr: 280.0,
         cheque: 320.0,
@@ -726,19 +893,56 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 38, facturado: 36, bonificado: 6, anulado: 0, noEntregado: 2 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco Unión', numeroComprobante: 'DEP-55190', monto: 500.0, hora: '15:10', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT4.totalValorFacturado - 1450.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT4.totalValorFacturado - 950.0),
       transferencias: [
-        { transaccion: 'TR-77102', banco: 'Banco Mercantil', clienteCodigo: '10405', clienteNombre: 'Minimarket Los Pinos', monto: 350.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-77102',
+          banco: 'Banco Mercantil',
+          clienteCodigo: '10405',
+          clienteNombre: 'Minimarket Los Pinos',
+          monto: 350.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0012-081',
+          fechaHora: '09:50 AM',
+          cuentaDestino: 'Cta. Recaudadora Mercantil #401-22910',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-880291', banco: 'BISA', clienteCodigo: '10401', clienteNombre: 'Comercial Cañoto', monto: 100.0, estado: 'Validado' },
-        { transaccion: 'QR-880315', banco: 'BCP', clienteCodigo: '10412', clienteNombre: 'Abarrotes Don Pepe', monto: 180.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-880291',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '10401',
+          clienteNombre: 'Comercial Cañoto',
+          monto: 100.0,
+          estado: 'Validado',
+          factura: 'FAC-0012-085',
+          fechaHora: '10:45 AM',
+          referenciaQr: 'BISA-SIMPLE-880291',
+        },
+        {
+          transaccion: 'QR-880315',
+          banco: 'Banco BCP',
+          clienteCodigo: '10412',
+          clienteNombre: 'Abarrotes Don Pepe',
+          monto: 180.0,
+          estado: 'Validado',
+          factura: 'FAC-0012-086',
+          fechaHora: '11:30 AM',
+          referenciaQr: 'BCP-QR-880315',
+        },
       ],
       cheques: [
-        { banco: 'Banco Ganadero', nroCheque: 'CHQ-33190', clienteCodigo: '10420', clienteNombre: 'Super Cañoto Express', monto: 320.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Ganadero',
+          nroCheque: 'CHQ-33190',
+          clienteCodigo: '10420',
+          clienteNombre: 'Super Cañoto Express',
+          monto: 320.0,
+          estado: 'Al Día',
+          factura: 'FAC-0012-092',
+          fechaCobro: '16/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -802,7 +1006,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT5.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT5.totalValorFacturado - 1350.0,
+        efectivo: totalesOT5.totalValorFacturado - 900.0,
         transferencia: 400.0,
         qr: 200.0,
         cheque: 300.0,
@@ -813,18 +1017,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 30, facturado: 30, bonificado: 4, anulado: 0, noEntregado: 0 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco BCP', numeroComprobante: 'DEP-44102', monto: 450.0, hora: '16:40', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT5.totalValorFacturado - 1350.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT5.totalValorFacturado - 900.0),
       transferencias: [
-        { transaccion: 'TR-88190', banco: 'Banco BCP', clienteCodigo: '108001', clienteNombre: 'Supermercado Central Villa', monto: 400.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-88190',
+          banco: 'Banco BCP',
+          clienteCodigo: '108001',
+          clienteNombre: 'Supermercado Central Villa',
+          monto: 400.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0015-081',
+          fechaHora: '10:05 AM',
+          cuentaDestino: 'Cta. Recaudadora BCP #201-5092182',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-55410', banco: 'BISA', clienteCodigo: '108012', clienteNombre: 'Tienda La Esmeralda', monto: 200.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-55410',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '108012',
+          clienteNombre: 'Tienda La Esmeralda',
+          monto: 200.0,
+          estado: 'Validado',
+          factura: 'FAC-0015-086',
+          fechaHora: '11:15 AM',
+          referenciaQr: 'BISA-SIMPLE-55410',
+        },
       ],
       cheques: [
-        { banco: 'Banco Mercantil', nroCheque: 'CHQ-22019', clienteCodigo: '108030', clienteNombre: 'Comercial Pampa de la Isla', monto: 300.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Mercantil',
+          nroCheque: 'CHQ-22019',
+          clienteCodigo: '108030',
+          clienteNombre: 'Comercial Pampa de la Isla',
+          monto: 300.0,
+          estado: 'Al Día',
+          factura: 'FAC-0015-091',
+          fechaCobro: '18/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -888,7 +1119,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT6.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT6.totalValorFacturado - 1845.0,
+        efectivo: totalesOT6.totalValorFacturado - 1465.0,
         transferencia: 800.0,
         qr: 245.0,
         cheque: 420.0,
@@ -899,20 +1130,67 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 34, facturado: 33, bonificado: 5, anulado: 0, noEntregado: 1 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco FIE', numeroComprobante: 'DEP-33901', monto: 380.0, hora: '15:50', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT6.totalValorFacturado - 1845.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT6.totalValorFacturado - 1465.0),
       transferencias: [
-        { transaccion: 'TR-66014', banco: 'Banco Ganadero', clienteCodigo: '11002', clienteNombre: 'Supermercado Plan 3000', monto: 520.0, estado: 'Conciliado' },
-        { transaccion: 'TR-66089', banco: 'Banco BCP', clienteCodigo: '11015', clienteNombre: 'Comercial El Fuerte', monto: 280.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-66014',
+          banco: 'Banco Ganadero',
+          clienteCodigo: '11002',
+          clienteNombre: 'Supermercado Plan 3000',
+          monto: 520.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0018-081',
+          fechaHora: '09:20 AM',
+          cuentaDestino: 'Cta. Recaudadora Ganadero #105-88219',
+        },
+        {
+          transaccion: 'TR-66089',
+          banco: 'Banco BCP',
+          clienteCodigo: '11015',
+          clienteNombre: 'Comercial El Fuerte',
+          monto: 280.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0018-082',
+          fechaHora: '10:40 AM',
+          cuentaDestino: 'Cta. Recaudadora BCP #201-5092182',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-44120', banco: 'Banco Unión', clienteCodigo: '11030', clienteNombre: 'Tienda Doña María', monto: 150.0, estado: 'Validado' },
-        { transaccion: 'QR-44195', banco: 'BISA', clienteCodigo: '11042', clienteNombre: 'Snack Central', monto: 95.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-44120',
+          banco: 'Banco Unión',
+          clienteCodigo: '11030',
+          clienteNombre: 'Tienda Doña María',
+          monto: 150.0,
+          estado: 'Validado',
+          factura: 'FAC-0018-088',
+          fechaHora: '11:10 AM',
+          referenciaQr: 'UNION-QR-44120',
+        },
+        {
+          transaccion: 'QR-44195',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '11042',
+          clienteNombre: 'Snack Central',
+          monto: 95.0,
+          estado: 'Validado',
+          factura: 'FAC-0018-089',
+          fechaHora: '11:55 AM',
+          referenciaQr: 'BISA-SIMPLE-44195',
+        },
       ],
       cheques: [
-        { banco: 'Banco Unión', nroCheque: 'CHQ-11029', clienteCodigo: '11050', clienteNombre: 'Distribuidora El Fuerte', monto: 420.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Unión',
+          nroCheque: 'CHQ-11029',
+          clienteCodigo: '11050',
+          clienteNombre: 'Distribuidora El Fuerte',
+          monto: 420.0,
+          estado: 'Al Día',
+          factura: 'FAC-0018-095',
+          fechaCobro: '20/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -930,14 +1208,14 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
     orderCode: '525420022',
     dateFormatted: '22/02/2026',
     dateIso: '2026-02-22',
-    routeName: 'Ruta 112 - Cotoca y Guapilo',
+    routeName: 'Ruta 112 - Parque Industrial y Cotoca',
     distributorName: 'Distribuidora Central Santa Cruz - Grupo Venado',
-    truckPlate: '2910 MNB',
-    truckCode: 'CAM-05',
-    truckType: 'HINO 300 4 Tn',
+    truckPlate: '3120 LKP',
+    truckCode: 'CAM-07',
+    truckType: 'MERCEDES BENZ 8 Tn',
     driverName: 'EDGAR TITO CONDORI',
-    driverEmpresa: 'VENADO LOGÍSTICA',
-    driverCi: '3920194 LP',
+    driverEmpresa: 'TRANS-ORIENTE',
+    driverCi: '6192019 SC',
     supervisorName: 'Ing. Roberto Flores T.',
     status: 'CLOSED',
     statusLabel: 'Pendiente Liquidación',
@@ -946,15 +1224,15 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       fecha: '2026-02-22',
       fechaFormatted: '22/2/2026',
       choferNombre: 'EDGAR TITO CONDORI',
-      choferEmpresa: 'VENADO LOGÍSTICA',
+      choferEmpresa: 'TRANS-ORIENTE',
       usuarioLiquidador: 'CARLOS.ROJAS01',
-      placaCamion: '2910 MNB HINO 300',
-      tipoCamion: 'HINO 300',
+      placaCamion: '3120 LKP MERCEDES BENZ',
+      tipoCamion: 'MERCEDES BENZ',
       numeroDespacho: '525420022',
       items: itemsOT7,
       totales: totalesOT7,
       firmas: {
-        chofer: { firmado: true, nombre: 'EDGAR TITO CONDORI', ci: '3920194 LP' },
+        chofer: { firmado: true, nombre: 'EDGAR TITO CONDORI', ci: '6192019 SC' },
         almacen: { firmado: true, nombre: 'CARLOS.ROJAS01', cargo: 'Liquidador Almacén' },
       },
     },
@@ -963,10 +1241,10 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       fecha: '2026-02-22',
       fechaFormatted: '22/2/2026',
       choferNombre: 'EDGAR TITO CONDORI',
-      choferEmpresa: 'VENADO LOGÍSTICA',
+      choferEmpresa: 'TRANS-ORIENTE',
       usuarioLiquidador: 'CARLOS.ROJAS01',
-      placaCamion: '2910 MNB HINO 300',
-      tipoCamion: 'HINO 300',
+      placaCamion: '3120 LKP MERCEDES BENZ',
+      tipoCamion: 'MERCEDES BENZ',
       numeroDespacho: '525420022',
       resumenFinanciero: {
         importeFacturado: totalesOT7.totalValorFacturado,
@@ -976,7 +1254,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT7.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT7.totalValorFacturado - 1845.0,
+        efectivo: totalesOT7.totalValorFacturado - 1445.0,
         transferencia: 650.0,
         qr: 295.0,
         cheque: 500.0,
@@ -987,19 +1265,56 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 26, facturado: 26, bonificado: 3, anulado: 0, noEntregado: 0 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco Mercantil', numeroComprobante: 'DEP-22190', monto: 400.0, hora: '16:20', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT7.totalValorFacturado - 1845.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT7.totalValorFacturado - 1445.0),
       transferencias: [
-        { transaccion: 'TR-55012', banco: 'Banco Mercantil', clienteCodigo: '11204', clienteNombre: 'Distribuidora Cotoca', monto: 650.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-55012',
+          banco: 'Banco Mercantil',
+          clienteCodigo: '11204',
+          clienteNombre: 'Distribuidora Cotoca',
+          monto: 650.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0022-081',
+          fechaHora: '09:35 AM',
+          cuentaDestino: 'Cta. Recaudadora Mercantil #401-22910',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-33104', banco: 'Banco BCP', clienteCodigo: '11218', clienteNombre: 'Micromercado Guapilo', monto: 210.0, estado: 'Validado' },
-        { transaccion: 'QR-33150', banco: 'Banco FIE', clienteCodigo: '11225', clienteNombre: 'Pulpería San José', monto: 85.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-33104',
+          banco: 'Banco BCP',
+          clienteCodigo: '11218',
+          clienteNombre: 'Micromercado Guapilo',
+          monto: 210.0,
+          estado: 'Validado',
+          factura: 'FAC-0022-085',
+          fechaHora: '10:20 AM',
+          referenciaQr: 'BCP-QR-33104',
+        },
+        {
+          transaccion: 'QR-33150',
+          banco: 'Banco FIE',
+          clienteCodigo: '11225',
+          clienteNombre: 'Pulpería San José Cotoca',
+          monto: 85.0,
+          estado: 'Validado',
+          factura: 'FAC-0022-086',
+          fechaHora: '11:40 AM',
+          referenciaQr: 'FIE-QR-33150',
+        },
       ],
       cheques: [
-        { banco: 'Banco BISA', nroCheque: 'CHQ-99102', clienteCodigo: '11240', clienteNombre: 'Supermercado Cotoca', monto: 500.0, estado: 'Al Día' },
+        {
+          banco: 'Banco BISA',
+          nroCheque: 'CHQ-99102',
+          clienteCodigo: '11240',
+          clienteNombre: 'Supermercado Cotoca',
+          monto: 500.0,
+          estado: 'Al Día',
+          factura: 'FAC-0022-092',
+          fechaCobro: '22/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],
@@ -1063,7 +1378,7 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
         valorDespacho: totalesOT8.totalValorDespacho,
       },
       resumenCobranzas: {
-        efectivo: totalesOT8.totalValorFacturado - 2670.0,
+        efectivo: totalesOT8.totalValorFacturado - 1920.0,
         transferencia: 1000.0,
         qr: 320.0,
         cheque: 600.0,
@@ -1074,18 +1389,45 @@ export const CIERRES_ORDENES_TRANSPORTE: CierreOrdenTransporte[] = [
       },
       pedidos: { total: 36, facturado: 35, bonificado: 6, anulado: 0, noEntregado: 1 },
       creditos: [],
-      depositosEfectivo: [
-        { banco: 'Banco Ganadero', numeroComprobante: 'DEP-11029', monto: 750.0, hora: '16:05', cuenta: 'Cta. Cte. Central' },
-      ],
-      cortesBs: generarCortesBsParaMonto(totalesOT8.totalValorFacturado - 2670.0),
+      depositosEfectivo: [],
+      cortesBs: generarCortesBsParaMonto(totalesOT8.totalValorFacturado - 1920.0),
       transferencias: [
-        { transaccion: 'TR-99201', banco: 'Banco Ganadero', clienteCodigo: '115001', clienteNombre: 'Hipermaxi Warnes', monto: 1000.0, estado: 'Conciliado' },
+        {
+          transaccion: 'TR-99201',
+          banco: 'Banco Ganadero',
+          clienteCodigo: '115001',
+          clienteNombre: 'Hipermaxi Warnes',
+          monto: 1000.0,
+          estado: 'Conciliado',
+          factura: 'FAC-0025-081',
+          fechaHora: '09:15 AM',
+          cuentaDestino: 'Cta. Recaudadora Ganadero #105-88219',
+        },
       ],
       pagosQr: [
-        { transaccion: 'QR-77210', banco: 'BISA', clienteCodigo: '115022', clienteNombre: 'Tienda La Fama Warnes', monto: 320.0, estado: 'Validado' },
+        {
+          transaccion: 'QR-77210',
+          banco: 'Banco BISA (Simple)',
+          clienteCodigo: '115022',
+          clienteNombre: 'Tienda La Fama Warnes',
+          monto: 320.0,
+          estado: 'Validado',
+          factura: 'FAC-0025-085',
+          fechaHora: '10:50 AM',
+          referenciaQr: 'BISA-SIMPLE-77210',
+        },
       ],
       cheques: [
-        { banco: 'Banco Mercantil', nroCheque: 'CHQ-77102', clienteCodigo: '115035', clienteNombre: 'Comercial Parque Industrial', monto: 600.0, estado: 'Al Día' },
+        {
+          banco: 'Banco Mercantil Santa Cruz',
+          nroCheque: 'CHQ-77102',
+          clienteCodigo: '115035',
+          clienteNombre: 'Comercial Parque Industrial',
+          monto: 600.0,
+          estado: 'Al Día',
+          factura: 'FAC-0025-092',
+          fechaCobro: '25/02/2026',
+        },
       ],
       cobranzaCobrador: [],
       devolucionesNoCobradas: [],

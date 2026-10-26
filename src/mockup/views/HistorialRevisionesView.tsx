@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
 import { format, isSameDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -10,6 +10,7 @@ import {
   CheckCircle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Clock,
@@ -381,6 +382,55 @@ export function HistorialRevisionesView() {
     return found || filteredOrders[0] || null
   }, [filteredOrders, selectedOrderId])
 
+  // Navegación de órdenes consecutivas
+  const currentOrderIndex = useMemo(() => {
+    if (!selectedOrder) return -1
+    return filteredOrders.findIndex((o) => o.id === selectedOrder.id)
+  }, [filteredOrders, selectedOrder])
+
+  const hasPrevOrder = currentOrderIndex > 0
+  const hasNextOrder = currentOrderIndex !== -1 && currentOrderIndex < filteredOrders.length - 1
+
+  const handlePrevOrder = () => {
+    if (hasPrevOrder) setSelectedOrderId(filteredOrders[currentOrderIndex - 1].id)
+  }
+  const handleNextOrder = () => {
+    if (hasNextOrder) setSelectedOrderId(filteredOrders[currentOrderIndex + 1].id)
+  }
+
+  // Atajo de teclado para navegar órdenes con flechas
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return
+      if (filteredOrders.length === 0) return
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const nextIdx = currentOrderIndex < filteredOrders.length - 1 ? currentOrderIndex + 1 : 0
+        if (filteredOrders[nextIdx]) setSelectedOrderId(filteredOrders[nextIdx].id)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const prevIdx = currentOrderIndex > 0 ? currentOrderIndex - 1 : filteredOrders.length - 1
+        if (filteredOrders[prevIdx]) setSelectedOrderId(filteredOrders[prevIdx].id)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [filteredOrders, currentOrderIndex])
+
+  // Cantidad de productos con discrepancias en la OT seleccionada
+  const productDiscrepanciesCount = useMemo(() => {
+    if (!selectedOrder) return 0
+    return selectedOrder.items.filter((item) => {
+      const driverDiff = item.driverCount.varianceQty !== 0
+      const supDiff = (item.supervisorReview?.varianceQty ?? 0) !== 0
+      const semDiff = (item.semaphoreAudit?.varianceQty ?? 0) !== 0
+      const officialDiff = item.officialInventory.varianceQty !== 0
+      return driverDiff || supDiff || semDiff || officialDiff
+    }).length
+  }, [selectedOrder])
+
   // Filtrado de productos dentro de la orden seleccionada (con filtro y buscador en vivo)
   const filteredProducts = useMemo(() => {
     if (!selectedOrder) return []
@@ -455,33 +505,33 @@ export function HistorialRevisionesView() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50/70 dark:bg-slate-950">
       {/* ── HEADER SUPERIOR Y BARRA DE FILTROS ── */}
-      <div className="border-b border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
-              <ClipboardCheck className="h-6 w-6" />
+      <div className="border-b border-slate-200 bg-white px-4 py-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 shrink-0">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 shrink-0">
+              <ClipboardCheck className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                   Historial de Revisiones y Conteos
                 </h1>
-                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-xs font-semibold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-[11px] font-semibold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
                   Auditoría Multi-Sesión
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Trazabilidad por producto de conteo Chofer (<code className="font-mono text-[11px]">DRIVER_INITIAL</code>), Revisión Supervisor (<code className="font-mono text-[11px]">SUPERVISOR_DISCREPANCY</code>) y Auditoría Semáforo (<code className="font-mono text-[11px]">SUPERVISOR_SEMAPHORE</code>).
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Trazabilidad por producto: Conteo Chofer, Revisión Supervisor y Auditoría Semáforo en patio.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={resetFilters}
-              className="h-9 gap-1.5 text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400"
+              className="h-8 gap-1.5 text-xs text-slate-600 hover:text-slate-900 dark:text-slate-400"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Limpiar
@@ -489,9 +539,9 @@ export function HistorialRevisionesView() {
             <Button
               onClick={handleExport}
               size="sm"
-              className="h-9 gap-1.5 bg-emerald-600 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
+              className="h-8 gap-1.5 bg-emerald-600 text-xs font-medium text-white shadow-xs hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
               Exportar Matriz Excel
             </Button>
           </div>
@@ -1162,51 +1212,117 @@ export function HistorialRevisionesView() {
           </div>
         </div>
 
-        {/* Tarjetas resumen de KPIs */}
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+        {/* Tarjetas resumen de KPIs con Click-to-Filter */}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => setFilterMode('ALL')}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border p-2 text-left transition-all cursor-pointer",
+              filterMode === 'ALL'
+                ? "border-indigo-500 bg-indigo-50/70 dark:border-indigo-500 dark:bg-indigo-950/40 ring-1 ring-indigo-500 shadow-xs"
+                : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+            )}
+            title="Ver todas las órdenes"
+          >
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md shrink-0 transition-colors",
+              filterMode === 'ALL' ? "bg-indigo-600 text-white" : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+            )}>
               <Layers className="h-4 w-4" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Total Órdenes</div>
-              <div className="text-base font-bold text-slate-900 dark:text-slate-100">{metrics.total}</div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                Total Órdenes
+                {filterMode === 'ALL' && <span className="text-[9px] text-indigo-600 font-bold dark:text-indigo-400">● Todo</span>}
+              </div>
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{metrics.total}</div>
             </div>
-          </div>
+          </button>
 
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+          <button
+            type="button"
+            onClick={() => setFilterMode(filterMode === 'MATCH_ONLY' ? 'ALL' : 'MATCH_ONLY')}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border p-2 text-left transition-all cursor-pointer",
+              filterMode === 'MATCH_ONLY'
+                ? "border-emerald-500 bg-emerald-50/70 dark:border-emerald-500 dark:bg-emerald-950/40 ring-1 ring-emerald-500 shadow-xs"
+                : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+            )}
+            title="Clic para filtrar órdenes 100% conformes"
+          >
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md shrink-0 transition-colors",
+              filterMode === 'MATCH_ONLY' ? "bg-emerald-600 text-white" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+            )}>
               <CheckCircle2 className="h-4 w-4" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Efectividad Chofer</div>
-              <div className="text-base font-bold text-emerald-700 dark:text-emerald-400">{metrics.matchRateAvg}% Conforme</div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                Efectividad Chofer
+                {filterMode === 'MATCH_ONLY' && <span className="text-[9px] text-emerald-600 font-bold dark:text-emerald-400">● Activo</span>}
+              </div>
+              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                {metrics.matchRateAvg}% <span className="text-[10px] font-normal text-slate-500">Conforme</span>
+              </div>
             </div>
-          </div>
+          </button>
 
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+          <button
+            type="button"
+            onClick={() => setFilterMode(filterMode === 'WITH_DISCREPANCIES' ? 'ALL' : 'WITH_DISCREPANCIES')}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border p-2 text-left transition-all cursor-pointer",
+              filterMode === 'WITH_DISCREPANCIES'
+                ? "border-amber-500 bg-amber-50/70 dark:border-amber-500 dark:bg-amber-950/40 ring-1 ring-amber-500 shadow-xs"
+                : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+            )}
+            title="Clic para filtrar órdenes con descuadre chofer / supervisor"
+          >
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md shrink-0 transition-colors",
+              filterMode === 'WITH_DISCREPANCIES' ? "bg-amber-600 text-white" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+            )}>
               <ShieldCheck className="h-4 w-4" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Revisión Supervisor</div>
-              <div className="text-base font-bold text-slate-900 dark:text-slate-100">
-                {metrics.withSup} <span className="text-[11px] font-normal text-slate-500">({metrics.withDisc} con dif.)</span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                Con Descuadres
+                {filterMode === 'WITH_DISCREPANCIES' && <span className="text-[9px] text-amber-600 font-bold dark:text-amber-400">● Activo</span>}
+              </div>
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {metrics.withDisc} <span className="text-[10px] font-normal text-amber-700 dark:text-amber-400 font-medium">con dif. ({metrics.withSup} rev.)</span>
               </div>
             </div>
-          </div>
+          </button>
 
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+          <button
+            type="button"
+            onClick={() => setFilterMode(filterMode === 'SEMAPHORE_AUDITED' ? 'ALL' : 'SEMAPHORE_AUDITED')}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border p-2 text-left transition-all cursor-pointer",
+              filterMode === 'SEMAPHORE_AUDITED'
+                ? "border-purple-500 bg-purple-50/70 dark:border-purple-500 dark:bg-purple-950/40 ring-1 ring-purple-500 shadow-xs"
+                : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-800/70"
+            )}
+            title="Clic para filtrar órdenes auditadas por semáforo de patio"
+          >
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md shrink-0 transition-colors",
+              filterMode === 'SEMAPHORE_AUDITED' ? "bg-purple-600 text-white" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+            )}>
               <TrafficCone className="h-4 w-4" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Auditoría Semáforo</div>
-              <div className="text-base font-bold text-purple-700 dark:text-purple-400">
-                {metrics.withSem} <span className="text-[11px] font-normal text-slate-500">OTs auditadas</span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                Auditoría Semáforo
+                {filterMode === 'SEMAPHORE_AUDITED' && <span className="text-[9px] text-purple-600 font-bold dark:text-purple-400">● Activo</span>}
+              </div>
+              <div className="text-sm font-bold text-purple-700 dark:text-purple-400">
+                {metrics.withSem} <span className="text-[10px] font-normal text-slate-500">auditadas</span>
               </div>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -1376,79 +1492,98 @@ export function HistorialRevisionesView() {
                             )
                           }
 
-                          // MODO TARJETAS DETALLADAS
+                          // MODO TARJETAS DETALLADAS (OPERATIONAL LEAN)
                           return (
                             <div
                               key={ot.id}
                               onClick={() => setSelectedOrderId(ot.id)}
                               className={cn(
-                                'group cursor-pointer p-3 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/60',
+                                'group cursor-pointer p-2.5 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/60 border-l-4',
                                 isSelected
-                                  ? 'border-l-4 border-indigo-600 bg-indigo-50/40 dark:border-indigo-500 dark:bg-indigo-950/20'
-                                  : 'border-l-4 border-transparent'
+                                  ? 'border-indigo-600 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/20'
+                                  : 'border-transparent'
                               )}
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="flex items-center gap-2">
+                              <div className="flex items-start justify-between gap-1.5">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
                                       {ot.orderCode}
                                     </span>
-                                    <span className="text-[10px] text-slate-400">{ot.routeName.split(' - ')[0]}</span>
+                                    <span className="text-[10px] text-slate-400 truncate max-w-[100px]">{ot.routeName.split(' - ')[0]}</span>
                                   </div>
-                                  <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                                    <User className="h-3 w-3 text-slate-400" />
+                                  <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
+                                    <User className="h-3 w-3 text-slate-400 shrink-0" />
                                     <span className="truncate font-medium">{ot.driver.name}</span>
                                   </div>
-                                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                                    <span className="flex items-center gap-1">
-                                      <Truck className="h-3 w-3 text-slate-400" />
-                                      {ot.truck.plate}
-                                    </span>
-                                    <span>•</span>
-                                    <span>{ot.summary.totalProducts} Productos</span>
+                                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                                    <Truck className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <span className="font-mono">{ot.truck.plate}</span>
+                                    {ot.truck.isRefrigerated && (
+                                      <Snowflake className="h-2.5 w-2.5 text-blue-500 inline shrink-0" title="Frío" />
+                                    )}
                                   </div>
                                 </div>
 
-                                <ChevronRight
-                                  className={cn(
-                                    'h-4 w-4 transition-transform text-slate-400 group-hover:translate-x-0.5',
-                                    isSelected && 'text-indigo-600 dark:text-indigo-400'
-                                  )}
-                                />
+                                {/* Status de diferencia prominente en esquina superior derecha */}
+                                <div className="shrink-0 flex items-center gap-1">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[10px] py-0 px-1.5 font-bold tabular-nums',
+                                      ot.summary.totalNetVarianceUnits === 0
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                        : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300'
+                                    )}
+                                  >
+                                    {ot.summary.totalNetVarianceUnits === 0 ? '✓ Conforme' : `${ot.summary.totalNetVarianceUnits} u`}
+                                  </Badge>
+                                </div>
                               </div>
 
-                              {/* Badges de las 3 Sesiones */}
-                              <div className="mt-2 flex flex-wrap items-center gap-1">
-                                {ot.summary.driverStatus === 'MATCH' ? (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                                    <CheckCircle2 className="h-2.5 w-2.5" /> Chofer OK
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                                    <AlertCircle className="h-2.5 w-2.5" /> Chofer Dif
-                                  </span>
-                                )}
+                              {/* Micro-Stepper Horizontal de Sesiones */}
+                              <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px]">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                  <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400">Sesiones:</span>
+                                  <div className="flex items-center gap-1">
+                                    {/* 1: Chofer */}
+                                    <span
+                                      title={ot.summary.driverStatus === 'MATCH' ? '1. Chofer: Conforme' : '1. Chofer: Descuadre'}
+                                      className={cn(
+                                        'inline-flex items-center justify-center size-4 rounded-full text-[9px] font-bold text-white',
+                                        ot.summary.driverStatus === 'MATCH' ? 'bg-emerald-500' : 'bg-amber-500'
+                                      )}
+                                    >
+                                      1
+                                    </span>
+                                    <span className="h-px w-1.5 bg-slate-200 dark:bg-slate-700" />
+                                    {/* 2: Supervisor */}
+                                    <span
+                                      title={ot.summary.supervisorReviewed ? `2. Supervisor: ${ot.summary.supervisorReviewScope}` : '2. Supervisor: No requirió'}
+                                      className={cn(
+                                        'inline-flex items-center justify-center size-4 rounded-full text-[9px] font-bold',
+                                        ot.summary.supervisorReviewed ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                                      )}
+                                    >
+                                      2
+                                    </span>
+                                    <span className="h-px w-1.5 bg-slate-200 dark:bg-slate-700" />
+                                    {/* 3: Semáforo */}
+                                    <span
+                                      title={ot.summary.semaphoreAudited ? '3. Semáforo: Auditado' : '3. Semáforo: Omitido'}
+                                      className={cn(
+                                        'inline-flex items-center justify-center size-4 rounded-full text-[9px] font-bold',
+                                        ot.summary.semaphoreAudited ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                      )}
+                                    >
+                                      3
+                                    </span>
+                                  </div>
+                                </div>
 
-                                {ot.summary.supervisorReviewScope === 'FULL' ? (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                                    <ShieldCheck className="h-2.5 w-2.5" /> Sup. Total
-                                  </span>
-                                ) : ot.summary.supervisorReviewScope === 'PARTIAL' ? (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
-                                    <ShieldCheck className="h-2.5 w-2.5" /> Sup. Parcial
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                    Sup. No Req.
-                                  </span>
-                                )}
-
-                                {ot.summary.semaphoreAudited && (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-purple-50 px-1.5 py-0.5 text-[9px] font-medium text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
-                                    <TrafficCone className="h-2.5 w-2.5" /> Semáforo
-                                  </span>
-                                )}
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                  {ot.summary.totalProducts} ítems
+                                </span>
                               </div>
                             </div>
                           )
@@ -1466,13 +1601,40 @@ export function HistorialRevisionesView() {
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 lg:col-span-8 overflow-hidden">
           {selectedOrder ? (
             <>
-              {/* 1. BARRA SUPERIOR COMPACTA DE LA ORDEN SELECCIONADA */}
-              <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+              {/* 1. BARRA SUPERIOR COMPACTA DE LA ORDEN SELECCIONADA CON NAVEGACIÓN */}
+              <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Controles de Navegación Rápida Anterior / Siguiente */}
+                      <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 mr-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={!hasPrevOrder}
+                          onClick={handlePrevOrder}
+                          className="h-6 w-6 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 disabled:opacity-30 cursor-pointer"
+                          title="OT Anterior (o flecha arriba)"
+                        >
+                          <ChevronLeft size={13} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={!hasNextOrder}
+                          onClick={handleNextOrder}
+                          className="h-6 w-6 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 disabled:opacity-30 cursor-pointer"
+                          title="OT Siguiente (o flecha abajo)"
+                        >
+                          <ChevronRight size={13} />
+                        </Button>
+                      </div>
+
                       <span className="font-mono text-sm font-bold text-slate-900 dark:text-slate-100">
                         {selectedOrder.orderCode}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        ({currentOrderIndex + 1}/{filteredOrders.length})
                       </span>
                       <Badge variant="outline" className="text-xs font-semibold">
                         {selectedOrder.routeName}
@@ -1484,6 +1646,7 @@ export function HistorialRevisionesView() {
                       )}
                       <span className="text-[11px] text-slate-400">• {selectedOrder.distributorName}</span>
                     </div>
+
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-300">
                       <span className="flex items-center gap-1">
                         <User size={12} className="text-slate-400" />
@@ -1509,13 +1672,13 @@ export function HistorialRevisionesView() {
                         toast.success(`Acta de ${selectedOrder.orderCode} descargada en Libro Excel (.xls)`)
                       }}
                       className="h-8 text-xs gap-1.5 cursor-pointer bg-white text-slate-700 hover:bg-slate-50 border-slate-200 shadow-xs dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
-                      title="Exportar conciliación de esta orden a CSV/Excel"
+                      title="Exportar conciliación de esta orden a Excel"
                     >
                       <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
-                      <span>Exportar Excel OT</span>
+                      <span>Exportar Excel</span>
                     </Button>
 
-                    <div className="rounded-lg bg-slate-50 px-3 py-1 text-right dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                    <div className="rounded-lg bg-slate-50 px-2.5 py-1 text-right dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
                       <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Diferencia Neta</div>
                       <div className={cn('font-mono text-xs font-bold', selectedOrder.summary.totalNetVarianceUnits < 0 ? 'text-rose-600' : 'text-emerald-600')}>
                         {selectedOrder.summary.totalNetVarianceUnits === 0
@@ -1574,8 +1737,8 @@ export function HistorialRevisionesView() {
                         : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
                     )}
                   >
-                    <FileCheck2 size={14} />
-                    <span>Liquidación y Acta Digital</span>
+                    <PenTool size={14} />
+                    <span>Firmas</span>
                   </button>
                 </div>
               </div>
@@ -1628,10 +1791,14 @@ export function HistorialRevisionesView() {
                       <Button
                         variant={productFilter === 'DISCREPANCIES' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => setProductFilter('DISCREPANCIES')}
-                        className="h-7 text-[11px] cursor-pointer"
+                        onClick={() => setProductFilter(productFilter === 'DISCREPANCIES' ? 'ALL' : 'DISCREPANCIES')}
+                        className={cn(
+                          "h-7 text-[11px] cursor-pointer gap-1",
+                          productDiscrepanciesCount > 0 && productFilter !== 'DISCREPANCIES' && "border-amber-400/80 text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 font-semibold"
+                        )}
                       >
-                        Solo Diferencias
+                        {productDiscrepanciesCount > 0 && <AlertCircle size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />}
+                        Solo Diferencias ({productDiscrepanciesCount})
                       </Button>
                       <Button
                         variant={productFilter === 'COLD_CHAIN' ? 'default' : 'outline'}
@@ -1644,7 +1811,7 @@ export function HistorialRevisionesView() {
                     </div>
                   </div>
 
-                  {/* TABLA COMPARATIVA CON SCROLL */}
+                  {/* TABLA COMPARATIVA CON SCROLL Y SMART DIFFING */}
                   <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
                     <table className="w-full border-collapse text-left text-xs">
                       <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs dark:bg-slate-800">
@@ -1680,12 +1847,14 @@ export function HistorialRevisionesView() {
                                 key={item.productId}
                                 onClick={() => setSelectedProductForDrawer(item)}
                                 className={cn(
-                                  'cursor-pointer transition-all hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20',
-                                  hasDiscrepancy && 'bg-amber-50/20 dark:bg-amber-950/10'
+                                  'cursor-pointer transition-all border-b border-slate-100 dark:border-slate-800/70',
+                                  hasDiscrepancy
+                                    ? 'border-l-4 border-l-amber-500 bg-amber-500/[0.04] hover:bg-amber-500/[0.08] dark:bg-amber-500/[0.07] dark:hover:bg-amber-500/[0.12]'
+                                    : 'border-l-4 border-l-transparent hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                                 )}
                                 title="Haga clic para abrir el cronograma y trazabilidad completa de este producto"
                               >
-                                {/* Producto (Solo nombre) */}
+                                {/* Producto con indicador de discrepancia si aplica */}
                                 <td className="p-2.5">
                                   <div className="flex items-center gap-2">
                                     {item.isColdChain ? (
@@ -1695,21 +1864,28 @@ export function HistorialRevisionesView() {
                                     ) : (
                                       <div className="h-4 w-4 shrink-0" />
                                     )}
-                                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                                      {item.description}
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[220px]">
+                                        {item.description}
+                                      </div>
+                                      {hasDiscrepancy && (
+                                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+                                          <AlertCircle size={10} className="shrink-0" /> Con descuadre físico
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
 
                                 {/* Factor */}
-                                <td className="p-2.5 text-center text-slate-500 font-mono text-[11px]">
+                                <td className="p-2.5 text-center text-slate-400 font-mono text-[11px]">
                                   {item.equivalenceBoxUnit} {item.unitName}/cj
                                 </td>
 
                                 {/* Cantidad Esperada */}
-                                <td className="border-l border-slate-100 p-2.5 text-right font-mono font-medium text-slate-700 dark:border-slate-800 dark:text-slate-300">
-                                  {item.expectedQty} {item.unitName}
-                                  <span className="block text-[10px] text-slate-400">
+                                <td className="border-l border-slate-100 p-2.5 text-right font-mono text-slate-700 dark:border-slate-800 dark:text-slate-300">
+                                  <span className="font-semibold text-xs">{item.expectedQty} {item.unitName}</span>
+                                  <span className="block text-[10px] text-slate-400 font-normal">
                                     {item.expectedBoxes >= 1 && item.expectedUnits > 0
                                       ? `(${Math.floor(item.expectedBoxes)} cj + ${item.expectedUnits} u)`
                                       : item.expectedBoxes >= 1 && item.expectedUnits === 0
@@ -1718,117 +1894,110 @@ export function HistorialRevisionesView() {
                                   </span>
                                 </td>
 
-                                {/* 1. Conteo Chofer */}
-                                <td className="border-l border-slate-100 p-2.5 text-right dark:border-slate-800">
-                                  <div className="font-mono font-medium text-slate-900 dark:text-slate-100">
-                                    {item.driverCount.countedQty} {item.unitName}
-                                  </div>
-                                  <div className="flex items-center justify-end gap-1 text-[10px]">
-                                    <span className="text-slate-400">
-                                      {item.driverCount.countedBoxes > 0 && item.driverCount.countedUnits > 0
-                                        ? `(${item.driverCount.countedBoxes} cj + ${item.driverCount.countedUnits} u)`
-                                        : item.driverCount.countedBoxes > 0
-                                        ? `(${item.driverCount.countedBoxes} cj)`
-                                        : `(${item.driverCount.countedUnits} u)`}
-                                    </span>
-                                    {driverVariance !== 0 ? (
-                                      <span className="font-bold text-rose-600">
-                                        {driverVariance > 0 ? `+${driverVariance}` : driverVariance}
-                                      </span>
-                                    ) : (
-                                      <span className="text-emerald-600">OK</span>
-                                    )}
-                                  </div>
-                                  {item.driverCount.observation && (
-                                    <span className="block text-[10px] italic text-amber-600 dark:text-amber-400 truncate max-w-[140px] ml-auto">
-                                      "{item.driverCount.observation}"
-                                    </span>
-                                  )}
-                                </td>
-
-                                {/* 2. Revisión Supervisor */}
-                                <td className="border-l border-slate-100 p-2.5 text-right dark:border-slate-800">
-                                  {item.supervisorReview?.wasReviewed ? (
+                                {/* 1. Conteo Chofer con Smart Diffing */}
+                                <td className={cn(
+                                  "border-l border-slate-100 p-2.5 text-right dark:border-slate-800",
+                                  driverVariance !== 0 && "bg-rose-500/[0.04]"
+                                )}>
+                                  {driverVariance !== 0 ? (
                                     <>
-                                      <div className="font-mono font-medium text-slate-900 dark:text-slate-100">
-                                        {item.supervisorReview.countedQty} {item.unitName}
+                                      <div className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400">
+                                        {item.driverCount.countedQty} {item.unitName}
                                       </div>
-                                      <div className="flex items-center justify-end gap-1 text-[10px]">
-                                        <span className="text-slate-400">
-                                          {(item.supervisorReview.countedBoxes ?? 0) > 0 && (item.supervisorReview.countedUnits ?? 0) > 0
-                                            ? `(${item.supervisorReview.countedBoxes} cj + ${item.supervisorReview.countedUnits} u)`
-                                            : (item.supervisorReview.countedBoxes ?? 0) > 0
-                                            ? `(${item.supervisorReview.countedBoxes} cj)`
-                                            : `(${item.supervisorReview.countedUnits ?? 0} u)`}
-                                        </span>
-                                        {supVariance !== 0 ? (
-                                          <span className="font-bold text-rose-600">
-                                            {supVariance > 0 ? `+${supVariance}` : supVariance}
-                                          </span>
-                                        ) : (
-                                          <span className="text-emerald-600">Aprobado</span>
-                                        )}
+                                      <div className="inline-flex items-center font-bold text-[10px] text-rose-700 bg-rose-100 dark:bg-rose-950/70 dark:text-rose-300 px-1.5 py-0.2 rounded mt-0.5">
+                                        {driverVariance > 0 ? `+${driverVariance}` : driverVariance} {item.unitName}
                                       </div>
-                                      {item.supervisorReview.observation && (
-                                        <span className="block text-[10px] italic text-blue-600 dark:text-blue-400 truncate max-w-[140px] ml-auto">
-                                          "{item.supervisorReview.observation}"
+                                      {item.driverCount.observation && (
+                                        <span className="block text-[10px] italic text-amber-600 dark:text-amber-400 truncate max-w-[130px] ml-auto" title={item.driverCount.observation}>
+                                          "{item.driverCount.observation}"
                                         </span>
                                       )}
                                     </>
+                                  ) : (
+                                    <>
+                                      <div className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                                        {item.driverCount.countedQty} {item.unitName}
+                                      </div>
+                                      <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                        ✓ Coincide
+                                      </div>
+                                    </>
+                                  )}
+                                </td>
+
+                                {/* 2. Revisión Supervisor con Smart Diffing */}
+                                <td className="border-l border-slate-100 p-2.5 text-right dark:border-slate-800">
+                                  {item.supervisorReview?.wasReviewed ? (
+                                    supVariance !== 0 ? (
+                                      <div className="bg-blue-500/[0.04] -m-1 p-1 rounded">
+                                        <div className="font-mono font-bold text-xs text-blue-700 dark:text-blue-300">
+                                          {item.supervisorReview.countedQty} {item.unitName}
+                                        </div>
+                                        <div className="inline-flex items-center font-bold text-[10px] text-blue-700 bg-blue-100 dark:bg-blue-950/70 dark:text-blue-300 px-1.5 py-0.2 rounded mt-0.5">
+                                          Ajuste: {supVariance > 0 ? `+${supVariance}` : supVariance}
+                                        </div>
+                                        {item.supervisorReview.observation && (
+                                          <span className="block text-[10px] italic text-blue-600 dark:text-blue-400 truncate max-w-[130px] ml-auto" title={item.supervisorReview.observation}>
+                                            "{item.supervisorReview.observation}"
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                                          {item.supervisorReview.countedQty} {item.unitName}
+                                        </div>
+                                        <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                                          ✓ Validado
+                                        </div>
+                                      </>
+                                    )
                                   ) : (
                                     <span className="text-[11px] text-slate-400 italic">No requerida</span>
                                   )}
                                 </td>
 
-                                {/* 3. Auditoría Semáforo */}
+                                {/* 3. Auditoría Semáforo con Smart Diffing */}
                                 <td className="border-l border-slate-100 p-2.5 text-right dark:border-slate-800">
                                   {item.semaphoreAudit?.wasAudited ? (
-                                    <>
-                                      <div className="font-mono font-medium text-slate-900 dark:text-slate-100">
-                                        {item.semaphoreAudit.countedQty} {item.unitName}
+                                    semVariance !== 0 ? (
+                                      <div className="bg-purple-500/[0.04] -m-1 p-1 rounded">
+                                        <div className="font-mono font-bold text-xs text-purple-700 dark:text-purple-300">
+                                          {item.semaphoreAudit.countedQty} {item.unitName}
+                                        </div>
+                                        <div className="inline-flex items-center font-bold text-[10px] text-purple-700 bg-purple-100 dark:bg-purple-950/70 dark:text-purple-300 px-1.5 py-0.2 rounded mt-0.5">
+                                          Dif: {semVariance > 0 ? `+${semVariance}` : semVariance}
+                                        </div>
                                       </div>
-                                      <div className="flex items-center justify-end gap-1 text-[10px]">
-                                        <span className="text-slate-400">
-                                          {(item.semaphoreAudit.countedBoxes ?? 0) > 0 && (item.semaphoreAudit.countedUnits ?? 0) > 0
-                                            ? `(${item.semaphoreAudit.countedBoxes} cj + ${item.semaphoreAudit.countedUnits} u)`
-                                            : (item.semaphoreAudit.countedBoxes ?? 0) > 0
-                                            ? `(${item.semaphoreAudit.countedBoxes} cj)`
-                                            : `(${item.semaphoreAudit.countedUnits ?? 0} u)`}
-                                        </span>
-                                        {semVariance !== 0 ? (
-                                          <span className="font-bold text-purple-600">
-                                            {semVariance > 0 ? `+${semVariance}` : semVariance}
-                                          </span>
-                                        ) : (
-                                          <span className="text-purple-600">Auditado OK</span>
-                                        )}
-                                      </div>
-                                    </>
+                                    ) : (
+                                      <>
+                                        <div className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                                          {item.semaphoreAudit.countedQty} {item.unitName}
+                                        </div>
+                                        <div className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                                          ✓ Muestra OK
+                                        </div>
+                                      </>
+                                    )
                                   ) : (
-                                    <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400 dark:bg-slate-800">
-                                      SKIPPED (Omitido)
+                                    <span className="text-[10px] text-slate-400 italic">
+                                      Omitido
                                     </span>
                                   )}
                                 </td>
 
-                                {/* Carga Final Oficial Camión */}
+                                {/* Carga Final Oficial Camión con Smart Diffing */}
                                 <td className="border-l border-slate-100 p-2.5 text-right dark:border-slate-800">
-                                  <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                                  <div className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
                                     {item.officialInventory.loadedQty} {item.unitName}
                                   </div>
-                                  <div className="text-[10px] text-slate-500">
-                                    {item.officialInventory.loadedBoxes > 0 && item.officialInventory.loadedUnits > 0
-                                      ? `(${item.officialInventory.loadedBoxes} cj + ${item.officialInventory.loadedUnits} u)`
-                                      : item.officialInventory.loadedBoxes > 0
-                                      ? `(${item.officialInventory.loadedBoxes} cj)`
-                                      : `(${item.officialInventory.loadedUnits} u)`}
-                                    {' · '}
+                                  <div className="text-[10px]">
                                     {officialVariance !== 0 ? (
-                                      <span className="font-semibold text-rose-600">
+                                      <span className="inline-flex items-center font-bold text-[10px] text-rose-700 bg-rose-100 dark:bg-rose-950/70 dark:text-rose-300 px-1.5 py-0.2 rounded mt-0.5">
                                         Dif: {officialVariance > 0 ? `+${officialVariance}` : officialVariance}
                                       </span>
                                     ) : (
-                                      <span className="text-emerald-600">Sin diferencias</span>
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Sin faltante</span>
                                     )}
                                   </div>
                                 </td>
@@ -1939,8 +2108,8 @@ export function HistorialRevisionesView() {
                           onClick={() => setActiveDetailTab('SETTLEMENT')}
                           className="h-8 gap-1.5 text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
                         >
-                          <FileCheck2 size={13} />
-                          Ver Acta y Firmas
+                          <PenTool size={13} />
+                          Ver Firmas
                         </Button>
                       </div>
                     </div>
@@ -2261,7 +2430,7 @@ export function HistorialRevisionesView() {
                             {/* Resumen */}
                             <div className="mt-2 text-xs">
                               <p className="text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
-                                ✓ Acta digital firmada por el chofer y visada por supervisor. Camión despachado a ruta.
+                                ✓ Firmas registradas por chofer, supervisor y conteo semáforo. Camión despachado a ruta.
                               </p>
                             </div>
                           </div>
@@ -2269,7 +2438,7 @@ export function HistorialRevisionesView() {
                           <div className="mt-3 flex items-center justify-between border-t border-emerald-200/80 pt-2 text-[11px] dark:border-emerald-800/80">
                             <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400">truck_inventories</span>
                             <span className="flex items-center gap-1 font-semibold text-emerald-800 group-hover:underline dark:text-emerald-300">
-                              <FileCheck2 size={12} /> Ver Acta ➔
+                              <PenTool size={12} /> Ver Firmas ➔
                             </span>
                           </div>
                         </div>
@@ -2312,23 +2481,23 @@ export function HistorialRevisionesView() {
                 )
               })()}
 
-              {/* TAB 3: LIQUIDACIÓN Y ACTA DIGITAL (TARJETAS DE FIRMA Y VISADO) */}
+              {/* TAB 3: FIRMAS DIGITALES */}
               {activeDetailTab === 'SETTLEMENT' && (
                 <div className="flex-1 overflow-y-auto space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-                  {/* Cabecera del Acta con Botones de Acción */}
+                  {/* Cabecera de Firmas con Botones de Acción */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <FileCheck2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                        <PenTool className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                          Acta Oficial de Liquidación y Despacho
+                          Registro Oficial de Firmas Digitales
                         </h3>
                         <Badge variant="outline" className="text-[10px] font-semibold border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-                          ✓ Cierre Conforme
+                          ✓ Despacho Conforme
                         </Badge>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Constancia legal de cierre de carga para liquidación de inventario y despacho de rampa.
+                        Acreditación y conformidad de despacho mediante firmas digitales de chofer, supervisor y conteo semáforo.
                       </p>
                     </div>
 
@@ -2338,10 +2507,10 @@ export function HistorialRevisionesView() {
                         size="sm"
                         onClick={() => {
                           exportarOrdenRevisionIndividualAExcel(selectedOrder)
-                          toast.success(`Acta de ${selectedOrder.orderCode} descargada en Libro Excel (.xls)`)
+                          toast.success(`Firmas y liquidación de ${selectedOrder.orderCode} descargada en Excel (.xls)`)
                         }}
                         className="h-8 text-xs gap-1.5 cursor-pointer"
-                        title="Descargar matriz en formato CSV/Excel"
+                        title="Descargar registro en formato CSV/Excel"
                       >
                         <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
                         Exportar Excel
@@ -2367,7 +2536,7 @@ export function HistorialRevisionesView() {
                           window.print()
                         }}
                         className="h-8 text-xs gap-1.5 cursor-pointer"
-                        title="Imprimir acta en rampa"
+                        title="Imprimir registro de firmas"
                       >
                         <Printer size={13} />
                         Imprimir
@@ -2375,67 +2544,167 @@ export function HistorialRevisionesView() {
                     </div>
                   </div>
 
-                  {/* 1. Tarjetas de Balance de Carga */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-                      <span className="text-[11px] text-slate-500 block">Total Unidades Planificadas</span>
-                      <span className="font-mono text-base font-bold text-slate-900 dark:text-slate-100">
-                        {selectedOrder.items.reduce((acc, it) => acc + it.expectedQty, 0)} uds
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Según pedidos ERP congelados</span>
-                    </div>
-
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                      <span className="text-[11px] text-emerald-700 dark:text-emerald-300 block">Total Físico en Camión</span>
-                      <span className="font-mono text-base font-bold text-emerald-800 dark:text-emerald-200">
-                        {selectedOrder.items.reduce((acc, it) => acc + it.officialInventory.loadedQty, 0)} uds
-                      </span>
-                      <span className="text-[10px] text-emerald-600/80 block mt-0.5">Camión {selectedOrder.truck.plate} ({selectedOrder.truck.code})</span>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-                      <span className="text-[11px] text-slate-500 block">Diferencia Neta Autorizada</span>
-                      <span className={cn(
-                        'font-mono text-base font-bold',
-                        selectedOrder.summary.totalNetVarianceUnits < 0 ? 'text-rose-600' : 'text-emerald-600'
-                      )}>
-                        {selectedOrder.summary.totalNetVarianceUnits === 0 ? '0 uds (Sin faltante)' : `${selectedOrder.summary.totalNetVarianceUnits} uds (Merma)`}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Impacto consolidado en bodega</span>
-                    </div>
-                  </div>
-
-                  {/* 2. TARJETAS DE FIRMA DIGITAL Y SELLOS DE AUDITORÍA */}
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-3">
-                      Certificación y Firmas Digitales de Auditoría
-                    </h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                      
-                      {/* TARJETA 1: FIRMA DIGITAL CHOFER */}
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-950/60 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
-                            <div className="flex items-center gap-1.5">
-                              <PenTool size={13} className="text-emerald-600 dark:text-emerald-400" />
-                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                                Firma Digital Chofer
-                              </span>
-                            </div>
-                            <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-700 font-semibold dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
-                              ✓ DECLARADO
-                            </Badge>
+                  {/* 3 TARJETAS DE FIRMAS DIGITALES */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+                    
+                    {/* TARJETA 1: FIRMA DIGITAL CHOFER */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-950/60 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
+                          <div className="flex items-center gap-1.5">
+                            <PenTool size={13} className="text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              Firma Digital Chofer
+                            </span>
                           </div>
+                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-700 font-semibold dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            ✓ DECLARADO
+                          </Badge>
+                        </div>
 
-                          {/* Canvas Simulado de Trazo Caligráfico */}
-                          <div className="relative rounded-lg border border-dashed border-slate-300 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/80 h-24 flex items-center justify-center overflow-hidden mb-3">
-                            <span className="absolute top-1 left-2 text-[9px] text-slate-400 uppercase font-mono tracking-wider">
+                        {/* Canvas de Trazo Caligráfico Chofer */}
+                        <div className="relative rounded-lg border border-dashed border-emerald-200 bg-emerald-50/30 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20 h-28 flex items-center justify-center overflow-hidden mb-3">
+                          <span className="absolute top-1.5 left-2 text-[9px] text-slate-400 uppercase font-mono tracking-wider">
+                            Trazo Caligráfico Digital
+                          </span>
+                          <svg className="w-44 h-16 text-slate-800 dark:text-slate-200 opacity-90" viewBox="0 0 200 60">
+                            <path
+                              d="M 15 38 Q 45 12, 70 35 T 120 22 Q 155 52, 175 25 T 195 38 M 35 48 C 65 42, 115 50, 165 44"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="absolute bottom-1.5 right-2 text-[9px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Biometría Verificada
+                          </span>
+                        </div>
+
+                        {/* Metadatos del Chofer */}
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Firmante:</span>
+                            <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.driver.name}</strong>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Documento:</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">{selectedOrder.driver.document}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Hora de Firma:</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">05:48:12 hrs</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Dispositivo:</span>
+                            <span className="text-slate-600 dark:text-slate-400 truncate max-w-[130px]" title="Galaxy Tab Active3 • App v2.4">Tab Active3 (GPS)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                        <span>Token: CHOF-APP-8831</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Firma Válida ✓</span>
+                      </div>
+                    </div>
+
+                    {/* TARJETA 2: FIRMA DIGITAL SUPERVISOR */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-950/60 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
+                          <div className="flex items-center gap-1.5">
+                            <PenTool size={13} className="text-blue-600 dark:text-blue-400" />
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              Firma Digital Supervisor
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 font-semibold dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300">
+                            ✓ VISADO Y APROBADO
+                          </Badge>
+                        </div>
+
+                        {/* Canvas de Trazo Caligráfico Supervisor */}
+                        <div className="relative rounded-lg border border-dashed border-blue-200 bg-blue-50/30 p-3 dark:border-blue-900/40 dark:bg-blue-950/20 h-28 flex items-center justify-center overflow-hidden mb-3">
+                          <span className="absolute top-1.5 left-2 text-[9px] text-blue-500/70 dark:text-blue-400/70 uppercase font-mono tracking-wider">
+                            Trazo Caligráfico Digital
+                          </span>
+                          <svg className="w-48 h-16 text-blue-950 dark:text-blue-200 opacity-90" viewBox="0 0 200 60">
+                            <path
+                              d="M 20 42 C 32 18, 44 14, 52 32 C 58 45, 68 18, 82 24 C 98 30, 108 42, 122 18 Q 138 8, 155 28 T 188 26 M 28 48 C 65 44, 110 49, 175 42"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="absolute bottom-1.5 right-2 text-[9px] text-blue-600 dark:text-blue-400 font-mono flex items-center gap-1">
+                            <ShieldCheck size={10} /> Clave PKI Acreditada
+                          </span>
+                        </div>
+
+                        {/* Metadatos del Supervisor */}
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Supervisor:</span>
+                            <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.supervisor?.name || 'Ing. Marco Antonio Vaca'}</strong>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Credencial:</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">SUP-LOG-SCZ-04</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Dictamen:</span>
+                            <span className="text-blue-700 dark:text-blue-300 font-medium">Merma autorizada</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Hora de Firma:</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">06:18:45 hrs</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                        <span>Token: AUTH-SCZ-9842</span>
+                        <span className="text-blue-600 dark:text-blue-400 font-semibold">Firma Válida ✓</span>
+                      </div>
+                    </div>
+
+                    {/* TARJETA 3: FIRMA DIGITAL CONTEO SEMÁFORO */}
+                    <div className={cn(
+                      "rounded-xl border p-4 shadow-xs flex flex-col justify-between",
+                      selectedOrder.summary.semaphoreAudited
+                        ? "border-purple-200 bg-white dark:border-purple-900/50 dark:bg-slate-950/60"
+                        : "border-slate-200 bg-slate-50/50 opacity-70 dark:border-slate-800 dark:bg-slate-900/40"
+                    )}>
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
+                          <div className="flex items-center gap-1.5">
+                            <PenTool size={13} className={selectedOrder.summary.semaphoreAudited ? "text-purple-600 dark:text-purple-400" : "text-slate-400"} />
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              Firma Digital Conteo Semáforo
+                            </span>
+                          </div>
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] font-semibold",
+                            selectedOrder.summary.semaphoreAudited
+                              ? "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300"
+                              : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800"
+                          )}>
+                            {selectedOrder.summary.semaphoreAudited ? "✓ AUDITADO Y FIRMADO" : "NO REQUERIDA"}
+                          </Badge>
+                        </div>
+
+                        {/* Canvas de Trazo Caligráfico Semáforo o Estado No Requerida */}
+                        {selectedOrder.summary.semaphoreAudited ? (
+                          <div className="relative rounded-lg border border-dashed border-purple-200 bg-purple-50/30 p-3 dark:border-purple-900/30 dark:bg-purple-950/20 h-28 flex items-center justify-center overflow-hidden mb-3">
+                            <span className="absolute top-1.5 left-2 text-[9px] text-purple-500/70 dark:text-purple-400/70 uppercase font-mono tracking-wider">
                               Trazo Caligráfico Digital
                             </span>
-                            <svg className="w-44 h-16 text-slate-800 dark:text-slate-200 opacity-90" viewBox="0 0 200 60">
+                            <svg className="w-48 h-16 text-purple-950 dark:text-purple-200 opacity-90" viewBox="0 0 200 60">
                               <path
-                                d="M 15 38 Q 45 12, 70 35 T 120 22 Q 155 52, 175 25 T 195 38 M 35 48 C 65 42, 115 50, 165 44"
+                                d="M 22 28 Q 38 48, 55 24 T 92 34 Q 115 15, 138 32 T 182 22 M 45 42 Q 95 38, 160 40"
                                 fill="none"
                                 stroke="currentColor"
                                 strokeWidth="2.2"
@@ -2443,163 +2712,49 @@ export function HistorialRevisionesView() {
                                 strokeLinejoin="round"
                               />
                             </svg>
-                            <span className="absolute bottom-1 right-2 text-[9px] text-emerald-600 dark:text-emerald-400 font-mono">
-                              Biometría Verificada ✓
+                            <span className="absolute bottom-1.5 right-2 text-[9px] text-purple-600 dark:text-purple-400 font-mono flex items-center gap-1">
+                              <TrafficCone size={10} /> Control Ciego Aprobado
                             </span>
                           </div>
-
-                          {/* Metadatos del Chofer */}
-                          <div className="space-y-1 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Firmante:</span>
-                              <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.driver.name}</strong>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Documento:</span>
-                              <span className="font-mono text-slate-600 dark:text-slate-400">{selectedOrder.driver.document}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Hora de Firma:</span>
-                              <span className="font-mono text-slate-600 dark:text-slate-400">05:48:12 hrs</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Dispositivo:</span>
-                              <span className="text-slate-600 dark:text-slate-400 truncate max-w-[130px]" title="Galaxy Tab Active3 • App v2.4">Tab Active3 (GPS)</span>
-                            </div>
+                        ) : (
+                          <div className="relative rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40 h-28 flex flex-col items-center justify-center text-center mb-3">
+                            <TrafficCone size={20} className="text-slate-300 dark:text-slate-600 mb-1" />
+                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Sin firma requerida</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">OT no seleccionada para muestreo de semáforo</span>
                           </div>
-                        </div>
+                        )}
 
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400">
-                          <span>Dispositivo: App Chofer v2.4</span>
-                          <span className="text-emerald-600 font-semibold font-mono">Firma Válida ✓</span>
+                        {/* Metadatos de Conteo Semáforo */}
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Auditor Patio:</span>
+                            <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.summary.semaphoreAudited ? 'Ing. Roberto Méndez' : '—'}</strong>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Resultado:</span>
+                            <span className={cn('font-medium', selectedOrder.summary.semaphoreAudited ? 'text-purple-700 dark:text-purple-300' : 'text-slate-400')}>
+                              {selectedOrder.summary.semaphoreAudited ? '100% Coincidencia' : 'Sin muestreo'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Regla Dominio:</span>
+                            <span className="text-slate-600 dark:text-slate-400 text-[11px]">No altera inventario</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Hora de Firma:</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-400">{selectedOrder.summary.semaphoreAudited ? '06:24:10 hrs' : '—'}</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* TARJETA 2: VISADO Y SELLO OFICIAL SUPERVISOR */}
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-950/60 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
-                            <div className="flex items-center gap-1.5">
-                              <ShieldCheck size={13} className="text-blue-600 dark:text-blue-400" />
-                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                                Sello Oficial Supervisor
-                              </span>
-                            </div>
-                            <Badge variant="outline" className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 font-semibold dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300">
-                              🛡️ APROBADO
-                            </Badge>
-                          </div>
-
-                          {/* Sello Simulado Circular de Rampa */}
-                          <div className="relative rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-3 dark:border-blue-900/40 dark:bg-blue-950/30 h-24 flex items-center justify-center overflow-hidden mb-3">
-                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 border-2 border-blue-600/70 dark:border-blue-400/70 rounded-md px-3 py-1.5 font-bold uppercase tracking-wider text-center rotate-[-3deg]">
-                              <ShieldCheck size={18} className="shrink-0 text-blue-600" />
-                              <div>
-                                <div className="text-[11px] leading-tight">RAMPA AUTORIZADA</div>
-                                <div className="text-[8px] font-mono text-blue-600 dark:text-blue-400 font-normal">ESTACIÓN CENTRAL SCZ</div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Metadatos del Supervisor */}
-                          <div className="space-y-1 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Supervisor:</span>
-                              <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.supervisor?.name || 'Ing. Marco Antonio Vaca'}</strong>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Credencial:</span>
-                              <span className="font-mono text-slate-600 dark:text-slate-400">SUP-LOG-SCZ-04</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Dictamen:</span>
-                              <span className="text-blue-700 dark:text-blue-300 font-medium">Merma autorizada</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Hora de Visado:</span>
-                              <span className="font-mono text-slate-600 dark:text-slate-400">06:18:45 hrs</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                          <span>Token: AUTH-SCZ-9842</span>
-                          <span className="text-blue-600 font-semibold">Certificado ✓</span>
-                        </div>
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                        <span>Token: {selectedOrder.summary.semaphoreAudited ? 'SEMAPHORE-PASS-4412' : 'N/A'}</span>
+                        <span className={cn('font-semibold', selectedOrder.summary.semaphoreAudited ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400')}>
+                          {selectedOrder.summary.semaphoreAudited ? 'Firma Válida ✓' : 'No requerida'}
+                        </span>
                       </div>
-
-                      {/* TARJETA 3: AUDITORÍA SEMÁFORO (SI APLICA) */}
-                      <div className={cn(
-                        "rounded-xl border p-4 shadow-xs flex flex-col justify-between",
-                        selectedOrder.summary.semaphoreAudited
-                          ? "border-purple-200 bg-white dark:border-purple-900/50 dark:bg-slate-950/60"
-                          : "border-slate-200 bg-slate-50/50 opacity-70 dark:border-slate-800 dark:bg-slate-900/40"
-                      )}>
-                        <div>
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
-                            <div className="flex items-center gap-1.5">
-                              <TrafficCone size={13} className={selectedOrder.summary.semaphoreAudited ? "text-purple-600 dark:text-purple-400" : "text-slate-400"} />
-                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                                Auditoría Semáforo
-                              </span>
-                            </div>
-                            <Badge variant="outline" className={cn(
-                              "text-[10px] font-semibold",
-                              selectedOrder.summary.semaphoreAudited
-                                ? "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300"
-                                : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800"
-                            )}>
-                              {selectedOrder.summary.semaphoreAudited ? "🚦 AUDITADO" : "NO SELECCIONADA"}
-                            </Badge>
-                          </div>
-
-                          {/* Sello de Control Ciego */}
-                          <div className="relative rounded-lg border border-dashed border-purple-200 bg-purple-50/30 p-3 dark:border-purple-900/30 dark:bg-purple-950/20 h-24 flex items-center justify-center overflow-hidden mb-3">
-                            {selectedOrder.summary.semaphoreAudited ? (
-                              <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 border-2 border-purple-600/70 dark:border-purple-400/70 rounded-md px-3 py-1.5 font-bold uppercase tracking-wider text-center rotate-[2deg]">
-                                <TrafficCone size={18} className="shrink-0 text-purple-600" />
-                                <div>
-                                  <div className="text-[11px] leading-tight">CONTROL CIEGO OK</div>
-                                  <div className="text-[8px] font-mono text-purple-600 dark:text-purple-400 font-normal">AUDITORÍA SORPRESA</div>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-[11px] text-slate-400 text-center italic">
-                                Esta OT no entró en la muestra aleatoria del semáforo.
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Metadatos de Semáforo */}
-                          <div className="space-y-1 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Auditor Patio:</span>
-                              <strong className="text-slate-800 dark:text-slate-200">{selectedOrder.summary.semaphoreAudited ? 'Ing. Roberto Méndez' : '—'}</strong>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Resultado:</span>
-                              <span className="text-purple-700 dark:text-purple-300 font-medium">
-                                {selectedOrder.summary.semaphoreAudited ? '100% Coincidencia' : 'N/A'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Regla Dominio:</span>
-                              <span className="text-slate-600 dark:text-slate-400 text-[11px]">No altera inventario</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400">Hora Muestreo:</span>
-                              <span className="font-mono text-slate-600 dark:text-slate-400">{selectedOrder.summary.semaphoreAudited ? '06:24:10 hrs' : '—'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                          <span>Token: {selectedOrder.summary.semaphoreAudited ? 'SEMAPHORE-PASS-4412' : 'N/A'}</span>
-                          <span className="text-purple-600 font-semibold">{selectedOrder.summary.semaphoreAudited ? 'Auditado ✓' : '—'}</span>
-                        </div>
-                      </div>
-
                     </div>
+
                   </div>
                 </div>
               )}

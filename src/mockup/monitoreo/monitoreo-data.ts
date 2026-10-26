@@ -199,6 +199,8 @@ export interface PedidoEntrega {
   documento: string
   /** El canal del CLIENTE, heredado de la parada: `dispatch_delivery_points.sale_channel_id`. */
   canal: CanalId
+  /** Vendedor asignado al pedido comercial. */
+  vendedor: string
   pesoKg: number
   volumenM3: number
   /** Monto del pedido en Bs. Viene de SAP: `candidate_orders` NO tiene columna de monto. */
@@ -997,6 +999,7 @@ function construir(): { viajes: ViajeMonitoreo[]; ordenes: OrdenMonitoreo[] } {
             salesOrder: p.salesOrder,
             documento: p.id.replace(/^\D+/, ''),
             canal: p.canal,
+            vendedor: p.vendedor || 'Sin asignar',
             pesoKg: p.peso,
             volumenM3: p.volumen,
             total: p.total,
@@ -1153,6 +1156,7 @@ function construirOrdenOperativa(orden: OrdenTransporte): { orden: OrdenMonitore
       salesOrder: pedido.salesOrder,
       documento: pedido.id.replace(/^\D+/, ''),
       canal: pedido.canal,
+      vendedor: pedido.vendedor || 'Sin asignar',
       pesoKg: pedido.peso,
       volumenM3: pedido.volumen,
       total: pedido.total,

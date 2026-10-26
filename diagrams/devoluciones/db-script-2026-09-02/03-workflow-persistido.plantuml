@@ -17,7 +17,7 @@ skinparam rectangle {
 rectangle "refund_orders\nstatus\ncurrent_workflow_instance_id" as orders
 rectangle "refund_approval_levels\napproval_policy ANY/ALL\nrequired_approvals\non_reject\nmin_amount / max_amount" as configuration
 rectangle "refund_workflow_instances\nattempt / status\ncurrent_level_order\nstarted_at / finished_at" as instances
-rectangle "refund_workflow_instance_levels\nlevel_order / level_name / role_code\nmin_amount / max_amount\ndecision_mode / status\nfirst_viewed_* / started_at / finished_at" as levels
+rectangle "refund_workflow_instance_levels\nlevel_order / level_name /` role_code\nmin_amount / max_amount\ndecision_mode / status\nfirst_viewed_* / started_at / finished_at" as levels
 rectangle "refund_workflow_actions\naction / actor_*\nprevious_status / new_status\namount_before / amount_after\ncomment / reason / system_summary" as actions
 rectangle "refund_order_detail_decisions\ndecision" as decisions
 rectangle "refund_order_details" as details

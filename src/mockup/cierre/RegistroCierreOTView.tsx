@@ -37,6 +37,11 @@ import {
   Landmark,
   QrCode,
   CreditCard,
+  Coins,
+  Eye,
+  ArrowRight,
+  FileText,
+  Info,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -44,16 +49,25 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import type {
-  CierreOrdenTransporte,
-  CierreAlmacenItem,
-  CorteMonedaItem,
-  DepositoEfectivoItem,
-  TransferenciaItem,
-  PagoQrItem,
-  ChequeItem,
+import {
+  type CierreOrdenTransporte,
+  type CierreAlmacenItem,
+  type CorteMonedaItem,
+  type DepositoEfectivoItem,
+  type TransferenciaItem,
+  type PagoQrItem,
+  type ChequeItem,
+  type FacturaEfectivoItem,
+  generarFacturasEfectivoParaMonto,
 } from '../cierre-logistico-data'
 
 interface RegistroCierreOTViewProps {
@@ -412,11 +426,11 @@ export function RegistroCierreOTView({
     return (cierre.cobranza.creditos || []).reduce((acc, c) => acc + c.monto, 0)
   }, [cierre])
 
-  // Total 4 Medios No Efectivo (Boletas + Transferencias + QR + Cheques)
-  const totalNoEfectivo = totalDepositos + totalTransferencias + totalQr + totalCheques
+  // Total 3 Medios Digitales / Bancarios (Transferencias + QR + Cheques)
+  const totalDigitalesBancarios = totalTransferencias + totalQr + totalCheques
 
-  // Total Cobranza Chofer = Efectivo Físico Arqueado + Depósitos y Medios Digitales
-  const totalCobranzaChofer = totalEfectivoCortes + totalNoEfectivo
+  // Total Cobranza Chofer = Efectivo (Cortes) + Transferencias + QR + Cheques (Los 4 Medios de Cobranza)
+  const totalCobranzaChofer = totalEfectivoCortes + totalDigitalesBancarios
 
   // Total a Rendir = Cobranza Chofer + Créditos
   const totalARendir = totalCobranzaChofer + totalCreditos
@@ -433,6 +447,208 @@ export function RegistroCierreOTView({
   // Estado Físico Almacén
   const totalFaltanteFisico = totalesAlmacen.totalCantidadFaltante
   const isCuadradoAlmacen = totalFaltanteFisico === 0
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ESTADOS Y FILTROS: MODAL DE DETALLE DE MEDIOS DE PAGO Y FACTURAS
+  // ══════════════════════════════════════════════════════════════════════════
+  const [showDetalleModal, setShowDetalleModal] = useState(false)
+  const [detalleMetodoActivo, setDetalleMetodoActivo] = useState<
+    'ALL' | 'EFECTIVO' | 'TRANSFERENCIA' | 'QR' | 'CHEQUE'
+  >('ALL')
+  const [detalleSearchQuery, setDetalleSearchQuery] = useState('')
+  const [efectivoSubTab, setEfectivoSubTab] = useState<'FACTURAS' | 'ARQUEO'>('FACTURAS')
+
+  // Generación reactiva de facturas pagadas en efectivo según el monto arqueado
+  const facturasEfectivo = useMemo(() => {
+    return generarFacturasEfectivoParaMonto(cierre.orderCode, totalEfectivoCortes)
+  }, [cierre.orderCode, totalEfectivoCortes])
+
+  const handleAbrirDetalleModal = (
+    metodo: 'ALL' | 'EFECTIVO' | 'TRANSFERENCIA' | 'QR' | 'CHEQUE'
+  ) => {
+    setDetalleMetodoActivo(metodo)
+    setDetalleSearchQuery('')
+    setEfectivoSubTab('FACTURAS')
+    setShowDetalleModal(true)
+  }
+
+  // Filtrado de Transferencias
+  const filteredTransferencias = useMemo(() => {
+    if (!detalleSearchQuery.trim()) return transferencias
+    const q = detalleSearchQuery.toLowerCase()
+    return transferencias.filter(
+      (t) =>
+        t.transaccion.toLowerCase().includes(q) ||
+        t.banco.toLowerCase().includes(q) ||
+        t.clienteNombre.toLowerCase().includes(q) ||
+        t.clienteCodigo.toLowerCase().includes(q) ||
+        (t.factura && t.factura.toLowerCase().includes(q))
+    )
+  }, [transferencias, detalleSearchQuery])
+
+  // Filtrado de Pagos QR
+  const filteredPagosQr = useMemo(() => {
+    if (!detalleSearchQuery.trim()) return pagosQr
+    const q = detalleSearchQuery.toLowerCase()
+    return pagosQr.filter(
+      (qItem) =>
+        qItem.transaccion.toLowerCase().includes(q) ||
+        qItem.banco.toLowerCase().includes(q) ||
+        qItem.clienteNombre.toLowerCase().includes(q) ||
+        qItem.clienteCodigo.toLowerCase().includes(q) ||
+        (qItem.factura && qItem.factura.toLowerCase().includes(q))
+    )
+  }, [pagosQr, detalleSearchQuery])
+
+  // Filtrado de Cheques
+  const filteredCheques = useMemo(() => {
+    if (!detalleSearchQuery.trim()) return cheques
+    const q = detalleSearchQuery.toLowerCase()
+    return cheques.filter(
+      (c) =>
+        c.nroCheque.toLowerCase().includes(q) ||
+        c.banco.toLowerCase().includes(q) ||
+        c.clienteNombre.toLowerCase().includes(q) ||
+        c.clienteCodigo.toLowerCase().includes(q) ||
+        (c.factura && c.factura.toLowerCase().includes(q))
+    )
+  }, [cheques, detalleSearchQuery])
+
+  // Filtrado de Facturas Efectivo
+  const filteredFacturasEfectivo = useMemo(() => {
+    if (!detalleSearchQuery.trim()) return facturasEfectivo
+    const q = detalleSearchQuery.toLowerCase()
+    return facturasEfectivo.filter(
+      (f) =>
+        f.factura.toLowerCase().includes(q) ||
+        f.reciboChofer.toLowerCase().includes(q) ||
+        f.clienteNombre.toLowerCase().includes(q) ||
+        f.clienteCodigo.toLowerCase().includes(q)
+    )
+  }, [facturasEfectivo, detalleSearchQuery])
+
+  // Lista consolidada de todas las facturas y operaciones para la pestaña "Todos los Medios"
+  const todasLasFacturas = useMemo(() => {
+    const list: Array<{
+      id: string
+      tipo: 'EFECTIVO' | 'TRANSFERENCIA' | 'QR' | 'CHEQUE'
+      tipoLabel: string
+      factura: string
+      referencia: string
+      entidad: string
+      clienteCodigo: string
+      clienteNombre: string
+      monto: number
+      hora: string
+      estado: string
+    }> = []
+
+    // 1. Efectivo
+    facturasEfectivo.forEach((f, idx) => {
+      list.push({
+        id: `ef-${idx}-${f.factura}`,
+        tipo: 'EFECTIVO',
+        tipoLabel: 'Efectivo',
+        factura: f.factura,
+        referencia: f.reciboChofer,
+        entidad: 'Caja Recaudadora',
+        clienteCodigo: f.clienteCodigo,
+        clienteNombre: f.clienteNombre,
+        monto: f.monto,
+        hora: f.hora,
+        estado: f.estado,
+      })
+    })
+
+    // 2. Transferencias ACH
+    transferencias.forEach((t, idx) => {
+      list.push({
+        id: `tr-${idx}-${t.transaccion}`,
+        tipo: 'TRANSFERENCIA',
+        tipoLabel: 'Transferencia ACH',
+        factura: t.factura || `FAC-${cierre.orderCode.slice(-4)}-TR${idx + 1}`,
+        referencia: t.transaccion,
+        entidad: t.banco,
+        clienteCodigo: t.clienteCodigo,
+        clienteNombre: t.clienteNombre,
+        monto: t.monto,
+        hora: t.fechaHora || '10:30 AM',
+        estado: t.estado || 'Conciliado con Extracto',
+      })
+    })
+
+    // 3. Pagos QR Simple
+    pagosQr.forEach((qItem, idx) => {
+      list.push({
+        id: `qr-${idx}-${qItem.transaccion}`,
+        tipo: 'QR',
+        tipoLabel: 'Pago QR Simple',
+        factura: qItem.factura || `FAC-${cierre.orderCode.slice(-4)}-QR${idx + 1}`,
+        referencia: qItem.transaccion,
+        entidad: qItem.banco,
+        clienteCodigo: qItem.clienteCodigo,
+        clienteNombre: qItem.clienteNombre,
+        monto: qItem.monto,
+        hora: qItem.fechaHora || '11:15 AM',
+        estado: qItem.estado || 'Validado en Pasarela',
+      })
+    })
+
+    // 4. Cheques Bancarios
+    cheques.forEach((c, idx) => {
+      list.push({
+        id: `ch-${idx}-${c.nroCheque}`,
+        tipo: 'CHEQUE',
+        tipoLabel: 'Cheque Bancario',
+        factura: c.factura || `FAC-${cierre.orderCode.slice(-4)}-CH${idx + 1}`,
+        referencia: c.nroCheque,
+        entidad: c.banco,
+        clienteCodigo: c.clienteCodigo,
+        clienteNombre: c.clienteNombre,
+        monto: c.monto,
+        hora: c.fechaCobro || cierre.dateFormatted,
+        estado: c.estado || 'En Custodia / Aceptado',
+      })
+    })
+
+    return list
+  }, [facturasEfectivo, transferencias, pagosQr, cheques, cierre.orderCode, cierre.dateFormatted])
+
+  const filteredTodasLasFacturas = useMemo(() => {
+    if (!detalleSearchQuery.trim()) return todasLasFacturas
+    const q = detalleSearchQuery.toLowerCase()
+    return todasLasFacturas.filter(
+      (item) =>
+        item.factura.toLowerCase().includes(q) ||
+        item.referencia.toLowerCase().includes(q) ||
+        item.entidad.toLowerCase().includes(q) ||
+        item.clienteNombre.toLowerCase().includes(q) ||
+        item.clienteCodigo.toLowerCase().includes(q) ||
+        item.tipoLabel.toLowerCase().includes(q)
+    )
+  }, [todasLasFacturas, detalleSearchQuery])
+
+  // Subtotales filtrados para KPIs del Modal
+  const subtotalFilteredTransferencias = useMemo(
+    () => filteredTransferencias.reduce((acc, t) => acc + t.monto, 0),
+    [filteredTransferencias]
+  )
+  const subtotalFilteredPagosQr = useMemo(
+    () => filteredPagosQr.reduce((acc, q) => acc + q.monto, 0),
+    [filteredPagosQr]
+  )
+  const subtotalFilteredCheques = useMemo(
+    () => filteredCheques.reduce((acc, c) => acc + c.monto, 0),
+    [filteredCheques]
+  )
+  const subtotalFilteredEfectivo = useMemo(
+    () => filteredFacturasEfectivo.reduce((acc, f) => acc + f.monto, 0),
+    [filteredFacturasEfectivo]
+  )
+  const subtotalFilteredTodas = useMemo(
+    () => filteredTodasLasFacturas.reduce((acc, it) => acc + it.monto, 0),
+    [filteredTodasLasFacturas]
+  )
 
   // ══════════════════════════════════════════════════════════════════════════
   // GUARDAR LIQUIDACIÓN
@@ -1244,19 +1460,19 @@ export function RegistroCierreOTView({
               </span>
             </div>
 
-            {/* 3. Depósitos y Medios Digitales */}
+            {/* 3. Transferencias, QR y Cheques */}
             <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5 shadow-xs dark:border-indigo-900/60 dark:bg-indigo-950/20">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300">
-                  Depósitos y Medios Digitales
+                  Transferencias, QR y Cheques
                 </span>
                 <Landmark className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </div>
               <div className="mt-1 text-xl font-bold font-mono text-indigo-700 dark:text-indigo-300">
-                Bs {totalNoEfectivo.toFixed(2)}
+                Bs {totalDigitalesBancarios.toFixed(2)}
               </div>
               <span className="text-[11px] text-indigo-600/80 dark:text-indigo-400 block mt-0.5">
-                4 Métodos registrados en ruta
+                3 Medios bancarios y digitales
               </span>
             </div>
 
@@ -1391,56 +1607,83 @@ export function RegistroCierreOTView({
             </div>
 
             {/* ════ LADO DERECHO: 4 TARJETAS DE MÉTODOS DE PAGO EN GRILLA 2x2 (COMPACTO - SOLO TOTALES) ════ */}
+            {/* ════ LADO DERECHO: 4 TARJETAS DE MÉTODOS DE PAGO EN GRILLA 2x2 (CON BOTÓN VER DETALLE) ════ */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 space-y-3.5 w-full flex flex-col justify-between">
               {/* Cabecera Principal */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <Landmark className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <Banknote className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                      Depósitos y Medios Digitales
+                      Medios de Pago y Cobranza
                     </h3>
-                    <span className="text-[10.5px] text-slate-400 block">Totales consolidados registrados en la base de datos</span>
+                    <span className="text-[10.5px] text-slate-400 block">Totales consolidados de los 4 medios de pago en ruta</span>
                   </div>
                 </div>
-                <Badge
-                  variant="outline"
-                  className="border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 font-mono font-bold text-xs py-0.5 px-2.5 self-start sm:self-auto"
-                >
-                  Total: Bs {totalNoEfectivo.toFixed(2)}
-                </Badge>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <Badge
+                    variant="outline"
+                    className="border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300 font-mono font-bold text-xs py-0.5 px-2.5"
+                  >
+                    Total: Bs {totalCobranzaChofer.toFixed(2)}
+                  </Badge>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAbrirDetalleModal('ALL')}
+                    className="h-7 text-[11px] px-2.5 rounded-lg border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer flex items-center gap-1.5 font-semibold"
+                    title="Ver todas las facturas consolidadas"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>Ver Facturas ({todasLasFacturas.length})</span>
+                  </Button>
+                </div>
               </div>
 
-              {/* GRILLA CUADRADA DE 2x2 CON LAS 4 TARJETAS COMPACTAS (SOLO TOTALES) */}
+              {/* GRILLA CUADRADA DE 2x2 CON LAS 4 TARJETAS Y SU BOTÓN DE VER DETALLE */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-auto">
-                {/* ── TARJETA 1: BOLETAS DE DEPÓSITO BANCARIO ── */}
-                <div className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 to-indigo-50/20 dark:border-indigo-900/60 dark:from-indigo-950/30 dark:to-slate-900 p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                {/* ── TARJETA 1: EFECTIVO ── */}
+                <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 to-emerald-50/20 dark:border-emerald-900/60 dark:from-emerald-950/30 dark:to-slate-900 p-3.5 flex flex-col justify-between space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                        <Building2 className="h-5 w-5" />
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                        <Banknote className="h-5 w-5" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">1. Boletas Depósito</h4>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">1. Efectivo</h4>
                         <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {depositos.length} {depositos.length === 1 ? 'comprobante' : 'comprobantes'}
+                          {cortes.reduce((acc, c) => acc + c.cantidad, 0)} unidades arqueadas
                         </span>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-bold border-indigo-200 text-indigo-700 bg-white/80 dark:bg-slate-900/80">
-                      En BD
+                    <Badge variant="outline" className="text-[10px] font-bold border-emerald-200 text-emerald-700 bg-white/80 dark:bg-slate-900/80">
+                      En Arqueo
                     </Badge>
                   </div>
-                  <div className="pt-1">
-                    <span className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
-                    <span className="text-2xl font-bold font-mono text-indigo-700 dark:text-indigo-300 block mt-0.5">
-                      Bs {totalDepositos.toFixed(2)}
+                  <div className="pt-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
+                    <span className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-300 block mt-0.5">
+                      Bs {totalEfectivoCortes.toFixed(2)}
                     </span>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAbrirDetalleModal('EFECTIVO')}
+                    className="w-full h-8 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-white/80 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900 border-emerald-200/90 dark:border-emerald-800/80 rounded-xl flex items-center justify-between px-3 cursor-pointer shadow-2xs transition-all hover:border-emerald-400 group"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Ver Detalle ({facturasEfectivo.length} facturas)</span>
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 text-emerald-600 dark:text-emerald-400" />
+                  </Button>
                 </div>
 
                 {/* ── TARJETA 2: TRANSFERENCIAS BANCARIAS ACH ── */}
-                <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50/70 to-blue-50/20 dark:border-blue-900/60 dark:from-blue-950/30 dark:to-slate-900 p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-50/70 to-blue-50/20 dark:border-blue-900/60 dark:from-blue-950/30 dark:to-slate-900 p-3.5 flex flex-col justify-between space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
@@ -1457,16 +1700,29 @@ export function RegistroCierreOTView({
                       En BD
                     </Badge>
                   </div>
-                  <div className="pt-1">
-                    <span className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
-                    <span className="text-2xl font-bold font-mono text-blue-700 dark:text-blue-300 block mt-0.5">
+                  <div className="pt-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
+                    <span className="text-xl font-bold font-mono text-blue-700 dark:text-blue-300 block mt-0.5">
                       Bs {totalTransferencias.toFixed(2)}
                     </span>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAbrirDetalleModal('TRANSFERENCIA')}
+                    className="w-full h-8 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200 bg-white/80 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900 border-blue-200/90 dark:border-blue-800/80 rounded-xl flex items-center justify-between px-3 cursor-pointer shadow-2xs transition-all hover:border-blue-400 group"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>Ver Detalle ({transferencias.length} {transferencias.length === 1 ? 'transacción' : 'transacciones'})</span>
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 text-blue-600 dark:text-blue-400" />
+                  </Button>
                 </div>
 
                 {/* ── TARJETA 3: PAGOS QR SIMPLE ── */}
-                <div className="rounded-2xl border border-purple-200/80 bg-gradient-to-br from-purple-50/70 to-purple-50/20 dark:border-purple-900/60 dark:from-purple-950/30 dark:to-slate-900 p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                <div className="rounded-2xl border border-purple-200/80 bg-gradient-to-br from-purple-50/70 to-purple-50/20 dark:border-purple-900/60 dark:from-purple-950/30 dark:to-slate-900 p-3.5 flex flex-col justify-between space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
@@ -1483,19 +1739,32 @@ export function RegistroCierreOTView({
                       En BD
                     </Badge>
                   </div>
-                  <div className="pt-1">
-                    <span className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
-                    <span className="text-2xl font-bold font-mono text-purple-700 dark:text-purple-300 block mt-0.5">
+                  <div className="pt-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
+                    <span className="text-xl font-bold font-mono text-purple-700 dark:text-purple-300 block mt-0.5">
                       Bs {totalQr.toFixed(2)}
                     </span>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAbrirDetalleModal('QR')}
+                    className="w-full h-8 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:text-purple-800 dark:hover:text-purple-200 bg-white/80 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900 border-purple-200/90 dark:border-purple-800/80 rounded-xl flex items-center justify-between px-3 cursor-pointer shadow-2xs transition-all hover:border-purple-400 group"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Ver Detalle ({pagosQr.length} {pagosQr.length === 1 ? 'cobro QR' : 'cobros QR'})</span>
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 text-purple-600 dark:text-purple-400" />
+                  </Button>
                 </div>
 
                 {/* ── TARJETA 4: CHEQUES BANCARIOS ── */}
-                <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 to-emerald-50/20 dark:border-emerald-900/60 dark:from-emerald-950/30 dark:to-slate-900 p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-amber-50/20 dark:border-amber-900/60 dark:from-amber-950/30 dark:to-slate-900 p-3.5 flex flex-col justify-between space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
                         <CreditCard className="h-5 w-5" />
                       </div>
                       <div>
@@ -1505,30 +1774,870 @@ export function RegistroCierreOTView({
                         </span>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-[10px] font-bold border-emerald-200 text-emerald-700 bg-white/80 dark:bg-slate-900/80">
+                    <Badge variant="outline" className="text-[10px] font-bold border-amber-200 text-amber-700 bg-white/80 dark:bg-slate-900/80">
                       En BD
                     </Badge>
                   </div>
-                  <div className="pt-1">
-                    <span className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
-                    <span className="text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-300 block mt-0.5">
+                  <div className="pt-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total Recaudado</span>
+                    <span className="text-xl font-bold font-mono text-amber-700 dark:text-amber-300 block mt-0.5">
                       Bs {totalCheques.toFixed(2)}
                     </span>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAbrirDetalleModal('CHEQUE')}
+                    className="w-full h-8 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 bg-white/80 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900 border-amber-200/90 dark:border-amber-800/80 rounded-xl flex items-center justify-between px-3 cursor-pointer shadow-2xs transition-all hover:border-amber-400 group"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>Ver Detalle ({cheques.length} {cheques.length === 1 ? 'cheque' : 'cheques'})</span>
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 text-amber-600 dark:text-amber-400" />
+                  </Button>
                 </div>
               </div>
 
-              {/* Pie con resumen de medios digitales */}
+              {/* Pie con resumen de los 4 medios de pago */}
               <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-semibold">Total Medios No Efectivo:</span>
+                <span className="text-slate-500 font-semibold">Total Cobranza de la Ruta (4 Medios):</span>
                 <span className="font-mono font-bold text-sm text-indigo-700 dark:text-indigo-300">
-                  Bs {totalNoEfectivo.toFixed(2)}
+                  Bs {totalCobranzaChofer.toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ── MODAL DE DETALLE DE MEDIOS DE PAGO Y FACTURAS ASOCIADAS ──       */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={showDetalleModal} onOpenChange={setShowDetalleModal}>
+        <DialogContent className="flex h-[88vh] max-h-[92vh] w-[min(1420px,calc(100vw-2rem))] max-w-none sm:max-w-none flex-col gap-0 overflow-hidden p-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl">
+          {/* Header del Modal */}
+          <DialogHeader className="p-4 pb-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 shrink-0">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pr-6">
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    'flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-xs shrink-0',
+                    detalleMetodoActivo === 'EFECTIVO'
+                      ? 'bg-emerald-600'
+                      : detalleMetodoActivo === 'TRANSFERENCIA'
+                      ? 'bg-blue-600'
+                      : detalleMetodoActivo === 'QR'
+                      ? 'bg-purple-600'
+                      : detalleMetodoActivo === 'CHEQUE'
+                      ? 'bg-amber-600'
+                      : 'bg-indigo-600'
+                  )}
+                >
+                  {detalleMetodoActivo === 'EFECTIVO' && <Banknote className="h-5 w-5" />}
+                  {detalleMetodoActivo === 'TRANSFERENCIA' && <Landmark className="h-5 w-5" />}
+                  {detalleMetodoActivo === 'QR' && <QrCode className="h-5 w-5" />}
+                  {detalleMetodoActivo === 'CHEQUE' && <CreditCard className="h-5 w-5" />}
+                  {detalleMetodoActivo === 'ALL' && <Receipt className="h-5 w-5" />}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <DialogTitle className="text-base md:text-lg font-bold text-slate-900 dark:text-slate-100">
+                      {detalleMetodoActivo === 'EFECTIVO' && 'Detalle de Facturas Cobradas en Efectivo'}
+                      {detalleMetodoActivo === 'TRANSFERENCIA' && 'Detalle de Facturas Pagadas por Transferencia ACH'}
+                      {detalleMetodoActivo === 'QR' && 'Detalle de Facturas Pagadas por QR Simple'}
+                      {detalleMetodoActivo === 'CHEQUE' && 'Detalle de Facturas con Cheques Bancarios'}
+                      {detalleMetodoActivo === 'ALL' && 'Detalle Consolidado de Facturas por Medio de Pago'}
+                    </DialogTitle>
+                    <Badge variant="outline" className="text-xs font-mono font-bold px-2 py-0.5 border-slate-300">
+                      OT #{cierre.orderCode}
+                    </Badge>
+                  </div>
+                  <DialogDescription className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Chofer: <strong>{cierre.driverName}</strong> ({cierre.driverEmpresa}) • Placa: <strong>{cierre.truckPlate}</strong> • Ruta: <strong>{cierre.routeName}</strong>
+                  </DialogDescription>
+                </div>
+              </div>
+
+              {/* Badges de Montos en el Header */}
+              <div className="flex items-center gap-2 self-start md:self-auto font-mono text-xs">
+                <div className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                  <span className="text-[10px] text-slate-400 block font-sans uppercase font-bold tracking-wider">
+                    Total Ruta
+                  </span>
+                  <strong className="text-slate-900 dark:text-slate-100 text-sm">
+                    Bs {totalCobranzaChofer.toFixed(2)}
+                  </strong>
+                </div>
+
+                <div
+                  className={cn(
+                    'px-3 py-1.5 rounded-xl border text-xs',
+                    detalleMetodoActivo === 'EFECTIVO'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                      : detalleMetodoActivo === 'TRANSFERENCIA'
+                      ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+                      : detalleMetodoActivo === 'QR'
+                      ? 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                      : detalleMetodoActivo === 'CHEQUE'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                      : 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800'
+                  )}
+                >
+                  <span className="text-[10px] block font-sans uppercase font-bold tracking-wider opacity-80">
+                    Subtotal Seleccionado
+                  </span>
+                  <strong className="text-sm">
+                    Bs{' '}
+                    {(
+                      detalleMetodoActivo === 'EFECTIVO'
+                        ? totalEfectivoCortes
+                        : detalleMetodoActivo === 'TRANSFERENCIA'
+                        ? totalTransferencias
+                        : detalleMetodoActivo === 'QR'
+                        ? totalQr
+                        : detalleMetodoActivo === 'CHEQUE'
+                        ? totalCheques
+                        : totalCobranzaChofer
+                    ).toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Barra de Filtros y Buscador */}
+          <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center justify-between gap-2.5 shrink-0">
+            {/* Tabs de Medios de Pago */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setDetalleMetodoActivo('ALL')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5',
+                  detalleMetodoActivo === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <Receipt className="h-3.5 w-3.5" />
+                <span>Todos los Medios ({todasLasFacturas.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetalleMetodoActivo('EFECTIVO')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5',
+                  detalleMetodoActivo === 'EFECTIVO'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <Banknote className="h-3.5 w-3.5" />
+                <span>Efectivo ({facturasEfectivo.length})</span>
+                <span className="font-mono text-[10px] opacity-80">Bs {totalEfectivoCortes.toFixed(2)}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetalleMetodoActivo('TRANSFERENCIA')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5',
+                  detalleMetodoActivo === 'TRANSFERENCIA'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <Landmark className="h-3.5 w-3.5" />
+                <span>Transferencias ({transferencias.length})</span>
+                <span className="font-mono text-[10px] opacity-80">Bs {totalTransferencias.toFixed(2)}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetalleMetodoActivo('QR')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5',
+                  detalleMetodoActivo === 'QR'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>QR ({pagosQr.length})</span>
+                <span className="font-mono text-[10px] opacity-80">Bs {totalQr.toFixed(2)}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetalleMetodoActivo('CHEQUE')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5',
+                  detalleMetodoActivo === 'CHEQUE'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <CreditCard className="h-3.5 w-3.5" />
+                <span>Cheques ({cheques.length})</span>
+                <span className="font-mono text-[10px] opacity-80">Bs {totalCheques.toFixed(2)}</span>
+              </button>
+            </div>
+
+            {/* Buscador en vivo */}
+            <div className="relative w-full md:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-3.5 w-3.5" />
+              <Input
+                placeholder="Buscar factura, cliente, transacción o banco..."
+                value={detalleSearchQuery}
+                onChange={(e) => setDetalleSearchQuery(e.target.value)}
+                className="h-8.5 pl-8.5 pr-7 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl"
+              />
+              {detalleSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDetalleSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sub-selector para Efectivo (Facturas vs Arqueo) */}
+          {detalleMetodoActivo === 'EFECTIVO' && (
+            <div className="px-4 py-2 bg-emerald-50/40 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/60 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-emerald-800 dark:text-emerald-300">Modo de visualización:</span>
+                <div className="flex bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-emerald-200/60 dark:border-emerald-800/60">
+                  <button
+                    type="button"
+                    onClick={() => setEfectivoSubTab('FACTURAS')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer transition-colors',
+                      efectivoSubTab === 'FACTURAS'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    )}
+                  >
+                    Facturas Cobradas ({filteredFacturasEfectivo.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEfectivoSubTab('ARQUEO')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer transition-colors',
+                      efectivoSubTab === 'ARQUEO'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    )}
+                  >
+                    Arqueo de Cortes (Billetes y Monedas)
+                  </button>
+                </div>
+              </div>
+              <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono hidden sm:inline">
+                {cortes.reduce((acc, c) => acc + c.cantidad, 0)} piezas arqueadas en total
+              </span>
+            </div>
+          )}
+
+          {/* Cuerpo con Scroll para las Tablas */}
+          <div className="flex-1 overflow-x-auto overflow-y-auto p-4 space-y-4">
+            {/* 1. VISTA TRANSFERENCIAS ACH */}
+            {detalleMetodoActivo === 'TRANSFERENCIA' && (
+              <div className="rounded-xl border border-blue-200/80 bg-white dark:bg-slate-900 dark:border-blue-900/60 shadow-xs overflow-hidden">
+                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                      <Landmark className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Transferencias Bancarias Interbancarias (ACH)
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Comprobantes bancarios verificados con extracto oficial
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-blue-700 bg-blue-50 border-blue-300 dark:bg-blue-950 dark:text-blue-300 text-xs py-0.5 px-2.5">
+                    Subtotal: Bs {subtotalFilteredTransferencias.toFixed(2)}
+                  </Badge>
+                </div>
+
+                {filteredTransferencias.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    No se encontraron transferencias que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                          <th className="py-2 px-3">N° Factura</th>
+                          <th className="py-2 px-3">N° Transacción ACH</th>
+                          <th className="py-2 px-3">Banco Emisor</th>
+                          <th className="py-2 px-3">Cliente / Razón Social</th>
+                          <th className="py-2 px-3">Fecha / Hora</th>
+                          <th className="py-2 px-3 text-right font-bold text-blue-700 dark:text-blue-300">Monto Transferido (Bs)</th>
+                          <th className="py-2 px-3 text-center">Estado Conciliación</th>
+                          <th className="py-2 px-3">Cuenta Destino</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                        {filteredTransferencias.map((t, idx) => (
+                          <tr key={t.transaccion + idx} className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors">
+                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                              <Badge variant="outline" className="font-mono text-[11px] border-slate-300 dark:border-slate-700">
+                                {t.factura || `FAC-${cierre.orderCode.slice(-4)}-TR${idx + 1}`}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-bold text-blue-700 dark:text-blue-300">
+                              {t.transaccion}
+                            </td>
+                            <td className="py-2 px-3 font-sans font-medium text-slate-800 dark:text-slate-200">
+                              <div className="flex items-center gap-1.5">
+                                <Landmark className="h-3 w-3 text-blue-600 shrink-0" />
+                                <span>{t.banco}</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 font-sans">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">{t.clienteNombre}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">Cód: {t.clienteCodigo}</div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                              {t.fechaHora || '10:30 AM'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-sm text-blue-700 dark:text-blue-300">
+                              Bs {t.monto.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {t.estado || 'Conciliado con Extracto'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-[10px] text-slate-500 font-mono font-sans">
+                              {t.cuentaDestino || 'Cta. Recaudadora BCP #201-5092182'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                          <td colSpan={5} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                            Total Transferencias ({filteredTransferencias.length} transacciones)
+                          </td>
+                          <td className="py-2 px-3 text-right text-blue-700 dark:text-blue-300 font-bold text-sm">
+                            Bs {subtotalFilteredTransferencias.toFixed(2)}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. VISTA PAGOS QR SIMPLE */}
+            {detalleMetodoActivo === 'QR' && (
+              <div className="rounded-xl border border-purple-200/80 bg-white dark:bg-slate-900 dark:border-purple-900/60 shadow-xs overflow-hidden">
+                <div className="p-3 bg-purple-50/60 dark:bg-purple-950/30 border-b border-purple-100 dark:border-purple-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300">
+                      <QrCode className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Pagos QR Simple / Interoperables
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Cobros inmediatos validados en tiempo real mediante código QR
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-purple-700 bg-purple-50 border-purple-300 dark:bg-purple-950 dark:text-purple-300 text-xs py-0.5 px-2.5">
+                    Subtotal: Bs {subtotalFilteredPagosQr.toFixed(2)}
+                  </Badge>
+                </div>
+
+                {filteredPagosQr.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    No se encontraron pagos QR que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                          <th className="py-2 px-3">N° Factura</th>
+                          <th className="py-2 px-3">N° Transacción QR</th>
+                          <th className="py-2 px-3">Entidad Bancaria / Pasarela</th>
+                          <th className="py-2 px-3">Cliente / Razón Social</th>
+                          <th className="py-2 px-3">Fecha / Hora</th>
+                          <th className="py-2 px-3 text-right font-bold text-purple-700 dark:text-purple-300">Monto Cobrado (Bs)</th>
+                          <th className="py-2 px-3 text-center">Estado Pasarela</th>
+                          <th className="py-2 px-3">Referencia QR</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                        {filteredPagosQr.map((q, idx) => (
+                          <tr key={q.transaccion + idx} className="hover:bg-purple-50/40 dark:hover:bg-purple-950/20 transition-colors">
+                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                              <Badge variant="outline" className="font-mono text-[11px] border-slate-300 dark:border-slate-700">
+                                {q.factura || `FAC-${cierre.orderCode.slice(-4)}-QR${idx + 1}`}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
+                              {q.transaccion}
+                            </td>
+                            <td className="py-2 px-3 font-sans font-medium text-slate-800 dark:text-slate-200">
+                              <div className="flex items-center gap-1.5">
+                                <QrCode className="h-3 w-3 text-purple-600 shrink-0" />
+                                <span>{q.banco}</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 font-sans">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">{q.clienteNombre}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">Cód: {q.clienteCodigo}</div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                              {q.fechaHora || '11:15 AM'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-sm text-purple-700 dark:text-purple-300">
+                              Bs {q.monto.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {q.estado || 'Validado en Pasarela'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-[10px] text-slate-500 font-mono">
+                              {q.referenciaQr || 'Red Enlace Simple'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                          <td colSpan={5} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                            Total Pagos QR ({filteredPagosQr.length} transacciones)
+                          </td>
+                          <td className="py-2 px-3 text-right text-purple-700 dark:text-purple-300 font-bold text-sm">
+                            Bs {subtotalFilteredPagosQr.toFixed(2)}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. VISTA CHEQUES BANCARIOS */}
+            {detalleMetodoActivo === 'CHEQUE' && (
+              <div className="rounded-xl border border-amber-200/80 bg-white dark:bg-slate-900 dark:border-amber-900/60 shadow-xs overflow-hidden">
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 border-b border-amber-100 dark:border-amber-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
+                      <CreditCard className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Cheques Bancarios Recibidos en Ruta
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Valores en cartera recibidos por el chofer para entrega en bóveda
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-amber-700 bg-amber-50 border-amber-300 dark:bg-amber-950 dark:text-amber-300 text-xs py-0.5 px-2.5">
+                    Subtotal: Bs {subtotalFilteredCheques.toFixed(2)}
+                  </Badge>
+                </div>
+
+                {filteredCheques.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    No se encontraron cheques que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                          <th className="py-2 px-3">N° Factura</th>
+                          <th className="py-2 px-3">N° Cheque</th>
+                          <th className="py-2 px-3">Banco Girador</th>
+                          <th className="py-2 px-3">Cliente / Girador</th>
+                          <th className="py-2 px-3">Fecha Emisión / Vencimiento</th>
+                          <th className="py-2 px-3 text-right font-bold text-amber-700 dark:text-amber-300">Monto Cheque (Bs)</th>
+                          <th className="py-2 px-3 text-center">Estado Custodia</th>
+                          <th className="py-2 px-3">Tipo Cheque</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                        {filteredCheques.map((c, idx) => (
+                          <tr key={c.nroCheque + idx} className="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition-colors">
+                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                              <Badge variant="outline" className="font-mono text-[11px] border-slate-300 dark:border-slate-700">
+                                {c.factura || `FAC-${cierre.orderCode.slice(-4)}-CH${idx + 1}`}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-bold text-amber-700 dark:text-amber-300">
+                              {c.nroCheque}
+                            </td>
+                            <td className="py-2 px-3 font-sans font-medium text-slate-800 dark:text-slate-200">
+                              <div className="flex items-center gap-1.5">
+                                <CreditCard className="h-3 w-3 text-amber-600 shrink-0" />
+                                <span>{c.banco}</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 font-sans">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">{c.clienteNombre}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">Cód: {c.clienteCodigo}</div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                              {c.fechaCobro || cierre.dateFormatted}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-sm text-amber-700 dark:text-amber-300">
+                              Bs {c.monto.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {c.estado || 'Al Día / En Cartera'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-[10px] text-slate-500 font-sans">
+                              {c.tipoCheque || 'Al Día (Cobro Inmediato)'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                          <td colSpan={5} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                            Total Cheques ({filteredCheques.length} documentos)
+                          </td>
+                          <td className="py-2 px-3 text-right text-amber-700 dark:text-amber-300 font-bold text-sm">
+                            Bs {subtotalFilteredCheques.toFixed(2)}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. VISTA EFECTIVO (FACTURAS COBRADAS O ARQUEO) */}
+            {detalleMetodoActivo === 'EFECTIVO' && efectivoSubTab === 'FACTURAS' && (
+              <div className="rounded-xl border border-emerald-200/80 bg-white dark:bg-slate-900 dark:border-emerald-900/60 shadow-xs overflow-hidden">
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                      <Banknote className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Facturas Cobradas en Efectivo en Ruta
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Comprobantes y recibos cancelados en efectivo por clientes comerciales
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-emerald-700 bg-emerald-50 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 text-xs py-0.5 px-2.5">
+                    Subtotal: Bs {subtotalFilteredEfectivo.toFixed(2)}
+                  </Badge>
+                </div>
+
+                {filteredFacturasEfectivo.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    No se encontraron facturas en efectivo que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                          <th className="py-2 px-3">N° Factura</th>
+                          <th className="py-2 px-3">N° Recibo Chofer</th>
+                          <th className="py-2 px-3">Código Cliente</th>
+                          <th className="py-2 px-3">Cliente / Razón Social</th>
+                          <th className="py-2 px-3">Hora de Cobro</th>
+                          <th className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300">Monto Cobrado (Bs)</th>
+                          <th className="py-2 px-3 text-center">Estado Recaudación</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                        {filteredFacturasEfectivo.map((f, idx) => (
+                          <tr key={f.factura + idx} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition-colors">
+                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                              <Badge variant="outline" className="font-mono text-[11px] border-slate-300 dark:border-slate-700">
+                                {f.factura}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-bold text-slate-700 dark:text-slate-300">
+                              {f.reciboChofer}
+                            </td>
+                            <td className="py-2 px-3 text-slate-500 font-mono text-[11px]">
+                              {f.clienteCodigo}
+                            </td>
+                            <td className="py-2 px-3 font-sans font-semibold text-slate-900 dark:text-slate-100">
+                              {f.clienteNombre}
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                              {f.hora}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-sm text-emerald-700 dark:text-emerald-300">
+                              Bs {f.monto.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {f.estado}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                          <td colSpan={5} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                            Total Facturas en Efectivo ({filteredFacturasEfectivo.length} facturas)
+                          </td>
+                          <td className="py-2 px-3 text-right text-emerald-700 dark:text-emerald-300 font-bold text-sm">
+                            Bs {subtotalFilteredEfectivo.toFixed(2)}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4.B VISTA EFECTIVO - ARQUEO FÍSICO DE CORTES */}
+            {detalleMetodoActivo === 'EFECTIVO' && efectivoSubTab === 'ARQUEO' && (
+              <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800 shadow-xs overflow-hidden">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                      <Coins className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Desglose Oficial de Cortes Arqueados en Bóveda
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        11 denominaciones oficiales de billetes y monedas nacionales
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-emerald-700 bg-emerald-50 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 text-xs py-0.5 px-2.5">
+                    Total Arqueado: Bs {totalEfectivoCortes.toFixed(2)}
+                  </Badge>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                        <th className="py-2 px-3">Denominación</th>
+                        <th className="py-2 px-3 text-center">Tipo de Especie</th>
+                        <th className="py-2 px-3 text-right">Cantidad de Piezas</th>
+                        <th className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300">Subtotal Importe (Bs)</th>
+                        <th className="py-2 px-3 text-center">Estado Verificación</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                      {cortes.map((c) => (
+                        <tr key={c.denominacion} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                            {c.denominacion}
+                          </td>
+                          <td className="py-2 px-3 text-center font-sans text-slate-500">
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-sans">
+                              {c.tipo}
+                            </Badge>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-slate-800 dark:text-slate-200">
+                            {c.cantidad} uds
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300">
+                            Bs {c.monto.toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center font-sans">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+                              <CheckCircle2 className="h-3 w-3" /> Contado y Verificado
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                        <td colSpan={2} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                          Total Efectivo Físico Arqueado
+                        </td>
+                        <td className="py-2 px-3 text-right font-bold">
+                          {cortes.reduce((acc, c) => acc + c.cantidad, 0)} piezas
+                        </td>
+                        <td className="py-2 px-3 text-right text-emerald-700 dark:text-emerald-300 font-bold text-sm">
+                          Bs {totalEfectivoCortes.toFixed(2)}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 5. VISTA CONSOLIDADA (TODOS LOS MEDIOS DE PAGO) */}
+            {detalleMetodoActivo === 'ALL' && (
+              <div className="rounded-xl border border-indigo-200/80 bg-white dark:bg-slate-900 dark:border-indigo-900/60 shadow-xs overflow-hidden">
+                <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+                      <Receipt className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                        Consolidado Panorámico de Facturas por Método de Pago
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Todas las transacciones y recibos liquidados en la ruta
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono font-bold text-indigo-700 bg-indigo-50 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 text-xs py-0.5 px-2.5">
+                    Total Consolidado: Bs {subtotalFilteredTodas.toFixed(2)}
+                  </Badge>
+                </div>
+
+                {filteredTodasLasFacturas.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    No se encontraron registros que coincidan con la búsqueda.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 uppercase tracking-tight">
+                          <th className="py-2 px-3">Medio de Pago</th>
+                          <th className="py-2 px-3">N° Factura</th>
+                          <th className="py-2 px-3">Referencia / Comprobante</th>
+                          <th className="py-2 px-3">Canal / Entidad</th>
+                          <th className="py-2 px-3">Cliente / Razón Social</th>
+                          <th className="py-2 px-3">Fecha / Hora</th>
+                          <th className="py-2 px-3 text-right font-bold text-indigo-700 dark:text-indigo-300">Monto (Bs)</th>
+                          <th className="py-2 px-3 text-center">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono dark:divide-slate-800/60 text-xs">
+                        {filteredTodasLasFacturas.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="py-2 px-3 font-sans">
+                              {item.tipo === 'EFECTIVO' && (
+                                <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 text-[10px] font-semibold">
+                                  <Banknote className="h-3 w-3 mr-1" /> Efectivo
+                                </Badge>
+                              )}
+                              {item.tipo === 'TRANSFERENCIA' && (
+                                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-semibold">
+                                  <Landmark className="h-3 w-3 mr-1" /> Transferencia
+                                </Badge>
+                              )}
+                              {item.tipo === 'QR' && (
+                                <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-semibold">
+                                  <QrCode className="h-3 w-3 mr-1" /> QR Simple
+                                </Badge>
+                              )}
+                              {item.tipo === 'CHEQUE' && (
+                                <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 text-[10px] font-semibold">
+                                  <CreditCard className="h-3 w-3 mr-1" /> Cheque
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">
+                              <Badge variant="outline" className="font-mono text-[11px] border-slate-300 dark:border-slate-700">
+                                {item.factura}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-bold text-slate-800 dark:text-slate-200">
+                              {item.referencia}
+                            </td>
+                            <td className="py-2 px-3 font-sans text-slate-700 dark:text-slate-300">
+                              {item.entidad}
+                            </td>
+                            <td className="py-2 px-3 font-sans">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">{item.clienteNombre}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">Cód: {item.clienteCodigo}</div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                              {item.hora}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-sm text-indigo-700 dark:text-indigo-300">
+                              Bs {item.monto.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center font-sans">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {item.estado}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-mono font-bold text-xs bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40 text-slate-900 dark:text-slate-100">
+                          <td colSpan={6} className="py-2 px-3 uppercase font-sans tracking-wider text-[11px]">
+                            Total Consolidado ({filteredTodasLasFacturas.length} comprobantes)
+                          </td>
+                          <td className="py-2 px-3 text-right text-indigo-700 dark:text-indigo-300 font-bold text-sm">
+                            Bs {subtotalFilteredTodas.toFixed(2)}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer del Modal */}
+          <div className="p-3 px-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shrink-0">
+            <span className="text-slate-500 font-mono flex items-center gap-1.5 text-[11px]">
+              <Info className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              Valores expresados en Bolivianos (Bs) • Conciliación conforme en Caja Central
+            </span>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDetalleModal(false)}
+              className="cursor-pointer text-xs font-semibold px-4 h-8 border-slate-300 dark:border-slate-700"
+            >
+              Cerrar Detalle
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {/* ── FOOTER FLOTANTE CON BORDE SUAVE Y ESQUINAS REDONDEADAS (z-20) ──   */}
